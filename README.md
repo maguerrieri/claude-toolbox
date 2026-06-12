@@ -1,4 +1,4 @@
-# claude-dotfiles
+# claude-toolbox
 
 Portable Claude Code conventions, packaged as a [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
 One repo, declared per-project, works in local and cloud sessions alike.
@@ -19,12 +19,12 @@ Per repo, in `.claude/settings.json`:
 ```json
 {
   "extraKnownMarketplaces": {
-    "mario-dotfiles": {
-      "source": { "source": "github", "repo": "maguerrieri/claude-dotfiles" }
+    "maguerrieri-toolbox": {
+      "source": { "source": "github", "repo": "maguerrieri/claude-toolbox" }
     }
   },
   "enabledPlugins": {
-    "defaults@mario-dotfiles": true
+    "defaults@maguerrieri-toolbox": true
   }
 }
 ```
@@ -32,9 +32,9 @@ Per repo, in `.claude/settings.json`:
 Enabling `defaults` auto-installs and enables its dependencies, so the
 settings file stays one line no matter how many plugins land here. To pick
 plugins à la carte instead, enable them individually
-(`"conventions@mario-dotfiles": true`).
+(`"conventions@maguerrieri-toolbox": true`).
 
-Or user-wide: `claude plugin marketplace add maguerrieri/claude-dotfiles && claude plugin install defaults@mario-dotfiles`.
+Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`.
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these
