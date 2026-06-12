@@ -6,6 +6,11 @@
   "description": "Mario's portable Claude Code conventions and workflows",
   "plugins": [
     {
+      "name": "defaults",
+      "source": "./plugins/defaults",
+      "description": "Meta-plugin that pulls in the full default set via dependencies"
+    },
+    {
       "name": "conventions",
       "source": "./plugins/conventions",
       "description": "Cross-repo development conventions (commit message format)"
