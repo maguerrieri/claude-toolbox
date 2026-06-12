@@ -1,0 +1,14 @@
+{
+  "name": "mario-dotfiles",
+  "owner": {
+    "name": "Mario Guerrieri"
+  },
+  "description": "Mario's portable Claude Code conventions and workflows",
+  "plugins": [
+    {
+      "name": "conventions",
+      "source": "./plugins/conventions",
+      "description": "Cross-repo development conventions (commit message format)"
+    }
+  ]
+}

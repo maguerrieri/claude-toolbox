@@ -1,0 +1,8 @@
+{
+  "name": "conventions",
+  "description": "Mario's cross-repo development conventions",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mario Guerrieri"
+  }
+}
