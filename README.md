@@ -11,6 +11,9 @@ One repo, declared per-project, works in local and cloud sessions alike.
 - **conventions** — cross-repo development conventions. Currently: commit
   message format. Candidates to move in later: merge policy, issue/epic
   structure, the ticket-workflow skills.
+- **spawn** — generic background-session fan-out: the `spawn` skill plus the
+  `/spawn` command, for firing off one or more independent `claude --bg`
+  sessions and handing back without blocking.
 
 ## Usage
 
