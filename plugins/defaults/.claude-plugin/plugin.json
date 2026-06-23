@@ -6,6 +6,7 @@
     "name": "Mario Guerrieri"
   },
   "dependencies": [
-    "conventions"
+    "conventions",
+    "spawn"
   ]
 }

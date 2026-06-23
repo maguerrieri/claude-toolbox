@@ -14,6 +14,11 @@
       "name": "conventions",
       "source": "./plugins/conventions",
       "description": "Cross-repo development conventions (commit message format)"
+    },
+    {
+      "name": "spawn",
+      "source": "./plugins/spawn",
+      "description": "Generic background-session fan-out (spawn skill + /spawn command)"
     }
   ]
 }

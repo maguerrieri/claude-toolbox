@@ -1,0 +1,8 @@
+{
+  "name": "spawn",
+  "description": "Generic background-session fan-out: the spawn skill + /spawn command",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mario Guerrieri"
+  }
+}
