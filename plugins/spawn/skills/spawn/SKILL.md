@@ -44,6 +44,13 @@ claude --bg --name "<context> <desc>" "<prompt>"
 ```
 
 - `<desc>`: under 5 words, recognizable (e.g. `investigate flaky CI`). Spaces and special characters are fine — keep `--name`'s argument quoted.
+- `<prompt>`: quote it so the shell can't mangle it. Plain prose in double quotes is fine (apostrophes are safe), but if the prompt contains `$`, backticks, or `$(...)`, double quotes will **expand** them and corrupt the spawned prompt. For those, feed the prompt through a single-quoted heredoc into a variable and pass the variable:
+  ```bash
+  read -r -d '' p <<'PROMPT'
+  …prompt text, verbatim…
+  PROMPT
+  claude --bg --name "<context> <desc>" "$p"
+  ```
 - Add no cap; the prompt carries whatever bounds the caller wrote.
 - `claude --bg` prints a **session handle** at spawn — record it per unit; it survives the user renaming the session and is how you inspect a stuck one later.
 
