@@ -30,7 +30,7 @@ This is the load-bearing constraint (Osborn's "defer judgment"; the Double
 Diamond's "don't diverge and converge at once"). Generation and decision stay
 separate modes — mixing them is "driving with the brakes on," and it degrades both.
 
-## Step 0 — Select the Promotion adapter (do this once, up front)
+## Step 0: Select the Promotion adapter
 
 The **promotion seam** — how a contested item hands off to a decision process —
 is pluggable. Pick an adapter, **highest priority first**:
@@ -51,7 +51,7 @@ the op contract.
 
 ## When to use it
 
-- "**Generate / brainstorm / give me N** <things>" → **`generate`** mode (default).
+- "**Generate / brainstorm / give me N** `<things>`" → **`generate`** mode (default).
   (`<things>` = any open-ended type: factions, events, NPCs, item or product
   names, quest hooks, test scenarios, user personas, world locations, …)
 - "**What themes are over-represented** in the pool? **What's missing?**"
@@ -167,7 +167,7 @@ that item has become a **decision**:
 
 1. **Stop generating around it.** The stall ("which of these is best?") is the
    tell that you've drifted from divergence into convergence.
-2. **`OPEN(type, slot, rivals)`** via the [selected Promotion adapter](#step-0--select-the-promotion-adapter-do-this-once-up-front)
+2. **`OPEN(type, slot, rivals)`** via the [selected Promotion adapter](#step-0-select-the-promotion-adapter)
    — open the decision artifact for the contested slot (the current reservoir
    `type` passed as context), seeded with the competing pooled items as its
    **starting options**. The reservoir *feeds* the decision's
