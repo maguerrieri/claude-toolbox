@@ -160,7 +160,7 @@ Opt-in, plugin-managed, with hard guardrails.
 - **Rewind:** `/gm:rewind` lists checkpoints and restores one, stashing current state first so the rewind is reversible.
 - **Backup:** optional `/gm:backup` pushes to a user-configured remote (the doc's recommended backup for write-capable tooling).
 - **Commit identity = the persona.** The campaign repo's local `user.name`/`user.email` are set from the active persona's `chronicle_identity`, so `git log` reads as that GM's chronicle and never masquerades as the user's dev identity. Git operations are allowlisted to avoid permission prompts during play.
-- **Avatar.** Git has no avatar concept; avatars are a **host feature keyed off the commit email.** The plugin bundles a Claude glyph (and per-persona glyphs) in `assets/avatars/` and sets a stable GM email. Rendering is host-dependent: Gravatar-aware tools/forges (GitLab, Gitea, GitHub Desktop, many TUIs) show it once the glyph is on that email's Gravatar; GitHub shows it if the email maps to an account bearing it; a bare terminal stays text-only. The one-time Gravatar upload is documented (it cannot be set programmatically).
+- **Avatar.** Git has no avatar concept; avatars are a **host feature keyed off the commit email.** The plugin bundles a Claude glyph (and per-persona glyphs) in `assets/avatars/`, and each persona's `chronicle_identity` carries its own commit email — so a persona's email keys its own Gravatar avatar. Rendering is host-dependent: Gravatar-aware tools/forges (GitLab, Gitea, GitHub Desktop, many TUIs) show it once the glyph is on that email's Gravatar; GitHub shows it if the email maps to an account bearing it; a bare terminal stays text-only. The one-time Gravatar upload is documented (it cannot be set programmatically).
 
 ## 8. Reliability model
 
@@ -199,7 +199,7 @@ Ironsworn/Starforged content and the Datasworn data are **CC-BY**. Because the p
 ## 12. Open / cosmetic TBDs (not blocking)
 - **Plugin name.** Working name `gm` (matches `/gm:*` and the repo's plain-naming culture). A fancier title is bikeshed-able later.
 - **Public persona roster.** Which flagship personas ship publicly vs. stay personal.
-- **GM email** for the commit identity / Gravatar target.
+- **Persona `chronicle_identity` emails** — the concrete address(es) to register Gravatars for (at minimum the default House persona).
 
 ## 13. Repo layout
 
