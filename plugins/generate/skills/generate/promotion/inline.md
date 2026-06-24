@@ -5,7 +5,7 @@ contested slot to the human, who routes it into whatever decision process they
 use. Safe anywhere; assumes nothing. This is the default when no `Promotion:`
 directive is set.
 
-## OPEN(slot, rivals)
+## OPEN(type, slot, rivals)
 
 Don't create anything. Surface a **promotion notice** to the human, plainly:
 

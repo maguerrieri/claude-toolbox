@@ -4,7 +4,7 @@ Opens a **GitHub issue** as the decision ticket. Requires the `gh` CLI
 authenticated for the repo. Good when your decisions live as issues. Select with
 `Promotion: github-issue`.
 
-## OPEN(slot, rivals)
+## OPEN(type, slot, rivals)
 
 Create an issue titled for the contested slot, body seeding the rivals as the
 starting options:

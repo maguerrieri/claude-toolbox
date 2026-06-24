@@ -11,7 +11,7 @@ code. Select with `Promotion: adr`.
 > Keeping project-specific wiring in *your* config, not this plugin, is the whole
 > point of the adapter seam.
 
-## OPEN(slot, rivals)
+## OPEN(type, slot, rivals)
 
 Write `docs/decisions/NNNN-<kebab-slot>.md` (NNNN = next unused number, scanning
 the dir; `0001` if the dir is new) from this template, filling the rivals into

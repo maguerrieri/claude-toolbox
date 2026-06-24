@@ -85,9 +85,9 @@ The discipline below is what defeats mode collapse — follow it exactly.
    **axes**, not example outputs.
 2. **Run 3–4 *independent, lens-varied* passes — in parallel, blind to each
    other.** Anchoring is the enemy: the first idea silently collapses the space.
-   If your harness can dispatch parallel subagents (e.g. the
-   `dispatching-parallel-agents` skill), give **each** only the frame + one
-   distinct lens, none seeing the others' output; otherwise run **sequential
+   If your harness can dispatch parallel subagents in isolation, give **each**
+   only the frame + one distinct lens, none seeing the others' output; otherwise
+   run **sequential
    passes in separate contexts** — never one long thread (it anchors on its own
    earlier output). Vary the lens per pass — a different **persona** (vary stance
    and vantage: a skeptic vs. an enthusiast, an insider vs. an outsider, a
@@ -167,9 +167,10 @@ that item has become a **decision**:
 
 1. **Stop generating around it.** The stall ("which of these is best?") is the
    tell that you've drifted from divergence into convergence.
-2. **`OPEN(slot, rivals)`** via the [selected Promotion adapter](#step-0--select-the-promotion-adapter-do-this-once-up-front)
-   — open the decision artifact for the contested slot, seeded with the competing
-   pooled items as its **starting options**. The reservoir *feeds* the decision's
+2. **`OPEN(type, slot, rivals)`** via the [selected Promotion adapter](#step-0--select-the-promotion-adapter-do-this-once-up-front)
+   — open the decision artifact for the contested slot (the current reservoir
+   `type` passed as context), seeded with the competing pooled items as its
+   **starting options**. The reservoir *feeds* the decision's
    divergence; it never *is* it.
 3. **`BACKLINK(ref)`** — record in the reservoir (cold storage) that these items
    promoted out to `<ref>`. The losers **stay** (in cold storage or the pool) —
@@ -184,12 +185,14 @@ An adapter is a small markdown file defining two ops the seam calls. Bundled one
 live in [`promotion/`](promotion/); point `Promotion:` at a **path** to use your
 own (e.g. to wire an ADR/RFC skill or a tracker):
 
-- **`OPEN(slot, rivals)`** — create the decision artifact for the contested
-  `slot`, seeded with `rivals` (the competing items, verbatim with their tags) as
-  its starting options. Return a reference (an issue URL, a file path, an ADR
-  number, or "(surfaced to the human)").
-- **`BACKLINK(ref)`** — how to note, back in the reservoir's cold storage, that
-  these items promoted to `<ref>` so the trail persists.
+- **`OPEN(type, slot, rivals)`** — create the decision artifact for the contested
+  `slot`. `type` is the **current reservoir's content type**, passed as calling
+  context — use it to label the record (e.g. "promoted from the `<type>`
+  reservoir"). Seed the artifact with `rivals` (the competing items, verbatim with
+  their tags) as its starting options. Return a reference (an issue URL, a file
+  path, an ADR number, or "(surfaced to the human)").
+- **`BACKLINK(ref)`** — how to note, back in the **current `type`'s** reservoir
+  cold storage, that these items promoted to `<ref>` so the trail persists.
 
 Keeping the seam in an adapter means this plugin carries no assumption about
 *your* decision process — swap the file, not the skill.
