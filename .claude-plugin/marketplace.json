@@ -19,6 +19,11 @@
       "name": "spawn",
       "source": "./plugins/spawn",
       "description": "Generic background-session fan-out (spawn skill + /spawn command)"
+    },
+    {
+      "name": "generate",
+      "source": "./plugins/generate",
+      "description": "Diverse bulk ideation with a pluggable Promotion adapter (generate skill + /generate command)"
     }
   ]
 }
