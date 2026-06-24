@@ -18,7 +18,9 @@ Work is tracked in **GitHub Issues**. Commits and PRs follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
 brackets, AI-assistance flags in the subject parens.
 
-## Specs
+## Development workflow
 
-Design specs (from the superpowers brainstorming flow) live in
-`docs/superpowers/specs/`.
+Built with the **`superpowers`** plugin (from the built-in `claude-plugins-official`
+marketplace, pinned for this repo in `.claude/settings.json`): brainstorm → design
+spec in `docs/superpowers/specs/` → `writing-plans` → test-driven implementation.
+Pairs with the ticket workflow above.
