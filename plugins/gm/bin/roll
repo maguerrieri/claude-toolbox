@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+"""gm dice CLI — true-RNG roller. Stdlib only. (stub — implemented in Task 2)"""
+import sys
+
+if __name__ == "__main__":
+    sys.exit("roll: not implemented")
