@@ -2,6 +2,8 @@
 
 These are the curated core moves for Ironsworn. Each move triggers on a specific fictional action. Rolls use the base engine defined in `ironsworn-core/adapter.md`: `roll ironsworn-action --stat <stat> --adds <N>`.
 
+> **Adapter note — flat harm:** Strike and Clash list a flat harm value instead of the Ironsworn weapon-rating system (which varies by weapon type). This is a deliberate simplification; treat the listed value as a default. Adjust in the fiction if your weapon's harm rating differs.
+
 ---
 
 ## Adventure Moves
@@ -20,8 +22,8 @@ These are the curated core moves for Ironsworn. Each move triggers on a specific
 **Trigger:** When you assess a situation, make preparations, or bolster your position before acting.
 **Roll:** +edge (survey quickly), +heart (give heart to allies), +iron (brace for effort), +shadow (read the angles), or +wits (study the situation).
 
-- **Strong hit:** Gain +2 momentum. Take +1 add on your next roll if the advantage still applies.
-- **Weak hit:** Gain +1 momentum.
+- **Strong hit:** Choose one: take +2 momentum, OR take +1 add on your next roll (if the advantage still applies when you act).
+- **Weak hit:** Take +1 momentum.
 - **Miss:** Your advantage is lost or turns against you. Pay the Price.
 
 ---
@@ -52,8 +54,8 @@ These are the curated core moves for Ironsworn. Each move triggers on a specific
 **Trigger:** When you attack an enemy at close quarters.
 **Roll:** +iron (force and might) or +edge (speed and precision).
 
-- **Strong hit:** Inflict harm as described for your weapon (+2), and take +1 momentum.
-- **Weak hit:** Inflict harm as described, but the enemy retaliates or you find yourself in a worse position.
+- **Strong hit:** Inflict +2 harm (flat; see adapter note above) and take +1 momentum.
+- **Weak hit:** Inflict +1 harm, but the enemy retaliates or you find yourself in a worse position.
 - **Miss:** Your attack fails and you are in danger. Pay the Price.
 
 ---
@@ -62,8 +64,8 @@ These are the curated core moves for Ironsworn. Each move triggers on a specific
 **Trigger:** When you fight back against an attacking enemy.
 **Roll:** +iron or +edge.
 
-- **Strong hit:** Inflict harm (+2) and take +1 momentum. You gain the upper hand.
-- **Weak hit:** Inflict harm, but you must Endure Harm as well — the exchange costs both sides.
+- **Strong hit:** Inflict +2 harm (flat; see adapter note above) and take +1 momentum. You gain the upper hand.
+- **Weak hit:** Inflict +1 harm, but you must Endure Harm as well — the exchange costs both sides.
 - **Miss:** The exchange goes against you. Pay the Price.
 
 ---
@@ -80,9 +82,10 @@ These are the curated core moves for Ironsworn. Each move triggers on a specific
 **Trigger:** When you face physical injury or hardship.
 **Roll:** +iron or +health (whichever is lower).
 
-- **Strong hit:** Choose: take -1 health but press on, or take -2 health but gain +1 momentum (you draw strength from pain).
-- **Weak hit:** Take -1 health. You can continue.
-- **Miss:** Take -2 health. It's worse than expected — if health is now 0, you must Face Death or Face Desolation.
+*(Health loss for the harm is applied before you roll. The options below are in addition to that.)*
+- **Strong hit:** Choose: press on (no further effect), OR take +1 momentum (you draw strength from pain).
+- **Weak hit:** You endure. No additional effect.
+- **Miss:** The harm is worse than expected. Suffer an additional -1 health. If health is now 0, you must Face Death or Face Desolation.
 
 ---
 
@@ -101,7 +104,7 @@ These are the curated core moves for Ironsworn. Each move triggers on a specific
 ### Swear an Iron Vow
 **Trigger:** When you swear a vow to a person or community, or commit to a personal quest.
 **Roll:** +heart.
-Set a rank: troublesome (2 progress/advance), dangerous (1.5), formidable (1), extreme (0.5), or epic (0.25).
+Set a rank — progress boxes marked per milestone: troublesome (3 boxes), dangerous (2 boxes), formidable (1 box), extreme (2 ticks = ½ box), epic (1 tick = ¼ box).
 
 - **Strong hit:** You are resolved. Take +2 momentum.
 - **Weak hit:** You are determined, but the path is uncertain. Take +1 momentum.

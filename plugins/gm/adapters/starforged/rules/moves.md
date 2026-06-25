@@ -1,6 +1,8 @@
 # Starforged Core Moves
 
-All moves use the `ironsworn-core` action roll: `roll ironsworn-action --stat <stat> --adds <N>`. See `ironsworn-core/adapter.md` for the full roll mechanic (strong hit / weak hit / miss / match).
+All moves use the `ironsworn-core` action roll: `roll ironsworn-action --stat <value> --adds <N>` (pass the numeric stat value, e.g. `--stat 2`). See `ironsworn-core/adapter.md` for the full roll mechanic (strong hit / weak hit / miss / match).
+
+> **Adapter note — flat harm:** Strike and Clash list flat harm values rather than Starforged's weapon/harm-rating system. This is a deliberate simplification; adjust in the fiction if circumstances warrant.
 
 The move list below is the curated Starforged core set. Moves unique to Starforged (expeditions, connections, Withstand Damage) are noted. Moves carried over from classic Ironsworn are adjusted for the sci-fi context but mechanically identical unless noted.
 
@@ -18,8 +20,8 @@ The move list below is the curated Starforged core set. Moves unique to Starforg
 ### Secure an Advantage
 **Trigger:** You assess a situation, make preparations, or use your skills or resources to gain an edge.
 **Stat:** Choose the stat that fits your approach (see Face Danger).
-- **Strong hit:** Take +2 momentum. If you act on the advantage, take +1 on that next roll.
-- **Weak hit:** Choose one: take +1 momentum or +1 on the immediate next roll.
+- **Strong hit:** Choose one: take +2 momentum, OR take +1 add on your next roll (if the advantage still applies when you act).
+- **Weak hit:** Choose one: take +1 momentum, or take +1 add on your next roll.
 - **Miss:** Your efforts reveal a surprising danger or complication. Pay the Price.
 
 ### Gather Information
@@ -52,15 +54,15 @@ The move list below is the curated Starforged core set. Moves unique to Starforg
 ### Strike
 **Trigger:** You attack in close quarters or at range.
 **Stat:** **edge** (ranged or quick strikes) or **iron** (melee power).
-- **Strong hit:** Deal harm (mark progress on your foe's track). Take +1 momentum.
-- **Weak hit:** Deal harm, but you are exposed, off-balance, or your position costs you. Choose: suffer -1 momentum, suffer harm, or create an opening for your foe.
+- **Strong hit:** Inflict +2 harm (flat; see adapter note above) and take +1 momentum.
+- **Weak hit:** Inflict +1 harm, but you are exposed, off-balance, or your position costs you. Choose: suffer -1 momentum, suffer harm, or create an opening for your foe.
 - **Miss:** You miss or are outmatched. Pay the Price.
 
 ### Clash
 **Trigger:** You trade blows in a direct exchange where you are neither pressing the attack nor avoiding it — you stand your ground.
 **Stat:** **edge** (quick parry and counter) or **iron** (absorb and respond with force).
-- **Strong hit:** Deal harm and defend successfully. Mark progress and take +1 momentum.
-- **Weak hit:** Deal harm but take harm in return.
+- **Strong hit:** Inflict +2 harm (flat; see adapter note above) and take +1 momentum. You gain the upper hand.
+- **Weak hit:** Inflict +1 harm but take harm in return.
 - **Miss:** You fail to defend. Pay the Price — likely harm to you and no progress marked.
 
 ### React Under Fire
@@ -76,10 +78,10 @@ The move list below is the curated Starforged core set. Moves unique to Starforg
 
 ### Endure Harm
 **Trigger:** You take physical damage.
-Suffer -health as appropriate for the threat. If health reaches 0, roll: **iron** (or **heart** to push through).
-- **Strong hit:** Choose: press on (+1 health) or embrace the pain (+1 momentum).
-- **Weak hit:** You endure but are weakened.
-- **Miss:** Mark debilitated or face worse. If health is 0, you are out of action.
+Suffer -health as appropriate for the threat (applied before the roll). If health reaches 0, roll: **iron** (or **heart** to push through).
+- **Strong hit:** Choose: press on (no further effect), OR take +1 momentum (you draw resolve from pain).
+- **Weak hit:** You endure. No additional effect.
+- **Miss:** The harm is worse than expected. Suffer an additional -1 health. If health is now 0, you are out of action — face what comes.
 
 > *Starforged adds **Withstand Damage** for your starship — analogous to Endure Harm but applied to ship Integrity.*
 
@@ -97,7 +99,7 @@ Suffer -integrity as appropriate. If Integrity reaches 0, roll: **wits** (damage
 ### Swear an Iron Vow
 **Trigger:** You commit to a quest by swearing a vow on iron.
 **Stat:** **heart**
-Set a rank (troublesome → epic) — the harder the quest, the greater the reward and the cost of failure. Open a progress track.
+Set a rank (troublesome → epic) — the harder the quest, the greater the reward and the cost of failure. Open a progress track. Progress per milestone by rank: see `ironsworn-core/adapter.md` (troublesome=3 boxes, dangerous=2, formidable=1, extreme=2 ticks, epic=1 tick).
 - **Strong hit:** Take +2 momentum. You are resolved.
 - **Weak hit:** Take +1 momentum. There is a complication or cost you must face to pursue this vow.
 - **Miss:** Your vow is clouded at the outset. Pay the Price — the path is harder than you thought.
@@ -109,8 +111,8 @@ Mark progress on your vow track according to rank. No roll — the fiction deter
 ### Fulfill Your Vow
 **Trigger:** You believe you have achieved what you swore to do.
 Roll **progress** (no stat — roll the challenge dice against your filled boxes).
-- **Strong hit:** Your vow is fulfilled. Take experience (2 for epic, 1 for formidable). Reflect on what you've paid to get here.
-- **Weak hit:** The vow is fulfilled, but with an unexpected cost, partial result, or lingering consequence. Take 1 less experience.
+- **Strong hit:** Your vow is fulfilled. Take +2 experience. Reflect on what you've paid to get here.
+- **Weak hit:** The vow is fulfilled, but with an unexpected cost, partial result, or lingering consequence. Take +1 experience.
 - **Miss:** The vow remains unfulfilled or you discover the truth is worse. Envision what went wrong and press on or forsake.
 
 ---

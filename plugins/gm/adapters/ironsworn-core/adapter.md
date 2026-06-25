@@ -12,7 +12,7 @@ The shared engine for the Ironsworn family (`ironsworn`, `starforged`, …). It 
 
 ## The action roll
 
-Most moves resolve with an **action roll**: `roll ironsworn-action --stat <N> --adds <N>` — your action die (1d6) plus the named stat plus any adds (the **action score**, capped at 10), against two **challenge dice** (2d10).
+Most moves resolve with an **action roll**: `roll ironsworn-action --stat <value> --adds <N>` — pass the **numeric value** of your stat (e.g. `--stat 2`), not the stat's name. Your action die (1d6) plus the stat value plus any adds form the **action score** (capped at 10), compared against two **challenge dice** (2d10).
 
 - **Strong hit** (score beats *both* challenge dice): you do it well — take the better outcome.
 - **Weak hit** (beats *one*): you do it, but with a cost, complication, or partial result.
@@ -21,7 +21,17 @@ Most moves resolve with an **action roll**: `roll ironsworn-action --stat <N> --
 
 ## Progress moves
 
-Vows, journeys, fights, and other extended efforts use a **progress track** (10 boxes). You mark progress by rank (troublesome → epic) as you advance. To *resolve* one, **roll the challenge dice only** (`roll 2d10` — or `roll ironsworn-action --action-die <filled-boxes> --stat 0`) and compare your filled boxes to each die: beat both = strong, one = weak, neither = miss.
+Vows, journeys, fights, and other extended efforts use a **progress track** (10 boxes). You mark progress by rank (troublesome → epic) as you advance:
+
+| Rank | Boxes per milestone |
+|---|---|
+| Troublesome | 3 boxes |
+| Dangerous | 2 boxes |
+| Formidable | 1 box |
+| Extreme | 2 ticks (½ box) |
+| Epic | 1 tick (¼ box) |
+
+To *resolve* a progress track, **roll the challenge dice only** — `roll ironsworn-progress --boxes <filled-boxes>` — and compare your filled boxes to each die: beat both = strong hit, one = weak hit, neither = miss.
 
 ## Momentum
 

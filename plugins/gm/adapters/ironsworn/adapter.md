@@ -15,7 +15,7 @@ This adapter extends `ironsworn-core` and adds the Ironlands' oracles, moves, an
 
 When the fiction demands a mechanical answer, follow the base engine (`ironsworn-core/adapter.md`):
 
-- **Action moves** resolve with `roll ironsworn-action --stat <edge|heart|iron|shadow|wits> --adds <N>` (action die + stat + adds vs. two challenge dice).
+- **Action moves** resolve with `roll ironsworn-action --stat <value> --adds <N>` (action die + stat + adds vs. two challenge dice). Pass the **numeric value** of the relevant stat (edge / heart / iron / shadow / wits), e.g. `roll ironsworn-action --stat 2 --adds 0`  # using your wits value of 2.
 - **Progress moves** (fulfil a vow, reach a milestone, journey's end, fight resolution) roll only the challenge dice against the filled progress boxes.
 - **Momentum burns** improve outcomes as the base describes.
 
@@ -42,7 +42,7 @@ Read `action` + `theme` as a two-word prompt (e.g. *Threaten / Darkness* → an 
 1. **Establish the scene** — where are you, what's pressing?
 2. **Player declares intent** — what do they attempt?
 3. **Pick the move** (from `rules/moves.md`) that fits the intent.
-4. **Roll** — `roll ironsworn-action --stat <stat> --adds <N>`. The base engine resolves strong hit / weak hit / miss.
+4. **Roll** — `roll ironsworn-action --stat <value> --adds <N>`. Pass the numeric value of the stat (e.g. `--stat 3`). The base engine resolves strong hit / weak hit / miss.
 5. **Narrate the outcome** — honour the dice (Rule 0). On a miss, consult `oracles/pay-the-price.json` or choose the most interesting consequence.
 6. **Update tracks** — health, spirit, supply, momentum, progress.
 7. **Advance the fiction** — what changes? What new trouble rises?

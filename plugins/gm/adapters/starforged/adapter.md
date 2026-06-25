@@ -21,7 +21,7 @@ This is high-stakes sci-fi with mythic weight. Technology is old, strange, and s
 
 All resolution uses the `ironsworn-core` action roll — see `ironsworn-core/adapter.md` for the full mechanic. In brief:
 
-> `roll ironsworn-action --stat <edge|heart|iron|shadow|wits> --adds <N>`
+> `roll ironsworn-action --stat <value> --adds <N>`   # <value> is the numeric stat (e.g. `--stat 2` for edge 2)
 
 Beat both challenge dice = **strong hit**. Beat one = **weak hit**. Beat neither = **miss**. Matching challenge dice = **match** (twist: fortune on a hit, deeper trouble on a miss).
 
