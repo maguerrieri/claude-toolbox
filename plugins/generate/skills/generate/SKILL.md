@@ -163,7 +163,19 @@ For a type that has no reservoir yet:
 The reservoir is divergent and never closes — **except** at promotion. When two
 pooled items can no longer coexist (they compete for **one slot**: a single
 canonical role, a fixed UI affordance, a mechanic that can only resolve one way),
-that item has become a **decision**:
+that item has become a **decision**.
+
+**The trigger is in the *request*, not the pool.** A `generate` / `cluster` /
+`frame` run **never** promotes — those are divergent, and a pile of coexisting
+candidates creates no pressure to choose. Promotion fires when the user's intent
+flips from *"give me more"* to *"which of these"* — phrasings like **narrow · rank
+· pick · cut to N · make this canon · there can only be one**. That flip is the
+doorbell; the pool just sitting there is not.
+
+> **Don't answer a convergent request by choosing.** When you catch the flip, do
+> **not** comply by picking a winner — that's authority you don't have. Recognize
+> it, name the contested `slot`, and route the rivals through the Promotion
+> adapter. Your job is the *handoff*, not the verdict.
 
 1. **Stop generating around it.** The stall ("which of these is best?") is the
    tell that you've drifted from divergence into convergence.
@@ -203,7 +215,8 @@ Keeping the seam in an adapter means this plugin carries no assumption about
 |---|---|---|
 | Output is visibly **samey** | skipped the frame, or seeded with examples | re-frame the axes; strip every example idea from the prompts |
 | `cluster` shows **one mega-cluster** | axes aren't truly orthogonal | revisit the frame (`frame` mode); pick independently-varying axes |
-| You're stalling on **"which is best"** | drifted into convergence | **promote** the contested item; resume generating |
+| You're stalling on **"which is best"** | you drifted into convergence | **promote** the contested item; resume generating |
+| You're **asked to rank / narrow / pick / "make canon"** from the pool | the *request* flipped divergent → convergent — that's the promotion trigger | don't choose; name the slot + route the rivals via the Promotion adapter (`OPEN`) |
 | Late-run output feels **exhausted / repetitive** | past the ~500–750-idea diversity cliff | start a **fresh session** with a new lens/persona; don't push one long thread |
 
 Two more standing rules: **temperature is a weak lever** (don't reach for it to
