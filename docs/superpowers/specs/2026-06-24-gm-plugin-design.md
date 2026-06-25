@@ -160,7 +160,8 @@ Opt-in, plugin-managed, with hard guardrails.
 - **Rewind:** `/gm:rewind` lists checkpoints and restores one, stashing current state first so the rewind is reversible.
 - **Backup:** optional `/gm:backup` pushes to a user-configured remote (the doc's recommended backup for write-capable tooling).
 - **Commit identity = the persona.** The campaign repo's local `user.name`/`user.email` are set from the active persona's `chronicle_identity`, so `git log` reads as that GM's chronicle and never masquerades as the user's dev identity. Git operations are allowlisted to avoid permission prompts during play.
-- **Avatar.** Git has no avatar concept; avatars are a **host feature keyed off the commit email.** The plugin bundles a Claude glyph (and per-persona glyphs) in `assets/avatars/`, and each persona's `chronicle_identity` carries its own commit email — so a persona's email keys its own Gravatar avatar. Rendering is host-dependent: Gravatar-aware tools/forges (GitLab, Gitea, GitHub Desktop, many TUIs) show it once the glyph is on that email's Gravatar; GitHub shows it if the email maps to an account bearing it; a bare terminal stays text-only. The one-time Gravatar upload is documented (it cannot be set programmatically).
+- **Avatar & identity.** Avatars are a **host feature keyed off the commit email**, so each persona's `chronicle_identity` email is `<persona-slug>@${identity_domain}` (default `gm.invalid`) — distinct per persona, so each keys its own Gravatar. The shipped addresses are **aliases on one mailbox** (`claude@${identity_domain}`); the plugin bundles each persona's glyph in `assets/avatars/`, and a per-alias Gravatar makes the icon render out-of-box on Gravatar-aware tools/forges (GitLab, Gitea, GitHub Desktop, many TUIs) and on GitHub where the address maps to an account — a bare terminal stays text-only. **`identity_domain` is a single config variable**, so a fork points the personas at its own domain.
+- **Identity provisioning (`identity/`).** A small module sets up the aliases + Gravatars. For the default `gm.invalid` (Cloudflare DNS, Google Workspace mail, `claude@` seat already present), a script adds each persona alias to that seat via the Admin SDK (≤30 aliases/user — ample) and a second script/playbook uploads each glyph to its alias's Gravatar (Gravatar has no clean Terraform path, so this stays scripted-or-documented). No DNS change is needed (MX already routes the domain to Workspace). A fork sets `identity_domain` + its own provider creds and re-runs; the module documents a Cloudflare Email-Routing catch-all path for forks not on Workspace. This is **follow-on infra — the plugin works without it; provisioning only lights up the avatars.**
 
 ## 8. Reliability model
 
@@ -199,7 +200,6 @@ Ironsworn/Starforged content and the Datasworn data are **CC-BY**. Because the p
 ## 12. Open / cosmetic TBDs (not blocking)
 - **Plugin name.** Working name `gm` (matches `/gm:*` and the repo's plain-naming culture). A fancier title is bikeshed-able later.
 - **Public persona roster.** Which flagship personas ship publicly vs. stay personal.
-- **Persona `chronicle_identity` emails** — the concrete address(es) to register Gravatars for (at minimum the default House persona).
 
 ## 13. Repo layout
 
@@ -220,6 +220,7 @@ plugins/gm/
     house/                          # default neutral GM
     <curated roster>/
   assets/avatars/                   # Claude glyph + per-persona icons
+  identity/                         # alias + Gravatar provisioning (identity_domain var; fork-swappable)
   examples/<demo-campaign>/
   tests/
   NOTICE                            # CC-BY attribution
@@ -235,7 +236,7 @@ One cohesive plugin, but several independently-shippable milestones. The impleme
 1. **Engine MVP** — `bin/roll` (+ tests); core `skills/gm/` (loop + Rule 0 + state-schema); the `generic` adapter; a minimal command set (`new-campaign`, `play`, `wrap`, `oracle`). Playable solo end-to-end with the generic oracle.
 2. **Ironsworn family** — `ironsworn-core` base + `ironsworn` + `starforged` variants (Datasworn-derived data); `bin/validate-adapter`; reference-integrity tests; `NOTICE`.
 3. **Personas** — persona contract + loader; `house` default + curated roster; `/gm:sheet`.
-4. **Versioned campaigns** — git auto-detect/init; checkpoint cadence; `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`; persona commit identity + bundled avatars.
+4. **Versioned campaigns** — git auto-detect/init; checkpoint cadence; `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`; persona commit identity + bundled avatar glyphs + the `identity/` provisioning module (aliases + Gravatars).
 5. **Polish & release** — example-campaign smoke; README; `marketplace.json` entry; playtest-transcript evals.
 
 Each milestone is independently demoable, and later milestones don't reshape earlier interfaces — the layer boundaries are stable by design.
