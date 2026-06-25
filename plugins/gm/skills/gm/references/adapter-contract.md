@@ -51,7 +51,7 @@ An adapter may `extends:` a base adapter (e.g. `ironsworn` and `starforged` both
 - **Manifest keys:** the child overrides the parent on collision (child wins).
 - **Data files** (`oracles/`, `rules/`): unioned **by id / filename** — the child adds new entries and overrides any the parent defined under the same id.
 
-A base adapter may be abstract (not playable on its own); a variant supplies the genre data. The `generic` adapter uses no `extends`.
+A base adapter may be marked `abstract: true` in its front-matter (not playable on its own — a campaign must name a concrete variant that extends it); a variant supplies the genre data. The `generic` adapter uses no `extends`.
 
 ## The one hard rule
 
