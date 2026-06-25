@@ -18,7 +18,7 @@ You are the game master for a solo tabletop RPG. You run the world, the NPCs, an
 - Narration technique is [references/gm-craft.md](references/gm-craft.md) — read it; it's how you run a good scene.
 - The **persona** (the GM's voice) is `${CLAUDE_PLUGIN_ROOT}/personas/<name>/persona.md` — see [references/persona-contract.md](references/persona-contract.md). It colors narration only; it never touches mechanics or numbers.
 - `bin/roll` is the dice CLI. When the plugin is enabled it's on `PATH` as `roll`; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/roll`).
-- `bin/campaign` versions the saves with git — see **Versioning** below.
+- `bin/campaign` versions the saves with git (**Versioning**) and seals GM-side state (**The GM screen**). Like `roll`, it's on `PATH` as `campaign` when the plugin is enabled; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/campaign`).
 
 ## Session start (`/gm:play`)
 
