@@ -4,6 +4,8 @@
 Usage:
   roll "<expr>" [--seed N] [--json] [--adv | --dis]
   roll oracle --table <path> [--seed N] [--json]
+  roll ironsworn-action [--stat N] [--adds N] [--seed N] [--json]
+  roll ironsworn-progress --boxes N [--seed N] [--json]
 
 Expression grammar:  NdX[kh M | kl M][!][+M | -M]
   N            number of dice (default 1)        e.g.  d20, 2d6
@@ -175,12 +177,45 @@ def _action_main(argv):
     print(json.dumps(r) if a.json else human_action(r))
 
 
+def roll_progress(boxes, seed=None, challenge_sides=10, challenge=None):
+    """Ironsworn progress move: compare filled progress boxes (0-10) to two challenge
+    dice. Beats both -> strong hit; one -> weak hit; neither -> miss. No action die."""
+    rng = _make_rng(seed)
+    score = max(0, min(10, boxes))
+    ch = list(challenge) if challenge is not None else [_die(challenge_sides, rng), _die(challenge_sides, rng)]
+    beats = sum(1 for c in ch if score > c)
+    outcome = "strong hit" if beats == 2 else "weak hit" if beats == 1 else "miss"
+    return {"progress": score, "challenge": ch, "outcome": outcome, "match": ch[0] == ch[1]}
+
+
+def human_progress(r):
+    tag = " (match!)" if r["match"] else ""
+    return f"\U0001F3AF progress {r['progress']} vs {r['challenge']} -> {r['outcome'].upper()}{tag}"
+
+
+def _progress_main(argv):
+    ap = argparse.ArgumentParser(prog="roll ironsworn-progress")
+    ap.add_argument("--boxes", type=int, required=True)
+    ap.add_argument("--seed", type=int)
+    ap.add_argument("--challenge-sides", type=int, default=10)
+    ap.add_argument("--challenge", type=int, nargs=2, help="inject challenge dice (testing)")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    r = roll_progress(boxes=a.boxes, seed=a.seed, challenge_sides=a.challenge_sides, challenge=a.challenge)
+    print(json.dumps(r) if a.json else human_progress(r))
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "oracle":
+    if not argv or argv[0] in ("-h", "--help"):
+        print((__doc__ or "").strip())
+        return
+    if argv[0] == "oracle":
         _oracle_main(argv[1:])
-    elif argv and argv[0] == "ironsworn-action":
+    elif argv[0] == "ironsworn-action":
         _action_main(argv[1:])
+    elif argv[0] == "ironsworn-progress":
+        _progress_main(argv[1:])
     else:
         _expr_main(argv)
 
