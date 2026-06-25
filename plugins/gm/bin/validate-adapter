@@ -109,29 +109,56 @@ def validate_adapter(adapter_dir, adapters_root):
     return errs
 
 
+def validate_persona(persona_md):
+    name = os.path.basename(os.path.dirname(persona_md.rstrip("/")))
+    fm, text = parse_frontmatter(persona_md)
+    if fm is None:
+        return [f"persona {name}: persona.md is missing front-matter"]
+    errs = []
+    if not fm.get("name"):
+        errs.append(f"persona {name}: front-matter missing 'name'")
+    block = re.match(r"^---\n(.*?)\n---", text, re.S)
+    if "chronicle_identity" not in (block.group(1) if block else ""):
+        errs.append(f"persona {name}: front-matter missing 'chronicle_identity'")
+    return errs
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="validate-adapter")
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--all", action="store_true",
-                    help="treat each path as a root and validate every subdir with an adapter.md")
+                    help="treat each path as a root and validate every subdir with an adapter.md / persona.md")
+    ap.add_argument("--personas", action="store_true",
+                    help="validate persona.md files instead of adapters")
     a = ap.parse_args(argv)
 
-    if a.all:
-        root = a.paths[0]
-        targets = [d for d in sorted(glob.glob(os.path.join(root, "*")))
-                   if os.path.isfile(os.path.join(d, "adapter.md"))]
-    else:
-        targets = [p.rstrip("/") for p in a.paths]
-        root = os.path.dirname(targets[0]) if targets else "."
-
     errs = []
-    for t in targets:
-        errs += validate_adapter(t, root)
+    if a.personas:
+        if a.all:
+            targets = [d for root in a.paths for d in sorted(glob.glob(os.path.join(root, "*")))
+                       if os.path.isfile(os.path.join(d, "persona.md"))]
+        else:
+            targets = [p.rstrip("/") for p in a.paths]
+        for t in targets:
+            errs += validate_persona(os.path.join(t, "persona.md"))
+        kind = "persona"
+    else:
+        if a.all:
+            root = a.paths[0]
+            targets = [d for d in sorted(glob.glob(os.path.join(root, "*")))
+                       if os.path.isfile(os.path.join(d, "adapter.md"))]
+        else:
+            targets = [p.rstrip("/") for p in a.paths]
+            root = os.path.dirname(targets[0]) if targets else "."
+        for t in targets:
+            errs += validate_adapter(t, root)
+        kind = "adapter"
+
     if errs:
         for e in errs:
             print(f"FAIL {e}")
         sys.exit(1)
-    print(f"OK {len(targets)} adapter(s) valid")
+    print(f"OK {len(targets)} {kind}(s) valid")
 
 
 if __name__ == "__main__":
