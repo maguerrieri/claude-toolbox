@@ -65,8 +65,8 @@ reached via the Promotion adapter), to *critique options toward a winner*, or to
 ## Inputs
 
 - **`<type>`** — the content type, mapping to a reservoir file
-  `docs/generation/<type>.md` (the default location; a project may use another
-  root — keep one file per type).
+  `docs/generation/<type>.md` (one file per type — this path is the plugin's
+  convention, used by `/generate` and the `frame` scaffolder alike).
 - **count `N`** — how many candidates to aim for this run (default ~15–30).
 - For `frame` mode: the new type's name + a sentence on what it's for.
 
