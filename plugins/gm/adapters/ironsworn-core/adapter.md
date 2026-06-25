@@ -4,6 +4,7 @@ abstract: true
 dice: ["ironsworn-action", "1d100", "1d10", "1d6"]
 tone: forged mythic
 sheet: sheet-template.md
+visibility: player
 ---
 
 # Ironsworn engine (base)

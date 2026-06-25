@@ -22,6 +22,7 @@ extends: ironsworn-core   # optional — inherit from a base adapter (see "Compo
 dice: ["1d100"]           # dice modes this system uses (bin/roll expressions / named modes)
 tone: system-agnostic     # default genre/voice
 sheet: sheet-template.md
+visibility: player        # player | gm — see "Visibility (the GM screen)"
 ---
 ```
 Body (prose the core follows):
@@ -52,6 +53,15 @@ An adapter may `extends:` a base adapter (e.g. `ironsworn` and `starforged` both
 - **Data files** (`oracles/`, `rules/`): unioned **by id / filename** — the child adds new entries and overrides any the parent defined under the same id.
 
 A base adapter may be marked `abstract: true` in its front-matter (not playable on its own — a campaign must name a concrete variant that extends it); a variant supplies the genre data. The `generic` adapter uses no `extends`.
+
+## Visibility (the GM screen)
+
+`visibility:` declares where this system keeps **GM-mutable world-state** — progress/threat **clocks** and the **answers** behind open questions (a mystery's solution, an NPC's true agenda):
+
+- `player` (**default**) — in the open. The core writes clocks to `clocks.md` and the rest as normal. Player-facing systems like **Ironsworn** and **Starforged** use this: their clocks, momentum, and vows are *meant* to sit in front of the player — there is no screen.
+- `gm` — **behind the screen.** The core writes that state through the bundled `campaign gm-*` CLI into a `.gm/` sealed dir, **never the Write/Edit tools** — so in a solo session the write collapses to "Ran 1 shell command" in the transcript instead of rendering its content inline. It surfaces only when the fiction earns it (`campaign gm-reveal`). The **generic** "be my GM for any system" adapter uses this, because the point of a GM emulator is to be *surprised*.
+
+The screen guards against *involuntarily* spoiling a solo player; deliberately expanding a collapsed call to read ahead is a wanted feature (dramatic irony), so `.gm/` is **not** encrypted. See `gm-craft.md` (felt, not shown) and `state-schema.md` (`.gm/`).
 
 ## The one hard rule
 

@@ -3,6 +3,7 @@ name: generic
 dice: ["1d100", "1d20"]
 tone: system-agnostic
 sheet: sheet-template.md
+visibility: gm
 ---
 
 # Generic oracle adapter
@@ -29,3 +30,7 @@ The table is even odds; on a borderline band, lean your reading toward whatever 
 ## Safety
 
 Open a campaign with **lines & veils**: ask what's off-limits entirely (lines) and what happens off-screen (veils). Honor them without exception.
+
+## Behind the screen
+
+This adapter is "be my GM for any system," so GM-side world-state defaults **behind the screen** (`visibility: gm`): hidden **clocks** (a menace advancing) and the **answers** behind questions you'd rather not see coming are written via `campaign gm-*` into `.gm/`, not the open files — so the write collapses to "Ran 1 shell command" in the transcript instead of spoiling you, and surfaces only when the fiction earns it (`campaign gm-reveal`). Nothing is encrypted: the values are plain files under `.gm/` you can read anytime — peeking is your call (playing toward a secret your character doesn't know is half the fun).
