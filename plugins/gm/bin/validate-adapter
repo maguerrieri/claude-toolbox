@@ -28,6 +28,11 @@ def die_max(die):
     return int(m.group(1) or 1) * int(m.group(2))
 
 
+def die_min(die):
+    m = DIE.match(str(die).replace(" ", ""))
+    return int(m.group(1) or 1) if m else None  # NdX: minimum roll is N (each die >= 1)
+
+
 def parse_frontmatter(path):
     text = open(path).read()
     m = re.match(r"^---\n(.*?)\n---", text, re.S)
@@ -66,8 +71,9 @@ def validate_oracle(path):
             errs.append(f"{path}: duplicate max values (later rows are unreachable)")
         if dm is not None and maxes[-1] != dm:
             errs.append(f"{path}: last max {maxes[-1]} != die max {dm} (incomplete coverage)")
-        if maxes[0] < 1:
-            errs.append(f"{path}: first max < 1")
+        dmin = die_min(die)
+        if dmin is not None and maxes[0] < dmin:
+            errs.append(f"{path}: first max {maxes[0]} < die min {dmin} (rows below it are unreachable)")
     return errs
 
 

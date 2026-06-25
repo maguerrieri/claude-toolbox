@@ -158,7 +158,7 @@ def roll_action(stat=0, adds=0, seed=None, challenge_sides=10, action_die=None, 
 
 def human_action(r):
     tag = " (match!)" if r["match"] else ""
-    return (f"\U0001F3B2 action {r['action_die']}+{r['stat'] + r['adds']} = {r['score']} "
+    return (f"\U0001F3B2 action {r['action_die']}{r['stat'] + r['adds']:+d} = {r['score']} "
             f"vs {r['challenge']} -> {r['outcome'].upper()}{tag}")
 
 
