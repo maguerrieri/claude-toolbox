@@ -43,9 +43,15 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
-    with open(a.config, encoding="utf-8") as f:
+    cfg_path = a.config
+    local = os.path.join(os.path.dirname(cfg_path), "identity.local.json")
+    if os.path.isfile(local):
+        cfg_path = local  # gitignored local override
+    with open(cfg_path, encoding="utf-8") as f:
         cfg = json.load(f)
-    domain, seat = cfg["identity_domain"], cfg["seat"]
+    # env wins (e.g. set via direnv), then the local/committed file
+    domain = os.environ.get("GM_IDENTITY_DOMAIN", cfg["identity_domain"])
+    seat = os.environ.get("GM_IDENTITY_SEAT", cfg["seat"])
     aliases = [f"{s}@{domain}" for s in persona_slugs(a.plugin_root)]
     print(f"seat: {seat}")
     print(f"aliases to ensure: {aliases}")

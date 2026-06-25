@@ -24,7 +24,7 @@ chronicle_identity:
   avatar: assets/avatars/house.png
 ---
 ```
-`${identity_domain}` resolves from `identity/identity.json` (default `gm.invalid`); see `identity/README.md`. Provisioning the aliases + Gravatars that make those avatars render is **follow-on infra** — personas work without it.
+`${identity_domain}` resolves from `$GM_IDENTITY_DOMAIN` (e.g. via direnv), else a gitignored `identity/identity.local.json`, else the committed `identity/identity.json` default (`gm.invalid`, non-routable); see `identity/README.md`. Provisioning the aliases + Gravatars that make those avatars render is **follow-on infra** — personas work without it.
 
 Body — voice only, with no reference to any system's mechanics or terms:
 - **Voice** — how this GM sounds (diction, rhythm, register).
