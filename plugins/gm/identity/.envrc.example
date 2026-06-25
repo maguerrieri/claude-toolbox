@@ -1,0 +1,5 @@
+# Copy to `.envrc` (gitignored), set your values, then run `direnv allow`.
+# Used only for the optional per-persona commit avatars (follow-on infra).
+# Leave unset to use the neutral committed default (gm.invalid — no avatars).
+export GM_IDENTITY_DOMAIN=example.com
+export GM_IDENTITY_SEAT=gm@example.com
