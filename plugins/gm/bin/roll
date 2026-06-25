@@ -140,10 +140,47 @@ def _oracle_main(argv):
     print(json.dumps(r) if a.json else human_oracle(r))
 
 
+def roll_action(stat=0, adds=0, seed=None, challenge_sides=10, action_die=None, challenge=None):
+    """Ironsworn action roll: 1d6 + stat + adds (capped at 10) vs two challenge dice.
+    Beats both -> strong hit; beats one -> weak hit; beats neither -> miss.
+    Equal challenge dice -> a 'match'. --action-die / --challenge inject dice (testing)."""
+    rng = _make_rng(seed)
+    ad = action_die if action_die is not None else _die(6, rng)
+    score = min(10, ad + stat + adds)
+    ch = list(challenge) if challenge is not None else [_die(challenge_sides, rng), _die(challenge_sides, rng)]
+    beats = sum(1 for c in ch if score > c)
+    outcome = "strong hit" if beats == 2 else "weak hit" if beats == 1 else "miss"
+    return {"action_die": ad, "stat": stat, "adds": adds, "score": score,
+            "challenge": ch, "outcome": outcome, "match": ch[0] == ch[1]}
+
+
+def human_action(r):
+    tag = " (match!)" if r["match"] else ""
+    return (f"\U0001F3B2 action {r['action_die']}+{r['stat'] + r['adds']} = {r['score']} "
+            f"vs {r['challenge']} -> {r['outcome'].upper()}{tag}")
+
+
+def _action_main(argv):
+    ap = argparse.ArgumentParser(prog="roll ironsworn-action")
+    ap.add_argument("--stat", type=int, default=0)
+    ap.add_argument("--adds", type=int, default=0)
+    ap.add_argument("--seed", type=int)
+    ap.add_argument("--challenge-sides", type=int, default=10)
+    ap.add_argument("--action-die", type=int, help="inject the action die (testing)")
+    ap.add_argument("--challenge", type=int, nargs=2, help="inject challenge dice (testing)")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    r = roll_action(stat=a.stat, adds=a.adds, seed=a.seed, challenge_sides=a.challenge_sides,
+                    action_die=a.action_die, challenge=a.challenge)
+    print(json.dumps(r) if a.json else human_action(r))
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "oracle":
         _oracle_main(argv[1:])
+    elif argv and argv[0] == "ironsworn-action":
+        _action_main(argv[1:])
     else:
         _expr_main(argv)
 
