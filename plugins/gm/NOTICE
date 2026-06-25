@@ -1,0 +1,21 @@
+gm — third-party content attribution
+=====================================
+
+The Ironsworn-family adapters bundled with this plugin include game content
+derived from works by Shawn Tomkin, used under the Creative Commons
+Attribution 4.0 International License (CC BY 4.0):
+
+- adapters/ironsworn/   — derived from the Ironsworn SRD
+                          (c) Shawn Tomkin, licensed CC BY 4.0
+                          https://www.ironswornrpg.com/
+
+- adapters/starforged/  — derived from the Ironsworn: Starforged SRD
+                          (c) Shawn Tomkin, licensed CC BY 4.0
+                          https://www.ironswornrpg.com/
+
+The adapter content here is a curated, condensed, and JSON-reformatted subset
+of those SRDs; changes were made. This plugin is not affiliated with or
+endorsed by Shawn Tomkin. Each adapter also carries a SOURCE.md with its
+specific attribution.
+
+CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
