@@ -70,3 +70,36 @@ def test_checkpoint_defers_silently_outside_managed(campaign_path, tmp_path):
     p = run(campaign_path, "checkpoint", d)
     assert p.returncode == 0
     assert "not a gm-managed repo" in p.stdout
+
+
+def test_init_refuses_existing_nongm_repo(campaign_path, tmp_path):
+    d = str(tmp_path / "existing")
+    os.makedirs(d)
+    subprocess.run(["git", "-C", d, "init", "-q"])
+    p = run(campaign_path, "init", d)
+    assert "refusing" in p.stdout
+    assert not os.path.isfile(os.path.join(d, ".gm-campaign"))
+
+
+def test_rewind_removes_files_added_after_target(campaign_path, tmp_path):
+    d = str(tmp_path / "camp")
+    run(campaign_path, "init", d)
+    with open(os.path.join(d, "a.md"), "w") as f:
+        f.write("a\n")
+    run(campaign_path, "checkpoint", d, "--label", "has a")
+    target = git(d, "rev-parse", "HEAD").strip()
+    with open(os.path.join(d, "b.md"), "w") as f:
+        f.write("b\n")
+    run(campaign_path, "checkpoint", d, "--label", "has b")
+    run(campaign_path, "rewind", d, "--to", target)
+    assert os.path.isfile(os.path.join(d, "a.md"))
+    assert not os.path.isfile(os.path.join(d, "b.md"))  # added after target -> gone
+
+
+def test_rewind_bad_ref_is_clean(campaign_path, tmp_path):
+    d = str(tmp_path / "camp")
+    run(campaign_path, "init", d)
+    before = len(git(d, "log", "--oneline").strip().splitlines())
+    p = run(campaign_path, "rewind", d, "--to", "deadbeef")
+    assert "no such checkpoint" in p.stdout
+    assert len(git(d, "log", "--oneline").strip().splitlines()) == before  # no stray commit

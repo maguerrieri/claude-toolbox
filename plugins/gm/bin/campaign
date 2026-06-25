@@ -42,11 +42,15 @@ def _staged_changes(d):
 def cmd_init(a):
     os.makedirs(a.dir, exist_ok=True)
     top = toplevel(a.dir)
-    if top and os.path.abspath(top) != os.path.abspath(a.dir):
-        print(f"deferred: {a.dir} is inside an existing git repo at {top}; "
-              f"gm will not manage git here (your own setup owns history)")
-        return
-    if is_managed(a.dir):
+    if top:
+        if os.path.realpath(top) != os.path.realpath(a.dir):
+            print(f"deferred: {a.dir} is inside an existing git repo at {top}; "
+                  f"gm will not manage git here (your own setup owns history)")
+            return
+        if not is_managed(a.dir):
+            print(f"refusing: {a.dir} is already a git repo gm did not create; "
+                  f"gm will not commit here. Use a fresh directory for a gm-managed campaign.")
+            return
         print(f"already a gm campaign repo: {a.dir}")
         return
     git(a.dir, "init", "-q")
@@ -83,11 +87,15 @@ def cmd_log(a):
 
 def cmd_rewind(a):
     _require_managed(a.dir)
+    if git(a.dir, "rev-parse", "--verify", "--quiet", f"{a.to}^{{commit}}", check=False).returncode != 0:
+        print(f"no such checkpoint: {a.to}")
+        return
     git(a.dir, "add", "-A")
     if _staged_changes(a.dir):
         git(a.dir, "commit", "-q", "-m", "checkpoint before rewind")
-    git(a.dir, "checkout", a.to, "--", ".")
-    git(a.dir, "add", "-A")
+    # make the index + working tree match the target EXACTLY (removes files added since),
+    # without moving HEAD — so the rewind lands as a new, reversible commit.
+    git(a.dir, "read-tree", "-u", "--reset", a.to)
     if not _staged_changes(a.dir):
         print(f"already at {a.to}; nothing to rewind")
         return
@@ -114,8 +122,13 @@ def main(argv=None):
     p = sub.add_parser("rewind"); p.add_argument("dir"); p.add_argument("--to", required=True)
     p = sub.add_parser("backup"); p.add_argument("dir")
     a = ap.parse_args(argv)
-    {"init": cmd_init, "checkpoint": cmd_checkpoint, "log": cmd_log,
-     "rewind": cmd_rewind, "backup": cmd_backup}[a.cmd](a)
+    try:
+        {"init": cmd_init, "checkpoint": cmd_checkpoint, "log": cmd_log,
+         "rewind": cmd_rewind, "backup": cmd_backup}[a.cmd](a)
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"campaign: git command failed: {' '.join(e.cmd)}")
+    except FileNotFoundError as e:
+        sys.exit(f"campaign: {e}")
 
 
 if __name__ == "__main__":

@@ -109,6 +109,13 @@ def validate_adapter(adapter_dir, adapters_root):
     return errs
 
 
+# Unambiguous system-mechanic phrases a persona (voice only) must never name.
+PERSONA_MECHANIC_TOKENS = [
+    "ironsworn-action", "ironsworn-progress", "challenge dice",
+    "strong hit", "weak hit", "progress track", "action die",
+]
+
+
 def validate_persona(persona_md):
     name = os.path.basename(os.path.dirname(persona_md.rstrip("/")))
     fm, text = parse_frontmatter(persona_md)
@@ -117,9 +124,15 @@ def validate_persona(persona_md):
     errs = []
     if not fm.get("name"):
         errs.append(f"persona {name}: front-matter missing 'name'")
-    block = re.match(r"^---\n(.*?)\n---", text, re.S)
-    if "chronicle_identity" not in (block.group(1) if block else ""):
+    parts = text.split("---", 2)
+    block = parts[1] if len(parts) >= 3 else ""
+    body = (parts[2] if len(parts) >= 3 else text).lower()
+    if "chronicle_identity" not in block:
         errs.append(f"persona {name}: front-matter missing 'chronicle_identity'")
+    for tok in PERSONA_MECHANIC_TOKENS:
+        if tok in body:
+            errs.append(f"persona {name}: body names a system mechanic ('{tok}') — "
+                        f"personas are voice-only (never mechanics)")
     return errs
 
 

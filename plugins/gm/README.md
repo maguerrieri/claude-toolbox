@@ -4,7 +4,7 @@ A system-agnostic, persona-driven solo tabletop-RPG game master for Claude Code.
 
 ## Install
 
-Enable the plugin from the `maguerrieri-toolbox` marketplace, then allowlist the bundled CLIs so play never prompts — add to your Claude Code settings:
+Enable the plugin from the `maguerrieri-toolbox` marketplace, then allowlist the bundled CLIs so play never prompts — add this to **your own** Claude Code settings (`~/.claude/settings.json`, or the project's `.claude/settings.json`):
 
 ```json
 { "permissions": { "allow": ["Bash(roll:*)", "Bash(campaign:*)"] } }
