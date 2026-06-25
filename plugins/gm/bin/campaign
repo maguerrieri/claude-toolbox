@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""gm campaign git manager — versioned saves in the player's own space.
+
+  campaign init <dir> [--author NAME] [--email EMAIL]
+  campaign checkpoint <dir> [--label TEXT]
+  campaign log <dir>
+  campaign rewind <dir> --to <ref>
+  campaign backup <dir>
+
+A campaign dir gets its own dedicated git repo (marked by a .gm-campaign file),
+UNLESS it is already inside another repo (e.g. an Obsidian vault under git) — then
+gm DEFERS and never commits, leaving history to your existing setup. Checkpoints are
+ordinary commits; rewind restores a past checkpoint as a new (reversible) commit.
+"""
+import argparse
+import os
+import subprocess
+import sys
+
+MARKER = ".gm-campaign"
+
+
+def git(d, *args, check=True, capture=True):
+    return subprocess.run(["git", "-C", d, *args], text=True,
+                          capture_output=capture, check=check)
+
+
+def toplevel(d):
+    r = subprocess.run(["git", "-C", d, "rev-parse", "--show-toplevel"],
+                       text=True, capture_output=True)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def is_managed(d):
+    return os.path.isfile(os.path.join(d, MARKER))
+
+
+def _staged_changes(d):
+    return git(d, "diff", "--cached", "--quiet", check=False).returncode != 0
+
+
+def cmd_init(a):
+    os.makedirs(a.dir, exist_ok=True)
+    top = toplevel(a.dir)
+    if top and os.path.abspath(top) != os.path.abspath(a.dir):
+        print(f"deferred: {a.dir} is inside an existing git repo at {top}; "
+              f"gm will not manage git here (your own setup owns history)")
+        return
+    if is_managed(a.dir):
+        print(f"already a gm campaign repo: {a.dir}")
+        return
+    git(a.dir, "init", "-q")
+    git(a.dir, "config", "user.name", a.author or "gm")
+    git(a.dir, "config", "user.email", a.email or "gm@localhost")
+    git(a.dir, "config", "commit.gpgsign", "false")  # never block play on a signing prompt
+    with open(os.path.join(a.dir, MARKER), "w") as f:
+        f.write("gm campaign\n")
+    git(a.dir, "add", "-A")
+    git(a.dir, "commit", "-q", "-m", "gm: start campaign")
+    print(f"initialised gm campaign repo: {a.dir}")
+
+
+def _require_managed(d):
+    if not is_managed(d):
+        print(f"not a gm-managed repo (deferred or uninitialised): {d}")
+        sys.exit(0)  # deferred is a normal state, not an error
+
+
+def cmd_checkpoint(a):
+    _require_managed(a.dir)
+    git(a.dir, "add", "-A")
+    if not _staged_changes(a.dir):
+        print("nothing to checkpoint")
+        return
+    git(a.dir, "commit", "-q", "-m", a.label or "checkpoint")
+    print(f"checkpoint: {a.label or 'checkpoint'}")
+
+
+def cmd_log(a):
+    _require_managed(a.dir)
+    print(git(a.dir, "log", "--oneline", "-20").stdout, end="")
+
+
+def cmd_rewind(a):
+    _require_managed(a.dir)
+    git(a.dir, "add", "-A")
+    if _staged_changes(a.dir):
+        git(a.dir, "commit", "-q", "-m", "checkpoint before rewind")
+    git(a.dir, "checkout", a.to, "--", ".")
+    git(a.dir, "add", "-A")
+    if not _staged_changes(a.dir):
+        print(f"already at {a.to}; nothing to rewind")
+        return
+    git(a.dir, "commit", "-q", "-m", f"rewind to {a.to}")
+    print(f"rewound to {a.to}")
+
+
+def cmd_backup(a):
+    _require_managed(a.dir)
+    if not git(a.dir, "remote").stdout.strip():
+        print("no remote configured; add one with: "
+              f"git -C {a.dir} remote add origin <url>")
+        return
+    git(a.dir, "push", check=False, capture=False)
+    print("backup pushed")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="campaign")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("init"); p.add_argument("dir"); p.add_argument("--author"); p.add_argument("--email")
+    p = sub.add_parser("checkpoint"); p.add_argument("dir"); p.add_argument("--label")
+    p = sub.add_parser("log"); p.add_argument("dir")
+    p = sub.add_parser("rewind"); p.add_argument("dir"); p.add_argument("--to", required=True)
+    p = sub.add_parser("backup"); p.add_argument("dir")
+    a = ap.parse_args(argv)
+    {"init": cmd_init, "checkpoint": cmd_checkpoint, "log": cmd_log,
+     "rewind": cmd_rewind, "backup": cmd_backup}[a.cmd](a)
+
+
+if __name__ == "__main__":
+    main()
