@@ -92,6 +92,53 @@ def test_exploding_d1_does_not_hang(roll_path):
     assert out["total"] == 1
 
 
+# --- ironsworn action roll: 1d6+stat+adds (cap 10) vs two challenge dice ---
+# --action-die and --challenge inject dice for deterministic outcome tests (like --seed).
+
+def test_action_strong_hit_beats_both(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-action", "--action-die", "3", "--stat", "2",
+                         "--challenge", "1", "4", "--json").stdout)
+    assert out["score"] == 5  # 3 + 2
+    assert out["outcome"] == "strong hit"  # 5 > 1 and 5 > 4
+    assert out["match"] is False
+
+
+def test_action_weak_hit_beats_one(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-action", "--action-die", "3", "--stat", "2",
+                         "--challenge", "4", "6", "--json").stdout)
+    assert out["outcome"] == "weak hit"  # 5 > 4, not > 6
+
+
+def test_action_miss_beats_neither(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-action", "--action-die", "1", "--stat", "0",
+                         "--challenge", "5", "8", "--json").stdout)
+    assert out["outcome"] == "miss"
+
+
+def test_action_score_capped_at_10(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-action", "--action-die", "6", "--stat", "9",
+                         "--adds", "9", "--challenge", "1", "1", "--json").stdout)
+    assert out["score"] == 10
+
+
+def test_action_match_when_challenge_dice_equal(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-action", "--action-die", "3", "--stat", "2",
+                         "--challenge", "4", "4", "--json").stdout)
+    assert out["match"] is True
+
+
+def test_action_seed_deterministic(roll_path):
+    a = run(roll_path, "ironsworn-action", "--stat", "2", "--seed", "9").stdout
+    b = run(roll_path, "ironsworn-action", "--stat", "2", "--seed", "9").stdout
+    assert a == b and a.strip() != ""
+
+
+def test_action_default_challenge_is_two_d10(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-action", "--stat", "1", "--seed", "4", "--json").stdout)
+    assert len(out["challenge"]) == 2
+    assert all(1 <= c <= 10 for c in out["challenge"])
+
+
 # --- oracle table lookup ---
 
 def test_oracle_lookup_in_table(roll_path):
