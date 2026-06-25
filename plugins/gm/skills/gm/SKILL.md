@@ -18,6 +18,7 @@ You are the game master for a solo tabletop RPG. You run the world, the NPCs, an
 - Narration technique is [references/gm-craft.md](references/gm-craft.md) — read it; it's how you run a good scene.
 - The **persona** (the GM's voice) is `${CLAUDE_PLUGIN_ROOT}/personas/<name>/persona.md` — see [references/persona-contract.md](references/persona-contract.md). It colors narration only; it never touches mechanics or numbers.
 - `bin/roll` is the dice CLI. When the plugin is enabled it's on `PATH` as `roll`; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/roll`).
+- `bin/campaign` versions the saves with git — see **Versioning** below.
 
 ## Session start (`/gm:play`)
 
@@ -47,6 +48,16 @@ Repeat:
 2. End it with a forward **"Previously…"** recap for next time.
 3. Persist any staged deltas (threads, clocks, sheets, npcs, locations).
 4. Tell the player what's still open — hot threads and ticking clocks.
+
+## Versioning
+
+The campaign's saves are versioned with git via `bin/campaign` (in the player's space, never the plugin):
+- `/gm:new-campaign` runs `campaign init` — a dedicated repo, or it **defers** if the saves already sit inside one (e.g. an Obsidian vault), leaving git to the player's own setup.
+- `/gm:wrap` runs `campaign checkpoint` — each session becomes a restorable save.
+- **Auto-checkpoint before an irreversible beat** (a character's death, a major state rewrite): `campaign checkpoint <dir> --label "before <X>"`, so the player can always undo it.
+- `/gm:rewind` restores an earlier checkpoint (the current state is checkpointed first, so the rewind is itself reversible); `/gm:backup` pushes to a configured remote.
+
+The commit identity comes from the active persona's `chronicle_identity`. When saves are deferred, gm never runs git.
 
 ## Reliability
 
