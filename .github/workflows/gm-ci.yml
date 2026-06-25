@@ -1,0 +1,25 @@
+name: gm CI
+
+on:
+  push:
+    paths:
+      - "plugins/gm/**"
+      - ".github/workflows/gm-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/gm/**"
+      - ".github/workflows/gm-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Run dice/validator tests
+        run: uvx pytest plugins/gm/tests -q
+      - name: Validate all adapters
+        run: python3 plugins/gm/bin/validate-adapter --all plugins/gm/adapters
+      - name: Validate all personas
+        run: python3 plugins/gm/bin/validate-adapter --personas --all plugins/gm/personas
