@@ -26,3 +26,13 @@ Built with the **`superpowers`** plugin (from the built-in `claude-plugins-offic
 marketplace, pinned for this repo in `.claude/settings.json`): brainstorm → design
 spec in `docs/superpowers/specs/` → `writing-plans` → test-driven implementation.
 Pairs with the ticket workflow above.
+
+## Releasing (version bumps)
+
+Installs are **version-gated**: `/plugin marketplace update` only pulls a plugin's new
+files when its `version` in `plugins/<name>/.claude-plugin/plugin.json` has increased.
+So **any PR that changes a plugin's behavior must bump that plugin's `version` in the
+same PR** (semver: patch for fixes, minor for features) — otherwise the change lands on
+`main` but never reaches installs, and `/plugin` reports the plugin is "already at the
+latest version." `marketplace.json` carries no version; each plugin's own `plugin.json`
+is the source of truth.
