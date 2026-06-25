@@ -139,6 +139,34 @@ def test_action_default_challenge_is_two_d10(roll_path):
     assert all(1 <= c <= 10 for c in out["challenge"])
 
 
+# --- ironsworn progress move ---
+
+def test_progress_strong_hit(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-progress", "--boxes", "8",
+                         "--challenge", "5", "7", "--json").stdout)
+    assert out["progress"] == 8
+    assert out["outcome"] == "strong hit"  # 8 beats 5 and 7
+
+
+def test_progress_miss(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-progress", "--boxes", "2",
+                         "--challenge", "5", "8", "--json").stdout)
+    assert out["outcome"] == "miss"
+
+
+def test_progress_boxes_capped_at_10(roll_path):
+    out = json.loads(run(roll_path, "ironsworn-progress", "--boxes", "15",
+                         "--challenge", "1", "1", "--json").stdout)
+    assert out["progress"] == 10
+
+
+def test_help_lists_subcommands(roll_path):
+    out = run(roll_path, "--help").stdout
+    assert "ironsworn-action" in out
+    assert "ironsworn-progress" in out
+    assert "oracle" in out
+
+
 # --- oracle table lookup ---
 
 def test_oracle_lookup_in_table(roll_path):
