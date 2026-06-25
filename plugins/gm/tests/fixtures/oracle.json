@@ -1,0 +1,7 @@
+{
+  "die": "1d6",
+  "rows": [
+    { "max": 3, "result": "No" },
+    { "max": 6, "result": "Yes" }
+  ]
+}

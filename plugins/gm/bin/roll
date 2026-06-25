@@ -1,6 +1,151 @@
 #!/usr/bin/env python3
-"""gm dice CLI — true-RNG roller. Stdlib only. (stub — implemented in Task 2)"""
+"""gm dice CLI — true-RNG roller. Standard library only.
+
+Usage:
+  roll "<expr>" [--seed N] [--json] [--adv | --dis]
+  roll oracle --table <path> [--seed N] [--json]
+
+Expression grammar:  NdX[kh M | kl M][!][+M | -M]
+  N            number of dice (default 1)        e.g.  d20, 2d6
+  dX           X-sided dice
+  khM / klM    keep highest / lowest M dice      e.g.  4d6kh3
+  !            exploding: a die showing its max rolls again and adds (capped)
+  +M / -M      flat modifier
+
+Production rolls use `secrets` (crypto RNG); `--seed` swaps in a deterministic
+RNG for tests only. Every roll prints its dice and math (trust through
+visibility); `--json` emits a machine-readable object.
+"""
+import argparse
+import json
+import re
+import secrets
 import sys
 
+EXPLODE_CAP = 100
+
+EXPR = re.compile(
+    r"^(?P<n>\d*)d(?P<x>\d+)(?P<kd>k[hl]\d+)?(?P<exp>!)?(?P<mod>[+-]\d+)?$"
+)
+SIMPLE = re.compile(r"^(?P<n>\d*)d(?P<x>\d+)(?P<mod>[+-]\d+)?$")
+
+
+def _make_rng(seed):
+    if seed is None:
+        return None
+    import random
+    return random.Random(seed)
+
+
+def _die(sides, rng):
+    if sides < 1:
+        raise ValueError("dice need at least 1 side")
+    return rng.randint(1, sides) if rng is not None else 1 + secrets.randbelow(sides)
+
+
+def _roll_one(sides, exploding, rng):
+    """Roll a single die, summing explosions. Exploding is skipped for d1 so it
+    cannot loop forever (a d1 always shows its max)."""
+    total = _die(sides, rng)
+    if exploding and sides > 1:
+        last, count = total, 0
+        while last == sides and count < EXPLODE_CAP:
+            last = _die(sides, rng)
+            total += last
+            count += 1
+    return total
+
+
+def roll_expr(expr, seed=None):
+    m = EXPR.match(expr.replace(" ", ""))
+    if not m:
+        raise ValueError(f"bad dice expression: {expr!r}")
+    n = int(m["n"] or 1)
+    x = int(m["x"])
+    mod = int(m["mod"] or 0)
+    exploding = bool(m["exp"])
+    rng = _make_rng(seed)
+    rolls = [_roll_one(x, exploding, rng) for _ in range(n)]
+    kept = list(rolls)
+    if m["kd"]:
+        keep_high = m["kd"][1] == "h"
+        keep_n = int(m["kd"][2:])
+        kept = sorted(rolls, reverse=keep_high)[:keep_n]
+    return {
+        "expr": expr,
+        "rolls": rolls,
+        "kept": kept,
+        "modifier": mod,
+        "total": sum(kept) + mod,
+    }
+
+
+def roll_oracle(table_path, seed=None):
+    with open(table_path) as f:
+        table = json.load(f)
+    face = roll_expr(table["die"], seed)["total"]
+    for row in table["rows"]:
+        if face <= row["max"]:
+            return {"table": table_path, "roll": face, "result": row["result"]}
+    return {"table": table_path, "roll": face, "result": table["rows"][-1]["result"]}
+
+
+def human_expr(r):
+    parts = [f"\U0001F3B2 {r['expr']} -> {r['rolls']}"]
+    if r["kept"] != r["rolls"]:
+        parts.append(f"keep {r['kept']}")
+    if r["modifier"]:
+        parts.append(f"{r['modifier']:+d}")
+    parts.append(f"= {r['total']}")
+    return " ".join(parts)
+
+
+def human_oracle(r):
+    return f"\U0001F52E {r['roll']} -> {r['result']}"
+
+
+def _expr_main(argv):
+    ap = argparse.ArgumentParser(prog="roll")
+    ap.add_argument("expr")
+    ap.add_argument("--seed", type=int)
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--adv", action="store_true")
+    ap.add_argument("--dis", action="store_true")
+    a = ap.parse_args(argv)
+    expr = a.expr
+    if a.adv or a.dis:
+        m = SIMPLE.match(expr.replace(" ", ""))
+        if not m:
+            sys.exit("roll: --adv/--dis needs a simple NdX±M expression")
+        expr = f"2d{m['x']}k{'h' if a.adv else 'l'}1{m['mod'] or ''}"
+    try:
+        r = roll_expr(expr, a.seed)
+    except (ValueError, OSError) as e:
+        sys.exit(f"roll: {e}")
+    print(json.dumps(r) if a.json else human_expr(r))
+
+
+def _oracle_main(argv):
+    ap = argparse.ArgumentParser(prog="roll oracle")
+    ap.add_argument("oracle")  # literal "oracle"
+    ap.add_argument("--table", required=True)
+    ap.add_argument("--seed", type=int)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
+    try:
+        r = roll_oracle(a.table, a.seed)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as e:
+        sys.exit(f"roll: {e}")
+    print(json.dumps(r) if a.json else human_oracle(r))
+
+
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "oracle":
+        _oracle_main(argv)
+    else:
+        _expr_main(argv)
+
+
 if __name__ == "__main__":
-    sys.exit("roll: not implemented")
+    main()
