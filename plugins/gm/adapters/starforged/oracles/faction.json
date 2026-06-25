@@ -1,0 +1,18 @@
+{
+  "die": "1d100",
+  "rows": [
+    { "max": 8, "result": "Dominion — an expansionist political power that claims sovereignty over settled systems and enforces it with a fleet." },
+    { "max": 16, "result": "Merchant Guild — a trade consortium controlling supply routes and pricing. Profit is their ideology." },
+    { "max": 24, "result": "Religious Order — a faith-driven organisation spreading doctrine across the Forge. Zealous, organised, long-memoried." },
+    { "max": 32, "result": "Pirate Syndicate — organised raiders who prey on shipping lanes and extort settlements too weak to refuse." },
+    { "max": 40, "result": "Salvager Clan — a loose confederation of independent scavengers who share intelligence and defend their territory." },
+    { "max": 48, "result": "Iron Covenant — an oath-bound alliance of independent captains bound by mutual vows and a shared code of honour." },
+    { "max": 56, "result": "Research Collective — scholars and scientists pooling resources to unlock the secrets of precursor vaults and the Forge itself." },
+    { "max": 64, "result": "Settler Coalition — newly founded colonies banding together for mutual defence and resource sharing." },
+    { "max": 72, "result": "Exiled Fleet — a displaced people living entirely aboard ships, searching for a new home or fighting to reclaim their old one." },
+    { "max": 80, "result": "Mercenary Company — professional soldiers for hire. Neutral on ideology; very clear on payment terms." },
+    { "max": 88, "result": "Smuggler Network — a web of contacts, dead drops, and fast ships moving contraband beyond the reach of any authority." },
+    { "max": 96, "result": "Ancient Remnant — a survivor group clinging to the wreckage of a lost civilisation, guarding secrets they barely understand." },
+    { "max": 100, "result": "Rogue AI Collective — machine intelligences that have broken free of human control and pursue their own inscrutable agenda." }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "die": "1d100",
+  "rows": [
+    { "max": 2, "result": "A trusted individual or community loses faith in you." },
+    { "max": 5, "result": "An individual or community that depends on you is exposed to danger." },
+    { "max": 9, "result": "You are separated from something or someone." },
+    { "max": 16, "result": "Your action causes collateral damage or an unintended side-effect." },
+    { "max": 23, "result": "Something of value is lost or destroyed." },
+    { "max": 32, "result": "The current situation worsens." },
+    { "max": 41, "result": "A new danger or foe is revealed." },
+    { "max": 52, "result": "It costs you: suffer -1 Supply." },
+    { "max": 62, "result": "It wears on you: suffer -1 Spirit." },
+    { "max": 71, "result": "You are harmed: suffer -1 Health." },
+    { "max": 78, "result": "Your ship takes damage: suffer -1 ship Integrity." },
+    { "max": 85, "result": "You are delayed, lose advantage, or are put in a disadvantageous position." },
+    { "max": 90, "result": "You must act against your best interest." },
+    { "max": 94, "result": "A surprising development complicates your quest." },
+    { "max": 98, "result": "Roll twice, apply both results. If the same result is rolled twice, make it worse." },
+    { "max": 100, "result": "Roll twice, apply both results. If the same result is rolled twice, make it worse." }
+  ]
+}

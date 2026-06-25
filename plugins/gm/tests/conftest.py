@@ -8,3 +8,10 @@ def roll_path():
     """Absolute path to bin/roll, so tests are location-independent."""
     here = os.path.dirname(__file__)
     return os.path.abspath(os.path.join(here, "..", "bin", "roll"))
+
+
+@pytest.fixture
+def validate_path():
+    """Absolute path to bin/validate-adapter."""
+    here = os.path.dirname(__file__)
+    return os.path.abspath(os.path.join(here, "..", "bin", "validate-adapter"))

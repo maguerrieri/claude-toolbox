@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""gm adapter validator — lints adapter folders against the contract.
+
+Checks: adapter.md exists with front-matter + a `name`; any `extends:` resolves
+to a real parent (no cycles); every oracles/*.json has the correct shape with
+ascending, non-duplicate `max` values covering 1..die-max; a named `sheet:` exists;
+and oracle files referenced in adapter.md prose actually exist.
+
+Usage:
+  validate-adapter <adapter-dir>...
+  validate-adapter --all <adapters-root>     # validate every subdir that has an adapter.md
+Exit 0 if all valid; 1 (with FAIL lines) otherwise.
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+
+DIE = re.compile(r"^(\d*)d(\d+)$")
+
+
+def die_max(die):
+    m = DIE.match(str(die).replace(" ", ""))
+    if not m:
+        return None
+    return int(m.group(1) or 1) * int(m.group(2))
+
+
+def parse_frontmatter(path):
+    text = open(path).read()
+    m = re.match(r"^---\n(.*?)\n---", text, re.S)
+    if not m:
+        return None, text
+    fm = {}
+    for line in m.group(1).splitlines():
+        if ":" in line:
+            k, v = line.split(":", 1)
+            fm[k.strip()] = v.strip()
+    return fm, text
+
+
+def validate_oracle(path):
+    errs = []
+    try:
+        table = json.load(open(path))
+    except Exception as e:
+        return [f"{path}: invalid JSON ({e})"]
+    die, rows = table.get("die"), table.get("rows")
+    if not die or not isinstance(rows, list) or not rows:
+        return [f"{path}: must have 'die' and a non-empty 'rows' list"]
+    dm = die_max(die)
+    if dm is None:
+        errs.append(f"{path}: unparseable die {die!r}")
+    maxes = []
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict) or "max" not in row or "result" not in row:
+            errs.append(f"{path}: row {i} needs 'max' and 'result'")
+        else:
+            maxes.append(row["max"])
+    if maxes:
+        if maxes != sorted(maxes):
+            errs.append(f"{path}: rows not ascending by max")
+        if len(set(maxes)) != len(maxes):
+            errs.append(f"{path}: duplicate max values (later rows are unreachable)")
+        if dm is not None and maxes[-1] != dm:
+            errs.append(f"{path}: last max {maxes[-1]} != die max {dm} (incomplete coverage)")
+        if maxes[0] < 1:
+            errs.append(f"{path}: first max < 1")
+    return errs
+
+
+def validate_adapter(adapter_dir, adapters_root):
+    errs = []
+    name = os.path.basename(adapter_dir.rstrip("/"))
+    manifest = os.path.join(adapter_dir, "adapter.md")
+    if not os.path.isfile(manifest):
+        return [f"{name}: missing adapter.md"]
+    fm, text = parse_frontmatter(manifest)
+    if fm is None:
+        return [f"{name}: adapter.md is missing YAML front-matter"]
+    if not fm.get("name"):
+        errs.append(f"{name}: front-matter missing 'name'")
+
+    parent, seen = fm.get("extends"), {name}
+    while parent:
+        if parent in seen:
+            errs.append(f"{name}: extends cycle involving '{parent}'")
+            break
+        seen.add(parent)
+        pmanifest = os.path.join(adapters_root, parent, "adapter.md")
+        if not os.path.isfile(pmanifest):
+            errs.append(f"{name}: extends '{parent}', which has no adapter.md")
+            break
+        pfm, _ = parse_frontmatter(pmanifest)
+        parent = (pfm or {}).get("extends")
+
+    for f in sorted(glob.glob(os.path.join(adapter_dir, "oracles", "*.json"))):
+        errs += validate_oracle(f)
+
+    sheet = fm.get("sheet")
+    if sheet and not os.path.isfile(os.path.join(adapter_dir, sheet)):
+        errs.append(f"{name}: sheet '{sheet}' not found")
+
+    for ref in sorted(set(re.findall(r"oracles/([\w./-]+\.json)", text))):
+        if not os.path.isfile(os.path.join(adapter_dir, "oracles", ref)):
+            errs.append(f"{name}: adapter.md references oracles/{ref}, which is missing")
+    return errs
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="validate-adapter")
+    ap.add_argument("paths", nargs="+")
+    ap.add_argument("--all", action="store_true",
+                    help="treat each path as a root and validate every subdir with an adapter.md")
+    a = ap.parse_args(argv)
+
+    if a.all:
+        root = a.paths[0]
+        targets = [d for d in sorted(glob.glob(os.path.join(root, "*")))
+                   if os.path.isfile(os.path.join(d, "adapter.md"))]
+    else:
+        targets = [p.rstrip("/") for p in a.paths]
+        root = os.path.dirname(targets[0]) if targets else "."
+
+    errs = []
+    for t in targets:
+        errs += validate_adapter(t, root)
+    if errs:
+        for e in errs:
+            print(f"FAIL {e}")
+        sys.exit(1)
+    print(f"OK {len(targets)} adapter(s) valid")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,25 @@
+{
+  "die": "1d100",
+  "rows": [
+    { "max": 5,  "result": "Allegiance" },
+    { "max": 10, "result": "Betrayal" },
+    { "max": 15, "result": "Chaos" },
+    { "max": 20, "result": "Corruption" },
+    { "max": 25, "result": "Darkness" },
+    { "max": 30, "result": "Death" },
+    { "max": 35, "result": "Desolation" },
+    { "max": 40, "result": "Duty" },
+    { "max": 45, "result": "Fate" },
+    { "max": 50, "result": "Fear" },
+    { "max": 55, "result": "Greed" },
+    { "max": 60, "result": "Grief" },
+    { "max": 65, "result": "Honour" },
+    { "max": 70, "result": "Isolation" },
+    { "max": 75, "result": "Nature" },
+    { "max": 80, "result": "Ruin" },
+    { "max": 85, "result": "Secrecy" },
+    { "max": 90, "result": "Survival" },
+    { "max": 95, "result": "Vengeance" },
+    { "max": 100, "result": "War" }
+  ]
+}

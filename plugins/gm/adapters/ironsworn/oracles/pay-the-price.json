@@ -1,0 +1,29 @@
+{
+  "die": "1d100",
+  "rows": [
+    { "max": 2,  "result": "A trusted ally or bond is lost or severed" },
+    { "max": 5,  "result": "An important secret is revealed to the wrong person" },
+    { "max": 9,  "result": "Someone is harmed — take -2 health, or an NPC is wounded, captured, or killed" },
+    { "max": 13, "result": "You are separated from a companion, ally, or loved one" },
+    { "max": 18, "result": "Your action has an unintended effect that makes things worse" },
+    { "max": 23, "result": "Something precious is lost, damaged, or stolen" },
+    { "max": 27, "result": "The current situation worsens — a new threat emerges, or an existing one escalates" },
+    { "max": 32, "result": "You are delayed or driven off course" },
+    { "max": 36, "result": "You must act against your vow or your people's interest to survive" },
+    { "max": 41, "result": "An adversary gains a new advantage, ally, or resource" },
+    { "max": 45, "result": "Your reputation takes a blow — roll action+theme to determine what rumour spreads" },
+    { "max": 50, "result": "A new danger or complication is introduced — roll the oracle or choose the most pressing threat" },
+    { "max": 55, "result": "A noncombatant, bystander, or innocent is put at risk" },
+    { "max": 59, "result": "You lose footing, position, or the initiative — you must act from a position of disadvantage" },
+    { "max": 64, "result": "Your path ahead is blocked or hidden — you cannot proceed without more information" },
+    { "max": 68, "result": "You are wounded or shaken — take -1 health and -1 spirit" },
+    { "max": 72, "result": "Supply dwindles — take -2 supply" },
+    { "max": 76, "result": "Your spirit falters — take -2 spirit" },
+    { "max": 80, "result": "A vow is jeopardised — mark a complication on its progress track (erase one tick)" },
+    { "max": 84, "result": "You are in a worse position than before and must Face Danger to recover" },
+    { "max": 89, "result": "The enemy is alerted — surprise is lost and they act against you" },
+    { "max": 93, "result": "You pay with flesh — take -3 health; describe the wound" },
+    { "max": 97, "result": "Roll twice and apply both results" },
+    { "max": 100, "result": "Choose the most thematically fitting result from this table" }
+  ]
+}
