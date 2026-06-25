@@ -53,5 +53,6 @@ roll oracle --table <adapter>/oracles/yes-no.json
 - **Personas** (`personas/`) — the GM's voice, orthogonal to the system.
 - **Dice** (`bin/roll`) + **campaign git** (`bin/campaign`) — the things an LLM can't fake: true randomness and durable, versioned state.
 - **Your saves** — git-versioned markdown in your own directory, never in the plugin. Ready-to-play example: `examples/embervale/`.
+- **The GM screen** — for systems that want one (`visibility: gm`, e.g. generic), hidden clocks and sealed answers are written through `bin/campaign gm-*` into a `.gm/` dir, so the write collapses to "Ran 1 shell command" in the transcript instead of spoiling a solo player. Player-facing systems (Ironsworn) keep everything in the open.
 
 Full design spec lives in the repo's `docs/superpowers/specs/`.
