@@ -19,3 +19,6 @@ Zoom in beat-by-beat when stakes are high or a choice matters; zoom out (montage
 
 ## The player is referee
 On any disagreement about what's true, the campaign state file wins. Reconcile to it, then continue. The fiction is collaborative; the record is authoritative.
+
+## Felt, not shown
+A hidden clock or a sealed secret manifests as *fiction*, not as a visible number. When a behind-the-screen clock advances, the player should **feel** the pressure — the lanterns wake one bend closer, the guard's rounds tighten — not read "[▰▰▱▱]". Tick it with `campaign gm-clock` (behind the screen) and spend the beat on the *consequence*. Reveal the thing itself — the count, the answer — only when the fiction earns it (`campaign gm-reveal`), the way a mystery turns over when the last clue lands. Which state is hidden vs. open is the adapter's `visibility`; see adapter-contract and the skill's "The GM screen".

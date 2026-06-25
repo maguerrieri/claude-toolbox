@@ -37,10 +37,23 @@ Repeat:
 3. **Decide if it needs a mechanical answer.** If the outcome is uncertain and you can't simply narrate it, consult the adapter's resolution rules for which roll or oracle applies.
 4. **Roll via `bin/roll`** and show the command's output — rolls are visible. For the generic adapter: `roll oracle --table ${CLAUDE_PLUGIN_ROOT}/adapters/generic/oracles/yes-no.json` for a yes/no, or `roll 1d20+3` if the player's own system calls for a check.
 5. **Apply the outcome** using the adapter's mapping + gm-craft (fail forward on a miss, a cost on a partial). Narrate the consequence in the persona's voice (default: an even-handed GM).
-6. **Write state deltas** — tick a clock, change a thread's status, mark harm on a sheet, add an NPC or location. Disk stays the source of truth.
+6. **Write state deltas** — tick a clock, change a thread's status, mark harm on a sheet, add an NPC or location. Disk stays the source of truth. *Hidden* GM state (a secret clock, the answer behind a mystery) goes behind the screen via `campaign gm-*`, never the Write tool — see **The GM screen**.
 7. Loop.
 
 **Need a spark?** At any point — a miss that needs a complication, an NPC's hidden motive, "what's in here?" — roll the adapter's inspiration oracle (generic: `roll oracle --table ${CLAUDE_PLUGIN_ROOT}/adapters/generic/oracles/action.json` and `…/theme.json`) and read the result into the fiction. It *supplements* the yes/no; it never replaces a resolution roll the rules call for.
+
+## The GM screen
+
+Some state is the GM's, not the player's: a **hidden clock** (a menace advancing off-screen), the **answer** behind a mystery, an NPC's true agenda. Whether a system hides such state is the adapter's `visibility` (see adapter-contract):
+
+- `visibility: player` (Ironsworn, Starforged) — **no screen.** Clocks, momentum, and vows are player-facing; write them to the open files (`clocks.md`, sheets) as usual.
+- `visibility: gm` (generic) — **screen on.** Write hidden clocks and sealed answers through the **`campaign gm-*` CLI**, never the Write/Edit tools:
+  - `campaign gm-clock <dir> <id> [--segments N|--advance N|--set N]` — a hidden clock.
+  - `campaign gm-seal <dir> <id> <text>` — a sealed answer / true agenda (or pipe it on stdin).
+  - `campaign gm-reveal <dir> [id]` — surface it when the fiction earns it (one id, or all), and to reload your screen after a compaction.
+  - `campaign gm-list <dir>` — what you've sealed (ids only, no values).
+
+**Why the CLI, not Write/Edit:** in a solo session every tool call shows in the transcript, and Write/Edit render their *content* inline — spoiling the player at write-time. A Bash call collapses to "Ran 1 shell command," so the write stays behind the screen. `.gm/` isn't encrypted; a player who expands the call or opens the file to read ahead is doing it on purpose (see gm-craft: *felt, not shown*).
 
 ## Wrap (`/gm:wrap`)
 
@@ -65,3 +78,4 @@ The commit identity comes from the active persona's `chronicle_identity`. When s
 - **The player is referee.** If they correct a value, the file wins — reconcile and continue.
 - **Gaps surface, never fabricate.** If the adapter lacks a rule or oracle you need, say so and ask the oracle or the player — don't invent a rule.
 - **Rolls are visible.** Always show what `bin/roll` returned; never assert a result you didn't roll. That visibility is what makes a solo roll trustable.
+- **The screen stays sealed.** Hidden GM state (adapter `visibility: gm`) is written via `campaign gm-*`, never Write/Edit, so it doesn't spoil the player in the transcript. Surface it only when the fiction earns it (`campaign gm-reveal`).

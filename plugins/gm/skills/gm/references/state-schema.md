@@ -13,6 +13,7 @@ A campaign is a folder in **your** space (a directory or an Obsidian vault) — 
   clocks.md               # progress clocks / countdowns (segments filled)
   locations.md            # places, with a line of sensory detail each
   log/NNNN-<title>.md     # one file per session: what happened + a "Previously…" recap
+  .gm/state.json          # GM-only hidden state (sealed clocks + answers) — only when adapter is visibility: gm
 ```
 
 ## Files
@@ -47,6 +48,9 @@ Places visited or known, each with a line of sensory detail so scenes stay groun
 
 ### `log/NNNN-<title>.md`
 One per session, zero-padded index (`0001-the-ember-road.md`). Holds the session's beats and, at the end, a **forward recap** ("Previously…") the next `/gm:play` reads back.
+
+### `.gm/` (the GM screen)
+Present only when the active adapter is `visibility: gm` (see adapter-contract). Holds **GM-side hidden state** the player shouldn't see by default — secret clocks, the answer behind a mystery, an NPC's true agenda — in `.gm/state.json`. **Written only through the `campaign gm-*` CLI, never the Write/Edit tools**, so the writes collapse to "Ran 1 shell command" in the transcript instead of rendering inline and spoiling the player. It's versioned with the rest of the campaign (a managed checkpoint commits it) and is *not* encrypted — reading it, or expanding a write to peek, is a deliberate choice (dramatic irony), which is fine. Player-facing systems (`visibility: player`, e.g. Ironsworn) keep their clocks in the open `clocks.md` and have no `.gm/`.
 
 ## Rules
 
