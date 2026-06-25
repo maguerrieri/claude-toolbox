@@ -1,0 +1,11 @@
+{
+  "die": "1d100",
+  "rows": [
+    { "max": 10, "result": "No, and… (an added complication)" },
+    { "max": 40, "result": "No" },
+    { "max": 50, "result": "No, but… (a small consolation)" },
+    { "max": 60, "result": "Yes, but… (a cost or catch)" },
+    { "max": 90, "result": "Yes" },
+    { "max": 100, "result": "Yes, and… (an extra benefit)" }
+  ]
+}
