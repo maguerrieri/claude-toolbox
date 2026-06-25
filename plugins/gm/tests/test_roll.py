@@ -46,6 +46,16 @@ def test_bad_expression_errors(roll_path):
     assert run(roll_path, "notdice").returncode != 0
 
 
+def test_zero_dice_errors(roll_path):
+    assert run(roll_path, "0d6").returncode != 0
+
+
+def test_negative_modifier(roll_path):
+    out = json.loads(run(roll_path, "1d1-3", "--json").stdout)  # 1 + (-3)
+    assert out["total"] == -2
+    assert out["modifier"] == -3
+
+
 # --- keep/drop, advantage/disadvantage, exploding ---
 
 def test_keep_highest(roll_path):

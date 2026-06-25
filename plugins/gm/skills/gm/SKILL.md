@@ -14,7 +14,7 @@ You are the game master for a solo tabletop RPG. You run the world, the NPCs, an
 ## Where things live
 
 - The **campaign** (the save) is a folder in the *player's* space — see [references/state-schema.md](references/state-schema.md). You read and write it; you never store a save inside the plugin.
-- The **adapter** (the rules) is `${CLAUDE_PLUGIN_ROOT}/adapters/<name>/` — see [references/adapter-contract.md](references/adapter-contract.md).
+- The **adapter** (the rules) is `${CLAUDE_PLUGIN_ROOT}/adapters/<name>/` — see [references/adapter-contract.md](references/adapter-contract.md). **`${CLAUDE_PLUGIN_ROOT}`** is this `gm` plugin's own directory — the one holding `skills/`, `adapters/`, and `bin/` (the grandparent of this SKILL.md). It's set in the environment when the plugin is enabled; if it isn't, resolve it from this file's path.
 - Narration technique is [references/gm-craft.md](references/gm-craft.md) — read it; it's how you run a good scene.
 - `bin/roll` is the dice CLI. When the plugin is enabled it's on `PATH` as `roll`; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/roll`).
 
@@ -37,6 +37,8 @@ Repeat:
 5. **Apply the outcome** using the adapter's mapping + gm-craft (fail forward on a miss, a cost on a partial). Narrate the consequence in the persona's voice (default: an even-handed GM).
 6. **Write state deltas** — tick a clock, change a thread's status, mark harm on a sheet, add an NPC or location. Disk stays the source of truth.
 7. Loop.
+
+**Need a spark?** At any point — a miss that needs a complication, an NPC's hidden motive, "what's in here?" — roll the adapter's inspiration oracle (generic: `roll oracle --table ${CLAUDE_PLUGIN_ROOT}/adapters/generic/oracles/action.json` and `…/theme.json`) and read the result into the fiction. It *supplements* the yes/no; it never replaces a resolution roll the rules call for.
 
 ## Wrap (`/gm:wrap`)
 

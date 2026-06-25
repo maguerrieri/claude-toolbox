@@ -61,6 +61,8 @@ def roll_expr(expr, seed=None):
     if not m:
         raise ValueError(f"bad dice expression: {expr!r}")
     n = int(m["n"] or 1)
+    if n < 1:
+        raise ValueError("must roll at least 1 die")
     x = int(m["x"])
     mod = int(m["mod"] or 0)
     exploding = bool(m["exp"])
@@ -127,7 +129,6 @@ def _expr_main(argv):
 
 def _oracle_main(argv):
     ap = argparse.ArgumentParser(prog="roll oracle")
-    ap.add_argument("oracle")  # literal "oracle"
     ap.add_argument("--table", required=True)
     ap.add_argument("--seed", type=int)
     ap.add_argument("--json", action="store_true")
@@ -142,7 +143,7 @@ def _oracle_main(argv):
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "oracle":
-        _oracle_main(argv)
+        _oracle_main(argv[1:])
     else:
         _expr_main(argv)
 

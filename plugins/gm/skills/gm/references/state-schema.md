@@ -23,9 +23,11 @@ Front-matter + prose. Required front-matter:
 ---
 adapter: generic         # which system adapter runs this campaign
 persona: house           # which GM persona (default: house; added in milestone 3)
-saves: ~/rpg/embervale   # this directory, for reference
+saves: ~/rpg/embervale   # ABSOLUTE path to this campaign in your space
 ---
 ```
+`saves` is an **absolute** path in your own space. (The example campaigns bundled in the plugin use a repo-relative path only because they ship *inside* the plugin; real campaigns live in your directory or vault.)
+
 Body: the **premise** (a paragraph), the **truths** (established facts about this world), and **tone & safety** (genre, lines & veils).
 
 ### `characters/<name>.md`
@@ -38,7 +40,7 @@ A list; each NPC gets: name, a one-line description, **what they want** (every N
 Open threads. Each: a title, a one-line description, and a status (`open` / `hot` / `resolved`). The recap and scene-framing pull from here.
 
 ### `clocks.md`
-Progress clocks the world advances: `Bandits find the camp [▰▰▱▱] 2/4`. The core ticks them as consequences land.
+Progress clocks the world advances: `Bandits find the camp [▰▰▱▱] 2/4`. Note each clock's **trigger** so it ticks consistently — e.g. `The Ashwood creeps closer [▰▱▱▱] 1/4 — ticks when the party delves deeper or the threat acts`. The core ticks a clock when its trigger fires in the fiction.
 
 ### `locations.md`
 Places visited or known, each with a line of sensory detail so scenes stay grounded.
