@@ -62,3 +62,23 @@ def test_missing_extends_parent_fails(validate_path, tmp_path):
     p = run(validate_path, d)
     assert p.returncode == 1
     assert "extends" in p.stdout
+
+
+# --- personas ---
+
+PERSONAS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "personas"))
+
+
+def test_real_personas_all_valid(validate_path):
+    p = run(validate_path, "--personas", "--all", PERSONAS)
+    assert p.returncode == 0, p.stdout + p.stderr
+
+
+def test_persona_missing_chronicle_identity_fails(validate_path, tmp_path):
+    d = os.path.join(str(tmp_path), "p")
+    os.makedirs(d)
+    with open(os.path.join(d, "persona.md"), "w") as f:
+        f.write("---\nname: p\n---\n\n# P\n")
+    p = run(validate_path, "--personas", d)
+    assert p.returncode == 1
+    assert "chronicle_identity" in p.stdout
