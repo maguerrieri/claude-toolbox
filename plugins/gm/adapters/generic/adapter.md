@@ -20,9 +20,11 @@ A Mythic-style, system-agnostic oracle. It supplies a yes/no oracle and a meanin
 - **Inspiration / meaning prompt.** When you need a spark — a complication, an NPC's angle, what's behind a door — roll `oracles/action.json` and `oracles/theme.json` and read the two words together (e.g. *Seize / Secret* → someone is trying to take something hidden).
 - **Mechanics.** This adapter enforces no system. If the player runs a ruleset, they call its rolls via `bin/roll` (e.g. `roll 1d20+3`); the oracle answers everything the rules don't.
 
-## Likelihood
+## When to roll vs. decide
 
-The yes/no table is even odds. When the fiction makes an outcome clearly likely or unlikely, lean your interpretation toward it — or just decide. The oracle is for genuine uncertainty, not every question.
+Roll the yes/no oracle when **all three** hold: (1) the outcome is genuinely uncertain, (2) a "no" or a complication would be *interesting*, and (3) the character has no decisive advantage that makes the answer a foregone conclusion. If a capable character attempts a low-stakes, well-suited task, just narrate success — don't roll. But once you *do* roll, abide by the result (Rule 0). The dice are for the moments that matter.
+
+The table is even odds; on a borderline band, lean your reading toward whatever the fiction already makes likely.
 
 ## Safety
 

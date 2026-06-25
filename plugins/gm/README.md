@@ -10,7 +10,7 @@ Enable the plugin from the `maguerrieri-toolbox` marketplace, then allowlist the
 { "permissions": { "allow": ["Bash(roll:*)"] } }
 ```
 
-(The plugin puts its `bin/` on `PATH` as `roll` when enabled.)
+(The plugin puts its `bin/` on `PATH` as `roll` when enabled. This one-time allowlist is required — a Claude Code plugin can't grant its own Bash permissions.)
 
 ## Play
 

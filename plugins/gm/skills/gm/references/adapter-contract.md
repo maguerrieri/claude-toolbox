@@ -43,6 +43,8 @@ The exact shape `bin/roll oracle --table <path>` reads:
 - `die` — any `bin/roll` expression.
 - `rows` — ascending by `max`, covering `1..max(die)`. The first row whose `max ≥ roll` wins.
 
+A meaning/inspiration oracle may be **split across tables read together** (e.g. `action.json` + `theme.json`) rather than packed into one file.
+
 ## Composition (`extends:`)
 
 An adapter may `extends:` a base adapter (e.g. `ironsworn` and `starforged` both extend `ironsworn-core`). The core resolves the chain **parent → child**:
