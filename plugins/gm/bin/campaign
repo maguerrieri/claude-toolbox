@@ -7,12 +7,25 @@
   campaign rewind <dir> --to <ref>
   campaign backup <dir>
 
+  campaign gm-clock <dir> <id> [--segments N] [--advance N] [--set N]
+  campaign gm-seal <dir> <id> [text]        # text from arg, or piped on stdin
+  campaign gm-reveal <dir> [id]
+  campaign gm-list <dir>
+
 A campaign dir gets its own dedicated git repo (marked by a .gm-campaign file),
 UNLESS it is already inside another repo (e.g. an Obsidian vault under git) — then
 gm DEFERS and never commits, leaving history to your existing setup. Checkpoints are
 ordinary commits; rewind restores a past checkpoint as a new (reversible) commit.
+
+The gm-* subcommands keep hidden GM state (secret clocks, sealed answers) in a .gm/
+sealed dir, written through THIS CLI rather than the Write/Edit tools — so in a solo
+session the writes collapse to "Ran 1 shell command" in the transcript instead of
+rendering their content inline (the GM screen). Writes print a neutral confirmation,
+never the value; gm-reveal surfaces a secret when the fiction earns it. Expanding the
+call to read ahead is a feature (dramatic irony), not a leak — so no encryption here.
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -113,6 +126,92 @@ def cmd_backup(a):
     print("backup pushed")
 
 
+# ---- GM screen: hidden state under a .gm/ sealed dir ------------------------
+# Written via this CLI (not the Write tool) so the writes collapse to
+# "Ran 1 shell command" in the transcript instead of showing content inline.
+# Independent of git management: works in deferred campaigns too (plain files);
+# a managed campaign just commits .gm/ with the next checkpoint.
+
+GM_DIR = ".gm"
+
+
+def _gm_state_path(d):
+    return os.path.join(d, GM_DIR, "state.json")
+
+
+def _gm_load(d):
+    p = _gm_state_path(d)
+    state = json.load(open(p)) if os.path.isfile(p) else {}
+    state.setdefault("clocks", {})
+    state.setdefault("secrets", {})
+    return state
+
+
+def _gm_save(d, state):
+    os.makedirs(os.path.join(d, GM_DIR), exist_ok=True)
+    with open(_gm_state_path(d), "w") as f:
+        json.dump(state, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def cmd_gm_clock(a):
+    state = _gm_load(a.dir)
+    clocks = state["clocks"]
+    created = a.id not in clocks
+    c = clocks.setdefault(a.id, {"filled": 0, "segments": a.segments or 4})
+    if a.segments is not None:
+        c["segments"] = a.segments
+    if a.set is not None:
+        c["filled"] = a.set
+    if a.advance is not None:
+        c["filled"] += a.advance
+    c["filled"] = max(0, min(c["filled"], c["segments"]))
+    _gm_save(a.dir, state)
+    # Neutral confirmation — never the fill value. Completion IS surfaced: the GM
+    # must know a hidden clock just filled (it's about to act on the fiction).
+    status = " (complete)" if c["filled"] >= c["segments"] else ""
+    print(f"gm: clock '{a.id}' {'sealed' if created else 'updated'}{status}")
+
+
+def cmd_gm_seal(a):
+    text = a.text if a.text is not None else sys.stdin.read()
+    state = _gm_load(a.dir)
+    state["secrets"][a.id] = text.rstrip("\n")
+    _gm_save(a.dir, state)
+    print(f"gm: '{a.id}' sealed")
+
+
+def cmd_gm_reveal(a):
+    state = _gm_load(a.dir)
+    if a.id is not None:
+        if a.id in state["secrets"]:
+            print(state["secrets"][a.id])
+        elif a.id in state["clocks"]:
+            c = state["clocks"][a.id]
+            print(f"clock '{a.id}': {c['filled']}/{c['segments']}")
+        else:
+            print(f"gm: nothing sealed under '{a.id}'")
+        return
+    if not state["clocks"] and not state["secrets"]:
+        print("gm: nothing sealed")
+        return
+    for cid, c in sorted(state["clocks"].items()):
+        print(f"clock '{cid}': {c['filled']}/{c['segments']}")
+    for sid, text in sorted(state["secrets"].items()):
+        print(f"secret '{sid}': {text}")
+
+
+def cmd_gm_list(a):
+    state = _gm_load(a.dir)
+    items = ([("clock", k) for k in sorted(state["clocks"])]
+             + [("secret", k) for k in sorted(state["secrets"])])
+    if not items:
+        print("gm: nothing sealed")
+        return
+    for kind, k in items:
+        print(f"{kind}: {k}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="campaign")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -121,10 +220,17 @@ def main(argv=None):
     p = sub.add_parser("log"); p.add_argument("dir")
     p = sub.add_parser("rewind"); p.add_argument("dir"); p.add_argument("--to", required=True)
     p = sub.add_parser("backup"); p.add_argument("dir")
+    p = sub.add_parser("gm-clock"); p.add_argument("dir"); p.add_argument("id")
+    p.add_argument("--segments", type=int); p.add_argument("--advance", type=int); p.add_argument("--set", type=int)
+    p = sub.add_parser("gm-seal"); p.add_argument("dir"); p.add_argument("id"); p.add_argument("text", nargs="?")
+    p = sub.add_parser("gm-reveal"); p.add_argument("dir"); p.add_argument("id", nargs="?")
+    p = sub.add_parser("gm-list"); p.add_argument("dir")
     a = ap.parse_args(argv)
     try:
         {"init": cmd_init, "checkpoint": cmd_checkpoint, "log": cmd_log,
-         "rewind": cmd_rewind, "backup": cmd_backup}[a.cmd](a)
+         "rewind": cmd_rewind, "backup": cmd_backup,
+         "gm-clock": cmd_gm_clock, "gm-seal": cmd_gm_seal,
+         "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list}[a.cmd](a)
     except subprocess.CalledProcessError as e:
         sys.exit(f"campaign: git command failed: {' '.join(e.cmd)}")
     except FileNotFoundError as e:
