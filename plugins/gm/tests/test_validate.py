@@ -82,3 +82,13 @@ def test_persona_missing_chronicle_identity_fails(validate_path, tmp_path):
     p = run(validate_path, "--personas", d)
     assert p.returncode == 1
     assert "chronicle_identity" in p.stdout
+
+
+def test_persona_naming_mechanic_fails(validate_path, tmp_path):
+    d = os.path.join(str(tmp_path), "p")
+    os.makedirs(d)
+    with open(os.path.join(d, "persona.md"), "w") as f:
+        f.write("---\nname: p\nchronicle_identity:\n  author: P\n---\n\n# P\nNarrate every strong hit with relish.\n")
+    p = run(validate_path, "--personas", d)
+    assert p.returncode == 1
+    assert "mechanic" in p.stdout
