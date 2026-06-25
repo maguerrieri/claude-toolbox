@@ -29,7 +29,8 @@ def persona_slugs(plugin_root):
         pm = os.path.join(d, "persona.md")
         if not os.path.isfile(pm):
             continue
-        m = re.search(r"email:\s*([\w.+-]+)@\$\{identity_domain\}", open(pm).read())
+        with open(pm, encoding="utf-8") as f:
+            m = re.search(r"email:\s*([\w.+-]+)@\$\{identity_domain\}", f.read())
         slugs.append(m.group(1) if m else os.path.basename(d))
     return slugs
 
@@ -42,7 +43,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
 
-    cfg = json.load(open(a.config))
+    with open(a.config, encoding="utf-8") as f:
+        cfg = json.load(f)
     domain, seat = cfg["identity_domain"], cfg["seat"]
     aliases = [f"{s}@{domain}" for s in persona_slugs(a.plugin_root)]
     print(f"seat: {seat}")

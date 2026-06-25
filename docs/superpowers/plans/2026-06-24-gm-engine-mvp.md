@@ -17,7 +17,7 @@
 - **No-prompt guarantee:** `bin/roll` is allowlisted so play never triggers a permission prompt — and the allowlist string must match the *exact* invocation form (bare `roll` on PATH).
 - **State lives in the user's space.** The plugin scaffolds and ships *example* campaigns; it never stores a real save under `plugins/gm/`.
 - **Adapters are declarative data.** No engine logic in an adapter — only a manifest, oracle/rules data, and a sheet schema.
-- **Public repo hygiene.** No personal names, local paths, or secrets in any committed file.
+- **Public-repo hygiene.** No secrets, local filesystem paths, or PII in committed files. (Conventional author/owner attribution in plugin/marketplace manifests is intentional, not PII.)
 - **Disk is truth; rolls are visible.** State files are authoritative; every roll prints its dice + math.
 
 ---

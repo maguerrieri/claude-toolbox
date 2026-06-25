@@ -1,7 +1,7 @@
 # `gm` — System-Agnostic Solo RPG Game Master (Design Spec)
 
 - **Date:** 2026-06-24
-- **Status:** Approved design — pending implementation plan
+- **Status:** Implemented — plan in `docs/superpowers/plans/2026-06-24-gm-engine-mvp.md`; built in `plugins/gm/`
 - **Home:** `plugins/gm/` in the `maguerrieri-toolbox` marketplace
 - **Source research:** an internal 2026 research brief, "Playing TTRPGs with an LLM: The 2026 Tooling Landscape"
 
