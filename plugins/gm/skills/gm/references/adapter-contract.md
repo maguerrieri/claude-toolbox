@@ -9,7 +9,7 @@ adapters/<name>/
   adapter.md          # manifest (front-matter) + resolution rules (prose)
   oracles/*.json      # oracle tables the core rolls on (see "Oracle tables")
   rules/*             # optional: moves, assets, other content
-  sheet-template.md   # the character-sheet schema for this system
+  sheet-template.md   # the sheet schema (optional — a variant may inherit its base's via extends:)
 ```
 
 ## `adapter.md`
@@ -40,8 +40,8 @@ The exact shape `bin/roll oracle --table <path>` reads:
   ]
 }
 ```
-- `die` — any `bin/roll` expression.
-- `rows` — ascending by `max`, covering `1..max(die)`. The first row whose `max ≥ roll` wins.
+- `die` — a simple `NdX` dice expression (e.g. `1d100`, `2d6`); oracle dice don't take modifiers / keep-drop / exploding.
+- `rows` — ascending by `max` with no duplicates, covering the die's full range (`min..max` — e.g. `1..100` for `1d100`). The first row whose `max ≥ roll` wins.
 
 A meaning/inspiration oracle may be **split across tables read together** (e.g. `action.json` + `theme.json`) rather than packed into one file.
 

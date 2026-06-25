@@ -2,7 +2,7 @@
 name: thirsty-sword-lesbians
 chronicle_identity:
   author: Thirsty Sword Lesbians Claude
-  email: thirsty-sword@${identity_domain}
+  email: thirsty-sword-lesbians@${identity_domain}
   avatar: assets/avatars/thirsty-sword.png
 ---
 
