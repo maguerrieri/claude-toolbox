@@ -92,3 +92,12 @@ def test_persona_naming_mechanic_fails(validate_path, tmp_path):
     p = run(validate_path, "--personas", d)
     assert p.returncode == 1
     assert "mechanic" in p.stdout
+
+
+def test_oracle_low_end_unreachable_fails(validate_path, tmp_path):
+    # a 2d6 table (min roll 2) with a max:1 row -> that row is unreachable
+    d = _write_adapter(str(tmp_path), "bad4", "name: bad4",
+                       {"die": "2d6", "rows": [{"max": 1, "result": "x"}, {"max": 12, "result": "y"}]})
+    p = run(validate_path, d)
+    assert p.returncode == 1
+    assert "die min" in p.stdout
