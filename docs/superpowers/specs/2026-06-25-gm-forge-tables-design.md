@@ -82,7 +82,9 @@ Turns "I want a diverse pool of `<type>`" into a populated foundation table.
 2. Run the `generate` skill (frame → 3–4 lens-varied passes → axis-tagged reservoir).
 3. **Harvest** the reservoir entries into a foundation table (`tables/<type>.md`, or `.gm/tables/<type>.md` with `--secret`) — as uniform `- ` entries, keeping the axis tags as trailing text.
 
-**Modes.** *Prep forge* (default) at session zero / new region / `/gm:wrap`. *Pull* (escape hatch) mid-play, which **pauses** the table (~minutes of subagents) — explicit, not reflexive; the GM announces the pause.
+**Modes — the same forge, two times it runs:**
+- **Prep** (default): at session zero, a new region/faction, or `/gm:wrap` — build the tables play will draw on, ahead of need.
+- **On-demand (the during-play path):** when play wants an oracle and *there's no table for it* — the GM reaches for one (campaign tables, then the adapter's), **misses**, and forges it on the spot, then rolls. The forged table **persists**, so the campaign's table library grows from play (the first "weather in the Ashwood" pull forges it; forever after it's a roll). This **pauses** the table (~minutes of subagents), so the GM announces it ("no table for that — forging one"), and reserves it for a genuine *category* miss worth saving; a true one-off is just improvised or answered by the generic yes/no oracle, no forge.
 
 **Soft coupling / graceful degradation.** If `generate` is present, use it; if absent, the forge degrades to a GM-improvised ~6–10 list into the same table file, surfaced to the player. The foundation still rolls either way.
 
@@ -114,7 +116,7 @@ gm ships a Promotion adapter at `${CLAUDE_PLUGIN_ROOT}/forge/promotion/campaign.
 |---|---|
 | Roll on any table | `roll table <file>` — adapter oracle, hand-authored, or forged; all one verb |
 | Prep variety | `/gm:forge <type>` (②) → `<campaign>/tables/` → `roll table` in play |
-| Mid-play novelty | pull-forge (②, explicit pause) → `roll table` |
+| Table miss in play | reach for a table, none exists → forge on demand (②, announced pause) → `roll table` → it persists for next time |
 | Need a canon secret | forge candidates (②) → promote → seal (③) → reveal when earned |
 | No `generate` | ② degrades to a GM-improvised list → the foundation still rolls |
 
@@ -155,4 +157,4 @@ gm ships a Promotion adapter at `${CLAUDE_PLUGIN_ROOT}/forge/promotion/campaign.
 2. **Entry granularity:** one `- ` line = one entry (optional trailing tag); multi-line entries deferred. OK?
 3. **Command surface:** ship both `/gm:forge` and SKILL guidance (explicit + emergent). OK?
 4. **Starter frames:** npc, rumor, hook, location, faction, oddity — add/cut any?
-5. **Pull-mode guardrail:** GM may decide to pull-forge mid-play but must announce the pause (vs. requiring your explicit opt-in each time). OK?
+5. **On-demand guardrail:** the during-play forge fires on a genuine *table miss* (you want an oracle, none exists), the GM announces the pause, and reserves it for category-misses worth saving (one-offs get improvised / the yes-no oracle). GM decides, or require your explicit opt-in each time?
