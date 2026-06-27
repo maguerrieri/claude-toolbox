@@ -1,0 +1,17 @@
+- [6] Abandoned settlement — collapsed palisade, silent hearths, and the lingering smell of smoke
+- [6] Ancient barrow — turf-covered burial mound; iron-bound door ajar
+- [6] Blighted grove — trees twisted and blackened at the heart; animals avoid it
+- [6] Broken bridge — spans a gorge; far side is uncertain
+- [6] Cave complex — deep, echoing, with cold water dripping somewhere within
+- [6] Fortified camp — rough earthworks, torchlight, the smell of cook-fires and tension
+- [6] Frozen lake — cracked ice; something dark moves beneath
+- [6] Hidden shrine — moss-covered stones arranged in an old pattern; offerings left recently
+- [6] Iron-vein cliff face — raw ore seams exposed by rockfall; valuable and contested
+- [6] Lone tower — partially collapsed, high enough to survey several leagues; occupied or not?
+- [6] Mountain pass — narrow, icy, exposed; the only route for fifty leagues
+- [6] River ford — knee-deep in summer, deadly in spring melt; a crossing everyone needs
+- [6] Ruined hall — great oak beams rotted through; carvings on the stone pillars still legible
+- [6] Seaside village — a dozen salt-weathered longhouses, a smoking kiln, wary eyes on the horizon
+- [6] Sunken road — an old trade route, half-swallowed by bog; still used by those who know it
+- [6] Waystation — a low turf hut at a trail junction; firewood stacked, traveller's mark carved in the door
+- [4] Wrecked longship — beached and broken; the cargo may still be aboard

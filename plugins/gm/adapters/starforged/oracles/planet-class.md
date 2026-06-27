@@ -1,0 +1,11 @@
+- [10] Desert — baked, arid world of shifting dunes, rock flats, and scorching heat. Water is precious.
+- [10] Furnace — volcanic hellscape of lava flows, toxic gas vents, and perpetual ashfall. Lethal without protection.
+- [10] Grave — dead world, cold and airless or choked with toxic atmosphere. Signs of prior life abound; none remain.
+- [10] Ice — frozen surface locked under glaciers or blizzard-scoured tundra. Liquid water may persist far below.
+- [10] Jovian — gas giant shrouded in banded clouds and colossal storms. No solid surface; any habitation floats or orbits.
+- [10] Jungle — dense canopy world of towering growth, perpetual rain, and aggressive wildlife. Resources hidden deep within.
+- [10] Ocean — global sea, kilometres deep, with scattered island chains or floating kelp mats as the only dry land.
+- [10] Rocky — barren, cratered world of stone and sparse mineral deposits. Thin or absent atmosphere, no native life.
+- [10] Shattered — broken world, reduced to a debris field or fractured ring of continent-size fragments by ancient catastrophe.
+- [5] Tundra — cold, windswept expanses of frozen soil, sparse vegetation, and enduring permafrost. Difficult but survivable.
+- [5] Vital — habitable world teeming with life: breathable air, liquid water, and rich ecosystems. Rare and valuable.

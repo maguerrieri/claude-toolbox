@@ -29,11 +29,11 @@ Use the oracles in `oracles/` to answer open questions and spark the fiction:
 
 | When you need… | Roll |
 |---|---|
-| A complication or unexpected action | `oracles/action.json` + `oracles/theme.json` together |
-| A region or terrain | `oracles/region.json` |
-| A place or landmark | `oracles/location.json` |
-| An Ironlander NPC name | `oracles/character-name.json` |
-| The cost of failure or danger | `oracles/pay-the-price.json` |
+| A complication or unexpected action | `oracles/action.md` + `oracles/theme.md` together |
+| A region or terrain | `oracles/region.md` |
+| A place or landmark | `oracles/location.md` |
+| An Ironlander NPC name | `oracles/character-name.md` |
+| The cost of failure or danger | `oracles/pay-the-price.md` |
 
 Read `action` + `theme` as a two-word prompt (e.g. *Threaten / Darkness* → an enemy is using fear as leverage). Interpret liberally — the words are a spark, not a literal directive.
 
@@ -43,7 +43,7 @@ Read `action` + `theme` as a two-word prompt (e.g. *Threaten / Darkness* → an 
 2. **Player declares intent** — what do they attempt?
 3. **Pick the move** (from `rules/moves.md`) that fits the intent.
 4. **Roll** — `roll ironsworn-action --stat <value> --adds <N>`. Pass the numeric value of the stat (e.g. `--stat 3`). The base engine resolves strong hit / weak hit / miss.
-5. **Narrate the outcome** — honour the dice (Rule 0). On a miss, consult `oracles/pay-the-price.json` or choose the most interesting consequence.
+5. **Narrate the outcome** — honour the dice (Rule 0). On a miss, consult `oracles/pay-the-price.md` or choose the most interesting consequence.
 6. **Update tracks** — health, spirit, supply, momentum, progress.
 7. **Advance the fiction** — what changes? What new trouble rises?
 
