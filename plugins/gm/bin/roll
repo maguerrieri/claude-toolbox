@@ -3,7 +3,8 @@
 
 Usage:
   roll "<expr>" [--seed N] [--json] [--adv | --dis]
-  roll oracle --table <path> [--seed N] [--json]
+  roll table <file> [--n N] [--seed N] [--json]
+  roll oracle --table <path> [--seed N] [--json]   (deprecated alias of table)
   roll ironsworn-action [--stat N] [--adds N] [--seed N] [--json]
   roll ironsworn-progress --boxes N [--seed N] [--json]
 
@@ -30,6 +31,7 @@ EXPR = re.compile(
     r"^(?P<n>\d*)d(?P<x>\d+)(?P<kd>k[hl]\d+)?(?P<exp>!)?(?P<mod>[+-]\d+)?$"
 )
 SIMPLE = re.compile(r"^(?P<n>\d*)d(?P<x>\d+)(?P<mod>[+-]\d+)?$")
+TABLE_ENTRY = re.compile(r"^- (?:\[(?P<w>\d+)\]\s*)?(?P<text>.*)$")
 
 
 def _make_rng(seed):
@@ -84,16 +86,6 @@ def roll_expr(expr, seed=None):
     }
 
 
-def roll_oracle(table_path, seed=None):
-    with open(table_path) as f:
-        table = json.load(f)
-    face = roll_expr(table["die"], seed)["total"]
-    for row in table["rows"]:
-        if face <= row["max"]:
-            return {"table": table_path, "roll": face, "result": row["result"]}
-    return {"table": table_path, "roll": face, "result": table["rows"][-1]["result"]}
-
-
 def human_expr(r):
     parts = [f"\U0001F3B2 {r['expr']} -> {r['rolls']}"]
     if r["kept"] != r["rolls"]:
@@ -104,8 +96,45 @@ def human_expr(r):
     return " ".join(parts)
 
 
-def human_oracle(r):
-    return f"\U0001F52E {r['roll']} -> {r['result']}"
+def parse_table(text):
+    """Block rule: an entry is a top-level '- ' item plus its indented
+    continuation lines, until the next top-level '- '. '- [w] ' sets weight."""
+    entries = []
+    for line in text.splitlines():
+        m = TABLE_ENTRY.match(line)
+        if m:                                   # top-level entry start
+            entries.append({"weight": int(m["w"] or 1), "lines": [m["text"]]})
+        elif entries and line[:1].isspace() and line.strip():
+            entries[-1]["lines"].append(line.strip())   # indented continuation
+        # else: header / blank / top-level prose -> ignored
+    for e in entries:
+        e["entry"] = "\n".join(e.pop("lines")).rstrip()
+    return entries
+
+
+def roll_table(path, n=1, seed=None):
+    entries = parse_table(open(path).read())
+    if not entries:
+        raise ValueError(f"no entries in table: {path}")
+    rng = _make_rng(seed)
+    total, pool, rolls, picks = sum(e["weight"] for e in entries), list(entries), [], []
+    for _ in range(min(n, len(entries))):
+        t = sum(e["weight"] for e in pool)
+        face = rng.randint(1, t) if rng is not None else 1 + secrets.randbelow(t)
+        acc = 0
+        for i, e in enumerate(pool):
+            acc += e["weight"]
+            if face <= acc:
+                rolls.append(face); picks.append(e["entry"]); pool.pop(i)
+                break
+    return {"table": path, "total": total, "n": n, "rolls": rolls, "picks": picks}
+
+
+def human_table(r):
+    if len(r["picks"]) == 1:
+        return f"\U0001F3B2 table {r['rolls'][0]}/{r['total']} -> {r['picks'][0]}"
+    head = f"\U0001F3B2 table x{len(r['picks'])} of {r['total']}:"
+    return "\n".join([head, *(f"  - {p}" for p in r["picks"])])
 
 
 def _expr_main(argv):
@@ -135,11 +164,22 @@ def _oracle_main(argv):
     ap.add_argument("--seed", type=int)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
+    _table_main([a.table, *(["--seed", str(a.seed)] if a.seed is not None else []),
+                 *(["--json"] if a.json else [])])
+
+
+def _table_main(argv):
+    ap = argparse.ArgumentParser(prog="roll table")
+    ap.add_argument("file")
+    ap.add_argument("--n", type=int, default=1)
+    ap.add_argument("--seed", type=int)
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args(argv)
     try:
-        r = roll_oracle(a.table, a.seed)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as e:
+        r = roll_table(a.file, n=a.n, seed=a.seed)
+    except (OSError, ValueError) as e:
         sys.exit(f"roll: {e}")
-    print(json.dumps(r) if a.json else human_oracle(r))
+    print(json.dumps(r) if a.json else human_table(r))
 
 
 def roll_action(stat=0, adds=0, seed=None, challenge_sides=10, action_die=None, challenge=None):
@@ -212,6 +252,8 @@ def main(argv=None):
         return
     if argv[0] == "oracle":
         _oracle_main(argv[1:])
+    elif argv[0] == "table":
+        _table_main(argv[1:])
     elif argv[0] == "ironsworn-action":
         _action_main(argv[1:])
     elif argv[0] == "ironsworn-progress":
