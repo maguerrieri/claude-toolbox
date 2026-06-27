@@ -31,6 +31,7 @@ EXPR = re.compile(
     r"^(?P<n>\d*)d(?P<x>\d+)(?P<kd>k[hl]\d+)?(?P<exp>!)?(?P<mod>[+-]\d+)?$"
 )
 SIMPLE = re.compile(r"^(?P<n>\d*)d(?P<x>\d+)(?P<mod>[+-]\d+)?$")
+# NOTE: duplicated in bin/validate-adapter — keep in sync.
 TABLE_ENTRY = re.compile(r"^- (?:\[(?P<w>\d+)\]\s*)?(?P<text>.*)$")
 
 
@@ -116,6 +117,8 @@ def roll_table(path, n=1, seed=None):
     entries = parse_table(open(path).read())
     if not entries:
         raise ValueError(f"no entries in table: {path}")
+    if any(e["weight"] < 1 for e in entries):
+        raise ValueError(f"table entry weight must be >= 1: {path}")
     rng = _make_rng(seed)
     total, pool, rolls, picks = sum(e["weight"] for e in entries), list(entries), [], []
     for _ in range(min(n, len(entries))):

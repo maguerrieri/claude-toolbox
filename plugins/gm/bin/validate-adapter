@@ -17,6 +17,7 @@ import os
 import re
 import sys
 
+# NOTE: duplicated in bin/roll — keep in sync.
 TABLE_ENTRY = re.compile(r"^- (?:\[(\d+)\]\s*)?(.*)$")
 
 
