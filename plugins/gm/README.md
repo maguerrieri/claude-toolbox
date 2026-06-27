@@ -43,7 +43,8 @@ roll 1d20 --adv             # advantage
 roll 3d6!                   # exploding
 roll ironsworn-action --stat 2 --adds 1
 roll ironsworn-progress --boxes 7
-roll oracle --table <adapter>/oracles/yes-no.json
+roll table <adapter>/oracles/yes-no.md
+roll table <campaign>/tables/rumors.md   # campaign table (hand-authored or forged)
 ```
 
 ## How it's built
