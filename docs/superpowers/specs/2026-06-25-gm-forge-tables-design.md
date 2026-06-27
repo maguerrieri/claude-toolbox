@@ -33,16 +33,24 @@ One first-class concept: a **table** is a named, rollable list. Sources: **adapt
 
 ### Format
 
-A table is a markdown list; each entry is one list item:
+A table is a markdown list. **An entry is a top-level `- ` item plus everything indented beneath it, up to the next top-level `- `** — so a single-line entry is just an entry with no continuation, and a structured entry (an NPC's name / want / quirk) is the same rule with indented lines.
 
 ```
-# Yes / No        ← optional header / provenance; non-"- " lines are ignored by the roller
+# Yes / No                       ← top-level non-"- " lines are headers/provenance, ignored
 - [50] No
 - [50] Yes
 ```
+```
+# NPCs
+- [2] **Edda Thornwick** — lantern-keeper at the first bend.
+    Wants: someone to walk the road with her one last time.
+    *[insider × grief × knows-the-road]*
+- A salt-grey child who isn't, selling lantern-oil that burns blue.
+```
 
-- `- entry` → weight 1. `- [w] entry` → weight `w` (positive int). Bare list = **uniform**; bracketed = **weighted**.
-- Lines not starting with `- ` (headers, a forge frame's axes, prose) are ignored — so a table can carry provenance without confusing the roller.
+- Weight + entry start on the `- ` line: `- entry` → weight 1; `- [w] entry` → weight `w` (positive int). Bare list = **uniform**; bracketed = **weighted**.
+- The roller keys on **top-level `- ` items**; indented lines belong to the preceding entry; other top-level lines (headers, a forge frame's axes, prose) are ignored.
+- A draw returns the **whole entry block** (the `- ` line + its indented continuation).
 
 ### Roll
 
@@ -151,10 +159,10 @@ gm ships a Promotion adapter at `${CLAUDE_PLUGIN_ROOT}/forge/promotion/campaign.
 - **Smoke:** roll a migrated oracle; forge a tiny table (generate present) → `roll table`; degraded forge; promote → seal → `gm-reveal`.
 - **CI:** existing gm-ci (pytest + validators) covers both PRs.
 
-## Open questions for spec review
+## Resolved decisions
 
-1. **Roll verb:** primary `roll table`, keep `roll oracle` as a deprecated alias — OK? (Or rename hard and update all refs only.)
-2. **Entry granularity:** one `- ` line = one entry (optional trailing tag); multi-line entries deferred. OK?
-3. **Command surface:** ship both `/gm:forge` and SKILL guidance (explicit + emergent). OK?
-4. **Starter frames:** npc, rumor, hook, location, faction, oddity — add/cut any?
-5. **On-demand guardrail:** the during-play forge fires on a genuine *table miss* (you want an oracle, none exists), the GM announces the pause, and reserves it for category-misses worth saving (one-offs get improvised / the yes-no oracle). GM decides, or require your explicit opt-in each time?
+1. **Roll verb:** `roll table` primary; `roll oracle` kept as a deprecated alias.
+2. **Entry granularity:** the **block rule** — an entry is a top-level `- ` item plus its indented continuation (single-line is the common case; structured/multi-line is free, one parser rule).
+3. **Command surface:** ship both `/gm:forge` and SKILL guidance.
+4. **Starter frames:** npc, rumor, hook, location, faction, oddity.
+5. **On-demand forge:** fires on a genuine table miss; the GM decides and announces the pause; reserved for category-misses worth saving (one-offs improvised / yes-no oracle).
