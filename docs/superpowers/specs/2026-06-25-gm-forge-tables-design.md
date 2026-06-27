@@ -33,7 +33,7 @@ One first-class concept: a **table** is a named, rollable list. Sources: **adapt
 
 ### Format
 
-A table is a markdown list. **An entry is a top-level `- ` item plus everything indented beneath it, up to the next top-level `- `** — so a single-line entry is just an entry with no continuation, and a structured entry (an NPC's name / want / quirk) is the same rule with indented lines.
+A table is a Markdown list. **An entry is a top-level `- ` item plus everything indented beneath it, up to the next top-level `- `** — so a single-line entry is just an entry with no continuation, and a structured entry (an NPC's name / want / quirk) is the same rule with indented lines.
 
 ```
 # Yes / No                       ← top-level non-"- " lines are headers/provenance, ignored
@@ -59,7 +59,7 @@ roll table <file> [--n K] [--seed S] [--json]
 ```
 
 - `N = Σ weights`; roll `1..N` true-RNG (`secrets`); cumulative-map → the entry. Visible (Rule 0): `🎲 table 73/100 → <entry>`.
-- `--n K` → K **distinct** draws; `--seed` deterministic; `--json` → `{"table","total","n","rolls","picks":[...]}`.
+- `--n K` → K **distinct** draws, without replacement; K larger than the entry count is **clamped** to the entry count (draws all entries, each once). `--seed S` → deterministic RNG (`random.Random`) — test/replay use only; production always uses `secrets`. `--json` → `{"table": "<file>", "total": 100, "n": 1, "rolls": [73], "picks": ["<entry>"]}`.
 - All-weight-1 table = uniform draw (the forge case). `roll oracle` is kept as a **deprecated alias** of `roll table` so existing muscle memory / external refs don't break.
 - Empty/missing file → clear error + non-zero exit (matches `roll`'s style).
 
@@ -148,6 +148,7 @@ gm ships a Promotion adapter at `${CLAUDE_PLUGIN_ROOT}/forge/promotion/campaign.
 ## Error handling / edge cases
 
 - `roll table` on empty/missing → clear error, non-zero exit.
+- `--n 0` → 0 picks (no-op); `--n K` with K greater than the entry count → clamped to the entry count (draws all entries, each distinct).
 - Migration must be **provably behavior-preserving** — parity tests are the safety net for touching shipped, tested oracles.
 - `generate` absent → forge degrades; surfaced to the player.
 - Sealed tables drawn via Bash (stay behind the screen); the draw's stdout shows only the *drawn* entry.
@@ -161,7 +162,7 @@ gm ships a Promotion adapter at `${CLAUDE_PLUGIN_ROOT}/forge/promotion/campaign.
 
 ## Resolved decisions
 
-1. **Roll verb:** `roll table` primary; `roll oracle` kept as a deprecated alias.
+1. **Roll verb:** `roll table` primary; `roll oracle` kept as a deprecated alias. (The early issue description used `roll pick`; the standardized verb throughout the implementation and these docs is `roll table`.)
 2. **Entry granularity:** the **block rule** — an entry is a top-level `- ` item plus its indented continuation (single-line is the common case; structured/multi-line is free, one parser rule).
 3. **Command surface:** ship both `/gm:forge` and SKILL guidance.
 4. **Starter frames:** npc, rumor, hook, location, faction, oddity.
