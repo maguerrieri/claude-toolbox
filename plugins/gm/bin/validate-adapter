@@ -2,9 +2,9 @@
 """gm adapter validator — lints adapter folders against the contract.
 
 Checks: adapter.md exists with front-matter + a `name`; any `extends:` resolves
-to a real parent (no cycles); every oracles/*.json has the correct shape with
-ascending, non-duplicate `max` values covering 1..die-max; a named `sheet:` exists;
-and oracle files referenced in adapter.md prose actually exist.
+to a real parent (no cycles); every oracles/*.md has at least one `- ` entry with
+weight >= 1; a named `sheet:` exists; and oracle files referenced in adapter.md
+prose actually exist.
 
 Usage:
   validate-adapter <adapter-dir>...
@@ -13,24 +13,11 @@ Exit 0 if all valid; 1 (with FAIL lines) otherwise.
 """
 import argparse
 import glob
-import json
 import os
 import re
 import sys
 
-DIE = re.compile(r"^(\d*)d(\d+)$")
-
-
-def die_max(die):
-    m = DIE.match(str(die).replace(" ", ""))
-    if not m:
-        return None
-    return int(m.group(1) or 1) * int(m.group(2))
-
-
-def die_min(die):
-    m = DIE.match(str(die).replace(" ", ""))
-    return int(m.group(1) or 1) if m else None  # NdX: minimum roll is N (each die >= 1)
+TABLE_ENTRY = re.compile(r"^- (?:\[(\d+)\]\s*)?(.*)$")
 
 
 def parse_frontmatter(path):
@@ -46,34 +33,17 @@ def parse_frontmatter(path):
     return fm, text
 
 
-def validate_oracle(path):
-    errs = []
-    try:
-        table = json.load(open(path))
-    except Exception as e:
-        return [f"{path}: invalid JSON ({e})"]
-    die, rows = table.get("die"), table.get("rows")
-    if not die or not isinstance(rows, list) or not rows:
-        return [f"{path}: must have 'die' and a non-empty 'rows' list"]
-    dm = die_max(die)
-    if dm is None:
-        errs.append(f"{path}: unparseable die {die!r}")
-    maxes = []
-    for i, row in enumerate(rows):
-        if not isinstance(row, dict) or "max" not in row or "result" not in row:
-            errs.append(f"{path}: row {i} needs 'max' and 'result'")
-        else:
-            maxes.append(row["max"])
-    if maxes:
-        if maxes != sorted(maxes):
-            errs.append(f"{path}: rows not ascending by max")
-        if len(set(maxes)) != len(maxes):
-            errs.append(f"{path}: duplicate max values (later rows are unreachable)")
-        if dm is not None and maxes[-1] != dm:
-            errs.append(f"{path}: last max {maxes[-1]} != die max {dm} (incomplete coverage)")
-        dmin = die_min(die)
-        if dmin is not None and maxes[0] < dmin:
-            errs.append(f"{path}: first max {maxes[0]} < die min {dmin} (rows below it are unreachable)")
+def validate_table(path):
+    errs, entries = [], 0
+    for line in open(path).read().splitlines():
+        m = TABLE_ENTRY.match(line)
+        if m:
+            entries += 1
+            w = int(m.group(1)) if m.group(1) else 1
+            if w < 1:
+                errs.append(f"{path}: entry {entries} has weight {w} (must be >= 1)")
+    if entries == 0:
+        errs.append(f"{path}: no entries (need at least one '- ' item)")
     return errs
 
 
@@ -102,14 +72,14 @@ def validate_adapter(adapter_dir, adapters_root):
         pfm, _ = parse_frontmatter(pmanifest)
         parent = (pfm or {}).get("extends")
 
-    for f in sorted(glob.glob(os.path.join(adapter_dir, "oracles", "*.json"))):
-        errs += validate_oracle(f)
+    for f in sorted(glob.glob(os.path.join(adapter_dir, "oracles", "*.md"))):
+        errs += validate_table(f)
 
     sheet = fm.get("sheet")
     if sheet and not os.path.isfile(os.path.join(adapter_dir, sheet)):
         errs.append(f"{name}: sheet '{sheet}' not found")
 
-    for ref in sorted(set(re.findall(r"oracles/([\w./-]+\.json)", text))):
+    for ref in sorted(set(re.findall(r"oracles/([\w./-]+\.md)", text))):
         if not os.path.isfile(os.path.join(adapter_dir, "oracles", ref)):
             errs.append(f"{name}: adapter.md references oracles/{ref}, which is missing")
     return errs

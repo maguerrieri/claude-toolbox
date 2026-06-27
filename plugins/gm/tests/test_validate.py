@@ -33,30 +33,6 @@ def test_valid_minimal_adapter_passes(validate_path, tmp_path):
     assert run(validate_path, d).returncode == 0
 
 
-def test_nonascending_oracle_fails(validate_path, tmp_path):
-    d = _write_adapter(str(tmp_path), "bad", "name: bad",
-                       {"die": "1d6", "rows": [{"max": 6, "result": "a"}, {"max": 3, "result": "b"}]})
-    p = run(validate_path, d)
-    assert p.returncode == 1
-    assert "ascending" in p.stdout
-
-
-def test_incomplete_coverage_fails(validate_path, tmp_path):
-    d = _write_adapter(str(tmp_path), "bad2", "name: bad2",
-                       {"die": "1d100", "rows": [{"max": 50, "result": "a"}]})
-    p = run(validate_path, d)
-    assert p.returncode == 1
-    assert "coverage" in p.stdout
-
-
-def test_duplicate_max_fails(validate_path, tmp_path):
-    d = _write_adapter(str(tmp_path), "bad3", "name: bad3",
-                       {"die": "1d6", "rows": [{"max": 6, "result": "a"}, {"max": 6, "result": "b"}]})
-    p = run(validate_path, d)
-    assert p.returncode == 1
-    assert "duplicate" in p.stdout
-
-
 def test_missing_extends_parent_fails(validate_path, tmp_path):
     d = _write_adapter(str(tmp_path), "child", "name: child\nextends: nonexistent")
     p = run(validate_path, d)
@@ -94,10 +70,33 @@ def test_persona_naming_mechanic_fails(validate_path, tmp_path):
     assert "mechanic" in p.stdout
 
 
-def test_oracle_low_end_unreachable_fails(validate_path, tmp_path):
-    # a 2d6 table (min roll 2) with a max:1 row -> that row is unreachable
-    d = _write_adapter(str(tmp_path), "bad4", "name: bad4",
-                       {"die": "2d6", "rows": [{"max": 1, "result": "x"}, {"max": 12, "result": "y"}]})
+# --- MD table validation ---
+
+def _adapter(root, name, oracle_md=None):
+    """Minimal adapter dir builder for table tests."""
+    d = os.path.join(str(root), name)
+    os.makedirs(os.path.join(d, "oracles"), exist_ok=True)
+    body = f"# {name}\nSee `oracles/x.md`.\n" if oracle_md is not None else f"# {name}\n"
+    with open(os.path.join(d, "adapter.md"), "w") as f:
+        f.write("---\nname: " + name + "\n---\n\n" + body)
+    if oracle_md is not None:
+        with open(os.path.join(d, "oracles", "x.md"), "w") as f:
+            f.write(oracle_md)
+    return d
+
+
+def test_table_valid(validate_path, tmp_path):
+    d = _adapter(tmp_path, "good", oracle_md="- [50] No\n- [50] Yes\n")
+    assert run(validate_path, d).returncode == 0
+
+
+def test_table_zero_weight_fails(validate_path, tmp_path):
+    d = _adapter(tmp_path, "bad", oracle_md="- [0] nope\n- ok\n")
     p = run(validate_path, d)
-    assert p.returncode == 1
-    assert "die min" in p.stdout
+    assert p.returncode == 1 and "weight" in p.stdout
+
+
+def test_table_empty_fails(validate_path, tmp_path):
+    d = _adapter(tmp_path, "bad2", oracle_md="# header only\n")
+    p = run(validate_path, d)
+    assert p.returncode == 1 and "no entries" in p.stdout
