@@ -34,6 +34,7 @@
 Append to `plugins/gm/tests/test_roll.py`:
 
 ```python
+import json
 import os
 import subprocess
 
@@ -60,7 +61,6 @@ def test_table_ignores_headers_and_blanks(roll_path, tmp_path):
     # only the two "- " items are entries; the header and blank line are not
     t = _table(tmp_path, "# H\n\n- one\n- two\n")
     out = _roll(roll_path, "table", t, "--json", "--seed", "1").stdout
-    import json
     assert json.loads(out)["total"] == 2
 
 
@@ -299,7 +299,7 @@ Expected: a `🎲 table N/100 -> …` line whose result is one of the six yes-no
 
 ```bash
 git add plugins/gm/adapters
-git commit -m "[#11] (Claude Code + Opus 4.8) gm: migrate oracles JSON -> MD tables (behaviour-preserving)"
+git commit -m "[#11] (Claude Code + Opus 4.8) gm: migrate oracles JSON -> MD tables (behavior-preserving)"
 ```
 
 ---
