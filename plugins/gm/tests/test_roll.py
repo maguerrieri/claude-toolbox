@@ -3,8 +3,8 @@ import os
 import subprocess
 
 
-def run(roll_path, *args):
-    return subprocess.run([roll_path, *args], capture_output=True, text=True)
+def run(roll_path, *args, **kw):
+    return subprocess.run([roll_path, *args], capture_output=True, text=True, **kw)
 
 
 # --- standard notation (NdX±M) ---
@@ -165,13 +165,6 @@ def test_help_lists_subcommands(roll_path):
     assert "table" in out
 
 
-import subprocess
-
-
-def _roll(roll_path, *args, **kw):
-    return subprocess.run([roll_path, *args], capture_output=True, text=True, **kw)
-
-
 def _table(tmp_path, body):
     p = tmp_path / "t.md"
     p.write_text(body)
@@ -180,7 +173,7 @@ def _table(tmp_path, body):
 
 def test_table_uniform_pick_is_an_entry(roll_path, tmp_path):
     t = _table(tmp_path, "# Rumors\n- alpha\n- beta\n- gamma\n")
-    r = _roll(roll_path, "table", t, "--seed", "1")
+    r = run(roll_path, "table", t, "--seed", "1")
     assert r.returncode == 0
     assert any(w in r.stdout for w in ("alpha", "beta", "gamma"))
     assert "table" in r.stdout  # human header
@@ -189,15 +182,14 @@ def test_table_uniform_pick_is_an_entry(roll_path, tmp_path):
 def test_table_ignores_headers_and_blanks(roll_path, tmp_path):
     # only the two "- " items are entries; the header and blank line are not
     t = _table(tmp_path, "# H\n\n- one\n- two\n")
-    out = _roll(roll_path, "table", t, "--json", "--seed", "1").stdout
-    import json
+    out = run(roll_path, "table", t, "--json", "--seed", "1").stdout
     assert json.loads(out)["total"] == 2
 
 
 def test_table_weighted_distribution(roll_path, tmp_path):
     # weight 3 vs 1 over a fixed seed sweep -> "common" dominates, "rare" still reachable
     t = _table(tmp_path, "- [3] common\n- [1] rare\n")
-    picks = [json.loads(_roll(roll_path, "table", t, "--json", "--seed", str(s)).stdout)["picks"][0]
+    picks = [json.loads(run(roll_path, "table", t, "--json", "--seed", str(s)).stdout)["picks"][0]
              for s in range(40)]
     assert picks.count("common") > picks.count("rare")
     assert "rare" in picks  # not unreachable
@@ -205,30 +197,34 @@ def test_table_weighted_distribution(roll_path, tmp_path):
 
 def test_table_n_draws_distinct(roll_path, tmp_path):
     t = _table(tmp_path, "- a\n- b\n- c\n")
-    picks = json.loads(_roll(roll_path, "table", t, "--n", "3", "--json", "--seed", "2").stdout)["picks"]
+    picks = json.loads(run(roll_path, "table", t, "--n", "3", "--json", "--seed", "2").stdout)["picks"]
     assert sorted(picks) == ["a", "b", "c"]          # distinct, all drawn
 
 
 def test_table_multiline_entry_block(roll_path, tmp_path):
-    t = _table(tmp_path, "- **Edda** — keeper.\n    Wants: company.\n- plain\n")
     # force the first entry: weight it heavily so seed lands there, then assert the block
     t2 = _table(tmp_path, "- [99] **Edda** — keeper.\n    Wants: company.\n- [1] plain\n")
-    out = json.loads(_roll(roll_path, "table", t2, "--json", "--seed", "1").stdout)
+    out = json.loads(run(roll_path, "table", t2, "--json", "--seed", "1").stdout)
     assert out["total"] == 100
     assert "Edda" in out["picks"][0] and "Wants: company." in out["picks"][0]
 
 
 def test_table_missing_file_errors(roll_path, tmp_path):
-    r = _roll(roll_path, "table", str(tmp_path / "nope.md"))
+    r = run(roll_path, "table", str(tmp_path / "nope.md"))
     assert r.returncode != 0 and "roll:" in r.stderr
 
 
 def test_table_empty_errors(roll_path, tmp_path):
-    r = _roll(roll_path, "table", _table(tmp_path, "# only a header\n"))
+    r = run(roll_path, "table", _table(tmp_path, "# only a header\n"))
     assert r.returncode != 0 and "no entries" in r.stderr
+
+
+def test_table_zero_weight_errors(roll_path, tmp_path):
+    r = run(roll_path, "table", _table(tmp_path, "- [0] a\n- [1] b\n"), "--seed", "1")
+    assert r.returncode != 0 and "weight" in r.stderr
 
 
 def test_oracle_alias_forwards_to_table(roll_path, tmp_path):
     t = _table(tmp_path, "- [50] No\n- [50] Yes\n")
-    r = _roll(roll_path, "oracle", "--table", t, "--seed", "1")
+    r = run(roll_path, "oracle", "--table", t, "--seed", "1")
     assert r.returncode == 0 and ("No" in r.stdout or "Yes" in r.stdout)

@@ -59,7 +59,7 @@ roll table <file> [--n K] [--seed S] [--json]
 ```
 
 - `N = Σ weights`; roll `1..N` true-RNG (`secrets`); cumulative-map → the entry. Visible (Rule 0): `🎲 table 73/100 → <entry>`.
-- `--n K` → K **distinct** draws; `--seed` deterministic; `--json` → `{"file","total","picks":[...]}`.
+- `--n K` → K **distinct** draws; `--seed` deterministic; `--json` → `{"table","total","n","rolls","picks":[...]}`.
 - All-weight-1 table = uniform draw (the forge case). `roll oracle` is kept as a **deprecated alias** of `roll table` so existing muscle memory / external refs don't break.
 - Empty/missing file → clear error + non-zero exit (matches `roll`'s style).
 
