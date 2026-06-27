@@ -12,13 +12,13 @@ A Mythic-style, system-agnostic oracle. It supplies a yes/no oracle and a meanin
 
 ## Resolution rules
 
-- **Yes/No question.** When the fiction poses a question the GM shouldn't simply decide — *Is the door guarded? Does the contact show?* — roll `oracles/yes-no.json` with `bin/roll oracle --table <adapter>/oracles/yes-no.json`.
+- **Yes/No question.** When the fiction poses a question the GM shouldn't simply decide — *Is the door guarded? Does the contact show?* — roll `oracles/yes-no.md` with `bin/roll table <adapter>/oracles/yes-no.md`.
   - *Yes, and…* — yes, plus an extra benefit.
   - *Yes, but…* — yes, with a cost or catch.
   - *No, but…* — no, with a small consolation.
   - *No, and…* — no, plus an added complication.
   Interpret the result into the fiction, then keep the scene moving (see `gm-craft.md`: fail forward).
-- **Inspiration / meaning prompt.** When you need a spark — a complication, an NPC's angle, what's behind a door — roll `oracles/action.json` and `oracles/theme.json` and read the two words together (e.g. *Seize / Secret* → someone is trying to take something hidden).
+- **Inspiration / meaning prompt.** When you need a spark — a complication, an NPC's angle, what's behind a door — roll `oracles/action.md` and `oracles/theme.md` and read the two words together (e.g. *Seize / Secret* → someone is trying to take something hidden).
 - **Mechanics.** This adapter enforces no system. If the player runs a ruleset, they call its rolls via `bin/roll` (e.g. `roll 1d20+3`); the oracle answers everything the rules don't.
 
 ## When to roll vs. decide

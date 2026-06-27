@@ -1,0 +1,9 @@
+- [12] Barrier Islands — storm-lashed sea stacks and jagged isles off the western coast; home to stubborn fisherfolk and ancient, barnacled ruins
+- [12] Ragged Coast — a shattered coastline of sea caves, tidal inlets, and pirate havens; fog rolls in without warning
+- [12] Deep Wilds — a vast, lightless forest of towering black-barked trees; few trails, fewer who return
+- [12] Flooded Lands — drowned lowlands of brackish marsh, half-sunken ruins, and twisted willows; treacherous underfoot
+- [12] Havens — a cluster of hardscrabble settlements in a sheltered valley; the closest thing to civilisation the Ironlands offer
+- [12] Hinterlands — rolling upland pastures fading into dense pine forests; hunters, hermits, and beast-folk claim this ground
+- [12] Tempest Hills — a corrugated highland of windswept ridges and fast-running streams; iron ore runs through the stone
+- [8] Veiled Mountains — the jagged spine of the continent; snowfields, treacherous passes, and something old asleep in the high peaks
+- [8] Shattered Wastes — a blasted expanse of volcanic glass and ash fields at the far north; nothing should live here, yet things do

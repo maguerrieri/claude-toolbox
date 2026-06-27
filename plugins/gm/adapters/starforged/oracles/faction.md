@@ -1,0 +1,13 @@
+- [8] Dominion — an expansionist political power that claims sovereignty over settled systems and enforces it with a fleet.
+- [8] Merchant Guild — a trade consortium controlling supply routes and pricing. Profit is their ideology.
+- [8] Religious Order — a faith-driven organisation spreading doctrine across the Forge. Zealous, organised, long-memoried.
+- [8] Pirate Syndicate — organised raiders who prey on shipping lanes and extort settlements too weak to refuse.
+- [8] Salvager Clan — a loose confederation of independent scavengers who share intelligence and defend their territory.
+- [8] Iron Covenant — an oath-bound alliance of independent captains bound by mutual vows and a shared code of honour.
+- [8] Research Collective — scholars and scientists pooling resources to unlock the secrets of precursor vaults and the Forge itself.
+- [8] Settler Coalition — newly founded colonies banding together for mutual defence and resource sharing.
+- [8] Exiled Fleet — a displaced people living entirely aboard ships, searching for a new home or fighting to reclaim their old one.
+- [8] Mercenary Company — professional soldiers for hire. Neutral on ideology; very clear on payment terms.
+- [8] Smuggler Network — a web of contacts, dead drops, and fast ships moving contraband beyond the reach of any authority.
+- [8] Ancient Remnant — a survivor group clinging to the wreckage of a lost civilisation, guarding secrets they barely understand.
+- [4] Rogue AI Collective — machine intelligences that have broken free of human control and pursue their own inscrutable agenda.

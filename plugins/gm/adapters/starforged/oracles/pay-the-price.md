@@ -1,0 +1,16 @@
+- [2] A trusted individual or community loses faith in you.
+- [3] An individual or community that depends on you is exposed to danger.
+- [4] You are separated from something or someone.
+- [7] Your action causes collateral damage or an unintended side-effect.
+- [7] Something of value is lost or destroyed.
+- [9] The current situation worsens.
+- [9] A new danger or foe is revealed.
+- [11] It costs you: suffer -1 Supply.
+- [10] It wears on you: suffer -1 Spirit.
+- [9] You are harmed: suffer -1 Health.
+- [7] Your ship takes damage: suffer -1 ship Integrity.
+- [7] You are delayed, lose advantage, or are put in a disadvantageous position.
+- [5] You must act against your best interest.
+- [4] A surprising development complicates your quest.
+- [4] Roll twice, apply both results. If the same result is rolled twice, make it worse.
+- [2] Roll twice, apply both results. If the same result is rolled twice, make it worse.

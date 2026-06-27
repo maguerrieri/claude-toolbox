@@ -1,0 +1,24 @@
+- [2] A trusted ally or bond is lost or severed
+- [3] An important secret is revealed to the wrong person
+- [4] Someone is harmed — take -2 health, or an NPC is wounded, captured, or killed
+- [4] You are separated from a companion, ally, or loved one
+- [5] Your action has an unintended effect that makes things worse
+- [5] Something precious is lost, damaged, or stolen
+- [4] The current situation worsens — a new threat emerges, or an existing one escalates
+- [5] You are delayed or driven off course
+- [4] You must act against your vow or your people's interest to survive
+- [5] An adversary gains a new advantage, ally, or resource
+- [4] Your reputation takes a blow — roll action+theme to determine what rumour spreads
+- [5] A new danger or complication is introduced — roll the oracle or choose the most pressing threat
+- [5] A noncombatant, bystander, or innocent is put at risk
+- [4] You lose footing, position, or the initiative — you must act from a position of disadvantage
+- [5] Your path ahead is blocked or hidden — you cannot proceed without more information
+- [4] You are wounded or shaken — take -1 health and -1 spirit
+- [4] Supply dwindles — take -2 supply
+- [4] Your spirit falters — take -2 spirit
+- [4] A vow is jeopardised — mark a complication on its progress track (erase one tick)
+- [4] You are in a worse position than before and must Face Danger to recover
+- [5] The enemy is alerted — surprise is lost and they act against you
+- [4] You pay with flesh — take -3 health; describe the wound
+- [4] Roll twice and apply both results
+- [3] Choose the most thematically fitting result from this table

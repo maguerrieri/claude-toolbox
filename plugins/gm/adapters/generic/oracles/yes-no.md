@@ -1,0 +1,6 @@
+- [10] No, and… (an added complication)
+- [30] No
+- [10] No, but… (a small consolation)
+- [10] Yes, but… (a cost or catch)
+- [30] Yes
+- [10] Yes, and… (an extra benefit)

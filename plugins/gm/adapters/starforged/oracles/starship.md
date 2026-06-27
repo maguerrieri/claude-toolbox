@@ -1,0 +1,17 @@
+- [6] Blockade Runner — fast, low-profile hull built to slip through contested space. Lightly armed; relies on speed.
+- [6] Bulk Carrier — massive cargo hauler, slow and unarmed. What it lacks in grace it makes up in hold space.
+- [6] Colony Ship — aging generation vessel repurposed for shorter runs. Cavernous holds once full of settlers; now what?
+- [6] Corvette — nimble military escort, well-armed for its size. Favoured by patrol forces and independent operators alike.
+- [6] Courier — fast, single-pilot messenger craft with secure cargo hold. Knows every back-route in the sector.
+- [6] Derelict Hulk — drifting, apparently abandoned vessel. Systems may still be live; something may still be aboard.
+- [6] Deep Prospector — reinforced survey ship with long-range sensors and mining drones. Smells of stale air and old ore.
+- [6] Fringe Trader — battered merchant vessel that has seen every port. Owner is mechanic, captain, and crew.
+- [6] Frigate — mid-sized warship with heavy guns and a veteran crew. Imposing on any traffic scanner.
+- [6] Hospital Ship — marked with the white ring of medical neutrality. Armed only with hope; that marking is rarely respected.
+- [6] Interceptor — single-seat or two-seat combat craft, extremely fast. Dangerous in close quarters; fragile at range.
+- [6] Outrunner — stripped-down racing hull with oversized engines. Not built for cargo or comfort. Built to be first.
+- [6] Patrol Cutter — local-sector enforcement vessel. Well-maintained, armed to deter rather than destroy.
+- [6] Research Vessel — sensor arrays, labs, and a library larger than the crew quarters. Science first; survival second.
+- [6] Salvage Rig — industrial hauler bristling with cutting arms and a voracious hold. Trails debris everywhere it goes.
+- [6] Wanderer — no clear type; heavily modified over decades. Each owner left something behind. Hard to say what it is now.
+- [4] Warship — front-line combat vessel, armour thick and guns hot. Its presence means war is either here or coming.

@@ -13,7 +13,7 @@ This is high-stakes sci-fi with mythic weight. Technology is old, strange, and s
 
 ## What this adapter provides
 
-- **`oracles/`** — Starforged oracle tables for actions, themes, sector and planet generation, ships, factions, character names, and the Pay the Price table. Pair `action.json` + `theme.json` for an inspiration prompt.
+- **`oracles/`** — Starforged oracle tables for actions, themes, sector and planet generation, ships, factions, character names, and the Pay the Price table. Pair `action.md` + `theme.md` for an inspiration prompt.
 - **`rules/moves.md`** — the core Starforged move list with triggers, stats, and outcomes.
 - **`rules/assets.md`** — example assets (starships, modules, paths, companions).
 
@@ -37,7 +37,7 @@ Progress tracks, momentum, vows, and the health/spirit/supply/momentum sheet are
 
 ## When to roll oracles
 
-Use the Starforged oracles when the fiction demands a detail you shouldn't decide alone: a planet you're approaching, an NPC's disposition, a complication aboard your ship. Pair `oracles/action.json` + `oracles/theme.json` for a two-word spark and interpret it into the fiction. Roll `oracles/pay-the-price.json` on a miss if nothing more specific fits.
+Use the Starforged oracles when the fiction demands a detail you shouldn't decide alone: a planet you're approaching, an NPC's disposition, a complication aboard your ship. Pair `oracles/action.md` + `oracles/theme.md` for a two-word spark and interpret it into the fiction. Roll `oracles/pay-the-price.md` on a miss if nothing more specific fits.
 
 ## Safety
 
