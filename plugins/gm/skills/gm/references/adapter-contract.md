@@ -7,7 +7,7 @@ An **adapter** teaches the gm core one game's *rules* — its dice, oracles, mov
 ```
 adapters/<name>/
   adapter.md          # manifest (front-matter) + resolution rules (prose)
-  oracles/*.json      # oracle tables the core rolls on (see "Oracle tables")
+  oracles/*.md        # oracle tables the core rolls on (see "Tables")
   rules/*             # optional: moves, assets, other content
   sheet-template.md   # the sheet schema (optional — a variant may inherit its base's via extends:)
 ```
@@ -26,25 +26,31 @@ visibility: player        # player | gm — see "Visibility (the GM screen)"
 ---
 ```
 Body (prose the core follows):
-- **Resolution rules** — when the fiction needs a mechanical answer, which oracle/roll applies and how its result maps to an outcome. Written as instructions, e.g. *"For a yes/no question, roll `oracles/yes-no.json`; on a 'Yes, and' grant a bonus, on a 'No, and' add a complication."*
+- **Resolution rules** — when the fiction needs a mechanical answer, which oracle/roll applies and how its result maps to an outcome. Written as instructions, e.g. *"For a yes/no question, roll `oracles/yes-no.md`; on a 'Yes, and' grant a bonus, on a 'No, and' add a complication."*
 - **Safety defaults** — lines & veils prompts, tone guardrails.
 
-## Oracle tables (`oracles/*.json`)
+## Tables (`oracles/*.md`)
 
-The exact shape `bin/roll oracle --table <path>` reads:
-```json
-{
-  "die": "1d100",
-  "rows": [
-    { "max": 50, "result": "No" },
-    { "max": 100, "result": "Yes" }
-  ]
-}
+Oracle and inspiration tables are **Markdown files** (`roll table <path>` reads them; `roll oracle` is a deprecated alias). Adapters ship tables under `oracles/`; player campaigns keep hand-authored or forged tables in `tables/` (and sealed GM tables in `.gm/tables/`). All three share the same format.
+
+**Entry format — the block rule:**
+
+```markdown
+- Result text that can span
+  multiple indented lines up to
+  the next top-level `- `.
+
+- [3] A weighted entry (weight 3).
+  Indented continuation is fine here too.
+
+- Another entry (weight defaults to 1).
 ```
-- `die` — a simple `NdX` dice expression (e.g. `1d100`, `2d6`); oracle dice don't take modifiers / keep-drop / exploding.
-- `rows` — ascending by `max` with no duplicates, covering the die's full range (`min..max` — e.g. `1..100` for `1d100`). The first row whose `max ≥ roll` wins.
 
-A meaning/inspiration oracle may be **split across tables read together** (e.g. `action.json` + `theme.json`) rather than packed into one file.
+- An **entry** is a top-level `- ` bullet plus any immediately-indented continuation lines, up to (but not including) the next top-level `- `.
+- `- [w]` sets the entry's **weight** (a positive integer; default `1` when the bracket is absent).
+- **Count model:** `N = Σweights`. The roller assigns each entry a cumulative range of width `w` within `1..N`, then draws `roll 1..N` — gaps are impossible and coverage is automatic. No `die` field, no `max` arithmetic to maintain.
+
+A meaning/inspiration oracle may be **split across tables read together** (e.g. `action.md` + `theme.md`) rather than packed into one file.
 
 ## Composition (`extends:`)
 
