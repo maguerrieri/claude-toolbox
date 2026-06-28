@@ -1,4 +1,3 @@
-import json
 import os
 import subprocess
 
@@ -10,31 +9,17 @@ def run(validate_path, *args):
 ADAPTERS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "adapters"))
 
 
-def _write_adapter(root, name, frontmatter, oracle=None):
-    d = os.path.join(root, name)
-    os.makedirs(os.path.join(d, "oracles"), exist_ok=True)
-    with open(os.path.join(d, "adapter.md"), "w") as f:
-        f.write("---\n" + frontmatter + "\n---\n\n# " + name + "\n")
-    if oracle is not None:
-        with open(os.path.join(d, "oracles", "t.json"), "w") as f:
-            json.dump(oracle, f)
-    return d
-
-
 def test_real_adapters_all_valid(validate_path):
     # every shipped adapter (generic, ironsworn-core, ironsworn, starforged) must validate
     p = run(validate_path, "--all", ADAPTERS)
     assert p.returncode == 0, p.stdout + p.stderr
 
 
-def test_valid_minimal_adapter_passes(validate_path, tmp_path):
-    d = _write_adapter(str(tmp_path), "ok", 'name: ok\ndice: ["1d6"]',
-                       {"die": "1d6", "rows": [{"max": 3, "result": "lo"}, {"max": 6, "result": "hi"}]})
-    assert run(validate_path, d).returncode == 0
-
-
 def test_missing_extends_parent_fails(validate_path, tmp_path):
-    d = _write_adapter(str(tmp_path), "child", "name: child\nextends: nonexistent")
+    d = os.path.join(str(tmp_path), "child")
+    os.makedirs(os.path.join(d, "oracles"), exist_ok=True)
+    with open(os.path.join(d, "adapter.md"), "w") as f:
+        f.write("---\nname: child\nextends: nonexistent\n---\n\n# child\n")
     p = run(validate_path, d)
     assert p.returncode == 1
     assert "extends" in p.stdout

@@ -1,0 +1,25 @@
+{
+  "die": "1d20",
+  "rows": [
+    { "max": 1, "result": "Abandon" },
+    { "max": 2, "result": "Betray" },
+    { "max": 3, "result": "Bind" },
+    { "max": 4, "result": "Break" },
+    { "max": 5, "result": "Conceal" },
+    { "max": 6, "result": "Corrupt" },
+    { "max": 7, "result": "Demand" },
+    { "max": 8, "result": "Discover" },
+    { "max": 9, "result": "Escape" },
+    { "max": 10, "result": "Gather" },
+    { "max": 11, "result": "Guard" },
+    { "max": 12, "result": "Hunt" },
+    { "max": 13, "result": "Offer" },
+    { "max": 14, "result": "Oppose" },
+    { "max": 15, "result": "Reveal" },
+    { "max": 16, "result": "Sacrifice" },
+    { "max": 17, "result": "Seize" },
+    { "max": 18, "result": "Travel" },
+    { "max": 19, "result": "Trust" },
+    { "max": 20, "result": "Unleash" }
+  ]
+}

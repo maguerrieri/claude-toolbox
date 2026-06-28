@@ -1,0 +1,22 @@
+{
+  "die": "1d100",
+  "rows": [
+    { "max": 6, "result": "Blockade Runner — fast, low-profile hull built to slip through contested space. Lightly armed; relies on speed." },
+    { "max": 12, "result": "Bulk Carrier — massive cargo hauler, slow and unarmed. What it lacks in grace it makes up in hold space." },
+    { "max": 18, "result": "Colony Ship — aging generation vessel repurposed for shorter runs. Cavernous holds once full of settlers; now what?" },
+    { "max": 24, "result": "Corvette — nimble military escort, well-armed for its size. Favoured by patrol forces and independent operators alike." },
+    { "max": 30, "result": "Courier — fast, single-pilot messenger craft with secure cargo hold. Knows every back-route in the sector." },
+    { "max": 36, "result": "Derelict Hulk — drifting, apparently abandoned vessel. Systems may still be live; something may still be aboard." },
+    { "max": 42, "result": "Deep Prospector — reinforced survey ship with long-range sensors and mining drones. Smells of stale air and old ore." },
+    { "max": 48, "result": "Fringe Trader — battered merchant vessel that has seen every port. Owner is mechanic, captain, and crew." },
+    { "max": 54, "result": "Frigate — mid-sized warship with heavy guns and a veteran crew. Imposing on any traffic scanner." },
+    { "max": 60, "result": "Hospital Ship — marked with the white ring of medical neutrality. Armed only with hope; that marking is rarely respected." },
+    { "max": 66, "result": "Interceptor — single-seat or two-seat combat craft, extremely fast. Dangerous in close quarters; fragile at range." },
+    { "max": 72, "result": "Outrunner — stripped-down racing hull with oversized engines. Not built for cargo or comfort. Built to be first." },
+    { "max": 78, "result": "Patrol Cutter — local-sector enforcement vessel. Well-maintained, armed to deter rather than destroy." },
+    { "max": 84, "result": "Research Vessel — sensor arrays, labs, and a library larger than the crew quarters. Science first; survival second." },
+    { "max": 90, "result": "Salvage Rig — industrial hauler bristling with cutting arms and a voracious hold. Trails debris everywhere it goes." },
+    { "max": 96, "result": "Wanderer — no clear type; heavily modified over decades. Each owner left something behind. Hard to say what it is now." },
+    { "max": 100, "result": "Warship — front-line combat vessel, armour thick and guns hot. Its presence means war is either here or coming." }
+  ]
+}
