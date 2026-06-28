@@ -114,7 +114,8 @@ def parse_table(text):
 
 
 def roll_table(path, n=1, seed=None):
-    entries = parse_table(open(path).read())
+    with open(path) as fh:
+        entries = parse_table(fh.read())
     if not entries:
         raise ValueError(f"no entries in table: {path}")
     if any(e["weight"] < 1 for e in entries):
@@ -130,7 +131,7 @@ def roll_table(path, n=1, seed=None):
             if face <= acc:
                 rolls.append(face); picks.append(e["entry"]); pool.pop(i)
                 break
-    return {"table": path, "total": total, "n": n, "rolls": rolls, "picks": picks}
+    return {"table": path, "total": total, "n": len(picks), "rolls": rolls, "picks": picks}
 
 
 def human_table(r):

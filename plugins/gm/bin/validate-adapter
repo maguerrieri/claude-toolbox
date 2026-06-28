@@ -36,7 +36,9 @@ def parse_frontmatter(path):
 
 def validate_table(path):
     errs, entries = [], 0
-    for line in open(path).read().splitlines():
+    with open(path) as fh:
+        lines = fh.read().splitlines()
+    for line in lines:
         m = TABLE_ENTRY.match(line)
         if m:
             entries += 1

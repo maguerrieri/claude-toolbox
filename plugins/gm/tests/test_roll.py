@@ -201,6 +201,13 @@ def test_table_n_draws_distinct(roll_path, tmp_path):
     assert sorted(picks) == ["a", "b", "c"]          # distinct, all drawn
 
 
+def test_table_n_capped_to_entry_count(roll_path, tmp_path):
+    # --n larger than entry count: result n reflects actual picks, not requested n
+    t = _table(tmp_path, "- a\n- b\n- c\n")
+    out = json.loads(run(roll_path, "table", t, "--n", "100", "--json", "--seed", "1").stdout)
+    assert out["n"] == len(out["picks"]) == 3
+
+
 def test_table_multiline_entry_block(roll_path, tmp_path):
     # force the first entry: weight it heavily so seed lands there, then assert the block
     t2 = _table(tmp_path, "- [99] **Edda** — keeper.\n    Wants: company.\n- [1] plain\n")

@@ -1,0 +1,25 @@
+{
+  "die": "1d20",
+  "rows": [
+    { "max": 1, "result": "Bargain" },
+    { "max": 2, "result": "Bond" },
+    { "max": 3, "result": "Burden" },
+    { "max": 4, "result": "Death" },
+    { "max": 5, "result": "Debt" },
+    { "max": 6, "result": "Faith" },
+    { "max": 7, "result": "Fear" },
+    { "max": 8, "result": "Freedom" },
+    { "max": 9, "result": "Home" },
+    { "max": 10, "result": "Hunger" },
+    { "max": 11, "result": "Legacy" },
+    { "max": 12, "result": "Lie" },
+    { "max": 13, "result": "Mercy" },
+    { "max": 14, "result": "Oath" },
+    { "max": 15, "result": "Power" },
+    { "max": 16, "result": "Refuge" },
+    { "max": 17, "result": "Ruin" },
+    { "max": 18, "result": "Secret" },
+    { "max": 19, "result": "Storm" },
+    { "max": 20, "result": "Threshold" }
+  ]
+}

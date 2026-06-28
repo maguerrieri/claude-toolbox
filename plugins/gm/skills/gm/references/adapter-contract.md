@@ -47,7 +47,7 @@ Oracle and inspiration tables are **Markdown files** (`roll table <path>` reads 
 ```
 
 - An **entry** is a top-level `- ` bullet plus any immediately-indented continuation lines, up to (but not including) the next top-level `- `.
-- `- [w]` sets the entry's **weight** (a positive integer; default `1` when the bracket is absent).
+- `- [w]` sets the entry's **weight** (a positive integer; default `1` when the bracket is absent). The format is a plain top-level `- ` list (not inside ``` code fences); `[w]` must be a positive integer — a malformed or negative weight is treated as literal entry text, not a weight.
 - **Count model:** `N = Σweights`. The roller assigns each entry a cumulative range of width `w` within `1..N`, then draws `roll 1..N` — gaps are impossible and coverage is automatic. No `die` field, no `max` arithmetic to maintain.
 
 A meaning/inspiration oracle may be **split across tables read together** (e.g. `action.md` + `theme.md`) rather than packed into one file.
