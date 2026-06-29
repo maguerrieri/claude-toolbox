@@ -10,7 +10,7 @@ One repo, declared per-project, works in local and cloud sessions alike.
   New plugins added to this repo should also be added to its dependencies.
 - **conventions** — cross-repo development conventions. Currently: commit
   message format. Candidates to move in later: merge policy, issue/epic
-  structure, the ticket-workflow skills.
+  structure.
 - **spawn** — generic background-session fan-out: the `spawn` skill plus the
   `/spawn` command, for firing off one or more independent `claude --bg`
   sessions and handing back without blocking.
@@ -19,6 +19,11 @@ One repo, declared per-project, works in local and cloud sessions alike.
   diversity-prompted parallel passes → axis-tag → cluster) that fights LLM
   mode-collapse, with the decision handoff behind a pluggable **Promotion
   adapter** (`inline` / `github-issue` / `adr`, or point it at your own).
+- **ticket-workflow** — end-to-end issue workflow: the `ticket-workflow` skill
+  plus `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, and
+  `/spawn-epic`. Takes an issue from open to a reviewed PR and on to merged, with a
+  pluggable **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn`
+  for its parallel fan-out.
 
 ## Usage
 
