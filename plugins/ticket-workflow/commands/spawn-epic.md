@@ -14,6 +14,8 @@ Thin launcher over `/start-epic`: spawn ONE background session that runs the ful
 claude --bg --name "<repo> <epic-id>: epic — <quick description>" "/start-epic $ARGUMENTS"
 ```
 
+If "$ARGUMENTS" can contain shell metacharacters (`$`, backticks, `$(...)`), don't interpolate it raw into double quotes — the shell would expand and corrupt the prompt. Pass it via a single-quoted heredoc into a variable instead, then use that variable as the prompt (same mitigation the `/spawn` command documents).
+
 `<quick description>`: an under-5-word summary of the epic, recognizable in the session list. The `epic —` marker distinguishes this orchestrator session from the `<epic-id-lower>-<id-lower>` child sessions it will spawn.
 
 4. Report the session name and the handles — `claude agents` to list, `claude attach "<name>"` to open, `claude logs "<name>"` read-only (quote the name; it contains spaces) — and hand back without blocking.
