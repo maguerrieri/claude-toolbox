@@ -24,13 +24,17 @@ gh issue edit <n> --add-label "in progress"
 Skip silently if it errors (e.g. label doesn't exist) — START is best-effort.
 
 ## COMMIT_REF(id)  — commit message format
-- No bracket prefix. Reference the issue in the subject's trailing parens, conventional-commit style:
-  - `<scope>: <description> (#42)`
-  - e.g. `upload: retry transient 5xx with backoff (#42)`
-- When AI-assisted, follow the user's usual attribution in the body, not the subject.
+- Follow the repo's commit convention. In this marketplace that's the `conventions` plugin's
+  format: `[#<n>] (<flags>) <scope>: <description>` — the GitHub issue in brackets, AI-assistance
+  flags in the subject parens.
+  - e.g. `[#42] (Claude Code + Opus 4.8) upload: retry transient 5xx with backoff`
+- If the repo documents no convention, a plain conventional-commit subject that references the
+  issue in trailing parens is fine: `<scope>: <description> (#42)`.
 
 ## PR_REF(id)  — PR title + issue link
-- **Title:** `<description> (#42)` (no `[TICKET]` brackets — that's the Jira convention).
+- **Title:** `<scope>: <description> (#42)` — reference the issue in trailing parens. (Commit
+  *subjects* follow the `conventions` bracket form above; PR titles conventionally don't carry the
+  bracket — follow the repo's own PR-title style if it differs.)
 - **Body footer:** include a closing keyword so the merge auto-closes the issue:
   - `Closes #42`  (use `Fixes #42` for bugs if you prefer)
 - Because of the closing keyword, FINISH's `DONE` is usually automatic.
@@ -62,7 +66,7 @@ GitHub has no first-class issue dependencies, so derive them:
 Return the set of child numbers this child is blocked by, **keeping only those that are themselves children of this epic**. Empty set → it's a root.
 
 ## COORD(epic_id)  — coordination channel for a coordinated EPIC run (EPIC phase)
-The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode. On GitHub, use the **epic issue's comments**:
+The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode. On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
 ```bash
 gh issue comment <epic_id> --body "claim: <session> -> <files>"   # post a marker
 gh issue view <epic_id> --json comments -q '.comments[].body'      # read existing markers
