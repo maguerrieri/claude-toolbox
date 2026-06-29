@@ -1,0 +1,54 @@
+# Tracker adapter: Jira
+
+Jira issue-tracking adapter — `FETCH`, ID→branch, commit/PR refs, close. Pair it with
+whatever **profile** fits the repo: a personal Jira repo with the `default` profile, or
+an org repo with an org-specific profile (which adds that org's engineering steps — its
+review-bot cycle, tagged deploys, error-tracking resolution, and so on), kept in the org's
+own work config, not here.
+
+## ID format
+- `<PROJECT>-<number>`, e.g. `ABC-12`, `WEB-1024` (`[A-Z][A-Z0-9]+-\d+` — any number of digits).
+
+## BRANCH(id)
+- Lowercase the ID: `ABC-12` → `abc-12`.
+
+## FETCH(id)
+- Preferred: the `getJiraIssue` MCP tool with the ID (requires the Jira MCP server to be connected — it may not be, on a personal machine).
+- If MCP isn't available, ask the user to paste the summary/description, or use a Jira CLI if one is configured.
+- Read the summary and description; look for a base-branch directive.
+
+## START(id)  — mark in-progress (optional)
+- Transition the issue to "In Progress" and assign to the user, via the Jira MCP/CLI if available. Best-effort; skip if not wired.
+
+## COMMIT_REF(id)  — commit message format
+- Default to the standard Jira convention: prefix the subject with the key in brackets — `[<ID>] <description>` (e.g. `[ABC-123] retry transient 5xx with backoff`).
+- Otherwise follow the repo's own commit convention. Org-specific formats (e.g. an org's flagged `[ID] (flags) scope: …` convention) belong in that org's work config, not in this portable adapter.
+
+## PR_REF(id)  — PR title + issue link
+- **Title:** `[<ID>] <short description>`.
+- **Body:** reference the ticket (link or `<ID>`). Jira doesn't auto-close from PR keywords, so closing happens in `DONE`.
+
+## DONE(id)  — resolve the ticket
+- Transition the issue to its resolved/done state via the Jira MCP/CLI. Add fix version / resolution per the project's conventions if required.
+- If a Jira automation already closes on merge, just verify the state.
+
+## EPIC_CHILDREN(id)  — list an epic's child tickets (EPIC phase)
+Jira epics are first-class. `<EPIC-ID>` is the **key** (e.g. `ABC-40`), not a numeric id.
+- Via the Jira MCP/CLI, list issues whose Epic Link / parent is `<EPIC-ID>`:
+  - company-managed: JQL `"Epic Link" = <EPIC-ID>`
+  - team-managed / next-gen: JQL `parent = <EPIC-ID>`
+  - The field name `"Epic Link"` contains a space, so it **must stay double-quoted inside the JQL**. Through the MCP tool that's just the param value; through a shell CLI, escape the inner quotes (e.g. `--jql '"Epic Link" = ABC-40'` with single-quotes, or `\"Epic Link\"`) or the field collapses to an invalid unquoted token.
+- Return `(key, summary, labels, components)` for each child — labels/components feed the EPIC coupling router (SKILL.md EPIC Step 3).
+- If MCP/CLI isn't wired, ask the user to paste the child keys.
+
+## DEPS(id)  — intra-epic dependencies for a child (EPIC phase)
+- **Issue links:** Jira's "is blocked by" / "depends on" links (read the child's `issuelinks`).
+- **Body directive (fallback):** a `Depends on <KEY>` / `Blocked by <KEY>` line in the description.
+
+Return the set of child keys this child is blocked by, **keeping only those that are themselves children of this epic**. Empty set → it's a root.
+
+## COORD(epic_id)  — coordination channel for a coordinated EPIC run (EPIC phase)
+The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode. On Jira, use **comments on the epic issue** via the Jira MCP/CLI (add-comment / read-comments on `<epic_id>`); markers are plain prefixed lines (`claim:`, `pushed:`, `done:`). Unlike GitHub's `gh issue comment`, this goes through the MCP comment API, not a CLI flag — which is exactly why the channel is an adapter op rather than hard-coded in the skill body. If comments aren't agent-writable here, the coordinated route isn't available — **fall back to `--independent` bg routing and note the overlap risk**, rather than improvising an unspecified channel.
+
+## Review bot
+- The review bot is a **profile** concern — see the selected profile's `REVIEW_BOT` (e.g. an org profile may drive a Copilot or CodeRabbit cycle).
