@@ -55,14 +55,18 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   they need no explicit request.)
 
 - **Read the unresolved threads** (authoritative — works on any repo, no extra tooling). Each thread
-  carries the node `id` you need to reply/resolve, plus its file and first comment:
+  carries the node `id` you need to reply/resolve, plus its file and first comment. Use `--paginate`
+  with an `$endCursor`/`pageInfo` pair so a PR with >100 threads isn't silently truncated — this is a
+  completion gate, so it must not under-count (the same pagination the github tracker's `EPIC_CHILDREN`
+  uses):
   ```bash
-  gh api graphql -f owner=OWNER -f repo=REPO -F pr=<pr> -f query='
-    query($owner:String!,$repo:String!,$pr:Int!){
+  gh api graphql --paginate -f owner=OWNER -f repo=REPO -F pr=<pr> -f query='
+    query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
       repository(owner:$owner,name:$repo){
         pullRequest(number:$pr){
-          reviewThreads(first:100){ nodes{ id isResolved path
-            comments(first:1){ nodes{ author{login} body } } } } } } }' \
+          reviewThreads(first:100, after:$endCursor){
+            pageInfo{ hasNextPage endCursor }
+            nodes{ id isResolved path comments(first:1){ nodes{ author{login} body } } } } } } }' \
     --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)"
   ```
 
