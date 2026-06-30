@@ -7,10 +7,11 @@ as their own profile file and are pointed to from the repo's CLAUDE.md
 
 ## Authoring a profile (and `Inherits:`)
 
-A profile is one markdown file with a `## <OP>` section per profile op
-(`REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`,
-`POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`). The simplest profile is **standalone** —
-it defines all nine ops, and the file is read as-is.
+A profile is a markdown file whose `## <OP>` sections supply profile ops — the nine
+being `REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`,
+`POST_MERGE`, `COMMIT_STYLE`, and `SPAWN_CAP`. A **standalone** profile defines all
+nine and is read as-is; a **partial** profile (below) defines only the ops it changes
+and inherits the rest from a base.
 
 To override only a few ops, write a **partial profile** that declares a base:
 
