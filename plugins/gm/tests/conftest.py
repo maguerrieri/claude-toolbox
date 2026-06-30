@@ -22,3 +22,10 @@ def campaign_path():
     """Absolute path to bin/campaign."""
     here = os.path.dirname(__file__)
     return os.path.abspath(os.path.join(here, "..", "bin", "campaign"))
+
+
+@pytest.fixture
+def forge_path():
+    """Absolute path to bin/forge."""
+    here = os.path.dirname(__file__)
+    return os.path.abspath(os.path.join(here, "..", "bin", "forge"))
