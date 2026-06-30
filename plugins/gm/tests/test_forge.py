@@ -50,6 +50,14 @@ def test_harvest_no_reservoir_errors(forge_path, tmp_path):
     assert p.returncode != 0 and "Reservoir" in p.stderr
 
 
+def test_harvest_missing_reservoir_errors_cleanly(forge_path, tmp_path):
+    missing = tmp_path / "nope.md"   # never created — open() would raise FileNotFoundError
+    p = run(forge_path, "harvest", str(missing), str(tmp_path / "t.md"))
+    assert p.returncode != 0
+    assert p.stderr.startswith("forge:")     # clean one-line error, not a raw traceback
+    assert "Traceback" not in p.stderr
+
+
 def test_promotion_seal_round_trip(campaign_path, tmp_path):
     d = str(tmp_path / "camp")
     subprocess.run([campaign_path, "init", d], capture_output=True, text=True)

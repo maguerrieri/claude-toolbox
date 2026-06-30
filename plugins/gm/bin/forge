@@ -55,7 +55,10 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("harvest"); p.add_argument("reservoir"); p.add_argument("table")
     a = ap.parse_args(argv)
-    {"harvest": cmd_harvest}[a.cmd](a)
+    try:
+        {"harvest": cmd_harvest}[a.cmd](a)
+    except OSError as e:
+        sys.exit(f"forge: {e}")
 
 
 if __name__ == "__main__":

@@ -20,11 +20,13 @@ to the player. Return `(sealed: <slot> in .gm/)`.
 
 ## BACKLINK(ref)
 
-Add one line under the reservoir's `## Cold storage` section (or a note in
-`.gm/`) that records the decision for the GM's own continuity:
+Add one line to the **durable** table's `## Cold storage` section —
+`<campaign>/tables/<type>.md` (or the sealed `<campaign>/.gm/tables/<type>.md`) — recording
+the decision for the GM's own continuity:
 
 ```
 promoted <date>: <slot> — sealed in .gm/ (rivals kept)
 ```
 
-The rivals stay in the pool / cold storage; nothing is deleted (kill ≠ delete).
+The rivals stay in cold storage; nothing is deleted (kill ≠ delete). Not the reservoir,
+which is scratch and overwritten on the next forge.

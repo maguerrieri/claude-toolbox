@@ -11,9 +11,10 @@ is read from `<campaign>/campaign.md`.
    - `${CLAUDE_PLUGIN_ROOT}/adapters/generic/frames/<type>.md` (neutral baseline)
    - Frame `<type>` on the fly using the campaign's truths and tone from `<campaign>/campaign.md`
 
-2. **Generate the reservoir** (if the `generate` plugin is available). Invoke the
-   `generate` skill for `<type>` (count N) seeded with the resolved frame → it writes a
-   reservoir to `<campaign>/docs/generation/<type>.md`.
+2. **Generate the reservoir** (if the `generate` plugin is available). From the `<campaign>`
+   directory (cwd), invoke the `generate` skill for `<type>` (count N) seeded with the
+   resolved frame. `generate` writes to `docs/generation/<type>.md` relative to cwd, so
+   running it from `<campaign>` lands the reservoir at `<campaign>/docs/generation/<type>.md`.
 
 3. **Harvest.** Run via Bash (not the Write tool — so a sealed table stays collapsed in
    the transcript):
@@ -28,8 +29,10 @@ is read from `<campaign>/campaign.md`.
 
 4. **Degradation** (if `generate` is absent). Announce the reduced diversity. Improvise
    ~6–10 diverse entries into a scratch reservoir at `<campaign>/docs/generation/<type>.md`
-   (Write tool — reservoir format: a `## Reservoir` heading, then one `- ` entry per line),
-   then run `forge harvest` as in step 3 — the table is rollable immediately.
+   (reservoir format: a `## Reservoir` heading, then one `- ` entry per line) — via the
+   Write tool for an open forge, or a **Bash heredoc for `--secret`** (the Write tool would
+   render the candidate pool, which *is* the secret, inline in the transcript; Bash keeps it
+   collapsed). Then run `forge harvest` as in step 3 — the table is rollable immediately.
    Reforge with `generate` present when session pace allows.
 
 Obey Rule 0 — once the table exists, rolls come from the die, not from thin air.
