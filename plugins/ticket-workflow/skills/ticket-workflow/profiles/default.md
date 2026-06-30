@@ -7,11 +7,12 @@ as their own profile file and are pointed to from the repo's CLAUDE.md
 
 ## Authoring a profile (and `Inherits:`)
 
-A profile is a markdown file whose `## <OP>` sections supply profile ops — the nine
-being `REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`,
-`POST_MERGE`, `COMMIT_STYLE`, and `SPAWN_CAP`. A **standalone** profile defines all
-nine and is read as-is; a **partial** profile (below) defines only the ops it changes
-and inherits the rest from a base.
+A profile is a markdown file whose `## <OP>` sections supply the nine profile ops
+(`REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`,
+`POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`); it may also carry a supplementary section
+or two (this `default` profile adds `## EPIC`). A **standalone** profile is read
+as-is; a **partial** profile (below) declares a base and defines only the ops it
+changes, inheriting the rest.
 
 To override only a few ops, write a **partial profile** that declares a base:
 
@@ -23,6 +24,10 @@ Inherits: default
 ## POST_MERGE
 - Resolve the matching Sentry issue and land any merged ADR drafts.
 ```
+
+That fenced block is illustrative: when a profile is *resolved*, content inside code
+fences is ignored — so this `default.md` is **not** read as declaring `Inherits: default`
+or a second `## POST_MERGE`. Authoring examples stay safely inside fences.
 
 `Inherits: <base>` (its own line, conventionally near the top) layers this profile
 **over** the base: every op it defines wins; every op it omits comes from the base.
