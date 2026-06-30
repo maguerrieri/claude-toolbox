@@ -20,6 +20,8 @@ import sys
 # NOTE: duplicated in bin/roll — keep in sync.
 TABLE_ENTRY = re.compile(r"^- (?:\[(\d+)\]\s*)?(.*)$")
 
+AXIS_ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
+
 
 def parse_frontmatter(path):
     text = open(path).read()
@@ -32,6 +34,34 @@ def parse_frontmatter(path):
             k, v = line.split(":", 1)
             fm[k.strip()] = v.strip()
     return fm, text
+
+
+def validate_frame(path):
+    name = os.path.basename(path)
+    text = open(path).read()
+    errs = []
+    m = re.search(r"^##\s+Axes\b(.*?)(^##\s+|\Z)", text, re.S | re.M | re.I)
+    if not m:
+        return [f"frame {name}: missing '## Axes' section"]
+    axes = []
+    for line in m.group(1).splitlines():
+        r = AXIS_ROW.match(line)
+        if not r:
+            continue
+        axis, values = r.group(1).strip(), r.group(2).strip()
+        if axis.lower() in ("axis", "") or set(values) <= set("-| "):
+            continue                                   # header / separator row
+        vals = [v.strip() for v in values.split(",") if v.strip()]
+        axes.append((axis, vals))
+    if not 4 <= len(axes) <= 6:
+        errs.append(f"frame {name}: has {len(axes)} axes (need 4-6)")
+    for axis, vals in axes:
+        if not 3 <= len(vals) <= 5:
+            errs.append(f"frame {name}: axis '{axis}' has {len(vals)} values (need 3-5)")
+    shape = re.search(r"^##\s+Shape\b(.*?)(^##\s+|\Z)", text, re.S | re.M | re.I)
+    if not shape or not shape.group(1).strip():
+        errs.append(f"frame {name}: missing or empty '## Shape' section")
+    return errs
 
 
 def validate_table(path):
@@ -78,6 +108,9 @@ def validate_adapter(adapter_dir, adapters_root):
     for f in sorted(glob.glob(os.path.join(adapter_dir, "oracles", "*.md"))):
         errs += validate_table(f)
 
+    for f in sorted(glob.glob(os.path.join(adapter_dir, "frames", "*.md"))):
+        errs += validate_frame(f)
+
     sheet = fm.get("sheet")
     if sheet and not os.path.isfile(os.path.join(adapter_dir, sheet)):
         errs.append(f"{name}: sheet '{sheet}' not found")
@@ -122,10 +155,19 @@ def main(argv=None):
                     help="treat each path as a root and validate every subdir with an adapter.md / persona.md")
     ap.add_argument("--personas", action="store_true",
                     help="validate persona.md files instead of adapters")
+    ap.add_argument("--frames", action="store_true",
+                    help="validate frame *.md files in the given dir(s)")
     a = ap.parse_args(argv)
 
     errs = []
-    if a.personas:
+    if a.frames:
+        targets = []
+        for path in a.paths:
+            targets += sorted(glob.glob(os.path.join(path, "*.md")))
+        for t in targets:
+            errs += validate_frame(t)
+        kind = "frame"
+    elif a.personas:
         if a.all:
             targets = [d for root in a.paths for d in sorted(glob.glob(os.path.join(root, "*")))
                        if os.path.isfile(os.path.join(d, "persona.md"))]

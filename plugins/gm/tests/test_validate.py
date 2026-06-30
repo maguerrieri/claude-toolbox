@@ -85,3 +85,55 @@ def test_table_empty_fails(validate_path, tmp_path):
     d = _adapter(tmp_path, "bad2", oracle_md="# header only\n")
     p = run(validate_path, d)
     assert p.returncode == 1 and "no entries" in p.stdout
+
+
+# --- frames ---
+
+def _frame(tmp_path, name, body):
+    d = tmp_path / "frames"; d.mkdir(exist_ok=True)
+    (d / f"{name}.md").write_text(body)
+    return str(d)
+
+GOOD_FRAME = """# npc frame
+## Axes
+| Axis | Values |
+|---|---|
+| role | guard, merchant, healer |
+| want | coin, safety, revenge, escape |
+| flaw | greed, pride, cowardice |
+| vibe | warm, cold, sly, weary |
+
+## Shape
+A single person with a name and a want.
+"""
+
+
+def test_frame_valid(validate_path, tmp_path):
+    d = _frame(tmp_path, "npc", GOOD_FRAME)
+    assert run(validate_path, "--frames", d).returncode == 0
+
+
+def test_frame_too_few_axes_fails(validate_path, tmp_path):
+    body = "# f\n## Axes\n| Axis | Values |\n|---|---|\n| a | x, y, z |\n\n## Shape\nthing\n"
+    d = _frame(tmp_path, "bad", body)
+    p = run(validate_path, "--frames", d)
+    assert p.returncode == 1 and "axes" in p.stdout.lower()
+
+
+def test_frame_missing_shape_fails(validate_path, tmp_path):
+    body = GOOD_FRAME.split("## Shape")[0]
+    d = _frame(tmp_path, "bad2", body)
+    p = run(validate_path, "--frames", d)
+    assert p.returncode == 1 and "shape" in p.stdout.lower()
+
+
+def test_adapter_with_malformed_frame_fails_all(validate_path, tmp_path):
+    # An adapter's frames/*.md are linted when running --all adapters-root.
+    d = _adapter(tmp_path, "myadapter")
+    frames_dir = os.path.join(d, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
+    with open(os.path.join(frames_dir, "bad.md"), "w") as f:
+        # Only 1 axis — should fail (need 4-6) and missing Shape
+        f.write("# bad\n## Axes\n| Axis | Values |\n|---|---|\n| a | x, y, z |\n")
+    p = run(validate_path, "--all", str(tmp_path))
+    assert p.returncode == 1 and "bad.md" in p.stdout
