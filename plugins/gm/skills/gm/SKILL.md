@@ -42,6 +42,29 @@ Repeat:
 
 **Need a spark?** At any point — a miss that needs a complication, an NPC's hidden motive, "what's in here?" — roll the adapter's inspiration oracle (generic: `roll table ${CLAUDE_PLUGIN_ROOT}/adapters/generic/oracles/action.md` and `…/theme.md`) and read the result into the fiction. It *supplements* the yes/no; it never replaces a resolution roll the rules call for. Campaign tables work the same way: `roll table <campaign>/tables/<type>.md`.
 
+## Deep oracle (forge) (`/gm:forge`)
+
+Build a rollable table — in prep or on the fly — using `/gm:forge <type> [--secret] [--n N]`.
+See [references/forge.md](references/forge.md) for the full contract.
+
+**When to forge:**
+- **Prep** — at session zero, when entering a new region, or after `/gm:wrap`. The player
+  expects setup time; prefer larger pools (default N ≈ 20).
+- **On-demand** — when an oracle miss has no fitting table. Announce the pause (*"Forging
+  a [type] table — one moment."*), then continue. The table persists after.
+
+**Persistence.** A forged table writes to `<campaign>/tables/<type>.md` and stays. Every
+forge grows the oracle library — next session the table is already there, reducing future
+misses.
+
+**Sealed forge (`--secret`).** The table lands in `<campaign>/.gm/tables/<type>.md` and
+rides the GM screen — invisible in the transcript, rollable with `roll table`. Reveal an
+entry only when the fiction earns it (`campaign gm-reveal <dir> <slot>`).
+
+**Degradation.** If the `generate` plugin is absent, `/gm:forge` improvises ~6–10 entries
+directly. Announce the reduced diversity. The table still works; reforge with `generate`
+present when pace allows.
+
 ## The GM screen
 
 Some state is the GM's, not the player's: a **hidden clock** (a menace advancing off-screen), the **answer** behind a mystery, an NPC's true agenda. Whether a system hides such state is the adapter's `visibility` (see adapter-contract):
