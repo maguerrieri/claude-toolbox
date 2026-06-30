@@ -14,7 +14,7 @@ description: >-
 
 # Ticket workflow (pluggable tracker + profile)
 
-Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, and `/start-epic` commands (or directly):
+Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, and `/start-epic` commands — plus `/spawn-epic`, a thin launcher that runs the EPIC phase's `/start-epic` in a background session (or invoke the phases directly):
 
 - **START** — worktree → implement → tests + docs → commit → push → PR → review-bot cycle → CI green → hand back for the user's review.
 - **FINISH** — (after the user has reviewed) smoke test → rebase-merge → clean up worktree/branch → close the issue → record expected outcome.

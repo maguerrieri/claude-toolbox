@@ -21,8 +21,11 @@ own work config, not here.
 - Transition the issue to "In Progress" and assign to the user, via the Jira MCP/CLI if available. Best-effort; skip if not wired.
 
 ## COMMIT_REF(id)  — commit message format
-- Default to the standard Jira convention: prefix the subject with the key in brackets — `[<ID>] <description>` (e.g. `[ABC-123] retry transient 5xx with backoff`).
-- Otherwise follow the repo's own commit convention. Org-specific formats (e.g. an org's flagged `[ID] (flags) scope: …` convention) belong in that org's work config, not in this portable adapter.
+- Follow the repo's commit convention. In this marketplace that's the `conventions` plugin's
+  format: `[<ID>] (<flags>) <scope>: <description>` — the Jira key in brackets, AI-assistance
+  flags in the subject parens.
+  - e.g. `[ABC-123] (Claude Code + Opus 4.8) upload: retry transient 5xx with backoff`
+- If the repo documents no convention, the bare Jira form `[<ID>] <description>` is the fallback.
 
 ## PR_REF(id)  — PR title + issue link
 - **Title:** `[<ID>] <short description>`.
