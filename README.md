@@ -24,6 +24,11 @@ One repo, declared per-project, works in local and cloud sessions alike.
   `/spawn-epic`. Takes an issue from open to a reviewed PR and on to merged, with a
   pluggable **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn`
   for its parallel fan-out.
+- **gm** — system-agnostic, persona-driven solo-RPG game master: the `gm` skill
+  plus 7 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
+  `/gm:oracle`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`). Pluggable system
+  adapters (generic / Ironsworn / Starforged), true dice, and git-versioned
+  saves.
 
 ## Usage
 
