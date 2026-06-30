@@ -18,6 +18,7 @@ Enable the plugin from the `maguerrieri-toolbox` marketplace, then allowlist the
 - `/gm:play` — start or continue a session.
 - `/gm:wrap` — end a session (writes the log + recap, checkpoints the save).
 - `/gm:oracle` — a quick yes/no or inspiration pull.
+- `/gm:forge` — bulk-ideate a diverse pool via `generate` into a rollable table; converge-and-seal a canonical secret behind the screen.
 - `/gm:checkpoint` · `/gm:rewind` · `/gm:backup` — save-state the campaign (and undo a bad turn).
 
 ## Systems (adapters)
@@ -54,6 +55,7 @@ roll table <campaign>/tables/rumors.md   # campaign table (hand-authored or forg
 - **Personas** (`personas/`) — the GM's voice, orthogonal to the system.
 - **Dice** (`bin/roll`) + **campaign git** (`bin/campaign`) — the things an LLM can't fake: true randomness and durable, versioned state.
 - **Your saves** — git-versioned markdown in your own directory, never in the plugin. Ready-to-play example: `examples/embervale/`.
+- **Forge** — bulk-ideate a diverse pool via `generate` into a rollable table; converge-and-seal a canonical secret behind the screen.
 - **The GM screen** — for systems that want one (`visibility: gm`, e.g. generic), hidden clocks and sealed answers are written through `bin/campaign gm-*` into a `.gm/` dir, so the write collapses to "Ran 1 shell command" in the transcript instead of spoiling a solo player. Player-facing systems (Ironsworn) keep everything in the open.
 
 Full design spec lives in the repo's `docs/superpowers/specs/`.
