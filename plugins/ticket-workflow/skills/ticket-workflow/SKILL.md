@@ -24,7 +24,7 @@ Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`,
 The body below is written against **two pluggable adapters**, both selected in Step 0:
 
 - **Tracker** — the issue tracker (GitHub Issues or Jira): *how to read an issue, ID→branch naming, how to reference it in commits/PRs, how to close it, and (for EPIC) how to enumerate an epic's children and their dependencies.* Ops: `FETCH`, `BRANCH`, `START`, `COMMIT_REF`, `PR_REF`, `DONE`, plus `EPIC_CHILDREN`, `DEPS` + `COORD` (EPIC phase only). Lives in `trackers/<tracker>.md`.
-- **Profile** — the engineering environment / org playbook: *which repo, submodules, test conventions, doc-consistency check, which review bot, how to smoke-test/deploy, post-merge monitoring, any commit-style override.* Ops: `REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`, `POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`. Lives in `profiles/<profile>.md` (the `default` profile ships here; an org's profile lives in that org's work config and is pointed to from the repo's CLAUDE.md).
+- **Profile** — the engineering environment / org playbook: *which repo, submodules, test conventions, doc-consistency check, which review bot, how to smoke-test/deploy, post-merge monitoring, any commit-style override.* Ops: `REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`, `POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`. Lives in `profiles/<profile>.md` (the `default` profile ships here; an org's profile lives in that org's work config and is pointed to from the repo's CLAUDE.md). A profile can `Inherits:` a base and override just the ops it changes (Step 0).
 
 Tracker = *what tracks the work*; profile = *how this environment builds and ships it*. The two are orthogonal — GitHub Issues on a personal repo, or Jira on a fully-wired work repo, are just `(tracker, profile)` pairs.
 
@@ -45,6 +45,18 @@ Project memory wins over the committed `CLAUDE.md`, so a local override always t
 **Tracker** → `github` or `jira`: **Read `trackers/<tracker>.md`** (relative to this skill) and use its commands for every tracker op below.
 
 **Profile** → a bare name maps to `profiles/<name>.md` in this skill; a path (e.g. `~/.claude-work/profiles/acme.md`) is read directly — that's how an org keeps its work-only playbook in its own work config, out of this portable skill. **Read the selected profile file** and use its guidance for every profile op below (`REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`, `POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`).
+
+**Profile inheritance (`Inherits:`).** A profile may declare `Inherits: <base>` on its own line (conventionally near the top) to **layer itself over a base profile** instead of restating every op. When the selected profile has such a line:
+
+1. **Resolve `<base>` exactly like `Profile:`** — a bare name → `profiles/<base>.md` in this skill; a path → read directly. The base may itself declare `Inherits:`, so resolution **chains**: resolve the base *fully* (including its own base) before overlaying the child.
+2. **Overlay the child onto the resolved base, op by op.** A profile op is a `## <OP>` section. For each of the nine ops, use the **child's** section if it defines one, otherwise inherit the **base's**. So a partial profile only spells out the ops it changes — e.g. a child with `Inherits: default` that defines only `## POST_MERGE` takes `POST_MERGE` from itself and every other op (`REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`, `COMMIT_STYLE`, `SPAWN_CAP`) from `default`. The child's `Inherits:` line and any prose outside the op sections is metadata, not an op — don't treat it as one.
+
+Edge cases — both are **hard errors; stop and report, don't loop or guess** (a profile that declares a base it can't honor is misconfigured — surface it rather than silently degrading):
+
+- **Missing base** — the named base profile/path can't be read: stop and report the unresolved base. Do **not** fall back to `default` or to the child alone.
+- **Cycle** — following `Inherits:` revisits a profile already in the chain (`A → B → A`, or a self-reference `A → A`): stop and report the cycle. Track the chain as you resolve; if a base is one you're already resolving, that's the cycle.
+
+**No `Inherits:` line → unchanged behavior:** the file is the complete, standalone profile (the original single-file semantics). This is the default, so every existing profile keeps working untouched.
 
 Keep tracker- and profile-specific commands out of this file — they live in their adapter files.
 
