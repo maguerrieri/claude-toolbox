@@ -48,3 +48,16 @@ def test_harvest_no_reservoir_errors(forge_path, tmp_path):
     res = tmp_path / "empty.md"; res.write_text("# f\n## Axes\n| a | b |\n")
     p = run(forge_path, "harvest", str(res), str(tmp_path / "t.md"))
     assert p.returncode != 0 and "Reservoir" in p.stderr
+
+
+def test_promotion_seal_round_trip(campaign_path, tmp_path):
+    d = str(tmp_path / "camp")
+    subprocess.run([campaign_path, "init", d], capture_output=True, text=True)
+    # OPEN's prescribed action: seal the chosen rival behind the screen
+    seal = subprocess.run([campaign_path, "gm-seal", d, "the-villain", "The Lanternwright, who relights the road outward."],
+                          capture_output=True, text=True)
+    assert seal.returncode == 0 and "The Lanternwright" not in seal.stdout \
+        and "The Lanternwright" not in seal.stderr   # neutral, sealed
+    # revealed only when earned
+    rev = subprocess.run([campaign_path, "gm-reveal", d, "the-villain"], capture_output=True, text=True)
+    assert "The Lanternwright" in rev.stdout
