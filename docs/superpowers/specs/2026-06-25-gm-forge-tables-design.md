@@ -96,7 +96,7 @@ Turns "I want a diverse pool of `<type>`" into a populated foundation table.
 
 **Soft coupling / graceful degradation.** If `generate` is present, use it; if absent, the forge degrades to a GM-improvised ~6–10 list into the same table file, surfaced to the player. The foundation still rolls either way.
 
-**Starter frames** at `${CLAUDE_PLUGIN_ROOT}/forge/frames/<type>.md` (generate frame format): **npc, rumor, hook, location, faction, oddity**. Anything else framed on the fly.
+**Starter frames** at `adapters/<name>/frames/<type>.md` (generate frame format), resolved active adapter → `generic` (neutral baseline) → on-the-fly: **npc, rumor, hook, location, faction, oddity** ship in `generic`; system-specific adapters (ironsworn, starforged) add or override for their genre. Anything else framed on the fly.
 
 **Reservoir reconciliation.** generate writes reservoirs to `docs/generation/<type>.md` relative to cwd; the forge runs it in a scratch cwd and harvests the new entries into the durable campaign table. The reservoir is scratch; the table is the versioned artifact.
 
@@ -139,7 +139,7 @@ gm ships a Promotion adapter at `${CLAUDE_PLUGIN_ROOT}/forge/promotion/campaign.
 - Tests: `roll table` (weighted/uniform/`--n`/`--seed`/`--json`/errors); **migration parity** (each migrated oracle's distribution == the old JSON's); validator MD-table lint.
 
 **PR 2 — forge (stacked):**
-- `plugins/gm/forge/frames/{npc,rumor,hook,location,faction,oddity}.md`; `plugins/gm/forge/promotion/campaign.md`.
+- `plugins/gm/adapters/generic/frames/{npc,rumor,hook,location,faction,oddity}.md` (neutral baseline); `plugins/gm/adapters/ironsworn/frames/{npc,denizen,site}.md`; `plugins/gm/adapters/starforged/frames/{npc,faction,derelict}.md`; `plugins/gm/forge/promotion/campaign.md`.
 - `plugins/gm/commands/forge.md` (`/gm:forge`).
 - `plugins/gm/skills/gm/SKILL.md` + a new `references/forge.md` — forge (prep/pull), soft-coupling/degradation, promote-to-seal.
 - `plugins/gm/.claude-plugin/plugin.json` — **0.3.0 → 0.4.0**.
