@@ -5,6 +5,36 @@ org-specific profile. Org playbooks live in that org's work config
 as their own profile file and are pointed to from the repo's CLAUDE.md
 (`Profile: <path>`); they override these defaults.
 
+## Authoring a profile (and `Inherits:`)
+
+A profile is one markdown file with a `## <OP>` section per profile op
+(`REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`,
+`POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`). The simplest profile is **standalone** —
+it defines all nine ops, and the file is read as-is.
+
+To override only a few ops, write a **partial profile** that declares a base:
+
+```markdown
+# Profile: acme
+
+Inherits: default
+
+## POST_MERGE
+- Resolve the matching Sentry issue and land any merged ADR drafts.
+```
+
+`Inherits: <base>` (its own line, conventionally near the top) layers this profile
+**over** the base: every op it defines wins; every op it omits comes from the base.
+The example above takes `POST_MERGE` from itself and the other eight ops from
+`default`. Resolution mirrors `Profile:` — a bare name → `profiles/<base>.md`, a path
+→ read directly — and **chains** (the base may itself `Inherits:` another). A missing
+base or an inheritance cycle is a hard error, not a silent fallback. See the skill's
+**Step 0** for the full resolution rules.
+
+Prefer `Inherits:` over the old workaround of copying `default` (which then drifts) or
+telling the agent in prose to "follow `default` for the other ops" (nothing enforces it).
+No `Inherits:` line → the file is a complete standalone profile, exactly as before.
+
 ## REPO_SELECT
 - Use the repo named in the request; otherwise the current repo (for personal projects
   you're almost always already inside it). If you're in an umbrella/bare dir and it's
