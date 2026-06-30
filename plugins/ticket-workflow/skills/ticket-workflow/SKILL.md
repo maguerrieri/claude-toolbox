@@ -242,7 +242,7 @@ Extract `(id, briefing)` pairs; no per-issue briefing → just the cap from Step
 
 ### Step 2 — Append the profile's `SPAWN_CAP`
 
-Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap appended to every sibling's briefing so background sessions can't over-reach (the `default` profile: implement + test, but don't deploy to prod or merge — stop and report). Compose each briefing by appending that cap to the per-issue briefing (just the cap alone if there's no per-issue text). This cap is the ticket layer's own bound — generic `spawn` adds none.
+Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap appended to every sibling's briefing so background sessions can't over-reach (the `default` profile: implement + test, then stop at a reviewed PR and report — no prod deploy or merge unless a human steering the session asks for it mid-run). Compose each briefing by appending that cap to the per-issue briefing (just the cap alone if there's no per-issue text). This cap is the ticket layer's own bound — generic `spawn` adds none.
 
 ### Step 3 — Build each sibling's prompt + name, then delegate to `spawn`
 
