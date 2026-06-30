@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""gm forge — harvest a generate reservoir into a rollable table.
+
+  forge harvest <reservoir-file> <table-file>
+
+Reads the markdown under the reservoir's `## Reservoir` heading (the diverse pool
+`generate` produced) and writes it to <table-file> as a foundation table — one
+`- ` entry per candidate, block-rule continuations preserved. The reservoir is
+scratch; the table is the durable, rollable artifact. Run via Bash (not the Write
+tool) so a sealed table (`.gm/tables/...`) stays collapsed behind the GM screen.
+"""
+import argparse
+import os
+import re
+import sys
+
+HEADING = re.compile(r"^##\s+", )
+RESERVOIR = re.compile(r"^##\s+Reservoir\b", re.I)
+
+
+def reservoir_block(text):
+    """Lines under `## Reservoir`, up to the next `## ` heading, blank-trimmed."""
+    out, in_res = [], False
+    for line in text.splitlines():
+        if RESERVOIR.match(line):
+            in_res = True
+            continue
+        if in_res and HEADING.match(line):
+            break
+        if in_res:
+            out.append(line.rstrip())
+    while out and not out[0].strip():
+        out.pop(0)
+    while out and not out[-1].strip():
+        out.pop()
+    return out
+
+
+def cmd_harvest(a):
+    with open(a.reservoir) as f:
+        block = reservoir_block(f.read())
+    if not any(line.startswith("- ") for line in block):
+        sys.exit(f"forge: no '## Reservoir' entries in {a.reservoir}")
+    parent = os.path.dirname(os.path.abspath(a.table))
+    os.makedirs(parent, exist_ok=True)
+    title = os.path.splitext(os.path.basename(a.table))[0]
+    with open(a.table, "w") as f:
+        f.write(f"# {title}\n" + "\n".join(block) + "\n")
+    n = sum(1 for line in block if line.startswith("- "))
+    print(f"forge: harvested {n} entries -> {a.table}")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="forge")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("harvest"); p.add_argument("reservoir"); p.add_argument("table")
+    a = ap.parse_args(argv)
+    {"harvest": cmd_harvest}[a.cmd](a)
+
+
+if __name__ == "__main__":
+    main()
