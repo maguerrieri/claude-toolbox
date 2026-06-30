@@ -61,6 +61,9 @@ def validate_frame(path):
     shape = re.search(r"^##\s+Shape\b(.*?)(^##\s+|\Z)", text, re.S | re.M | re.I)
     if not shape or not shape.group(1).strip():
         errs.append(f"frame {name}: missing or empty '## Shape' section")
+    tagging = re.search(r"^##\s+Tagging\b(.*?)(^##\s+|\Z)", text, re.S | re.M | re.I)
+    if not tagging or not tagging.group(1).strip():
+        errs.append(f"frame {name}: missing or empty '## Tagging' section")
     return errs
 
 
@@ -153,10 +156,11 @@ def main(argv=None):
     ap.add_argument("paths", nargs="+")
     ap.add_argument("--all", action="store_true",
                     help="treat each path as a root and validate every subdir with an adapter.md / persona.md")
-    ap.add_argument("--personas", action="store_true",
-                    help="validate persona.md files instead of adapters")
-    ap.add_argument("--frames", action="store_true",
-                    help="validate frame *.md files in the given dir(s)")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--personas", action="store_true",
+                      help="validate persona.md files instead of adapters")
+    mode.add_argument("--frames", action="store_true",
+                      help="validate frame *.md files in the given dir(s)")
     a = ap.parse_args(argv)
 
     errs = []

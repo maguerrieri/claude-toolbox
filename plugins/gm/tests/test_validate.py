@@ -105,6 +105,9 @@ GOOD_FRAME = """# npc frame
 
 ## Shape
 A single person with a name and a want.
+
+## Tagging
+[role × want × flaw]
 """
 
 
@@ -125,6 +128,19 @@ def test_frame_missing_shape_fails(validate_path, tmp_path):
     d = _frame(tmp_path, "bad2", body)
     p = run(validate_path, "--frames", d)
     assert p.returncode == 1 and "shape" in p.stdout.lower()
+
+
+def test_frame_missing_tagging_fails(validate_path, tmp_path):
+    body = GOOD_FRAME.split("## Tagging")[0]
+    d = _frame(tmp_path, "bad3", body)
+    p = run(validate_path, "--frames", d)
+    assert p.returncode == 1 and "tagging" in p.stdout.lower()
+
+
+def test_personas_and_frames_mutually_exclusive(validate_path, tmp_path):
+    # ambiguous combined modes must be rejected by argparse, not silently resolved
+    p = run(validate_path, "--personas", "--frames", str(tmp_path))
+    assert p.returncode != 0 and "not allowed with" in p.stderr.lower()
 
 
 def test_adapter_with_malformed_frame_fails_all(validate_path, tmp_path):
