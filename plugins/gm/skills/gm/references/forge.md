@@ -24,9 +24,10 @@ frame → generate reservoir → forge harvest → rollable table
    fallback at `${CLAUDE_PLUGIN_ROOT}/adapters/generic/frames/<type>.md`, or on-the-fly
    from the campaign's truths and tone). Axes, shape, and tagging focus diversity.
 
-2. **Reservoir** — `generate` produces a pool of candidates at
-   `<campaign>/docs/generation/<type>.md`. This file is **scratch**: it is throwaway
-   input to the next step and may be deleted or overwritten at any time.
+2. **Reservoir** — run `generate` from the `<campaign>` directory (cwd); it writes its pool
+   to `docs/generation/<type>.md` relative to cwd, landing at
+   `<campaign>/docs/generation/<type>.md`. This file is **scratch**: it is throwaway input
+   to the next step and may be deleted or overwritten at any time.
 
 3. **Harvest** — `forge harvest <reservoir> <table>` extracts the `## Reservoir` block and
    writes a foundation `- ` list that `roll table` can read. Always run via Bash, not the
@@ -41,8 +42,9 @@ The forge is **soft-coupled** to `generate`. The gm plugin is fully usable witho
 - Improvise ~6–10 entries into a scratch reservoir (format: a `## Reservoir` heading, then
   one `- ` entry per line); run `forge harvest` as usual.
 - `roll table` works on the result.
-- `--secret` routing still holds: sealed tables write to `<campaign>/.gm/tables/<type>.md`
-  via the harvest Bash call, never via the Write tool.
+- `--secret` routing still holds: for a sealed forge, write the improvised reservoir with a
+  Bash heredoc (never the Write tool — the candidate pool *is* the secret) and harvest to
+  `<campaign>/.gm/tables/<type>.md` via Bash, so nothing spoils in the transcript.
 
 Reforge with `generate` present when session pace allows; the table is simply overwritten.
 
@@ -57,10 +59,11 @@ seals it:
 campaign gm-seal <campaign-dir> <slot> "<chosen entry>"
 ```
 
-The rivals stay in the reservoir / cold storage; nothing is deleted. The sealed slot lives
-in `.gm/state.json` until the fiction earns a `campaign gm-reveal <campaign-dir> <slot>`.
-The `BACKLINK` step records the decision in the reservoir's `## Cold storage` section for
-the GM's own continuity.
+The rivals stay in cold storage; nothing is deleted. The sealed slot lives in
+`.gm/state.json` until the fiction earns a `campaign gm-reveal <campaign-dir> <slot>`. The
+`BACKLINK` step records the decision in the **durable** table's `## Cold storage` section
+(`<campaign>/tables/<type>.md`, or the sealed `.gm/tables/<type>.md`) — not the scratch
+reservoir, which is overwritten on the next forge.
 
 ## Reservoir-is-scratch / table-is-durable
 
