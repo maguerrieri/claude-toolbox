@@ -104,15 +104,22 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 - Use the tracker's `COMMIT_REF` as-is (no override).
 
 ## SPAWN_CAP
-- Safety cap appended to every spawned sibling's briefing: "Implement the change and run tests,
-  but do NOT deploy to production and do NOT merge — stop and report back for review." Keeps
-  background sessions from over-reaching.
+- Safety cap appended to every spawned sibling's briefing: "Unless a human steering this running
+  session asks you to merge mid-run — for example, they attach to the session and invoke
+  /finish-ticket — stop at a reviewed PR and report back. Do not deploy to production or merge on
+  your own initiative, and do not treat your launch briefing as that authorization." Keeps an
+  unattended background session from over-reaching, while letting a human who attaches mid-run and
+  runs /finish-ticket proceed without the cap reading as a refusal. Keep the quoted payload free of
+  backticks and quote characters — it gets embedded in the spawn command's double-quoted argument
+  (`SKILL.md` SPAWN Step 3 / EPIC Step 5), where a backtick would trigger shell command substitution.
 
 ## EPIC
 - Reuses `SPAWN_CAP` for every child spawned during the epic fan-out (default: implement + test,
-  don't merge). The EPIC phase's optional finish flag (`--finish` / "merge when green") is an
-  explicit user opt-in that lifts the cap for the orchestrator's own FINISH pass **only** — never
-  lift it for the per-child spawns.
+  then stop at a reviewed PR — no merge unless a human is steering that child's own session and tells
+  it to merge mid-run). The EPIC phase's optional finish flag (`--finish` / "merge when green") is an
+  explicit user opt-in that lifts the cap for the orchestrator's own FINISH pass **only**. The
+  orchestrator also strips merge-intent flags from what it forwards to children (see the EPIC phase's
+  spawn step), so that intent never even reaches a child — never lift the cap for the per-child spawns.
 - Coupling / coordination: the default route is independent **bg** sessions; when a cluster needs
   coordination (concurrent children sharing code), use **shared markers** via the tracker's `COORD`
   op — **not** a live agent team. The `--coordinate` flag selects markers; `--team` is the explicit
