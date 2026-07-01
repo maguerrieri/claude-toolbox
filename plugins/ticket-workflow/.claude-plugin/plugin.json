@@ -1,7 +1,7 @@
 {
   "name": "ticket-workflow",
   "description": "End-to-end issue workflow (start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Mario Guerrieri"
   },
