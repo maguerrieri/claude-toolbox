@@ -109,9 +109,12 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   /finish-ticket — stop at a reviewed PR and report back. Do not deploy to production or merge on
   your own initiative, and do not treat your launch briefing as that authorization." Keeps an
   unattended background session from over-reaching, while letting a human who attaches mid-run and
-  runs /finish-ticket proceed without the cap reading as a refusal. Keep the quoted payload free of
-  backticks and quote characters — it gets embedded in the spawn command's double-quoted argument
-  (`SKILL.md` SPAWN Step 3 / EPIC Step 5), where a backtick would trigger shell command substitution.
+  runs /finish-ticket proceed without the cap reading as a refusal. Keep the payload text free of
+  backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
+  argument (`SKILL.md` SPAWN Step 3 / EPIC Step 5), where a backtick or `$` triggers shell substitution,
+  an unescaped double quote ends the argument early, and a backslash escapes the next character.
+  (Single quotes and apostrophes inside the text are fine; the quotes wrapping the payload above are
+  just this note's delimiters, not part of it.)
 
 ## EPIC
 - Reuses `SPAWN_CAP` for every child spawned during the epic fan-out (default: implement + test,
