@@ -55,10 +55,10 @@ The bg job records its launch cwd (in `~/.claude/jobs/<id>/state.json`), and lat
 
 - **In a git checkout:** launch from the repo's **main checkout** — the first entry of `git worktree list`:
   ```bash
-  launch_dir=$(git worktree list | head -1 | awk '{print $1}')
+  launch_dir=$(git worktree list 2>/dev/null | head -1 | awk '{print $1}'); launch_dir=${launch_dir:-$PWD}
   ```
-  (Equivalently: the parent of `git rev-parse --git-common-dir`.) Safe to run unconditionally — outside any linked worktree it just returns the checkout you're in. The spawned session sets up its own workspace anyway; the launch cwd only needs to be **stable**.
-- **Not in a git repo:** use the current dir — unless it's itself temporary (a job tmp dir, `/tmp`), in which case pick a durable one (e.g. `$HOME` or the relevant project dir).
+  (Equivalently: the parent of `git rev-parse --git-common-dir`.) The `${launch_dir:-$PWD}` fallback makes the line safe to run unconditionally — inside a main checkout it's a no-op, and outside any git repo it resolves to the current dir instead of erroring. The spawned session sets up its own workspace anyway; the launch cwd only needs to be **stable**.
+- **Not in a git repo:** the fallback above gives the current dir — fine, unless it's itself temporary (a job tmp dir, `/tmp`), in which case pick a durable one (e.g. `$HOME` or the relevant project dir).
 
 ### 4 — Spawn in parallel
 
