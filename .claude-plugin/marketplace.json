@@ -33,7 +33,7 @@
     {
       "name": "ticket-workflow",
       "source": "./plugins/ticket-workflow",
-      "description": "End-to-end issue workflow (start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile"
+      "description": "End-to-end issue workflow (make/start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile"
     }
   ]
 }

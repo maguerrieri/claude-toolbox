@@ -6,9 +6,10 @@ Portable Claude Code conventions and workflows, published as the
 
 ## Ticket workflow
 
-This marketplace ships the **`ticket-workflow`** plugin (`/start-ticket`,
-`/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`) — an end-to-end
-issue workflow with a pluggable tracker + profile. It's pulled in by `defaults`
+This marketplace ships the **`ticket-workflow`** plugin (`/make-ticket`,
+`/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`,
+`/spawn-epic`) — an end-to-end issue workflow with a pluggable tracker +
+profile. It's pulled in by `defaults`
 and depends on the `spawn` plugin. The `Tracker:`/`Profile:` lines below
 configure it for this repo:
 

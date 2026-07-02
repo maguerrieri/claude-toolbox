@@ -20,10 +20,11 @@ One repo, declared per-project, works in local and cloud sessions alike.
   mode-collapse, with the decision handoff behind a pluggable **Promotion
   adapter** (`inline` / `github-issue` / `adr`, or point it at your own).
 - **ticket-workflow** — end-to-end issue workflow: the `ticket-workflow` skill
-  plus `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, and
-  `/spawn-epic`. Takes an issue from open to a reviewed PR and on to merged, with a
-  pluggable **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn`
-  for its parallel fan-out.
+  plus `/make-ticket`, `/start-ticket`, `/finish-ticket`, `/spawn-tickets`,
+  `/start-epic`, and `/spawn-epic`. Files an issue from conversation context and
+  takes it from open to a reviewed PR and on to merged, with a pluggable
+  **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
+  parallel fan-out.
 - **gm** — system-agnostic, persona-driven solo-RPG game master: the `gm` skill
   plus 7 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
   `/gm:oracle`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`). Pluggable system
