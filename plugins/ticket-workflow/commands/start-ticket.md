@@ -1,5 +1,7 @@
 ---
-description: Use when asked to start, pick up, or begin work on a single issue/ticket ("pick up #42", "start on ABC-12"), or when /start-ticket appears anywhere in the message
+description: >-
+  Use when asked to start, pick up, or begin work on a single issue/ticket ("pick up #42",
+  "start on ABC-12"), or when /start-ticket appears anywhere in the message
 argument-hint: <issue-id> [briefing | "setup only" | "stop before push"]
 ---
 Start work on issue: **$ARGUMENTS**
