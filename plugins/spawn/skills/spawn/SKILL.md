@@ -17,7 +17,7 @@ Fan out one or more **independent** background `claude --bg` sessions for arbitr
 
 ## Invocation discipline
 
-A slash-command name (`/spawn`, `/spawn-tickets`, ...) appearing **anywhere** in the user's message — mid-sentence, lowercase, conjugated ("and /spawn it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
+A `/spawn` mention appearing **anywhere** in the user's message — mid-sentence, in any casing, woven into a sentence ("and /spawn it") — is an invocation of that command, not a figure of speech. (A `/spawn-tickets` mention is the `ticket-workflow` skill's territory — route there, not here.) Natural-language equivalents that match this skill's description count the same.
 
 Invoke the covering skill via the Skill tool for **every** new request it covers, even if that skill's content is already in your context from earlier in the session.
 
