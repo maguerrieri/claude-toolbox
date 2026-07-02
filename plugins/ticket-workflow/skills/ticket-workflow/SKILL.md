@@ -279,7 +279,7 @@ For each issue, hand the `spawn` skill one unit:
 Then **spawn them via the `spawn` skill** — one `claude --bg` call per issue, all in a single message (parallel), report the table, hand back. The fan-out details (parallel spawn, recognizable naming, the `Session | Scope` table, the `claude agents` / `attach` / `logs` inspect commands, and the no-babysit / no-block guarantees) live in `spawn`; don't repeat them here. The resulting command per issue:
 
 ```bash
-launch_dir=$(git worktree list | head -1 | awk '{print $1}')   # the repo's main checkout — spawn's step 3
+launch_dir=$(git worktree list 2>/dev/null | head -1 | awk '{print $1}'); launch_dir=${launch_dir:-$PWD}   # the repo's main checkout — spawn's step 3
 ( cd "$launch_dir" && claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>" )
 ```
 
@@ -354,7 +354,7 @@ Route each connected cluster of children to the lightest mode that fits:
 Spawn in dependency waves, maximizing parallelism *within* each wave. **Compose each child's briefing exactly as SPAWN does — the per-child briefing PLUS the profile's `SPAWN_CAP` (never omit the cap)** — and **strip the orchestrator's own flags** (`--finish` / "merge when green" / `--coordinate` / `--team` / `--independent`) from what you forward, so a child never sees merge-intent that contradicts the cap. **Assign each child a deterministic, epic-namespaced branch up front** (`epic-<epic-id-lower>-<id-lower>`) and pass it as a `Worktree:` directive — so the orchestrator knows every branch name *exactly*, for stacking and the Step 6 poll, instead of guessing the nondeterministic `BRANCH(id)` slug. (The `epic-` prefix keeps these distinct from a solo `/start-ticket`'s slug branch and unambiguous in `git branch`; resume a child solo by reusing this name.) Pass the chosen base too:
 
 ```bash
-launch_dir=$(git worktree list | head -1 | awk '{print $1}')   # the repo's main checkout — spawn's step 3
+launch_dir=$(git worktree list 2>/dev/null | head -1 | awk '{print $1}'); launch_dir=${launch_dir:-$PWD}   # the repo's main checkout — spawn's step 3
 ( cd "$launch_dir" && claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>  Base branch: <base>  Worktree: epic-<epic-id-lower>-<id-lower>" )
 ```
 
