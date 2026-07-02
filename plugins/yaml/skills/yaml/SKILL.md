@@ -18,7 +18,7 @@ mandatory verify step.
 Quote the value (single quotes; double only if it contains single quotes or needs
 escapes) or use a block scalar (`|` / `>`) **if it contains or could be any of**:
 
-- `#`, `:`, a quote character, or a leading special char (`- ? * & ! % @ ` [ { > |`)
+- `#`, `:`, a quote character, or a leading special char (``- ? * & ! % @ ` [ { > |``)
 - anything a parser could read as a non-string: `no` / `yes` / `on` / `off` /
   `null`, version numbers (`3.10` → float `3.1`), times (`1:30` → sexagesimal
   `90` in YAML 1.1), dates
@@ -38,7 +38,7 @@ import sys, yaml
 d = yaml.safe_load(open(sys.argv[1]))
 v = d["jobs"]["test"]["strategy"]["matrix"]["python-version"]  # path to what you edited
 print(repr(v))
-assert v == [3.9, "3.10"], v' .github/workflows/ci.yml
+assert v == ["3.9", "3.10"], v' .github/workflows/ci.yml   # quote siblings too, then assert all-strings
 
 # markdown frontmatter (between the --- markers)
 awk '/^---$/{n++; next} n==1' SKILL.md | uv run --with pyyaml python3 -c '
