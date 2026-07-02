@@ -1,5 +1,5 @@
 ---
-description: Finish an issue — smoke test → rebase-merge → clean up worktree/branch → close issue (tracker-agnostic)
+description: Use when asked to finish, land, merge, or close out a reviewed issue/PR ("land PR 7", "close out #42"), or when /finish-ticket appears anywhere in the message
 argument-hint: <issue-id>
 ---
 Finish issue: **$ARGUMENTS**

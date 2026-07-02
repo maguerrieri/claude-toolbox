@@ -1,6 +1,6 @@
 ---
 name: spawn
-description: Use when asked to spawn, fan out, kick off, or background one or more sessions/agents to work on arbitrary tasks in parallel and hand back without blocking (e.g. "spawn a session to investigate X", "fan out 3 agents to each do Y", "kick this off in the background"). Generic background-session fan-out — not ticket-specific; for issue/ticket fan-out use the /spawn-tickets command (ticket-workflow skill).
+description: Use when asked to spawn, fan out, kick off, background, or parallelize one or more sessions/agents for arbitrary tasks and hand back without blocking ("spawn a session to investigate X", "fan out 3 agents to each do Y", "run these in the background", "get X going while I'm out"). ALSO use whenever /spawn appears anywhere in a message, even mid-sentence ("make an issue and /spawn it"), and even if this skill is already in context. Generic — not ticket-specific; for issue/ticket fan-out use the /spawn-tickets command (ticket-workflow skill).
 ---
 
 # Spawn (background-session fan-out)
@@ -14,6 +14,20 @@ Fan out one or more **independent** background `claude --bg` sessions for arbitr
 - Any time you want work to run in its own durable `claude --bg` session and keep your current session free.
 
 **Not for:** work you must watch to completion or aggregate (that's babysitting — do it inline, or use the ticket-workflow EPIC phase). Issue/ticket fan-out → use the `/spawn-tickets` command (the `ticket-workflow` skill).
+
+## Invocation discipline
+
+A slash-command name (`/spawn`, `/spawn-tickets`, ...) appearing **anywhere** in the user's message — mid-sentence, lowercase, conjugated ("and /spawn it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
+
+Invoke the covering skill via the Skill tool for **every** new request it covers, even if that skill's content is already in your context from earlier in the session.
+
+| Rationalization | Reality |
+|---|---|
+| "The skill is already in context — I'll just run `claude --bg` myself" | Hand-rolled spawns drift from the skill (naming, quoting, reporting) and silently skip skill updates. Invoke the skill. |
+| "It's a small one-off spawn" | Size doesn't change the mechanics. Invoke the skill. |
+| "The user only mentioned /spawn in passing" | Mentioning `/spawn` with a target IS calling it. Invoke the skill. |
+
+Compound requests ("make an issue and /spawn it"): do **both halves in the same turn** — create, then immediately spawn with the result. Don't park the spawn behind a report or a clarifying question unless the spawn itself is genuinely ambiguous.
 
 ## No cap
 

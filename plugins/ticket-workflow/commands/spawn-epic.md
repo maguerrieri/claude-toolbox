@@ -1,5 +1,5 @@
 ---
-description: Run a whole epic in a new background session — spawns one `claude --bg` running /start-epic, reports the handle, hands back
+description: Use when asked to run a whole epic hands-off in the background ("kick off the auth epic while I'm away"), or when /spawn-epic appears anywhere in the message
 argument-hint: <epic-id> [briefing] [--finish] [--coordinate | --team | --independent]
 ---
 Spawn a background epic run for: **$ARGUMENTS**
