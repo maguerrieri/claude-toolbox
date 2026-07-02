@@ -1,5 +1,5 @@
 ---
-description: Run a whole epic — expand into child tickets, route by coupling, drive each through START, hand back the stack of PRs (tracker/profile-aware)
+description: Use when asked to run, work through, or knock out an epic and its child issues in this session ("handle the auth epic, all the children"), or when /start-epic appears anywhere in the message
 argument-hint: <epic-id> [briefing] [--finish] [--coordinate | --team | --independent]
 ---
 Run the epic: **$ARGUMENTS**

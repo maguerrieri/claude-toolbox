@@ -1,15 +1,14 @@
 ---
 name: ticket-workflow
 description: >-
-  End-to-end issue workflow, tracker- and environment-agnostic. START phase takes an issue from open
-  to a reviewed PR (worktree → implement → tests + docs → push → PR → review bot → CI green);
-  FINISH phase takes a reviewed PR to merged (smoke test → rebase-merge → cleanup → close
-  the issue). A SPAWN phase fans out parallel background sessions, one /start-ticket per issue.
-  An EPIC phase expands an epic into its child tickets, runs each through START with
-  dependency-aware stacking (parallel where independent, stacked where one ticket depends on
-  another), then aggregates and hands back the resulting stack of PRs (optionally finishing them).
-  Pluggable per repo: a tracker adapter (GitHub Issues or Jira) plus a profile (engineering/org playbook).
-  Use when asked to start, finish, spawn parallel work on, or run a whole epic of tickets/issues.
+  Use when the user wants to start, pick up, knock out, or begin work on an issue/ticket; to
+  finish, land, merge, or close out a reviewed PR/ticket; to work tickets in parallel or in the
+  background; or to run an epic and its child issues — in any phrasing ("pick up #42", "land
+  PR 7", "get issues 3 and 5 moving while I'm out", "handle the auth epic"). ALSO use whenever
+  /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or /spawn-epic appears anywhere in
+  a message, even mid-sentence ("file an issue and /spawn-tickets it"), and even if this skill
+  is already in context. Tracker- and environment-agnostic (GitHub Issues or Jira, pluggable
+  org profile).
 ---
 
 # Ticket workflow (pluggable tracker + profile)
@@ -20,6 +19,20 @@ Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`,
 - **FINISH** — (after the user has reviewed) smoke test → rebase-merge → clean up worktree/branch → close the issue → record expected outcome.
 - **SPAWN** — fan out parallel background sessions, one `/start-ticket` per issue, each running the full START cycle independently.
 - **EPIC** — expand an epic into its child tickets, run each through START **dependency-aware** (parallel where independent, stacked where one child depends on another), then aggregate and hand back the resulting **stack of PRs** — optionally finishing them.
+
+## Invocation discipline
+
+A command name (`/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`) appearing **anywhere** in the user's message — mid-sentence, lowercase, conjugated ("and /spawn-tickets it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
+
+Invoke this skill via the Skill tool for **every** new request it covers, even if its content is already in your context from earlier in the session.
+
+| Rationalization | Reality |
+|---|---|
+| "The skill is already in context — I'll just run the gh/claude commands myself" | Hand-rolled runs drift from the skill (adapters, caps, naming, reporting) and silently skip skill updates. Invoke the skill. |
+| "It's a small one-off" | Size doesn't change the mechanics. Invoke the skill. |
+| "The user only mentioned the command in passing" | Mentioning `/spawn-tickets` with a target IS calling it. Invoke the skill. |
+
+Compound requests ("file an issue and /spawn-tickets it", "create the epic, then /spawn-epic it"): do **both halves in the same turn** — create the issue/epic, then immediately run the covering phase with the new ID. Don't park the second half behind a report or a clarifying question unless that half is genuinely ambiguous.
 
 The body below is written against **two pluggable adapters**, both selected in Step 0:
 

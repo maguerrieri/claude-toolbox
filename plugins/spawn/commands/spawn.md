@@ -1,5 +1,5 @@
 ---
-description: Fan out one or more background sessions to work on arbitrary tasks in parallel, then hand back (generic — no ticket semantics)
+description: Use when asked to kick off, background, or fan out arbitrary background work ("spawn a session to investigate X", "make an issue and /spawn it"), or when /spawn appears anywhere in the message (generic — no ticket semantics)
 argument-hint: <task description>  [; <another task> ...]
 ---
 Spawn background work for: **$ARGUMENTS**

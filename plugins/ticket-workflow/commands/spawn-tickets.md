@@ -1,5 +1,5 @@
 ---
-description: Fan out parallel ticket work — one background /start-ticket session per issue (tracker/profile-aware)
+description: Use when asked to work issues/tickets in parallel or in the background ("get issues 3, 5, 8 moving while I'm out", "file an issue and /spawn-tickets it"), or when /spawn-tickets appears anywhere in the message
 argument-hint: <issue-id> [<issue-id> ...] [briefing]
 ---
 Spawn parallel work for: **$ARGUMENTS**
