@@ -14,7 +14,7 @@ Thin launcher over `/start-epic`: spawn ONE background session that runs the ful
 read -r -d '' p <<'PROMPT'
 /start-epic $ARGUMENTS
 PROMPT
-launch_dir=$(git worktree list | head -1 | awk '{print $1}')
+launch_dir=$(git worktree list 2>/dev/null | head -1 | awk '{print $1}'); launch_dir=${launch_dir:-$PWD}
 ( cd "$launch_dir" && claude --bg --name "<repo> <epic-id>: epic — <quick description>" "$p" )
 ```
 
