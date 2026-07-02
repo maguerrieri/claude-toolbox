@@ -1,6 +1,6 @@
 # Tracker adapter: Jira
 
-Jira issue-tracking adapter — create, `FETCH`, ID→branch, commit/PR refs, close. Pair it with
+Jira issue-tracking adapter — `CREATE`, `FETCH`, ID→branch, commit/PR refs, close. Pair it with
 whatever **profile** fits the repo: a personal Jira repo with the `default` profile, or
 an org repo with an org-specific profile (which adds that org's engineering steps — its
 review-bot cycle, tagged deploys, error-tracking resolution, and so on), kept in the org's
