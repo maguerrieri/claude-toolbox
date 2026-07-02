@@ -225,7 +225,7 @@ Default to **rebase merge**; override per the repo's merge convention:
 gh pr merge <pr> --rebase
 ```
 
-If the merge is **blocked by a permission layer** (e.g. an auto-mode classifier citing an earlier "do not merge" cap from the START briefing), don't just re-run it — the context is unchanged, so the verdict repeats. Report the block plainly and surface the deterministic fallbacks, any one of which unblocks:
+If the merge is **blocked by a permission layer** (e.g. an auto-mode classifier citing an earlier "do not merge" cap from the START briefing or `SPAWN_CAP`), don't just re-run it — the context is unchanged, so the verdict repeats. Report the block plainly and surface the deterministic fallbacks, any one of which unblocks:
 
 - the user **approves the PR** (GitHub UI, or `gh pr review <pr> --approve` from their own account — a bot review doesn't count as human approval), then re-run the merge;
 - the user **runs the merge themself**: `gh pr merge <pr> --rebase`;
