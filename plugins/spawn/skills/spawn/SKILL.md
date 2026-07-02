@@ -27,7 +27,7 @@ Invoke the covering skill via the Skill tool for **every** new request it covers
 | "It's a small one-off spawn" | Size doesn't change the mechanics. Invoke the skill. |
 | "The user only mentioned /spawn in passing" | Mentioning `/spawn` with a target IS calling it. Invoke the skill. |
 
-Compound requests ("make an issue and /spawn it"): do **both halves in the same turn** — create, then immediately spawn with the result. Don't park the spawn behind a report or a clarifying question unless the spawn itself is genuinely ambiguous.
+Compound requests ("make an issue and /spawn it"): do **both halves in the same turn** — create, then immediately spawn with the result. Don't park the spawn behind a report or a clarifying question unless the spawn itself is genuinely ambiguous. When the "issue" half is a tracker ticket, the `ticket-workflow` skill's `/make-ticket --spawn` is the covering command for the whole compound — route there instead of assembling the halves here.
 
 ## No cap
 

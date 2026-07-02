@@ -2,27 +2,30 @@
 name: ticket-workflow
 description: >-
   Use when the user wants to start, pick up, knock out, or begin work on an issue/ticket; to
-  finish, land, merge, or close out a reviewed PR/ticket; to work tickets in parallel or in the
-  background; or to run an epic and its child issues — in any phrasing ("pick up #42", "land
-  PR 7", "get issues 3 and 5 moving while I'm out", "handle the auth epic"). ALSO use whenever
-  /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or /spawn-epic appears anywhere in
-  a message, even mid-sentence ("file an issue and /spawn-tickets it"), and even if this skill
-  is already in context. Tracker-agnostic (GitHub Issues or Jira) with pluggable org
-  profiles; assumes GitHub-hosted code (PRs/CI/merges via gh).
+  finish, land, merge, or close out a reviewed PR/ticket; to file or create a new issue/ticket
+  from the current discussion, including compound create-and-run requests ("make a ticket for
+  this and spawn it"); to work tickets in parallel or in the background; or to run an epic and
+  its child issues — in any phrasing ("pick up #42", "land PR 7", "file an issue for that bug",
+  "get issues 3 and 5 moving while I'm out", "handle the auth epic"). ALSO use whenever
+  /make-ticket, /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or /spawn-epic
+  appears anywhere in a message, even mid-sentence ("file an issue and /spawn-tickets it"), and
+  even if this skill is already in context. Tracker-agnostic (GitHub Issues or Jira) with
+  pluggable org profiles; assumes GitHub-hosted code (PRs/CI/merges via gh).
 ---
 
 # Ticket workflow (pluggable tracker + profile)
 
-Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, and `/start-epic` commands — plus `/spawn-epic`, a thin launcher that runs the EPIC phase's `/start-epic` in a background session (or invoke the phases directly):
+Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, and `/start-epic` commands — plus `/spawn-epic`, a thin launcher that runs the EPIC phase's `/start-epic` in a background session, and the **FILE mini-phase** (`/make-ticket`), which creates the issue the other phases consume (or invoke the phases directly):
 
 - **START** — worktree → implement → tests + docs → commit → push → PR → review-bot cycle → CI green → hand back for the user's review.
 - **FINISH** — (after the user has reviewed) smoke test → rebase-merge → clean up worktree/branch → close the issue → record expected outcome.
 - **SPAWN** — fan out parallel background sessions, one `/start-ticket` per issue, each running the full START cycle independently.
 - **EPIC** — expand an epic into its child tickets, run each through START **dependency-aware** (parallel where independent, stacked where one child depends on another), then aggregate and hand back the resulting **stack of PRs** — optionally finishing them.
+- **FILE** *(mini-phase)* — compose an issue from the conversation context, create it via the tracker, and optionally hand the new ID straight to SPAWN (`--spawn`) or START (`--start`) in the same turn.
 
 ## Invocation discipline
 
-A command name (`/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`) appearing **anywhere** in the user's message — mid-sentence, in any casing, woven into a sentence ("and /spawn-tickets it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
+A command name (`/make-ticket`, `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`) appearing **anywhere** in the user's message — mid-sentence, in any casing, woven into a sentence ("and /spawn-tickets it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
 
 Invoke this skill via the Skill tool for **every** new request it covers, even if its content is already in your context from earlier in the session.
 
@@ -32,11 +35,11 @@ Invoke this skill via the Skill tool for **every** new request it covers, even i
 | "It's a small one-off" | Size doesn't change the mechanics. Invoke the skill. |
 | "The user only mentioned the command in passing" | Mentioning `/spawn-tickets` with a target IS calling it. Invoke the skill. |
 
-Compound requests ("file an issue and /spawn-tickets it", "create the epic, then /spawn-epic it"): do **both halves in the same turn** — create the issue/epic, then immediately run the covering phase with the new ID. Don't park the second half behind a report or a clarifying question unless that half is genuinely ambiguous.
+Compound requests ("file an issue and /spawn-tickets it", "create the epic, then /spawn-epic it"): do **both halves in the same turn** — create the issue/epic, then immediately run the covering phase with the new ID. Don't park the second half behind a report or a clarifying question unless that half is genuinely ambiguous. For single-issue create+spawn/create+start compounds, `/make-ticket --spawn` / `/make-ticket --start` (the FILE mini-phase) is the covering command — it makes the compound structural, so route "file an issue and spawn it"-shaped requests there rather than assembling the halves by hand.
 
 The body below is written against **two pluggable adapters**, both selected in Step 0:
 
-- **Tracker** — the issue tracker (GitHub Issues or Jira): *how to read an issue, ID→branch naming, how to reference it in commits/PRs, how to close it, and (for EPIC) how to enumerate an epic's children and their dependencies.* Ops: `FETCH`, `BRANCH`, `START`, `COMMIT_REF`, `PR_REF`, `DONE`, plus `EPIC_CHILDREN`, `DEPS` + `COORD` (EPIC phase only). Lives in `trackers/<tracker>.md`.
+- **Tracker** — the issue tracker (GitHub Issues or Jira): *how to read an issue, ID→branch naming, how to reference it in commits/PRs, how to close it, and (for EPIC) how to enumerate an epic's children and their dependencies.* Ops: `FETCH`, `CREATE`, `BRANCH`, `START`, `COMMIT_REF`, `PR_REF`, `DONE`, plus `EPIC_CHILDREN`, `DEPS` + `COORD` (EPIC phase only). Lives in `trackers/<tracker>.md`.
 - **Profile** — the engineering environment / org playbook: *which repo, submodules, test conventions, doc-consistency check, which review bot, how to smoke-test/deploy, post-merge monitoring, any commit-style override.* Ops: `REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`, `POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`. Lives in `profiles/<profile>.md` (the `default` profile ships here; an org's profile lives in that org's work config and is pointed to from the repo's CLAUDE.md).
 
 Tracker = *what tracks the work*; profile = *how this environment builds and ships it*. The two are orthogonal — GitHub Issues on a personal repo, or Jira on a fully-wired work repo, are just `(tracker, profile)` pairs.
@@ -60,6 +63,35 @@ Project memory wins over the committed `CLAUDE.md`, so a local override always t
 **Profile** → a bare name maps to `profiles/<name>.md` in this skill; a path (e.g. `~/.claude-work/profiles/acme.md`) is read directly — that's how an org keeps its work-only playbook in its own work config, out of this portable skill. **Read the selected profile file** and use its guidance for every profile op below (`REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`, `POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`).
 
 Keep tracker- and profile-specific commands out of this file — they live in their adapter files.
+
+---
+
+## FILE mini-phase (`/make-ticket`)
+
+Create a new issue from the current conversation, then optionally hand the new ID straight to SPAWN or START. FILE is deliberately small — a writing step plus one tracker op — but **the writing step is the real payload, not the plumbing**: the body it composes is what a later session (this one's START, a spawned sibling, or a human) will work from, and that reader sees none of this conversation.
+
+### Step 1 — Compose the issue
+
+Draft the title + body from the **conversation context** — the discussion that led here — not just the user's one-liner:
+
+- **Motivation** — why this is worth doing; the observation, failure, or discussion that raised it.
+- **Scope / design** — what's in, and what's explicitly out (name deferred follow-ups so they aren't re-litigated).
+- **Acceptance shape** — what done looks like: the surfaces/files touched, the behavior that becomes observable.
+- **Links** — related issues/PRs discussed in-context, so the eventual worker inherits the trail.
+
+Quality bar: a reader with zero conversation context can start the work from the body alone. If the request really is a bare one-liner with no surrounding discussion, keep the body honest and short — don't invent detail; ask only if genuinely ambiguous. Title: concise and scoped (`<area>: <what>`), per the repo's issue style.
+
+### Step 2 — Create it
+
+Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. Labels only when they clearly apply in the target repo — CREATE treats them as best-effort.
+
+### Step 3 — Route by flag
+
+- *(no flag)* — report the new ID + URL and stop; filing was the whole request.
+- `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` session), **in the same turn** — report the ID *and* the spawned session together; never park the spawn behind the report.
+- `--start` — run the **START phase** on the new ID inline in this session, same turn.
+
+The composed body is exactly what the delegated session will `FETCH` as its briefing — the other reason Step 1 carries the weight.
 
 ---
 
