@@ -22,7 +22,7 @@ Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`,
 
 ## Invocation discipline
 
-A command name (`/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`) appearing **anywhere** in the user's message — mid-sentence, lowercase, conjugated ("and /spawn-tickets it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
+A command name (`/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`) appearing **anywhere** in the user's message — mid-sentence, in any casing, woven into a sentence ("and /spawn-tickets it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
 
 Invoke this skill via the Skill tool for **every** new request it covers, even if its content is already in your context from earlier in the session.
 
