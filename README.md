@@ -24,6 +24,11 @@ One repo, declared per-project, works in local and cloud sessions alike.
   `/spawn-epic`. Takes an issue from open to a reviewed PR and on to merged, with a
   pluggable **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn`
   for its parallel fan-out.
+- **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
+  (frontmatter in SKILL.md / command / agent files, GitHub Actions workflows,
+  docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
+  and carries one quoting decision rule, a mandatory parse/round-trip verify
+  step, and a compact symptom→cause→fix gotcha table.
 - **gm** — system-agnostic, persona-driven solo-RPG game master: the `gm` skill
   plus 7 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
   `/gm:oracle`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`). Pluggable system
