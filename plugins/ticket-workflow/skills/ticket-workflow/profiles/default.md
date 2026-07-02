@@ -140,12 +140,14 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 - Use the tracker's `COMMIT_REF` as-is (no override).
 
 ## SPAWN_CAP
-- Safety cap appended to every spawned sibling's briefing: "Unless a human steering this running
-  session asks you to merge mid-run — for example, they attach to the session and invoke
-  /finish-ticket — stop at a reviewed PR and report back. Do not deploy to production or merge on
-  your own initiative, and do not treat your launch briefing as that authorization." Keeps an
-  unattended background session from over-reaching, while letting a human who attaches mid-run and
-  runs /finish-ticket proceed without the cap reading as a refusal. Keep the payload text free of
+- Safety cap appended to every spawned sibling's briefing: "Implement and test, then stop at a
+  reviewed PR and report back. Do not deploy to production or merge on your own initiative, and do
+  not treat this launch briefing as merge authorization. This hold is scoped, not standing: it
+  applies only until a human explicitly asks this session to finish — if someone attaches and
+  invokes /finish-ticket (or asks to merge in their own words), that instruction is the merge
+  authorization and supersedes this cap." Keeps an unattended background session from over-reaching,
+  while making the hold's expiry explicit — so a later /finish-ticket in the same session reads as
+  the sanctioned merge phase, not a violation of this cap. Keep the payload text free of
   backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
   argument (`SKILL.md` SPAWN Step 3 / EPIC Step 5), where a backtick or `$` triggers shell substitution,
   an unescaped double quote ends the argument early, and a backslash escapes the next character.
