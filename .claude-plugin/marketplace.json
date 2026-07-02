@@ -26,6 +26,11 @@
       "description": "Diverse bulk ideation with a pluggable Promotion adapter (generate skill + /generate command)"
     },
     {
+      "name": "yaml",
+      "source": "./plugins/yaml",
+      "description": "YAML editing guardrails: surface-triggered gotcha reference + mandatory parse-verify step"
+    },
+    {
       "name": "gm",
       "source": "./plugins/gm",
       "description": "System-agnostic, persona-driven solo RPG game master (dice, oracles, adapters, versioned saves)"

@@ -1,0 +1,8 @@
+{
+  "name": "yaml",
+  "description": "YAML editing guardrails: surface-triggered gotcha reference + mandatory parse-verify step",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mario Guerrieri"
+  }
+}
