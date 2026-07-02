@@ -7,8 +7,8 @@ description: >-
   PR 7", "get issues 3 and 5 moving while I'm out", "handle the auth epic"). ALSO use whenever
   /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or /spawn-epic appears anywhere in
   a message, even mid-sentence ("file an issue and /spawn-tickets it"), and even if this skill
-  is already in context. Tracker- and environment-agnostic (GitHub Issues or Jira, pluggable
-  org profile).
+  is already in context. Tracker-agnostic (GitHub Issues or Jira) with pluggable org
+  profiles; assumes GitHub-hosted code (PRs/CI/merges via gh).
 ---
 
 # Ticket workflow (pluggable tracker + profile)
