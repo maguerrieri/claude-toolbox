@@ -19,7 +19,7 @@ Read `title` and `body`. Look in `body` for a base-branch directive (e.g. "Base 
 ```bash
 gh issue create --title "<title>" --body-file <path>  [--label "<label>"]
 ```
-- Write the body to a temp file and pass `--body-file` — issue bodies are multi-line markdown where an inline `--body "…"` would let the shell expand backticks/`$` and mangle quotes.
+- Write the body to a temp file and pass `--body-file` — issue bodies are multi-line, quote- and backtick-heavy markdown, and a file sidesteps the brittle shell escaping an inline `--body "…"` would need.
 - `--label` is best-effort: it errors if the label doesn't exist in the repo (`gh` doesn't create labels on the fly) — retry without it rather than failing the CREATE.
 - On success `gh issue create` prints the new issue's URL; the trailing path segment is the number (`…/issues/57` → `57`). Return that number — it's the `<n>` every other op consumes.
 
