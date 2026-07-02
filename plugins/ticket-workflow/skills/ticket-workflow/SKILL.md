@@ -279,10 +279,11 @@ For each issue, hand the `spawn` skill one unit:
 Then **spawn them via the `spawn` skill** — one `claude --bg` call per issue, all in a single message (parallel), report the table, hand back. The fan-out details (parallel spawn, recognizable naming, the `Session | Scope` table, the `claude agents` / `attach` / `logs` inspect commands, and the no-babysit / no-block guarantees) live in `spawn`; don't repeat them here. The resulting command per issue:
 
 ```bash
-claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>"
+( cd "$launch_dir" && claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>" )
 ```
 
 Ticket-only notes layered on top of `spawn`:
+- **Durable launch dir** (`spawn`'s step 3 — `launch_dir` above): spawn from the repo's **main checkout** (first entry of `git worktree list`), **never from inside a ticket worktree** — the bg job records its launch cwd, and when the spawning ticket's worktree is removed at FINISH, attach/resume of the still-listed sibling breaks. This bites here specifically: a START/EPIC session that files and spawns a follow-up ticket is usually sitting inside its own disposable worktree.
 - Siblings inherit your config home + env, so they resolve the same tracker/profile; each runs its own Step 0.
 - If a spawn is blocked by a permission / auto-mode classifier (e.g. it reads as deploy-adjacent), make the cap explicit in the briefing, or print the commands for the user to run.
 
@@ -352,9 +353,10 @@ Route each connected cluster of children to the lightest mode that fits:
 Spawn in dependency waves, maximizing parallelism *within* each wave. **Compose each child's briefing exactly as SPAWN does — the per-child briefing PLUS the profile's `SPAWN_CAP` (never omit the cap)** — and **strip the orchestrator's own flags** (`--finish` / "merge when green" / `--coordinate` / `--team` / `--independent`) from what you forward, so a child never sees merge-intent that contradicts the cap. **Assign each child a deterministic, epic-namespaced branch up front** (`epic-<epic-id-lower>-<id-lower>`) and pass it as a `Worktree:` directive — so the orchestrator knows every branch name *exactly*, for stacking and the Step 6 poll, instead of guessing the nondeterministic `BRANCH(id)` slug. (The `epic-` prefix keeps these distinct from a solo `/start-ticket`'s slug branch and unambiguous in `git branch`; resume a child solo by reusing this name.) Pass the chosen base too:
 
 ```bash
-claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>  Base branch: <base>  Worktree: epic-<epic-id-lower>-<id-lower>"
+( cd "$launch_dir" && claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>  Base branch: <base>  Worktree: epic-<epic-id-lower>-<id-lower>" )
 ```
 
+- **Durable launch dir** (`launch_dir` — same rule as SPAWN Step 3 / `spawn`'s step 3): every child spawns from the repo's **main checkout** (first entry of `git worktree list`), never from inside a disposable worktree — the bg job records its launch cwd, and a dangling cwd breaks attach/resume of that child later.
 - **Session name**: same convention as SPAWN Step 3 — `<repo> <ID>: <desc>`, `<desc>` under 5 words (e.g. `--name "widgets #3: CI on macOS"`). Only the **branch** needs to be deterministic (stacking and the Step 6 poll key on branches/PRs, never on session names), and `claude --bg` prints a **session handle** at spawn — record it per child; it's how you inspect a stuck child later, and it survives the user renaming the session.
 - `<epic-id-lower>` / `<id-lower>` (branch slug only): the epic ID and the child ID each **normalized per the tracker first** (GitHub: strip a leading `#`, so `#123` → `123`, not `-123`), then lowercased with non-alphanumerics → `-` — e.g. epic `ABC-40`, child `ABC-51` → assigned branch `epic-abc-40-abc-51`. Namespacing the **branch** by epic keeps two concurrent epics from colliding.
 - **All roots spawn immediately, in parallel** — one Bash call per root in a single message.
