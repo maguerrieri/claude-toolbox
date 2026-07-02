@@ -1,6 +1,6 @@
 # Tracker adapter: Jira
 
-Jira issue-tracking adapter — `FETCH`, ID→branch, commit/PR refs, close. Pair it with
+Jira issue-tracking adapter — create, `FETCH`, ID→branch, commit/PR refs, close. Pair it with
 whatever **profile** fits the repo: a personal Jira repo with the `default` profile, or
 an org repo with an org-specific profile (which adds that org's engineering steps — its
 review-bot cycle, tagged deploys, error-tracking resolution, and so on), kept in the org's
@@ -16,6 +16,11 @@ own work config, not here.
 - Preferred: the `getJiraIssue` MCP tool with the ID (requires the Jira MCP server to be connected — it may not be, on a personal machine).
 - If MCP isn't available, ask the user to paste the summary/description, or use a Jira CLI if one is configured.
 - Read the summary and description; look for a base-branch directive.
+
+## CREATE(title, body, labels?)  — file a new ticket (FILE phase)
+- Preferred: the Jira MCP create-issue tool (e.g. `createJiraIssue`) with the project key, an issue type (default the project's standard task type), summary `<title>`, description `<body>`, and any labels. The **project key** comes from the request, project memory, or the repo's `CLAUDE.md` — if none names one, ask; don't guess a key.
+- If MCP isn't available, use a configured Jira CLI; failing that, ask the user to create the ticket and paste the new key back.
+- Return the new issue **key** (`ABC-57`) — it's the ID every other op consumes.
 
 ## START(id)  — mark in-progress (optional)
 - Transition the issue to "In Progress" and assign to the user, via the Jira MCP/CLI if available. Best-effort; skip if not wired.
