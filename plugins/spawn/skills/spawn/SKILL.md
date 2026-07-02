@@ -49,12 +49,23 @@ A short prefix that makes the session findable in `claude agents`:
 - In a repo / working dir → its basename (e.g. `misc`, `sonder`).
 - Otherwise → a topic word from the task.
 
-### 3 — Spawn in parallel
+### 3 — Resolve a durable launch directory
 
-One Bash call per unit, **all in a single message** so they launch concurrently:
+The bg job records its launch cwd (in `~/.claude/jobs/<id>/state.json`), and later attach/resume re-enters that directory. **Never spawn a background session from inside a disposable worktree** — once the worktree is cleaned up (e.g. when the spawning ticket session finishes), the recorded cwd dangles and attaching to the spawned job fails with "session ended", even if the job completed fine.
+
+- **In a git checkout:** launch from the repo's **main checkout** — the first entry of `git worktree list`:
+  ```bash
+  launch_dir=$(git worktree list | head -1 | awk '{print $1}')
+  ```
+  (Equivalently: the parent of `git rev-parse --git-common-dir`.) Safe to run unconditionally — outside any linked worktree it just returns the checkout you're in. The spawned session sets up its own workspace anyway; the launch cwd only needs to be **stable**.
+- **Not in a git repo:** use the current dir — unless it's itself temporary (a job tmp dir, `/tmp`), in which case pick a durable one (e.g. `$HOME` or the relevant project dir).
+
+### 4 — Spawn in parallel
+
+One Bash call per unit, **all in a single message** so they launch concurrently — each wrapped in a subshell so the `cd` to the durable launch dir doesn't leak into your session:
 
 ```bash
-claude --bg --name "<context> <desc>" "<prompt>"
+( cd "$launch_dir" && claude --bg --name "<context> <desc>" "<prompt>" )
 ```
 
 - `<desc>`: under 5 words, recognizable (e.g. `investigate flaky CI`). Spaces and special characters are fine — keep `--name`'s argument quoted.
@@ -63,12 +74,12 @@ claude --bg --name "<context> <desc>" "<prompt>"
   read -r -d '' p <<'PROMPT'
   …prompt text, verbatim…
   PROMPT
-  claude --bg --name "<context> <desc>" "$p"
+  ( cd "$launch_dir" && claude --bg --name "<context> <desc>" "$p" )
   ```
 - Add no cap; the prompt carries whatever bounds the caller wrote.
 - `claude --bg` prints a **session handle** at spawn — record it per unit; it survives the user renaming the session and is how you inspect a stuck one later.
 
-### 4 — Report and hand back
+### 5 — Report and hand back
 
 Print a table, then stop — **don't block on the sessions**:
 
@@ -80,6 +91,7 @@ Point at the inspect commands: `claude agents` (list), `claude attach "<name>"` 
 
 ## Spawn does NOT
 
+- Launch from inside a disposable worktree — resolve the durable launch dir (step 3) first, or attach/resume breaks when the worktree is later removed.
 - Babysit or poll the sessions — each runs on its own.
 - Block on completion — spawn, report, hand back.
 - Add any cap — bounds live in the prompt text.
