@@ -29,6 +29,27 @@ marketplace, pinned for this repo in `.claude/settings.json`): brainstorm → de
 spec in `docs/superpowers/specs/` → `writing-plans` → test-driven implementation.
 Pairs with the ticket workflow above.
 
+## SKILL.md size — when to split phases into their own files
+
+ticket-workflow's `SKILL.md` deliberately stays a **single file** (~440 lines as of
+#25): the phases cross-reference each other's steps by number (EPIC → START Steps
+2/3/7, FINISH's gate → START Step 6), and one file keeps full-context reads the
+default — splitting reintroduces the #22 bypass failure in a new form (skim the
+index, skip the phase file). Don't split preemptively. Split phases into
+read-on-demand `phases/*.md` (the same Step-0 idiom as `trackers/` and
+`profiles/`) when one of these fires:
+
+- a phase-sized addition (e.g. a `--epic` variant of `/make-ticket`, a sixth
+  phase) pushes it past ~500 lines — split as part of that PR, not as a
+  standalone refactor;
+- two concurrent tickets produce a merge conflict in `SKILL.md`;
+- wording micro-tests show agents missing steps mid-file.
+
+Extract **EPIC first** — biggest, most self-contained, least invoked. Whatever
+splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0, and a
+one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
+completion-criteria checklists move with their phase.
+
 ## Releasing (version bumps)
 
 Installs are **version-gated**: `/plugin marketplace update` only pulls a plugin's new
