@@ -22,6 +22,12 @@ Work is tracked in **GitHub Issues**. Commits and PRs follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
 brackets, AI-assistance flags in the subject parens.
 
+A session can also carry a **role** (`planner` / `epic-coordinator` /
+`implementer`) that pins its altitude and propagates down the spawn edges as a
+`Role:` briefing directive — see the skill's `roles/`. Set only the top planner
+by hand (output style / `--append-system-prompt` / SessionStart marker); the
+lower tiers are injected by `/spawn-epic` and the SPAWN/EPIC phases.
+
 ## Development workflow
 
 Built with the **`superpowers`** plugin (from the built-in `claude-plugins-official`
@@ -31,13 +37,13 @@ Pairs with the ticket workflow above.
 
 ## SKILL.md size — when to split phases into their own files
 
-ticket-workflow's `SKILL.md` deliberately stays a **single file** (~440 lines as of
-#25): the phases cross-reference each other's steps by number (EPIC → START Steps
+ticket-workflow's `SKILL.md` deliberately stays a **single file** (~480 lines as of
+#32): the phases cross-reference each other's steps by number (EPIC → START Steps
 2/3/7, FINISH's gate → START Step 6), and one file keeps full-context reads the
 default — splitting reintroduces the #22 bypass failure in a new form (skim the
 index, skip the phase file). Don't split preemptively. Split phases into
-read-on-demand `phases/*.md` (the same Step-0 idiom as `trackers/` and
-`profiles/`) when one of these fires:
+read-on-demand `phases/*.md` (the same read-on-demand idiom as `trackers/`,
+`profiles/`, and `roles/`) when one of these fires:
 
 - a phase-sized addition (e.g. a `--epic` variant of `/make-ticket`, a sixth
   phase) pushes it past ~500 lines — split as part of that PR, not as a
