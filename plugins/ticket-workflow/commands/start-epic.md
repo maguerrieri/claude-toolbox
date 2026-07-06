@@ -10,6 +10,6 @@ Run the epic: **$ARGUMENTS**
 - shared **briefing** text;
 - orchestrator **flags**: `--finish` (also "merge when green" / "and finish them"); and a routing override — `--independent` (force bg), `--coordinate` (coordinated via shared markers / the tracker's `COORD` op), or `--team` (the live-`SendMessage`-team upgrade). The three routing flags are **distinct, not synonyms**.
 
-**Strip those flags from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`.
+**Strip those flags — and any `Role:` directive — from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`, nor the orchestrator's own `Role: epic-coordinator` (each child gets its own `Role: implementer` from EPIC Step 5).
 
 Then do the skill's **Step 0** (select tracker + profile) and run the EPIC cycle exactly as written in SKILL.md (Steps 1–7) — that's the authoritative flow.
