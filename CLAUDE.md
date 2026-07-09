@@ -25,8 +25,10 @@ brackets, AI-assistance flags in the subject parens.
 A session can also carry a **role** (`planner` / `epic-coordinator` /
 `implementer`) that pins its altitude and propagates down the spawn edges as a
 `Role:` briefing directive — see the skill's `roles/`. Set only the top planner
-by hand (output style / `--append-system-prompt` / SessionStart marker); the
-lower tiers are injected by `/spawn-epic` and the SPAWN/EPIC phases.
+by hand with `/role planner` (a per-session marker + hooks make it durable
+across resume/compaction and gate a pinned planner's edits behind a permission
+prompt); the lower tiers are injected by `/spawn-epic` and the SPAWN/EPIC
+phases. `/role none` unpins.
 
 ## Development workflow
 

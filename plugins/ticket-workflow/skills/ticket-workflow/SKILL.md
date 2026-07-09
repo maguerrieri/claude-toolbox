@@ -62,7 +62,9 @@ Tracker and profile say *what tracks the work* and *how this environment ships i
 
 - SPAWN emits `Role: implementer` on each `/start-ticket` it fans out; EPIC emits it on each child; `/spawn-epic` emits `Role: epic-coordinator` on the `/start-epic` session it launches.
 - When a START or EPIC run finds a `Role:` directive in its briefing, it reads `roles/<role>.md` (read-on-demand, like a tracker/profile) and adopts it as governing. **No directive → interactive run, unconstrained** — the charter bounds *spawned/unattended* sessions exactly as `SPAWN_CAP` does; a human driving the session is never boxed in.
-- The **top planner** is the one manual step: give that session its charter at launch — an output style, an `--append-system-prompt` alias, or a SessionStart hook keyed on a workspace marker (see `roles/planner.md`). Everything below inherits from the spawn edge that created it.
+- The **top planner** is the one manual step: run `/role planner` in that session (see `roles/planner.md`). Everything below inherits from the spawn edge that created it.
+
+**Pinning — `/role` + hooks.** `/role <role>` makes a role *durable* where a briefing directive is only *initial*: it writes a per-session marker (`~/.claude/session-roles/<session_id>`) that the plugin's hooks consume — SessionStart re-injects the charter after resume/`/clear`/compaction (a directive read at Step 1 doesn't survive those), and PreToolUse turns file edits into a permission prompt while `planner` is pinned (drift-proof unattended, one keystroke for a human; the escape hatch made mechanical). `/role none` unpins. Spawned tiers don't need pinning — their charter arrives with every (re-)briefing — but a spawned session MAY `/role <its-role>` after adopting a directive to make it compaction-proof.
 
 ---
 
