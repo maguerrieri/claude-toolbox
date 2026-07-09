@@ -37,7 +37,9 @@ keeps you from *drifting* into implementation, not from *choosing* it.
 ## Setting this role
 
 Unlike the tiers below it, the planner isn't reached by a spawn edge, so nothing
-injects this charter automatically. Give the top session its role at launch —
-an output style, an `--append-system-prompt` wrapper alias, or a SessionStart
-hook keyed on a workspace marker file. Set it once; every `/spawn-epic` and
-`/spawn-tickets` below propagates the lower tiers on its own.
+injects this charter automatically. Run **`/role planner`** in the top session:
+it pins the charter in a per-session marker that the plugin's hooks consume —
+the charter is re-injected after resume/`/clear`/compaction, and file edits
+prompt for approval while pinned (the drift guard made mechanical; approve one
+to drop a tier deliberately, or `/role none` to unpin). Set it once; every
+`/spawn-epic` and `/spawn-tickets` below propagates the lower tiers on its own.

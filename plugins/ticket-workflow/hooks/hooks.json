@@ -1,0 +1,28 @@
+{
+  "description": "Session roles — export the session id so /role can key its marker, re-inject the charter across resume/compact, and guard a pinned planner against drifting into implementation.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/role-session-start.sh\"",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/role-guard.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
