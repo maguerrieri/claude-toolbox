@@ -19,6 +19,9 @@ command -v jq >/dev/null 2>&1 || exit 0
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
 [ -n "$session_id" ] || exit 0
 
+# Fail open (not an unbound-variable abort) when neither the override nor HOME
+# is available.
+[ -n "${CLAUDE_SESSION_ROLES_DIR:-}${HOME:-}" ] || exit 0
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 marker="$roles_dir/$session_id"
 [ -f "$marker" ] || exit 0
