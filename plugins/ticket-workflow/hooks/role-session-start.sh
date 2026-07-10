@@ -66,5 +66,5 @@ esac
 charter="${CLAUDE_PLUGIN_ROOT:-}/skills/ticket-workflow/roles/${role}.md"
 [ -f "$charter" ] || exit 0
 
-printf 'This session is pinned to the **%s** role charter (set earlier via `/role %s`; re-attached after resume/compact). It governs this session until `/role none`.\n\n' "$role" "$role"
+printf 'This session is pinned to the **%s** role charter (set earlier via `/role %s`; re-attached at session start — after resume, /clear, or compaction). It governs this session until `/role none`.\n\n' "$role" "$role"
 cat "$charter"

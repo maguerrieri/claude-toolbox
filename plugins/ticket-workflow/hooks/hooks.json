@@ -1,5 +1,5 @@
 {
-  "description": "Session roles — export the session id so /role can key its marker, re-inject the charter across resume/compact, and guard a pinned planner against drifting into implementation.",
+  "description": "Session roles — export the session id so /role can key its marker, re-inject the charter across resume/clear/compact, and guard a pinned planner against drifting into implementation.",
   "hooks": {
     "SessionStart": [
       {
