@@ -11,38 +11,43 @@ into a permission prompt while the `planner` charter is pinned. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
 are normally injected by spawn edges (`Role:` directives), not by hand.
 
+The marker directory is `${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}`
+(the override exists for testing; the hooks honor the same variable) — called
+`$roles_dir` below.
+
 1. Take the first token of "$ARGUMENTS" as the role. Valid: `planner`,
    `epic-coordinator`, `implementer`, `none`. Anything else (or empty): report
    the valid values and the current marker's content if one exists
-   (`cat "$HOME/.claude/session-roles/$CLAUDE_SESSION_ID"`), and stop.
+   (`cat "$roles_dir/$CLAUDE_SESSION_ID"`), and stop.
 
-2. **`none` — unpin:**
+2. If `$CLAUDE_SESSION_ID` is unset, this plugin's SessionStart hook didn't
+   run (plugin installed mid-session, or hooks disabled) — say so, note the
+   fix (restart the session so SessionStart fires), skip the marker write in
+   step 3/4, but still do step 5 so the charter at least governs the current
+   context.
+
+3. **`none` — unpin:**
 
    ```bash
-   rm -f "$HOME/.claude/session-roles/$CLAUDE_SESSION_ID"
+   rm -f "$roles_dir/$CLAUDE_SESSION_ID"
    ```
 
    State that the role is dropped and no charter governs the session; stop.
 
-3. **Pin:** write the marker, keyed by session id (`$CLAUDE_SESSION_ID` is
+4. **Pin:** write the marker, keyed by session id (`$CLAUDE_SESSION_ID` is
    exported by this plugin's SessionStart hook via `CLAUDE_ENV_FILE`):
 
    ```bash
-   mkdir -p "$HOME/.claude/session-roles"
-   printf '%s\n' "<role>" >"$HOME/.claude/session-roles/$CLAUDE_SESSION_ID"
+   mkdir -p "$roles_dir"
+   printf '%s\n' "<role>" >"$roles_dir/$CLAUDE_SESSION_ID"
    ```
 
-   If `$CLAUDE_SESSION_ID` is unset, the hook didn't run (plugin installed
-   mid-session, or hooks disabled) — say so, note the fix (restart the session
-   so SessionStart fires), and still do step 4 so the charter at least governs
-   the current context.
-
-4. Read the charter at
+5. Read the charter at
    `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` (fall
    back to locating `roles/<role>.md` under this plugin's skill directory if the
    env var is unset) and **adopt it as governing for this session**, exactly as
    START Step 1 does for a spawned `Role:` directive.
 
-5. Confirm to the user: role pinned, what it binds (`planner` also arms the
+6. Confirm to the user: role pinned, what it binds (`planner` also arms the
    edit guard — edits prompt for approval until `/role none`), and that it
    survives resume/compaction.

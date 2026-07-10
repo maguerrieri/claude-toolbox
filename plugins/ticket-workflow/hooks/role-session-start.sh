@@ -36,15 +36,25 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 fi
 
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+marker="$roles_dir/$session_id"
+
+# Refresh THIS session's marker before GC runs: a still-live session must not
+# have its own pin reaped just because it was set >30 days ago.
+[ -f "$marker" ] && touch "$marker" 2>/dev/null || true
 
 # Opportunistic GC: markers outlive their sessions and nothing else reaps them.
 [ -d "$roles_dir" ] && find "$roles_dir" -type f -mtime +30 -delete 2>/dev/null || true
 
-marker="$roles_dir/$session_id"
 [ -f "$marker" ] || exit 0
 
 role=$(tr -d '[:space:]' <"$marker" 2>/dev/null) || exit 0
-[ -n "$role" ] || exit 0
+
+# Whitelist the role before using it in a path or printf: a corrupt/hostile
+# marker must not become a traversal or context-injection channel.
+case "$role" in
+planner | epic-coordinator | implementer) ;;
+*) exit 0 ;;
+esac
 
 charter="${CLAUDE_PLUGIN_ROOT:-}/skills/ticket-workflow/roles/${role}.md"
 [ -f "$charter" ] || exit 0
