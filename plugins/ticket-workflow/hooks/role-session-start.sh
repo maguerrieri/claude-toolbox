@@ -24,6 +24,12 @@ command -v jq >/dev/null 2>&1 || exit 0
 session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
 [ -n "$session_id" ] || exit 0
 
+# Session ids are opaque tokens from Claude Code; anything with a path
+# separator or dot-dot must not reach the marker-path construction.
+case "$session_id" in
+*[!A-Za-z0-9._-]* | *..*) exit 0 ;;
+esac
+
 # 1. Hand the session id — and this plugin's root, which only a hook knows — to
 #    subsequent Bash commands. This is how /role keys its marker and locates the
 #    charters. CLAUDE_ENV_FILE expects `export KEY=value` lines.
