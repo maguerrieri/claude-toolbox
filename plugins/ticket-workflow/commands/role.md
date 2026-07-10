@@ -11,14 +11,17 @@ into a permission prompt while the `planner` charter is pinned. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
 are normally injected by spawn edges (`Role:` directives), not by hand.
 
-The marker directory is `${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}`
-(the override exists for testing; the hooks honor the same variable) — called
-`$roles_dir` below.
+In every snippet below, first assign the marker directory (the override exists
+for testing; the hooks honor the same variable):
+
+```bash
+roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+```
 
 1. Take the first token of "$ARGUMENTS" as the role. Valid: `planner`,
    `epic-coordinator`, `implementer`, `none`. Anything else (or empty): report
-   the valid values and the current marker's content if one exists
-   (`cat "$roles_dir/$CLAUDE_SESSION_ID"`), and stop.
+   the valid values — plus, when `$CLAUDE_SESSION_ID` is set and a marker file
+   exists, the current pin (`cat "$roles_dir/$CLAUDE_SESSION_ID"`) — and stop.
 
 2. If `$CLAUDE_SESSION_ID` is unset, this plugin's SessionStart hook didn't
    run (plugin installed mid-session, or hooks disabled) — say so, note the
