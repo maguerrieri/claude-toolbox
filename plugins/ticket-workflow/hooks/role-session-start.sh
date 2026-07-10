@@ -35,6 +35,9 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 	} >>"$CLAUDE_ENV_FILE" 2>/dev/null || true
 fi
 
+# Fail open (not an unbound-variable abort) when neither the override nor HOME
+# is available.
+[ -n "${CLAUDE_SESSION_ROLES_DIR:-}${HOME:-}" ] || exit 0
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 marker="$roles_dir/$session_id"
 
@@ -43,7 +46,11 @@ marker="$roles_dir/$session_id"
 [ -f "$marker" ] && touch "$marker" 2>/dev/null || true
 
 # Opportunistic GC: markers outlive their sessions and nothing else reaps them.
-[ -d "$roles_dir" ] && find "$roles_dir" -type f -mtime +30 -delete 2>/dev/null || true
+# Only in the DEFAULT location — an overridden roles dir (test scaffolding, or a
+# misconfigured broad path) must never have its contents deleted by this hook.
+if [ -z "${CLAUDE_SESSION_ROLES_DIR:-}" ] && [ -d "$roles_dir" ]; then
+	find "$roles_dir" -type f -mtime +30 -delete 2>/dev/null || true
+fi
 
 [ -f "$marker" ] || exit 0
 
