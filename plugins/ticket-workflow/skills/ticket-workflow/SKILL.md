@@ -173,18 +173,23 @@ Use the adapter's `FETCH` to read the issue. Read the title and description — 
 
 ### Step 3 — Create the worktree
 
-Create it as a sibling of the repo root, branch and dir named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes):
+Branch (and worktree) named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes).
+
+**Don't pick a custom worktree path.** Prefer the `EnterWorktree` tool (`name: <branch>`) — it creates the worktree in the harness's default location and switches the session into it. If you must fall back to raw git, stay under the harness default `[repo]/.claude/worktrees/` — any path outside `[repo]/.claude` triggers a manual permission prompt:
 
 ```bash
 cd /path/to/<repo>
 git fetch origin <base_branch>
-git worktree add ../<repo>-<branch> -b <branch> origin/<base_branch>
+git worktree add .claude/worktrees/<branch> -b <branch> origin/<base_branch>
+cd .claude/worktrees/<branch>
 ```
 
-Then run the profile's `SUBMODULES` step. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
+Note EnterWorktree branches from origin's default branch by default; when Step 2 gave a *different* base (a stacked ticket), after entering reset the new branch onto it: `git fetch origin <base_branch> && git reset --hard origin/<base_branch>` (safe — the worktree is brand new).
+
+Then run the profile's `SUBMODULES` step. The `default` profile: if the repo has submodules, initialize them inside the worktree (builds fail otherwise):
 
 ```bash
-cd ../<repo>-<branch> && git submodule update --init
+git submodule update --init
 ```
 
 ### Step 4 — Report the worktree path
@@ -294,7 +299,7 @@ Switch back to the main repo first (can't remove a worktree from inside it), the
 ```bash
 cd /path/to/<repo>
 git worktree list
-git worktree remove --force /path/to/<repo>-<branch>
+git worktree remove --force .claude/worktrees/<branch>
 ```
 
 ### Step 4 — Delete the local branch
