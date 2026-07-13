@@ -181,6 +181,7 @@ Branch (and worktree) named via the adapter's `BRANCH` — **unless** the briefi
 cd /path/to/<repo>
 git fetch origin <base_branch>
 git worktree add .claude/worktrees/<branch> -b <branch> origin/<base_branch>
+cd .claude/worktrees/<branch>
 ```
 
 Note EnterWorktree branches from origin's default branch by default; when Step 2 gave a *different* base (a stacked ticket), after entering reset the new branch onto it: `git fetch origin <base_branch> && git reset --hard origin/<base_branch>` (safe — the worktree is brand new).
