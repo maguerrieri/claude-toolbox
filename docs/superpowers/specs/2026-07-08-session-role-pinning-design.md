@@ -67,9 +67,10 @@ list`, greps, and `/make-ticket` itself shells out.
 
 - **planner** — always via `/role planner`; it's the tier with no spawn edge
   and the only one with a guard.
-- **spawned tiers** — don't need pinning (their charter arrives with every
-  (re-)briefing), but MAY `/role <role>` after adopting a directive to become
-  compaction-proof.
+- **spawned tiers** — self-pin on adoption: START Step 1 / EPIC Step 1 write
+  the marker themselves when they adopt a `Role:` directive (#36; originally
+  this was an optional `/role <role>` follow-up), so every tier is
+  compaction-proof, not just the planner.
 
 ## Verified mechanisms (claude-code docs, 2026-07-08)
 
