@@ -50,6 +50,13 @@ Optional for tiny commits where the description carries it.
 
 ## Adjacent rules
 
+- **Once a human review exists on a PR, append review responses as new
+  `(CRC; …)` commits on the reviewed head — never force-push-squash over
+  reviewed history.** Squashing breaks the reviewer's inline comment anchors
+  and turns the re-review diff back into the whole PR. Pre-review, rewrite
+  freely. (If history is built with `git commit-tree`, parent on the reviewed
+  head, not the base branch.) Squash only at merge time, if the repo merges
+  that way.
 - When rebasing, avoid commands that open interactive editors — pass
   everything via CLI flags.
 - A repo's own CLAUDE.md may extend or override this; org playbooks (work
