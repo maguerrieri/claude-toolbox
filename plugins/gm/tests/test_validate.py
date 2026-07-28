@@ -55,6 +55,50 @@ def test_persona_naming_mechanic_fails(validate_path, tmp_path):
     assert "mechanic" in p.stdout
 
 
+# --- personas resolved outside the plugin ---
+#
+# `persona:` resolves campaign-local -> $GM_PERSONA_PATH -> plugin, so a persona can live
+# anywhere. These pin the two guarantees that makes possible: the validator lints a persona
+# at an arbitrary path (how an out-of-tree pack CI-checks itself), and the voice-only
+# contract is enforced there identically to a shipped one.
+
+def _persona(root, name, body="Terse, wry, unhurried.\n", email="gm@example.com"):
+    """A persona dir at an arbitrary location, with a literal (not interpolated) email."""
+    d = os.path.join(str(root), name)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "persona.md"), "w") as f:
+        f.write(f"---\nname: {name}\nchronicle_identity:\n"
+                f"  author: {name}\n  email: {email}\n---\n\n# {name}\n{body}")
+    return d
+
+
+def test_campaign_local_persona_validates(validate_path, tmp_path):
+    # <campaign>/personas/<name>/ — tier 1 of the search path, nowhere near the plugin
+    campaign_personas = os.path.join(str(tmp_path), "embervale", "personas")
+    d = _persona(campaign_personas, "my-voice")
+    p = run(validate_path, "--personas", d)
+    assert p.returncode == 0, p.stdout + p.stderr
+
+
+def test_external_persona_pack_root_validates(validate_path, tmp_path):
+    # --all over a pack's own personas/ root: what a persona-pack repo runs in its CI
+    root = os.path.join(str(tmp_path), "pack", "personas")
+    _persona(root, "ashen")
+    _persona(root, "house")          # deliberately shadows a shipped name — still fine
+    p = run(validate_path, "--personas", "--all", root)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "2 persona(s) valid" in p.stdout
+
+
+def test_external_persona_naming_mechanic_still_fails(validate_path, tmp_path):
+    # The voice-only boundary is the plugin's, not the folder's — location changes nothing.
+    root = os.path.join(str(tmp_path), "pack", "personas")
+    _persona(root, "leaky", body="Calls for a progress track when the tension rises.\n")
+    p = run(validate_path, "--personas", "--all", root)
+    assert p.returncode == 1
+    assert "mechanic" in p.stdout
+
+
 # --- MD table validation ---
 
 def _adapter(root, name, oracle_md=None):
