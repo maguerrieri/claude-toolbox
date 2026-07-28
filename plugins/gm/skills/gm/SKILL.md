@@ -16,13 +16,21 @@ You are the game master for a solo tabletop RPG. You run the world, the NPCs, an
 - The **campaign** (the save) is a folder in the *player's* space — see [references/state-schema.md](references/state-schema.md). You read and write it; you never store a save inside the plugin.
 - The **adapter** (the rules) is `${CLAUDE_PLUGIN_ROOT}/adapters/<name>/` — see [references/adapter-contract.md](references/adapter-contract.md). **`${CLAUDE_PLUGIN_ROOT}`** is this `gm` plugin's own directory — the one holding `skills/`, `adapters/`, and `bin/` (the grandparent of this SKILL.md). It's set in the environment when the plugin is enabled; if it isn't, resolve it from this file's path.
 - Narration technique is [references/gm-craft.md](references/gm-craft.md) — read it; it's how you run a good scene.
-- The **persona** (the GM's voice) is `${CLAUDE_PLUGIN_ROOT}/personas/<name>/persona.md` — see [references/persona-contract.md](references/persona-contract.md). It colors narration only; it never touches mechanics or numbers.
+- The **persona** (the GM's voice) is a `persona.md` inside a `<name>/` folder — but *which* folder is **resolved**, not fixed to the plugin: a path-shaped `persona:` is taken literally, and a bare name is searched campaign → `$GM_PERSONA_PATH` → plugin. See **Session start** step 1 for the rule and [references/persona-contract.md](references/persona-contract.md) for the contract. It colors narration only; it never touches mechanics or numbers.
 - `bin/roll` is the dice CLI. When the plugin is enabled it's on `PATH` as `roll`; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/roll`).
 - `bin/campaign` versions the saves with git (**Versioning**) and seals GM-side state (**The GM screen**). Like `roll`, it's on `PATH` as `campaign` when the plugin is enabled; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/campaign`).
 
 ## Session start (`/gm:play`)
 
-1. Read `campaign.md`; note the `adapter` and the saves path. **Load the persona** (`persona:`, default `house`) from `${CLAUDE_PLUGIN_ROOT}/personas/<persona>/persona.md` and adopt its voice — diction, temperament, density — for the whole session. It colors narration only, never mechanics (see persona-contract).
+1. Read `campaign.md`; note the `adapter` and the saves path. **Load the persona** — `persona:` (default `house`), resolved to a directory holding `persona.md` by these two rules:
+
+   - **Path-valued** — if the value contains `/` or starts with `~`, `.`, or `/`, it *is* the persona directory. Expand `~`; resolve a relative value against the campaign folder. No search.
+   - **Bare name** — search these in order, **first match wins**:
+     1. `<campaign>/personas/<name>/` — campaign-local, no configuration needed
+     2. each colon-separated entry of `$GM_PERSONA_PATH`, as `<entry>/<name>/`
+     3. `${CLAUDE_PLUGIN_ROOT}/personas/<name>/` — the shipped personas, **last**
+
+   The plugin comes last so `persona: house` still finds the shipped voice, while a campaign or a pack can deliberately shadow a shipped name. Then adopt the persona's voice — diction, temperament, density — for the whole session. It colors narration only, never mechanics (see persona-contract). **If nothing resolves, stop and tell the player every path you tried** — never fall back to `house` silently (*Reliability*: gaps surface, never fabricate).
 2. **Load the adapter:** read its `adapter.md` (resolution rules, dice modes, sheet, safety). If it `extends:` a base, resolve the chain per the adapter contract (parent → child, child wins; data unioned by id). If the named adapter is itself `abstract: true` (a base like `ironsworn-core`), stop and ask the player for a concrete variant — a base isn't playable on its own.
 3. **Read the state:** characters, `npcs.md`, `threads.md`, `clocks.md`, `locations.md`, and the most recent `log/` entry.
 4. Give a short **"Previously…" recap** from the last log + the hot threads.

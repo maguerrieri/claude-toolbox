@@ -12,6 +12,45 @@ A **persona** is the GM's *voice* — tone, refereeing temperament, descriptive 
 personas/<name>/persona.md
 ```
 
+That's the shape wherever a persona lives — see **Where personas are found** for which
+`personas/` root a given `persona:` value points at.
+
+## Where personas are found
+
+A persona is **not** plugin-bound. `persona:` in `campaign.md` resolves two ways:
+
+**Path-valued** — a value containing `/`, or starting with `~`, `.`, or `/`, *is* the persona
+directory (`~` expanded; a relative value resolved against the campaign folder). No search.
+
+**Bare name** — searched in order, first match winning:
+
+1. `<campaign>/personas/<name>/`
+2. each colon-separated entry of `$GM_PERSONA_PATH`, as `<entry>/<name>/`
+3. `${CLAUDE_PLUGIN_ROOT}/personas/<name>/`
+
+The plugin is **last**, so a shipped name keeps resolving unless something deliberately
+shadows it. An unresolvable persona is an error that names every path tried — never a silent
+fallback to `house`. `$GM_PERSONA_PATH` mirrors the env-first ladder `identity/README.md`
+establishes for `$GM_IDENTITY_DOMAIN`, so direnv stays the one local-config surface.
+
+Three places a persona can live, all equally valid:
+
+| Scope | Lives in | Selected by |
+|---|---|---|
+| One campaign | `<campaign>/personas/<name>/persona.md` | `persona: <name>` — travels with the save, versioned by `campaign checkpoint` |
+| All your campaigns | a personal dir, e.g. `~/rpg/personas/` | `export GM_PERSONA_PATH=~/rpg/personas` in `.envrc` |
+| Shared with others | a **persona pack** plugin shipping only `personas/` | a `SessionStart` hook appending its `${CLAUDE_PLUGIN_ROOT}/personas` to `GM_PERSONA_PATH` via `$CLAUDE_ENV_FILE` |
+
+**The contract doesn't move.** Wherever the file came from, a persona is still voice-only and
+still can't touch numbers — the hard boundary above holds, so the adapter × persona
+cross-product is intact for out-of-tree personas too. `bin/validate-adapter --personas <dir>`
+(and `--all <root>`) take arbitrary paths, so a pack can CI-check itself against this plugin's
+own enforcement without any extra tooling.
+
+**Identity wrinkle for out-of-tree personas.** `${identity_domain}` interpolation reads the
+*plugin's* `identity/identity.json`, so an external persona should write a **literal** email in
+`chronicle_identity` rather than rely on the placeholder resolving.
+
 ## `persona.md`
 
 Front-matter:
@@ -35,4 +74,4 @@ Body — voice only, with no reference to any system's mechanics or terms:
 
 ## How the core uses it
 
-At session start the core reads `persona:` from `campaign.md` (default `house`), loads `personas/<name>/persona.md`, and narrates the whole session in that voice — applying it to scene framing, NPC dialogue, and outcome narration. The persona never enters the *mechanical* path (deciding rolls, reading the adapter, writing state); it only colors the prose. Switching personas mid-campaign changes the voice, nothing else.
+At session start the core reads `persona:` from `campaign.md` (default `house`), resolves it to a folder per **Where personas are found** above, loads that folder's `persona.md`, and narrates the whole session in that voice — applying it to scene framing, NPC dialogue, and outcome narration. The persona never enters the *mechanical* path (deciding rolls, reading the adapter, writing state); it only colors the prose. Switching personas mid-campaign changes the voice, nothing else.
