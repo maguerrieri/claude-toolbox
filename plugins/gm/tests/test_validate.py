@@ -58,7 +58,7 @@ def test_persona_naming_mechanic_fails(validate_path, tmp_path):
 # --- personas resolved outside the plugin ---
 #
 # `persona:` resolves campaign-local -> $GM_PERSONA_PATH -> plugin, so a persona can live
-# anywhere. These pin the two guarantees that makes possible: the validator lints a persona
+# anywhere. That freedom rests on two guarantees, pinned here: the validator lints a persona
 # at an arbitrary path (how an out-of-tree pack CI-checks itself), and the voice-only
 # contract is enforced there identically to a shipped one.
 
