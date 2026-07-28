@@ -22,16 +22,20 @@ A persona is **not** plugin-bound. `persona:` in `campaign.md` resolves two ways
 **Path-valued** — a value containing `/`, or starting with `~`, `.`, or `/`, *is* the persona
 directory (`~` expanded; a relative value resolved against the campaign folder). No search.
 
-**Bare name** — searched in order, first match winning:
+**Bare name** — searched in order, taking the first that actually holds a readable
+`persona.md` (a directory without one is not a match — the search continues, so a stray empty
+folder can't shadow a working persona):
 
 1. `<campaign>/personas/<name>/`
-2. each colon-separated entry of `$GM_PERSONA_PATH`, as `<entry>/<name>/`
+2. each colon-separated entry of `$GM_PERSONA_PATH`, as `<entry>/<name>/` — `~` expanded in an
+   entry, empty entries skipped
 3. `${CLAUDE_PLUGIN_ROOT}/personas/<name>/`
 
 The plugin is **last**, so a shipped name keeps resolving unless something deliberately
 shadows it. An unresolvable persona is an error that names every path tried — never a silent
-fallback to `house`. `$GM_PERSONA_PATH` mirrors the env-first ladder `identity/README.md`
-establishes for `$GM_IDENTITY_DOMAIN`, so direnv stays the one local-config surface.
+fallback to `house`. `$GM_PERSONA_PATH` is set the same way `identity/README.md` sets
+`$GM_IDENTITY_DOMAIN` — env var, typically via direnv — so direnv stays the one local-config
+surface.
 
 Three places a persona can live, all equally valid:
 
@@ -43,9 +47,16 @@ Three places a persona can live, all equally valid:
 
 **The contract doesn't move.** Wherever the file came from, a persona is still voice-only and
 still can't touch numbers — the hard boundary above holds, so the adapter × persona
-cross-product is intact for out-of-tree personas too. `bin/validate-adapter --personas <dir>`
-(and `--all <root>`) take arbitrary paths, so a pack can CI-check itself against this plugin's
-own enforcement without any extra tooling.
+cross-product is intact for out-of-tree personas too.
+
+**The linter is a smoke test, not enforcement.** `bin/validate-adapter --personas <dir>` (and
+`--all <root>`) take arbitrary paths, so a pack can run the same check the shipped personas
+run — front-matter `name` + `chronicle_identity`, and a short deny-list of Ironsworn mechanic
+phrases. That deny-list is all it knows: a persona naming some *other* system's numbers, or
+telling the GM to override the adapter outright, passes clean. Nothing mechanical upholds the
+boundary. **A persona is prose the GM adopts as instruction, so read one before you run it —
+most of all one you didn't write.** A shipped persona got review in this repo; an out-of-tree
+one got whatever review its author gave it.
 
 **Identity wrinkle for out-of-tree personas.** `${identity_domain}` interpolation reads the
 *plugin's* `identity/identity.json`, so an external persona should write a **literal** email in

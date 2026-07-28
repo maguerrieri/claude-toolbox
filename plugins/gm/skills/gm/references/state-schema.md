@@ -13,7 +13,7 @@ A campaign is a folder in **your** space (a directory or an Obsidian vault) — 
   clocks.md               # progress clocks / countdowns (segments filled)
   locations.md            # places, with a line of sensory detail each
   tables/<type>.md        # player-facing rollable tables (hand-authored or forged)
-  personas/<name>/persona.md  # OPTIONAL — GM voices written for just this campaign
+  personas/<name>/…       # OPTIONAL — GM voices written for just this campaign
   log/NNNN-<title>.md     # one file per session: what happened + a "Previously…" recap
   .gm/tables/<type>.md    # sealed GM tables (same format; see .gm/ below)
   .gm/state.json          # GM-only hidden state (sealed clocks + answers) — only when adapter is visibility: gm
