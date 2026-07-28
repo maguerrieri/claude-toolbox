@@ -36,6 +36,11 @@
       "description": "System-agnostic, persona-driven solo RPG game master (dice, oracles, adapters, versioned saves)"
     },
     {
+      "name": "gm-personas-baker-street",
+      "source": "./plugins/gm-personas-baker-street",
+      "description": "gm persona pack: Dr. Watson, the chronicler's voice (public-domain Sherlock Holmes)"
+    },
+    {
       "name": "ticket-workflow",
       "source": "./plugins/ticket-workflow",
       "description": "End-to-end issue workflow (make/start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile"

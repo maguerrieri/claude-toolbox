@@ -1,0 +1,31 @@
+name: gm-personas-baker-street CI
+
+on:
+  push:
+    paths:
+      - "plugins/gm-personas-baker-street/**"
+      - ".github/workflows/gm-personas-baker-street-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/gm-personas-baker-street/**"
+      - ".github/workflows/gm-personas-baker-street-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The pack ships no tooling of its own — it is linted by gm's validator,
+      # exactly as an out-of-tree pack would lint itself.
+      - name: Validate personas
+        run: python3 plugins/gm/bin/validate-adapter --personas --all plugins/gm-personas-baker-street/personas
+      - name: Check JSON is well-formed
+        run: |
+          for f in plugins/gm-personas-baker-street/.claude-plugin/plugin.json \
+                   plugins/gm-personas-baker-street/hooks/hooks.json; do
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$f"
+          done
+      - name: Check the SessionStart hook parses and is executable
+        run: |
+          bash -n plugins/gm-personas-baker-street/hooks/persona-path.sh
+          test -x plugins/gm-personas-baker-street/hooks/persona-path.sh

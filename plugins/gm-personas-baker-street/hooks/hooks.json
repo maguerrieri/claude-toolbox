@@ -1,0 +1,16 @@
+{
+  "description": "Persona pack handshake — append this pack's personas/ to GM_PERSONA_PATH so gm resolves its voices by bare name.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/persona-path.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}
