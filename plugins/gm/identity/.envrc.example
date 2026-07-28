@@ -1,8 +1,9 @@
 # Copy to `.envrc` (gitignored), set your values, then run `direnv allow`.
 
-# Where to look for personas beyond this campaign and this plugin — colon-separated
-# dirs, each holding `<name>/persona.md`. Searched after `<campaign>/personas/` and
-# before the plugin's own. Leave unset to use only campaign-local + shipped personas.
+# Optional: extra places to look for personas — colon-separated dirs, each holding
+# `<name>/persona.md`. Searched after `<campaign>/personas/` and before the plugin's
+# own. Point it at your own dir, or drop the line to search only campaign-local +
+# shipped personas.
 export GM_PERSONA_PATH=$HOME/rpg/personas
 
 # The rest is only for the optional per-persona commit avatars (follow-on infra).
