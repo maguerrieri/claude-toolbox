@@ -13,6 +13,14 @@
 # resort after us.
 #
 # Fails open at every step: a persona pack must never keep a session from starting.
+#
+# On the matcher (startup|resume|fork, deliberately NOT clear|compact): Claude Code
+# runs CLAUDE_ENV_FILE as a script preamble before *each* Bash command, and variables
+# written to it stay available for the rest of the session. A /clear or /compact
+# therefore loses nothing — while re-firing there would append a second copy of this
+# directory to the file, and a third, once per compaction, since we append (>>).
+# `fork` is included because a forked session starts its own env file; Claude Code
+# before v2.1.214 reported forks as `resume`, which the matcher also covers.
 set -uo pipefail
 
 # Only a hook knows where the plugin was installed; without it there is nothing to add.
