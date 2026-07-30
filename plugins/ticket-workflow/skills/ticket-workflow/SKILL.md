@@ -479,12 +479,28 @@ main
  │   └─ #103  TICKET-3  (stacked on #102)
 ```
 
+**Register each dependency chain as a native GitHub stack** (public preview, 2026-07-30) once all its members are START-complete — this is what makes Step 7's `gh stack merge` path available. Use `gh stack link` (from the `github/gh-stack` extension), which registers **already-open PRs** without local stack tracking — exactly EPIC's shape, since each child's PR was opened by its own START session, not by `gh stack submit`:
+
+```bash
+gh stack link <bottom-pr> <next-pr> ... <top-pr>   # PR numbers, bottom-to-top; prints "stack #<s>" — record <s>
+```
+
+Best-effort, per chain: if the extension isn't installed (`gh extension install github/gh-stack`) or linking fails (preview not enabled for the repo), **skip registration and note that this chain will use Step 7's manual fallback** — never block the aggregate on it. **Diamonds are not registerable** — a stack is a linear chain and a multi-parent child has no single parent layer; leave diamond members unregistered (their Step 4 integration-branch handling stands). Independent PRs need no registration.
+
 ### Step 7 — (optional) Finish the stack
 
 Only if the request carries a **finish flag** (`--finish`, "merge when green", "and finish them"). This **intentionally lifts `SPAWN_CAP`** for the orchestrator's own FINISH pass — it's an explicit user opt-in, never inferred. Run FINISH (smoke → rebase-merge → cleanup → close) per child, in **dependency order**:
 
 - **Independent PRs:** finish in any order.
-- **Chains:** merge **bottom-up** (root first). Rebase-merge rewrites the base's SHAs, so after each parent merges, **restack** each dependent *before* merging it — retarget its PR to the **epic base** (`<base_branch>`, e.g. `main`) — **not** the now-merged parent branch — and rebase onto it: `gh pr edit <child> --base <base_branch>`, then rebase the child branch onto updated `origin/<base_branch>`, push, re-watch CI, then merge. This is exactly the stacked-PR rule in the user's CLAUDE.md ("restack each child onto the updated base between merges") — follow it to keep history linear and stop the child's PR from re-showing the parent's already-merged diff. **Don't `--delete-branch` a branch that still has open children stacked on it** (it would auto-close them).
+- **Chains, registered** (Step 6 linked them into a stack): merge **one layer at a time, bottom-up**, running the FINISH pre-merge gate on each child **before** merging its layer — native stacks change *how layers land*, not *whether each layer is fit to land*:
+
+  ```bash
+  gh stack merge <pr-of-this-layer> --rebase --yes   # merges everything up to and including <pr>
+  ```
+
+  Merging a layer **auto-retargets the next layer's PR to the base and server-side rebases its branch** (validated 2026-07-30: new SHAs appear on origin, the child's PR shows only its own diff) — no manual retarget/rebase/push round-trip. Rebase-merge is honored via `--rebase` (pass it explicitly; without a method flag the tool reuses your last-used method). Caveats from the validation run: a **draft** PR blocks the merge (`gh stack submit` even opens drafts by default — EPIC's PRs come from START, so they're ready, but check); a **closed** member wedges the whole stack (`nothing to merge: pull request is closed`) — recover by re-pushing the branch, recreating its PR, then `gh stack unstack <s>` + re-`link` with the replacement; a bare number argument is tried as a **stack** number before a PR number, so when they could collide pass the stack number deliberately. If a base moves mid-finish (e.g. main advanced), `gh stack sync` does the cascading rebase + push for the remaining layers.
+- **Chains, unregistered** (fallback — extension missing, preview unavailable, or the chain never got linked): the manual dance. Merge **bottom-up** (root first). Rebase-merge rewrites the base's SHAs, so after each parent merges, **restack** each dependent *before* merging it — retarget its PR to the **epic base** (`<base_branch>`, e.g. `main`) — **not** the now-merged parent branch — and rebase onto it: `gh pr edit <child> --base <base_branch>`, then rebase the child branch onto updated `origin/<base_branch>`, push, re-watch CI, then merge. This is exactly the stacked-PR rule in the user's CLAUDE.md ("restack each child onto the updated base between merges") — follow it to keep history linear and stop the child's PR from re-showing the parent's already-merged diff.
+- **Never delete a branch that still has an open child PR based on it — registered or not.** Validated 2026-07-30 on a registered stack: deleting the parent branch still **closed both** its own PR and the stacked child's. Registration improves *recovery*, not *prevention* — the child reopens (`gh pr reopen`) once the deleted branch is re-pushed, and `gh stack sync` re-rebases the survivors; but the deleted branch's **own** PR can never be reopened (recreate it, then `unstack` + re-`link`). In an ad-hoc stack the child's closure is just as permanent as the parent's. So the standing rule holds everywhere: merge with `--rebase` alone, never `--delete-branch`, and let the remote's auto-delete (which retargets children first) handle cleanup.
 - **Diamonds:** a multi-parent child merges **only after all its parents have merged** — then restack it onto the epic base like a chain and merge; rebasing onto the updated base collapses away its integration branch's parent-commits, leaving just its own diff.
 
 End with FINISH's "what to watch for" note (FINISH Step 5) for the epic as a whole.
