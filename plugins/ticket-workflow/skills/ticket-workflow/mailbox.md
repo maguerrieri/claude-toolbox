@@ -51,8 +51,9 @@ One JSON object per line (JSONL), three fields:
 
 ## Briefing directives
 
-Two optional directives, siblings of `Base branch:` / `Worktree:` / `Role:`, each a
-single whitespace-delimited path token:
+Two directives (default-on per spawn edge, omittable to opt out), siblings of
+`Base branch:` / `Worktree:` / `Role:`, each a single whitespace-delimited path
+token:
 
 - `Mailbox: <path>` — *your* mailbox; arm it on receipt (below).
 - `Notify: <path>` — the spawner's mailbox; append your pings there.
@@ -81,7 +82,8 @@ lines already read in a previous arming).
 **The channel does not survive resume/compaction on its own**: the Monitor dies
 with the process, and a briefing directive isn't durably re-injected the way a
 pinned role is. So on arming, **record both paths somewhere you'll re-read** — a
-`Mailbox:`/`Notify:` pair in your PR body is the natural spot — and re-arm from
+`Mailbox:`/`Notify:` pair in your PR body is the natural spot (until the PR
+exists, a note in the worktree or on the issue works) — and re-arm from
 there if you notice they're gone. If you don't, the channel is simply dead and
 the other side's poll (EPIC Step 6, PR state) is the fallback; never *rely* on a
 mailbox outliving a resume.

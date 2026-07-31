@@ -444,7 +444,7 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 
 ### Step 6 — Aggregate the stack
 
-Poll until every child is **START-complete**. If Step 5 armed a mailbox, its pings tell you *when* to re-check a child — but ground the verdict in the **PRs**, not the ping (or session introspection) — for each child's **assigned** branch (`epic-<epic-id-lower>-<id-lower>` from Step 5):
+Poll until every child is **START-complete**. Step 5's mailbox pings tell you *when* to re-check a child — but ground the verdict in the **PRs**, not the ping (or session introspection) — for each child's **assigned** branch (`epic-<epic-id-lower>-<id-lower>` from Step 5):
 
 ```bash
 gh pr list --head <branch> --json number,url,state,reviewDecision,statusCheckRollup,baseRefName
