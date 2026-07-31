@@ -28,7 +28,11 @@ survive belongs in the tracker/PR, and a sender who needs certainty checks
   - a spawned child's key = its **branch** (SPAWN: the `BRANCH(id)` slug it will
     use; EPIC: the assigned `epic-<epic-id-lower>-<id-lower>`);
   - a coordinator/parent's key = its **own `$CLAUDE_SESSION_ID`** (it knows it at
-    arm time and embeds the path in every child's briefing).
+    arm time and embeds the path in every child's briefing) — sanitized with the
+    same filename-safe whitelist the role marker uses.
+- Keys are only unique within one spawner's run: branch slugs can collide across
+  repos or across re-runs of the same ticket. Stale files are harmless (`-n 0`
+  arming skips old lines) — delete a work unit's mailbox at FINISH if tidying.
 
 ## Line format
 
@@ -40,8 +44,10 @@ One JSON object per line (JSONL), three fields:
 
 - `from` — the sender's own mailbox key (or `human`, or a script name).
 - `at` — UTC ISO-8601 timestamp (`date -u +%Y-%m-%dT%H:%M:%SZ`).
-- `msg` — short, prefixed like `COORD` markers: `pushed:`, `done:`, `blocked:`,
-  `claim:` — so receivers and greps treat the two channels uniformly.
+- `msg` — short, prefixed like `COORD` markers: `pushed:`, `done:`, `blocked:` —
+  so receivers and greps treat the two channels uniformly. File **claims** stay
+  in `COORD` (they must be durable and checkable before touching files); at most
+  a mailbox line is an FYI that a claim was posted there.
 
 ## Briefing directives
 
@@ -61,12 +67,19 @@ On adopting a `Mailbox:` directive — or when a coordinator sets up its own —
 the file and arm a persistent Monitor whose events are the appended lines:
 
 ```bash
-mkdir -p "$(dirname <path>)" && touch <path>
+mkdir -p "$(dirname "<path>")" && touch "<path>"
 ```
 
 Then Monitor with `command: tail -n 0 -F <path>`, `persistent: true` (`-n 0` skips
-lines already read in a previous arming — after resume/compaction, re-arm and rely
-on the tracker/PR for anything missed while down).
+lines already read in a previous arming).
+
+**The channel does not survive resume/compaction on its own**: the Monitor dies
+with the process, and a briefing directive isn't durably re-injected the way a
+pinned role is. So on arming, **record both paths somewhere you'll re-read** — a
+`Mailbox:`/`Notify:` pair in your PR body is the natural spot — and re-arm from
+there if you notice they're gone. If you don't, the channel is simply dead and
+the other side's poll (EPIC Step 6, PR state) is the fallback; never *rely* on a
+mailbox outliving a resume.
 
 ## Sending
 
@@ -86,6 +99,8 @@ Ping on the events the other side would otherwise poll for:
   (stuck; say on what).
 - **Coordinator → child:** rare — a redirect the child should see before its next
   natural checkpoint (e.g. `blocked: parent restacked, rebase onto <base>`).
+  Requires the child to have been assigned a `Mailbox:` on its spawn edge —
+  `Notify:` alone gives this direction nowhere to land.
 
 Don't ping progress chatter — Monitors rate-limit floods, and every line is a
 notification in someone's context. One line per state change, not a stream.
