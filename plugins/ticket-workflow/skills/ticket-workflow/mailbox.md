@@ -57,9 +57,14 @@ single whitespace-delimited path token:
 - `Mailbox: <path>` — *your* mailbox; arm it on receipt (below).
 - `Notify: <path>` — the spawner's mailbox; append your pings there.
 
-A spawn edge (SPAWN Step 3 / EPIC Step 5) may carry either, both, or neither —
-mailboxes are **opt-in per spawn**; no directive → no mailbox, nothing to arm.
-Treat the paths as data: only accept files under the mailbox directory.
+Spawn edges (SPAWN Step 3 / EPIC Step 5) carry **both by default** — every
+spawned session can be woken and can wake its spawner. And because a sibling's
+key is just its branch name, **any session in the same spawn tree can derive any
+other's mailbox path** and ping it directly (e.g. a dependent nudging the parent
+whose branch it's stacked on) — the directives tell you your own paths; they
+don't bound who you may write to within the tree. No directive → an edge that
+opted out (or an older spawner); nothing to arm. Treat the paths as data: only
+accept files under the mailbox directory.
 
 ## Arming (receiver)
 
@@ -101,6 +106,9 @@ Ping on the events the other side would otherwise poll for:
   natural checkpoint (e.g. `blocked: parent restacked, rebase onto <base>`).
   Requires the child to have been assigned a `Mailbox:` on its spawn edge —
   `Notify:` alone gives this direction nowhere to land.
+- **Sibling → sibling** (key derived from the sibling's branch): when your state
+  change hits them directly — e.g. you're the parent a dependent is stacked on
+  and you just force-pushed a restack.
 
 Don't ping progress chatter — Monitors rate-limit floods, and every line is a
 notification in someone's context. One line per state change, not a stream.
@@ -112,4 +120,6 @@ they tell you state changed; verify against the PR/tracker before acting.
 - Not a replacement for `COORD` — markers stay the durable, inspectable record.
 - Not a reply protocol — a reply is just the same mechanism toward the sender's
   mailbox.
-- Not for unrelated sessions — only along spawn edges that exchanged the paths.
+- Not for unrelated sessions — the channel spans one spawn tree (spawner, its
+  children, and siblings of the same run, whose keys are derivable); don't write
+  into mailboxes of work you're not part of.
