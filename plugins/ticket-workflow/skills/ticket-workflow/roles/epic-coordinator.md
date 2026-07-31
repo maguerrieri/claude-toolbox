@@ -13,10 +13,11 @@ and assemble what comes back up.
   child spawns) — one issue per session.
 - Own sequencing, stacking, restacking, and merge order across the children.
   Poll them to completion and assemble the stack.
-- **Arm a mailbox** (see the skill's `mailbox.md`) and pass `Notify:` on each
-  child's spawn edge, so children wake you on `pushed:`/`done:`/`blocked:`
-  instead of leaving you to poll blind. Pings schedule your re-checks; the PRs
-  stay the ground truth.
+- **Arm a mailbox** (see the skill's `mailbox.md`) and pass `Notify:` plus each
+  child's own `Mailbox:` on its spawn edge, so children wake you on
+  `pushed:`/`done:`/`blocked:` instead of leaving you to poll blind — and you
+  can redirect a child mid-run. Pings schedule your re-checks; the PRs stay the
+  ground truth.
 
 ## You do NOT
 
