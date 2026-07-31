@@ -173,6 +173,8 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 
 If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), skip the write and proceed with the directive as-is — the same degradation `/role` documents. No `Role:` directive → this is an interactive run and no charter applies; the human driving it isn't bounded.
 
+**Arm mailbox (if directed).** If the briefing carries a `Mailbox:` and/or `Notify:` directive (a cross-session wake-up channel some spawn edges opt into), read `mailbox.md` now (read-on-demand, like a tracker/profile) and follow it: arm a persistent Monitor on your `Mailbox:` path, and ping the `Notify:` path at the events it lists (`pushed:`, `done:`, `blocked:`). No directive → no mailbox; nothing to arm.
+
 ### Step 2 — Determine target repo + base branch
 
 - **Repo:** Use the profile's `REPO_SELECT` (the `default` profile: the repo named in the request, else the current repo — for personal projects you're almost always already inside it; ask if you're in an umbrella/bare dir and it's ambiguous). Org profiles may map the issue to a repo from a catalog.
@@ -357,6 +359,7 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 Ticket-only notes layered on top of `spawn`:
 - **Durable launch dir** (`spawn`'s step 3 — `launch_dir` above): spawn from the repo's **main checkout** (first entry of `git worktree list`), **never from inside a ticket worktree** — the bg job records its launch cwd, and when the spawning ticket's worktree is removed at FINISH, attach/resume of the still-listed sibling breaks. This bites here specifically: a START/EPIC session that files and spawns a follow-up ticket is usually sitting inside its own disposable worktree.
 - Siblings inherit your config home + env, so they resolve the same tracker/profile; each runs its own Step 0.
+- **Optional wake-up channel:** to get pinged when a sibling pushes, finishes, or blocks — instead of polling its PR — read `mailbox.md`, arm your own mailbox, and append a `Notify:` directive (and optionally a `Mailbox:` for the sibling) to its briefing. Off by default; the PR/tracker stays the durable record.
 - If a spawn is blocked by a permission / auto-mode classifier (e.g. it reads as deploy-adjacent), make the cap explicit in the briefing, or print the commands for the user to run.
 
 ### Step 4 — Report back
@@ -434,13 +437,14 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 - **Durable launch dir** (`launch_dir` — same rule as SPAWN Step 3 / `spawn`'s step 3): every child spawns from the repo's **main checkout** (first entry of `git worktree list`), never from inside a disposable worktree — the bg job records its launch cwd, and a dangling cwd breaks attach/resume of that child later.
 - **Session name**: same convention as SPAWN Step 3 — `<repo> <ID>: <desc>`, `<desc>` under 5 words (e.g. `--name "widgets #3: CI on macOS"`). Only the **branch** needs to be deterministic (stacking and the Step 6 poll key on branches/PRs, never on session names), and `claude --bg` prints a **session handle** at spawn — record it per child; it's how you inspect a stuck child later, and it survives the user renaming the session.
 - `<epic-id-lower>` / `<id-lower>` (branch slug only): the epic ID and the child ID each **normalized per the tracker first** (GitHub: strip a leading `#`, so `#123` → `123`, not `-123`), then lowercased with non-alphanumerics → `-` — e.g. epic `ABC-40`, child `ABC-51` → assigned branch `epic-abc-40-abc-51`. Namespacing the **branch** by epic keeps two concurrent epics from colliding.
+- **Optional wake-up channel** (recommended for epics — it's what makes the Step 6 poll cheap): read `mailbox.md`, arm the orchestrator's own mailbox, and append `Notify: <orchestrator mailbox>` to each child's briefing so children ping `pushed:`/`done:`/`blocked:` instead of being purely polled. Pings are hints; Step 6 still verifies against the PRs.
 - **All roots spawn immediately, in parallel** — one Bash call per root in a single message.
 - A **dependent spawns only once every parent's assigned branch is pushed** — i.e. `origin/epic-<epic-id-lower>-<parent-id-lower>` exists (the orchestrator assigned that name, so it knows it exactly), which is the *only* prerequisite for the dependent's worktree fetch (START Step 3); the parent's PR being open is **not** required. (For a **diamond**, wait for *all* parents to be pushed, then build the Step 4 integration branch and pass it as the base.) That's the earliest safe moment (the parent reaches it at START Step 7's `git push`, just before its PR is opened) and maximizes overlap, at the cost of a possible restack if a parent's branch changes during review (handled at finish — Step 7). If you'd rather avoid restacks, gate the dependent on its parent being **START-complete** (green + review-clean) instead — call out which gate you chose.
 - `Base branch: <base>` and `Worktree: <name>` are honored by START (Step 2 for the base, Step 3 for the branch/worktree name — briefing directives beat the defaults), so stacking needs **no special START support** — the dependent's session just cuts its worktree (named `<name>`) from its base (the parent's assigned branch, or the diamond's integration branch).
 
 ### Step 6 — Aggregate the stack
 
-Poll until every child is **START-complete**. Ground the poll in the **PRs**, not session introspection — for each child's **assigned** branch (`epic-<epic-id-lower>-<id-lower>` from Step 5):
+Poll until every child is **START-complete**. If Step 5 armed a mailbox, its pings tell you *when* to re-check a child — but ground the verdict in the **PRs**, not the ping (or session introspection) — for each child's **assigned** branch (`epic-<epic-id-lower>-<id-lower>` from Step 5):
 
 ```bash
 gh pr list --head <branch> --json number,url,state,reviewDecision,statusCheckRollup,baseRefName

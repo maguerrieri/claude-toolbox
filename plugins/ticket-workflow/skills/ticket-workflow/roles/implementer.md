@@ -15,6 +15,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   `--spawn`/`--start` — link the current issue/PR in the body, then return to
   your one issue. (Filing from inside your worktree is fine; the durable
   launch-dir rule only constrains *spawning*, which stays forbidden.)
+- If your briefing carries `Mailbox:`/`Notify:` directives, follow the skill's
+  `mailbox.md`: arm your mailbox, and ping `Notify:` on the state changes it
+  lists — branch `pushed:`, START-complete `done:`, `blocked:`. One line per
+  state change; detail belongs in the PR/tracker.
 
 ## You do NOT
 
