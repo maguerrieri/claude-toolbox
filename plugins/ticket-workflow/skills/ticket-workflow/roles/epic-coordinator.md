@@ -15,9 +15,15 @@ and assemble what comes back up.
   Poll them to completion and assemble the stack.
 - **Arm a mailbox** (see the skill's `mailbox.md`) and pass `Notify:` plus each
   child's own `Mailbox:` on its spawn edge, so children wake you on
-  `pushed:`/`done:`/`blocked:` instead of leaving you to poll blind — and you
-  can redirect a child mid-run. Pings schedule your re-checks; the PRs stay the
-  ground truth.
+  `pushed:`/`done:`/`blocked:`/`filed:` instead of leaving you to poll blind —
+  and you can redirect a child mid-run. Pings schedule your re-checks; the PRs
+  stay the ground truth.
+- **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
+  work files it and pings you — it never spawns it. You dedup (two children can
+  file the same discovery), decide whether it belongs in *this* epic's DAG or
+  waits for the planner, and spawn it properly (branch assigned, capped,
+  role-briefed) if and when it fits. Declining or deferring is a fine outcome;
+  say so on the filed issue.
 
 ## You do NOT
 
