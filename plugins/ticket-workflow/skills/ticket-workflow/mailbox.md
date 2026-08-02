@@ -44,10 +44,10 @@ One JSON object per line (JSONL), three fields:
 
 - `from` — the sender's own mailbox key (or `human`, or a script name).
 - `at` — UTC ISO-8601 timestamp (`date -u +%Y-%m-%dT%H:%M:%SZ`).
-- `msg` — short, prefixed like `COORD` markers: `pushed:`, `done:`, `blocked:` —
-  so receivers and greps treat the two channels uniformly. File **claims** stay
-  in `COORD` (they must be durable and checkable before touching files); at most
-  a mailbox line is an FYI that a claim was posted there.
+- `msg` — short, prefixed like `COORD` markers: `pushed:`, `done:`, `blocked:`,
+  `filed:` — so receivers and greps treat the two channels uniformly. File
+  **claims** stay in `COORD` (they must be durable and checkable before touching
+  files); at most a mailbox line is an FYI that a claim was posted there.
 
 ## Briefing directives
 
@@ -103,7 +103,11 @@ Ping on the events the other side would otherwise poll for:
 
 - **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks a
   dependent's spawn), `done:` (START-complete: CI green, review clean), `blocked:`
-  (stuck; say on what).
+  (stuck; say on what), `filed:` (a follow-up ticket filed for discovered work —
+  `filed: #52`, adding e.g. `suggest spawning, blocks my acceptance criteria` when
+  it's urgent). A `filed:` ping is a **request, not an allocation**: the sender
+  never spawns the work itself (see `roles/implementer.md`); the receiver dedups
+  against the board, prioritizes, and decides whether/when to spawn.
 - **Coordinator → child:** rare — a redirect the child should see before its next
   natural checkpoint (e.g. `blocked: parent restacked, rebase onto <base>`).
   Requires the child to have been assigned a `Mailbox:` on its spawn edge —
