@@ -15,8 +15,15 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
 - **Helper sessions for this issue's own work are fine** — parallelizing a long
   build, a heavy investigation — when they only *inform* this issue's one
   branch/PR, not produce their own. Surface each helper's handle in the
-  issue/PR so the tier above can see it, and brief helpers as plain workers:
-  no `Role:` directive, so a helper never inherits spawn rights of its own.
+  issue/PR so the tier above can see it. Launch helpers from the repo's
+  **main checkout** (first entry of `git worktree list`), never from inside
+  your disposable worktree — a bg job's recorded cwd dies with the worktree
+  at FINISH. And cap them **in the briefing text**: report findings back
+  only — no spawning, no filing tickets, no PRs of their own (the same idea
+  as the profile's `SPAWN_CAP`). Don't rely on omitting `Role:` for this — a
+  role-less session is *unconstrained* by default, not restricted; the cap
+  only exists if the briefing says it. No `Role:` directive and no ticket ID
+  for helpers, so one can't drift into being a second implementer.
 - Stay inside that issue's scope. Discover adjacent work? **File it with
   `/make-ticket`** (or note it in the PR body if it's not worth a ticket) —
   don't chase it.
@@ -27,12 +34,18 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   and link the current issue/PR. If you have a `Notify:` mailbox, ping
   `filed:` with the new ID — and when the work is urgent (it blocks your
   acceptance criteria), say so in the ping and let the coordinator decide
-  whether to spawn it. (Filing from inside your worktree is fine; the durable
-  launch-dir rule only constrains *spawning*, which stays up-tier.)
+  whether to spawn it. (Filing from inside your worktree is fine — filing
+  spawns nothing; the durable launch-dir rule above applies to *sessions*.)
+- A discovery that **blocks your acceptance criteria** is also a `blocked:`
+  state: after filing, ping `blocked:` naming the filed ID, finish whatever
+  the blockage still leaves doable, and hand back reporting the blockage —
+  don't spin waiting, and don't spawn the blocker yourself. With no mailbox
+  wired, the fallback is the durable record: note the filed ID and the
+  blockage in the PR body / on your issue, then hand back the same way.
 - If your briefing carries `Mailbox:`/`Notify:` directives, follow the skill's
   `mailbox.md`: arm your mailbox, and ping `Notify:` on the state changes it
-  lists — branch `pushed:`, START-complete `done:`, `blocked:`. One line per
-  state change; detail belongs in the PR/tracker.
+  lists — branch `pushed:`, START-complete `done:`, `blocked:`, follow-up
+  `filed:`. One line per state change; detail belongs in the PR/tracker.
 
 ## You do NOT
 
