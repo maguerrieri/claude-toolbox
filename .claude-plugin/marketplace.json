@@ -13,7 +13,7 @@
     {
       "name": "conventions",
       "source": "./plugins/conventions",
-      "description": "Cross-repo development conventions (commit message format)"
+      "description": "Cross-repo development conventions (commit messages, concise prose)"
     },
     {
       "name": "spawn",

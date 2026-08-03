@@ -12,6 +12,9 @@ from [AminBlg/SimpleEnglish](https://github.com/AminBlg/SimpleEnglish) (MIT).
 discipline, one-word-one-meaning, and no contractions — those change *how you
 sound* rather than how long you are, so they're left out on purpose.
 
+Unofficial and unaffiliated with ASD or STEMG. ASD-STE100 is a registered
+trademark of ASD. The standard is a free download at asd-ste100.org.
+
 ## The shape of the output
 
 1. **Answer first.** The first sentence carries the result, the verdict, or the
@@ -30,7 +33,7 @@ sound* rather than how long you are, so they're left out on purpose.
 | Passive with a known actor | "the file is read by the parser" → "the parser reads the file" |
 | Compound tense | "has been updated" → "updated"; "is being rebuilt" → "rebuilds" |
 | Trailing `-ing` clause | "…, making restarts unnecessary" → new sentence, or delete |
-| Hedged modal | requirement "should" → "must"; "may / might / could" → "can"; "would" → "If X, then Y" |
+| Wordy hedge construction | Collapse to one modal, keeping the uncertainty intact: "it is possible that the cache could be stale" → "the cache may be stale" |
 | Condition after the command | "Read the log if the build fails" → "If the build fails, read the log" |
 | Sentence over ~25 words | Split at the conjunction. Backticked code and identifiers count as one word each. |
 
@@ -38,8 +41,7 @@ sound* rather than how long you are, so they're left out on purpose.
 
 Replace: leverage / utilize → use · in order to → to · prior to → before · due
 to the fact that → because · in the event that → if · when it comes to → for ·
-enables you to → you can · functionality → feature · plethora / myriad → many ·
-e.g. → for example · i.e. → that is · etc. → name the items
+enables you to → you can · functionality → feature · plethora / myriad → many
 
 Delete outright (they carry no fact): it's worth noting that · it's important
 to note · needless to say · simply / just / easily / seamlessly / effortlessly ·
@@ -64,9 +66,9 @@ Shorter, not clipped. Cut words, never facts.
 - **Never touch** code blocks, inline code, identifiers, commands, flags, file
   paths, quoted errors, or log lines.
 
-**Not for:** anything where the length *is* the deliverable — a requested
-walkthrough, an explanation for someone learning, a design doc, brand or
-marketing voice. When asked to teach or elaborate, elaborate.
+**Not for** a requested walkthrough, a design doc, an explanation for someone
+who is learning, or brand and marketing voice. When asked to teach or
+elaborate, elaborate.
 
 ## Final pass
 
@@ -74,12 +76,12 @@ Two checks before you send:
 
 1. Your three longest sentences — over ~25 words → split them.
 2. Scan for `it's worth`, `important to note`, `has been`, `have been`,
-   `should`, `in order to`, `simply`, `, making`, and `;` (write two
-   sentences). Then: does any sentence add no new fact? Delete it.
+   `it is possible that`, `in order to`, `simply`, `, making`, and `;` (write
+   two sentences). Then: does any sentence add no new fact? Delete it.
 
 ## Example
 
-**Before (62 words, 4 sentences, 1 fact):**
+**Before (68 words, 3 sentences, 1 fact — the opener alone is 43 words):**
 
 > I've gone ahead and taken a look at the failing test, and it turns out that
 > the issue is being caused by the fact that the fixture is shared between
@@ -87,8 +89,8 @@ Two checks before you send:
 > a change that should hopefully address this. Let me know if you'd like me to
 > explain any part of this in more detail!
 
-**After (24 words, 3 sentences, 3 facts):**
+**After (25 words, 3 sentences, 3 facts):**
 
 > `test_reorder` fails because the `db` fixture is module-scoped, so rows from
-> `test_insert` leak into it. Scoped it per-function. That adds ~2s to the
+> `test_insert` leak into it. I scoped it per-function. That adds ~2s to the
 > suite.
