@@ -6,7 +6,8 @@ description: Use when writing any prose a human will read — chat replies, PR a
 # Writing concisely
 
 The length-reducing subset of ASD-STE100 Simplified Technical English, adapted
-from [AminBlg/SimpleEnglish](https://github.com/AminBlg/SimpleEnglish) (MIT).
+from [AminBlg/SimpleEnglish](https://github.com/AminBlg/SimpleEnglish) (MIT —
+see the plugin's `NOTICE`).
 
 **Goal: same voice, fewer words.** The full standard also enforces vocabulary
 discipline, one-word-one-meaning, and no contractions — those change *how you
