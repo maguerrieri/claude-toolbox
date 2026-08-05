@@ -39,7 +39,7 @@ Compound requests ("file an issue and /spawn-tickets it", "create the epic, then
 
 The body below is written against **two pluggable adapters**, both selected in Step 0:
 
-- **Tracker** — the issue tracker (GitHub Issues or Jira): *how to read an issue, ID→branch naming, how to reference it in commits/PRs, how to close it, and (for EPIC) how to enumerate an epic's children and their dependencies.* Ops: `FETCH`, `CREATE`, `BRANCH`, `START`, `COMMIT_REF`, `PR_REF`, `DONE`, plus `EPIC_CHILDREN`, `DEPS` + `COORD` (EPIC phase only). Lives in `trackers/<tracker>.md`.
+- **Tracker** — the issue tracker (GitHub Issues or Jira): *how to read an issue, ID→branch naming, how to reference it in commits/PRs, how to close it, and (for EPIC) how to enumerate an epic's children and their dependencies.* Ops: `FETCH`, `SEARCH`, `CREATE`, `BRANCH`, `START`, `COMMIT_REF`, `PR_REF`, `DONE`, plus `EPIC_CHILDREN`, `DEPS` + `COORD` (EPIC phase only). Lives in `trackers/<tracker>.md`.
 - **Profile** — the engineering environment / org playbook: *which repo, submodules, test conventions, doc-consistency check, which review bot, how to smoke-test/deploy, post-merge monitoring, any commit-style override.* Ops: `REPO_SELECT`, `SUBMODULES`, `TESTS`, `DOCS`, `REVIEW_BOT`, `SMOKE_DEPLOY`, `POST_MERGE`, `COMMIT_STYLE`, `SPAWN_CAP`. Lives in `profiles/<profile>.md` (the `default` profile ships here; an org's profile lives in that org's work config and is pointed to from the repo's CLAUDE.md). A profile can declare `Inherits:` to layer over a base and override just the ops it changes (Step 0).
 
 Tracker = *what tracks the work*; profile = *how this environment builds and ships it*. The two are orthogonal — GitHub Issues on a personal repo, or Jira on a fully-wired work repo, are just `(tracker, profile)` pairs.
@@ -100,7 +100,7 @@ Keep tracker- and profile-specific commands out of this file — they live in th
 
 ## FILE mini-phase (`/make-ticket`)
 
-Create a new issue from the current conversation, then optionally hand the new ID straight to SPAWN or START. FILE is deliberately small — a writing step plus one tracker op — but **the writing step is the real payload, not the plumbing**: the body it composes is what a later session (this one's START, a spawned sibling, or a human) will work from, and that reader sees none of this conversation.
+Create a new issue from the current conversation, then optionally hand the new ID straight to SPAWN or START. FILE is deliberately small — a writing step, a duplicate check, and one creating tracker op — but **the writing step is the real payload, not the plumbing**: the body it composes is what a later session (this one's START, a spawned sibling, or a human) will work from, and that reader sees none of this conversation.
 
 ### Step 1 — Compose the issue
 
@@ -113,11 +113,23 @@ Draft the title + body from the **conversation context** — the discussion that
 
 Quality bar: a reader with zero conversation context can start the work from the body alone. If the request really is a bare one-liner with no surrounding discussion, keep the body honest and short — don't invent detail; ask only if genuinely ambiguous. Title: concise and scoped (`<area>: <what>`), per the repo's issue style.
 
-### Step 2 — Create it
+### Step 2 — Search for duplicates
+
+Before creating anything, check whether an **open** issue already covers this work. Derive 2–4 distinctive keywords from the composed title/scope (the area/component name plus the most specific noun of the change — not generic words like "fix" or "add"), run the tracker's `SEARCH(query)`, and **judge the hits** — keyword search returns near-misses, so read each candidate's title (and body, when the title alone can't settle it) and decide whether it's the *same work*, not merely the same area.
+
+What a hit means depends on who's driving:
+
+- **Interactive session** — surface the candidate duplicates (ID, title, URL) and ask before filing. The human has the context to judge; a duplicate they confirm means point at the existing issue instead of creating a new one.
+- **Unattended / spawned session** (`--spawn`, `--start` in a non-interactive run, or a session bound by a pinned role charter) — **neither silently skip nor silently file.** File anyway, but note the suspected duplicate explicitly: add a `Possible duplicate of <ID>` line (with the URL) to the new issue's body, and repeat it in your report/ping so a human can merge or close. A silent skip loses the composed context; a silent duplicate wastes a worktree and a PR downstream — filing-with-a-note fails safe in both directions.
+- **Search failure** (no network, tracker error, `SEARCH` not wired for this tracker) — **non-fatal.** Degrade to filing normally, same as `CREATE` treats `--label` as best-effort; mention that the dup check was skipped.
+
+No hits, or hits judged unrelated → proceed to Step 3 without comment.
+
+### Step 3 — Create it
 
 Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. Labels only when they clearly apply in the target repo — CREATE treats them as best-effort.
 
-### Step 3 — Route by flag
+### Step 4 — Route by flag
 
 - *(no flag)* — report the new ID + URL and stop; filing was the whole request.
 - `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` session), **in the same turn** — report the ID *and* the spawned session together; never park the spawn behind the report.
