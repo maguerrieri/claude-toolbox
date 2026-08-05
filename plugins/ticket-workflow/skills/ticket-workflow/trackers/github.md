@@ -15,6 +15,15 @@ gh issue view <n> --json number,title,body,labels,assignees,url
 ```
 Read `title` and `body`. Look in `body` for a base-branch directive (e.g. "Base branch: `dev`").
 
+## SEARCH(query)  — find existing open issues (FILE phase dup check)
+```bash
+gh issue list --search "<query>" --state open --json number,title,url -L 50
+```
+- Set `-L`/`--limit` explicitly — `gh issue list` silently defaults to **30** (the same footgun `EPIC_CHILDREN` calls out); 50 is plenty for a keyword dup check.
+- `<query>` is plain keywords (GitHub search syntax is accepted but not required). Keep it to the 2–4 distinctive terms FILE Step 2 derived — an over-specific query returns nothing and under-checks.
+- Returns `(number, title, url)` per hit. The *judgment* — is a hit the same work? — belongs to FILE Step 2, not this op.
+- Errors (network, auth) are **non-fatal** for FILE: report the failure and let Step 2's degrade-to-filing path handle it.
+
 ## CREATE(title, body, labels?)  — file a new issue (FILE phase)
 ```bash
 gh issue create --title "<title>" --body-file <path>  [--label "<label>"]
