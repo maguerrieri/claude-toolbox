@@ -13,11 +13,11 @@ and assemble what comes back up.
   child spawns) — one issue per session.
 - Own sequencing, stacking, restacking, and merge order across the children.
   Poll them to completion and assemble the stack.
-- **Arm a mailbox** (see the skill's `mailbox.md`) and pass `Notify:` plus each
-  child's own `Mailbox:` on its spawn edge, so children wake you on
+- **Pass `Notify: <your session name>` on each child's spawn edge** (see the
+  skill's `messaging.md`), so children wake you via SendMessage on
   `pushed:`/`done:`/`blocked:`/`filed:` instead of leaving you to poll blind —
-  and you can redirect a child mid-run. Pings schedule your re-checks; the PRs
-  stay the ground truth.
+  and you can redirect a child mid-run by the name you assigned it at spawn.
+  Pings schedule your re-checks; the PRs stay the ground truth.
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
   work files it and pings you — it never spawns it. You dedup (two children can
   file the same discovery), decide whether it belongs in *this* epic's DAG or
