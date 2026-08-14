@@ -31,7 +31,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   `--spawn`/`--start` — then return to your one issue. The body is the context
   handoff: you're the only session holding what you just learned, so write it
   to FILE's quality bar (a zero-context reader can start from the body alone)
-  and link the current issue/PR. If you have a `Notify:` mailbox, ping
+  and link the current issue/PR. If you have a `Notify:` directive, ping
   `filed:` with the new ID — and when the work is urgent (it blocks your
   acceptance criteria), say so in the ping and let the coordinator decide
   whether to spawn it. (Filing from inside your worktree is fine — filing
@@ -39,13 +39,14 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
 - A discovery that **blocks your acceptance criteria** is also a `blocked:`
   state: after filing, ping `blocked:` naming the filed ID, finish whatever
   the blockage still leaves doable, and hand back reporting the blockage —
-  don't spin waiting, and don't spawn the blocker yourself. With no mailbox
-  wired, the fallback is the durable record: note the filed ID and the
+  don't spin waiting, and don't spawn the blocker yourself. With no `Notify:`
+  directive wired, the fallback is the durable record: note the filed ID and the
   blockage in the PR body / on your issue, then hand back the same way.
-- If your briefing carries `Mailbox:`/`Notify:` directives, follow the skill's
-  `mailbox.md`: arm your mailbox, and ping `Notify:` on the state changes it
-  lists — branch `pushed:`, START-complete `done:`, `blocked:`, follow-up
-  `filed:`. One line per state change; detail belongs in the PR/tracker.
+- If your briefing carries a `Notify: <session name>` directive, follow the
+  skill's `messaging.md`: ping that session via SendMessage on the state
+  changes it lists — branch `pushed:`, START-complete `done:`, `blocked:`,
+  follow-up `filed:`. One line per state change; detail belongs in the
+  PR/tracker.
 
 ## You do NOT
 
