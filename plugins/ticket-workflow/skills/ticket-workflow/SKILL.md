@@ -360,7 +360,7 @@ If branch auto-deletion is on for the remote, no need to delete the remote branc
 
 ## SPAWN phase
 
-Fan out parallel ticket work: spawn one background session per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (parallel `claude --bg`, naming, table, hand-back, inspect commands) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
+Fan out parallel ticket work: spawn one background session per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (backend selection, parallel launch, naming, table, hand-back, inspect commands) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
 
 ### Step 1 — Parse the request
 
@@ -382,17 +382,19 @@ For each issue, hand the `spawn` skill one unit:
 - **name:** `<repo> <ID>: <desc>` — `<repo>` is the basename of the repo the profile selected (e.g. `widgets`, `mobile-app`); `<ID>` is the issue key as-is (`ABC-12`, `#42`); `<desc>` is an under-5-word summary (e.g. `add GeoIP routing`). Spaces and special characters are fine — keep `--name` quoted. Full example: `--name "widgets #14: add rollover toggle"`.
 - **Keep `<briefing>` in the prompt:** `<briefing>` is the per-issue text from Step 1 (with `SPAWN_CAP` appended) and goes in the `/start-ticket` body **in full** — even when it doubles as the `<desc>` label. `<desc>` is only a short tag for the session name; never let it *replace* the briefing in the prompt, or the sibling loses its per-issue guidance.
 
-Then **spawn them via the `spawn` skill** — one `claude --bg` call per issue, all in a single message (parallel), report the table, hand back. The fan-out details (parallel spawn, recognizable naming, the `Session | Scope` table, the `claude agents` / `attach` / `logs` inspect commands, and the no-babysit / no-block guarantees) live in `spawn`; don't repeat them here. The resulting command per issue:
+Then **spawn them via the `spawn` skill** — all launches in a single message (parallel), report the table, hand back. The fan-out details live in `spawn`; don't repeat them here, and in particular **don't hardcode a launch command**: `spawn`'s step 3 selects a **backend** (local `claude --bg` vs cloud `create_session`) and its file carries the mechanics, the naming, the `Session | Scope` table, the backend-appropriate inspect path, and the no-babysit / no-block guarantees. On the local backend the resulting command per issue is:
 
 ```bash
-launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //'); launch_dir=${launch_dir:-$PWD}   # the repo's main checkout — spawn's step 3
+launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //'); launch_dir=${launch_dir:-$PWD}   # the repo's main checkout — backends/local.md
 ( cd "$launch_dir" && claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>  Role: implementer" )
 ```
 
+On the cloud backend the same unit goes to `create_session` with the prompt as `prompt`, the name as `title`, and the repo passed explicitly as `source_url` (plus `source_revision` when the briefing pins a base branch) — see `backends/cloud.md`.
+
 Ticket-only notes layered on top of `spawn`:
-- **Durable launch dir** (`spawn`'s step 3 — `launch_dir` above): spawn from the repo's **main checkout** (first entry of `git worktree list`), **never from inside a ticket worktree** — the bg job records its launch cwd, and when the spawning ticket's worktree is removed at FINISH, attach/resume of the still-listed sibling breaks. This bites here specifically: a session spawning from mid-ticket work — an EPIC orchestrator, or an implementer launching an own-issue helper (`roles/implementer.md`) — is usually sitting inside its own disposable worktree.
+- **Durable launch dir** — *local backend only* (`backends/local.md`; the cloud backend has none): spawn from the repo's **main checkout** (first entry of `git worktree list`), **never from inside a ticket worktree** — the bg job records its launch cwd, and when the spawning ticket's worktree is removed at FINISH, attach/resume of the still-listed sibling breaks. This bites here specifically: a session spawning from mid-ticket work — an EPIC orchestrator, or an implementer launching an own-issue helper (`roles/implementer.md`) — is usually sitting inside its own disposable worktree.
 - Siblings inherit your config home + env, so they resolve the same tracker/profile; each runs its own Step 0.
-- **Wake-up channel (default on):** read `messaging.md` and put a `Notify: <your session name>` directive in each briefing — siblings ping `pushed:`/`done:`/`blocked:`/`filed:` via SendMessage instead of being purely polled, and you can poke a sibling back by the name you spawned it with (`<repo> <ID>: <desc>`). The PR/tracker stays the durable record.
+- **Wake-up channel (default on, local backend only):** read `messaging.md` and put a `Notify: <your session name>` directive in each briefing — siblings ping `pushed:`/`done:`/`blocked:`/`filed:` via SendMessage instead of being purely polled, and you can poke a sibling back by the name you spawned it with (`<repo> <ID>: <desc>`). The PR/tracker stays the durable record. **On the cloud backend there is no channel at all:** SendMessage does not span cloud sessions in either direction — `ListAgents` does not list a live cloud sibling, and a send to one comes back unreachable — so omit the `Notify:` directive there and fall back to polling the PR/tracker (and `get_session`), which is the durable record regardless.
 - If a spawn is blocked by a permission / auto-mode classifier (e.g. it reads as deploy-adjacent), make the cap explicit in the briefing, or print the commands for the user to run.
 
 ### Step 4 — Report back
@@ -403,7 +405,7 @@ As `spawn` does — print a table, then hand back (don't block on the siblings):
 |---|---|---|
 | ABC-12 | `widgets ABC-12: add GeoIP routing` | `<one-line summary>` |
 
-`claude agents` lists the siblings, `claude attach "<name>"` opens one, `claude logs "<name>"` is read-only (quote the name — it contains spaces).
+Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
 
 ### SPAWN does NOT
 
