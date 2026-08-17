@@ -68,7 +68,7 @@ The backend is about **where the spawner is**, not what the task is. A local ses
 
 ### 4 — Spawn in parallel
 
-Launch one session per unit, **all in a single message** so they start concurrently. The launch mechanic is the backend's (`backends/<backend>.md`, step 3).
+Launch one session per unit, **all in a single message** so they start concurrently. The launch mechanic is the one in the backend file you read in step 3.
 
 Whichever backend you're on:
 - `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
