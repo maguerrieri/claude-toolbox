@@ -202,18 +202,20 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 
 ### Step 3 — Create the worktree
 
-Create it as a sibling of the repo root, branch and dir named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes):
+Create it **under the repo's `.claude/worktrees/` directory** — never as a sibling of the repo root. Claude Code prompts for manual approval whenever a session enters a worktree outside `[repo]/.claude/worktrees/`, and that prompt is **not suppressible** by any permission rule or setting (only `bypassPermissions` skips it) — a sibling-path worktree therefore stalls every unattended/spawned session. Branch named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes):
 
 ```bash
 cd /path/to/<repo>
 git fetch origin <base_branch>
-git worktree add ../<repo>-<branch> -b <branch> origin/<base_branch>
+git worktree add .claude/worktrees/<branch> -b <branch> origin/<base_branch>
 ```
+
+Then, if the harness provides the **`EnterWorktree` tool**, switch the session into it with `EnterWorktree(path: /path/to/<repo>/.claude/worktrees/<branch>)` — the `path` form, so the branch name stays exactly `<branch>` (the `name` form invents its own `worktree-…` branch name, which would break a `Worktree:` directive's deterministic naming). No `EnterWorktree` tool → just `cd` into the worktree; the location under `.claude/worktrees/` is what avoids the approval prompt either way.
 
 Then run the profile's `SUBMODULES` step. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
 
 ```bash
-cd ../<repo>-<branch> && git submodule update --init
+cd .claude/worktrees/<branch> && git submodule update --init
 ```
 
 ### Step 4 — Report the worktree path
@@ -331,12 +333,12 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ### Step 3 — Clean up the worktree
 
-Switch back to the main repo first (can't remove a worktree from inside it), then remove it (`--force` if it has submodules):
+Switch back to the main repo first (can't remove a worktree from inside it) — if the session entered via the `EnterWorktree` tool, leave with `ExitWorktree` instead of `cd`; then remove it (`--force` if it has submodules):
 
 ```bash
 cd /path/to/<repo>
 git worktree list
-git worktree remove --force /path/to/<repo>-<branch>
+git worktree remove --force /path/to/<repo>/.claude/worktrees/<branch>
 ```
 
 ### Step 4 — Delete the local branch
