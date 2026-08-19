@@ -25,7 +25,10 @@ grounding rule is what makes any lost or delayed message harmless.
 - Session **names are user-renameable**; the spawn also prints a durable
   handle/agentId that survives renames. `SendMessage` accepts both. The
   directive carries the *name* (friendlier, and the spawner controls it); fall
-  back to the handle if a rename breaks the name.
+  back to the handle if a rename breaks the name. A spawner unsure of its own
+  current name (e.g. an interactive coordinator that was never explicitly
+  named) can find its own row via `ListAgents` — or put its handle in the
+  directive instead.
 - **Confirm-with-ref:** a cross-session send to a bare session name that isn't
   already part of your conversation may be **rejected pending confirmation** —
   re-send with the ` [ref]` suffix exactly as a `ListAgents` row prints it
