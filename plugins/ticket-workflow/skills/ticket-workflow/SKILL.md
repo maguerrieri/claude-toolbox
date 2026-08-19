@@ -333,7 +333,7 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ### Step 3 — Clean up the worktree
 
-Switch back to the main repo first (can't remove a worktree from inside it) — if the session entered via the `EnterWorktree` tool, leave with `ExitWorktree` instead of `cd`; then remove it (`--force` if it has submodules):
+Leave the worktree first (can't remove a worktree from inside it): if the session entered via the `EnterWorktree` tool, use `ExitWorktree`; otherwise `cd` back to the main repo as below. Then remove it (`--force` if it has submodules):
 
 ```bash
 cd /path/to/<repo>
