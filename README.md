@@ -9,7 +9,8 @@ One repo, declared per-project, works in local and cloud sessions alike.
   list pulls in every plugin below. Install this one to get the full set.
   New plugins added to this repo should also be added to its dependencies.
 - **conventions** — cross-repo development conventions. Currently: commit
-  message format. Candidates to move in later: merge policy, issue/epic
+  message format, and concise prose (the length-reducing subset of
+  ASD-STE100). Candidates to move in later: merge policy, issue/epic
   structure.
 - **spawn** — generic background-session fan-out: the `spawn` skill plus the
   `/spawn` command, for firing off one or more independent `claude --bg`
