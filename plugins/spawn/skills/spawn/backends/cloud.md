@@ -1,9 +1,14 @@
 # Backend: cloud (`create_session` MCP)
 
 The spawner is itself a cloud session (Claude Code on the web, or another remote
-environment). Siblings are **cloud sessions** created through the
-`Claude_Code_Remote` MCP server, each in its own container, and the user opens them
-on claude.ai/code.
+environment). Siblings are **cloud sessions** created with the session-management
+MCP tools — `create_session`, plus `list_sessions` / `get_session` to inspect —
+each in its own container, and the user opens them on claude.ai/code.
+
+Address those by **tool name**, not by server: they're the stable part. The server
+carrying them varies by harness configuration (in Claude Code on the web it's
+`Claude_Code_Remote`). If the tool names aren't in your tool list, search for them
+before concluding they're unavailable.
 
 **Do not use `claude --bg` here**, even though the CLI is installed in the
 container. A bg job would be a child process of a container that gets reclaimed
