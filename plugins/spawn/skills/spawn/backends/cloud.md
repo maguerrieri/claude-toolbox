@@ -73,7 +73,7 @@ and `get_session(id)` for one child's status.
 verified against a live, connected child spawned from this same backend, in **both**
 directions. So:
 
-- Emit **no** notify/mailbox directive in a cloud sibling's briefing; there is
+- Emit **no** `Notify:` directive in a cloud sibling's briefing; there is
   nothing for the child to ping and nothing that can poke it back.
 - A caller that needs to know when a child finished **polls** — `get_session(id)`
   for session status, and for ticket work the PR/tracker state that is the durable
