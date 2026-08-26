@@ -39,9 +39,10 @@ Pairs with the ticket workflow above.
 
 ## SKILL.md size — when to split phases into their own files
 
-ticket-workflow's `SKILL.md` deliberately stays a **single file** (~520 lines as of
-#45 — over the ~500 marker, but that trigger is for *phase-sized* additions): the phases cross-reference each other's steps by number (EPIC → START Steps
-2/3/7, FINISH's gate → START Step 6), and one file keeps full-context reads the
+ticket-workflow's `SKILL.md` deliberately stays a **single file** (~530 lines as of
+#45 — over the ~500 marker, but that trigger is for *phase-sized* additions): the
+phases cross-reference each other's steps by number (EPIC → START Steps 2/3/7,
+FINISH's gate → START Step 6), and one file keeps full-context reads the
 default — splitting reintroduces the #22 bypass failure in a new form (skim the
 index, skip the phase file). Don't split preemptively. Split phases into
 read-on-demand `phases/*.md` (the same read-on-demand idiom as `trackers/`,
