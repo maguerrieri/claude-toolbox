@@ -479,20 +479,21 @@ main
  │   └─ #103  TICKET-3  (stacked on #102)
 ```
 
-**Register each dependency chain as a native GitHub stack** (public preview, 2026-07-30) once all its members are START-complete — this is what makes Step 7's `gh stack merge` path available. Use `gh stack link` (from the `github/gh-stack` extension), which registers **already-open PRs** without local stack tracking — exactly EPIC's shape, since each child's PR was opened by its own START session, not by `gh stack submit`:
+**Register each dependency chain as a native GitHub stack** (public preview, 2026-07-30) as soon as every PR in the chain is **open** — the child's `pushed:` ping is the wake-up; don't wait for START-complete, and don't treat this as a milestone only the orchestrator can hit (an epic evolves: children get added late, the orchestrator may be gone by the end — Step 7 links just-in-time if nobody did it here). Use `gh stack link` (from the `github/gh-stack` extension), which registers **already-open PRs** without local stack tracking — exactly EPIC's shape, since each child's PR was opened by its own START session, not by `gh stack submit`:
 
 ```bash
-gh stack link <bottom-pr> <next-pr> ... <top-pr>   # PR numbers, bottom-to-top; prints "stack #<s>" — record <s>
+gh stack link <bottom-pr> <next-pr> ... <top-pr>   # PR numbers, bottom-to-top; prints "stack #<s>"
+gh stack link <s> <new-pr>                          # later: grow an existing stack by one layer (a late-added child)
 ```
 
-Best-effort, per chain: if the extension isn't installed (`gh extension install github/gh-stack`) or linking fails (preview not enabled for the repo), **skip registration and note that this chain will use Step 7's manual fallback** — never block the aggregate on it. **Diamonds are not registerable** — a stack is a linear chain and a multi-parent child has no single parent layer; leave diamond members unregistered (their Step 4 integration-branch handling stands). Independent PRs need no registration.
+Then **record the stack number durably** as a `COORD` marker on the epic — `stack: #<s> <bottom-pr>..<top-pr>` — so any later session (a fresh coordinator, the merging session, a human) finds and grows it without archaeology; a SendMessage/`pushed:` ping is a hint, never the record. **One writer per chain**: children never self-link — a child sees one edge of the DAG, and concurrent `link`s on the same stack race (`gh stack link` refuses a subset that would drop existing members). Best-effort: if the extension isn't installed (`gh extension install github/gh-stack`) or linking fails (preview not enabled for the repo), **skip registration and note that this chain will use Step 7's manual fallback** — never block the aggregate on it. **Diamonds are not registerable** — a stack is a linear chain and a multi-parent child has no single parent layer; leave diamond members unregistered (their Step 4 integration-branch handling stands). Independent PRs need no registration.
 
 ### Step 7 — (optional) Finish the stack
 
 Only if the request carries a **finish flag** (`--finish`, "merge when green", "and finish them"). This **intentionally lifts `SPAWN_CAP`** for the orchestrator's own FINISH pass — it's an explicit user opt-in, never inferred. Run FINISH (smoke → rebase-merge → cleanup → close) per child, in **dependency order**:
 
 - **Independent PRs:** finish in any order.
-- **Chains, registered** (Step 6 linked them into a stack): merge **one layer at a time, bottom-up**, running the FINISH pre-merge gate on each child **before** merging its layer — native stacks change *how layers land*, not *whether each layer is fit to land*:
+- **Chains, registered** — first find the stack: the `stack: #<s>` `COORD` marker on the epic, else `gh stack link` the chain **now** (Step 6's command; registration works on open PRs at any point, and this just-in-time link is what covers an epic whose coordinator never reached Step 6's aggregate). Then merge **one layer at a time, bottom-up**, running the FINISH pre-merge gate on each child **before** merging its layer — native stacks change *how layers land*, not *whether each layer is fit to land*:
 
   ```bash
   gh stack merge <pr-of-this-layer> --rebase --yes   # merges everything up to and including <pr>
