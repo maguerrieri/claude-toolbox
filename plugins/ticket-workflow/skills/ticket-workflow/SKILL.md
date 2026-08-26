@@ -193,10 +193,10 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 - **Base branch:** Precedence: a `Base branch:` directive in the **briefing/arguments** wins (this is how the EPIC orchestrator stacks a dependent ticket on its parent's branch — see EPIC Step 5); then a `Base branch:` line in the **issue description**; then a dependency the issue itself declares — a `Depends on #<n>` / `Blocked by #<n>` line (the tracker's `DEPS` syntax) **whose target already has an open PR**: base = that PR's head branch, so two solo implementers stack correctly with no coordinator in the loop:
 
   ```bash
-  gh pr list --state open --json number,headRefName,body --jq '.[] | select(.body | test("(?i)(closes|fixes|resolves) #<n>\\b")) | .headRefName'
+  gh pr list --state open --json number,headRefName,body --jq '.[] | select(.body | test("(?i)(closes|fixes|resolves) #<n>\\b")) | "\(.number) \(.headRefName)"'
   ```
 
-  (If `#<n>` has no open PR yet, **don't guess its branch name** — warn that the dependency isn't stackable yet and fall through to the default; the user can re-run or set `Base branch:` by hand.) Otherwise default to the repo's default branch: `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` (gh is assumed available — see Scope). Git-native fallback: `git remote set-head origin --auto` (sets `origin/HEAD` if it isn't set) then `git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'` (the `--short` form would return `origin/main`, so strip the full `refs/remotes/origin/` prefix to get the bare branch name). Last resort: `main`.
+  Use it only on an **exact single match**. Zero matches (no open PR for `#<n>` yet) or more than one (several PRs claim to close it): **don't guess a branch name** — warn that the dependency isn't unambiguously stackable and fall through to the default; the user can re-run or set `Base branch:` by hand. Otherwise default to the repo's default branch: `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` (gh is assumed available — see Scope). Git-native fallback: `git remote set-head origin --auto` (sets `origin/HEAD` if it isn't set) then `git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'` (the `--short` form would return `origin/main`, so strip the full `refs/remotes/origin/` prefix to get the bare branch name). Last resort: `main`.
 
 ### Step 3 — Create the worktree
 
@@ -306,7 +306,8 @@ On that check, any structural defect, inaccurate subject, or marker → **report
 gh pr list --state open --base <branch> --json number,headRefName
 ```
 
-- **Dependents found + `gh stack` available:** register the chain if it isn't already (`gh stack link <this-pr> <dependent> ...`, bottom-to-top, honoring an existing `stack:` `COORD` marker or `gh stack view` — EPIC Step 6's command and one-writer rule), then merge **this layer only** with `gh stack merge <this-pr> --rebase --yes` in place of `gh pr merge` below. The dependents auto-retarget to the base and get server-side rebased (EPIC Step 7); nothing else changes in this phase.
+- **This PR is itself stacked on an unmerged parent** (its `baseRefName` isn't `<base_branch>` and that base branch has an open PR): **stop and report** — finish the parent first. Neither `gh pr merge` (targets the parent branch, not `<base_branch>`) nor `gh stack merge <this-pr>` (would merge the parent *and* this layer, bypassing the parent's gate) is a correct solo finish here.
+- **Dependents found + `gh stack` available:** register the chain if it isn't already (`gh stack link <this-pr> <dependent> ...`, bottom-to-top, honoring an existing `stack:` `COORD` marker or `gh stack view` — EPIC Step 6's command and one-writer rule), then merge with `gh stack merge <this-pr> --rebase --yes` in place of `gh pr merge` below — safe as *this layer only* precisely because the bullet above guarantees this PR is the bottommost unmerged layer. The dependents auto-retarget to the base and get server-side rebased (EPIC Step 7); nothing else changes in this phase.
 - **Dependents found, no `gh stack`:** merge as below, then **restack each dependent** per EPIC Step 7's unregistered rule (retarget to `<base_branch>`, rebase onto updated `origin/<base_branch>`, push, re-watch CI) before handing back — a merged parent with un-restacked children is the ad-hoc failure the stacked-PR rules exist for.
 - **No dependents:** plain merge.
 
