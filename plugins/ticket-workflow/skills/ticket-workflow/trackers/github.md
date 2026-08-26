@@ -82,8 +82,8 @@ GitHub has no first-class issue dependencies, so derive them:
 
 Return the set of child numbers this child is blocked by, **keeping only those that are themselves children of this epic**. Empty set → it's a root.
 
-## COORD(epic_id)  — coordination channel for a coordinated EPIC run (EPIC phase)
-The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode. On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
+## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
+The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
 ```bash
 gh issue comment <epic_id> --body "claim: <session> -> <files>"   # post a marker
 gh issue view <epic_id> --json comments -q '.comments[].body'      # read existing markers
