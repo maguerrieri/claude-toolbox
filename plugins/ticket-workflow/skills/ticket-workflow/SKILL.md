@@ -190,7 +190,13 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 ### Step 2 — Determine target repo + base branch
 
 - **Repo:** Use the profile's `REPO_SELECT` (the `default` profile: the repo named in the request, else the current repo — for personal projects you're almost always already inside it; ask if you're in an umbrella/bare dir and it's ambiguous). Org profiles may map the issue to a repo from a catalog.
-- **Base branch:** Precedence: a `Base branch:` directive in the **briefing/arguments** wins (this is how the EPIC orchestrator stacks a dependent ticket on its parent's branch — see EPIC Step 5); then a `Base branch:` line in the **issue description**; otherwise default to the repo's default branch: `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` (gh is assumed available — see Scope). Git-native fallback: `git remote set-head origin --auto` (sets `origin/HEAD` if it isn't set) then `git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'` (the `--short` form would return `origin/main`, so strip the full `refs/remotes/origin/` prefix to get the bare branch name). Last resort: `main`.
+- **Base branch:** Precedence: a `Base branch:` directive in the **briefing/arguments** wins (this is how the EPIC orchestrator stacks a dependent ticket on its parent's branch — see EPIC Step 5); then a `Base branch:` line in the **issue description**; then a dependency the issue itself declares — a `Depends on #<n>` / `Blocked by #<n>` line (the tracker's `DEPS` syntax) **whose target already has an open PR**: base = that PR's head branch, so two solo implementers stack correctly with no coordinator in the loop:
+
+  ```bash
+  gh pr list --state open --json number,headRefName,body --jq '.[] | select(.body | test("(?i)(closes|fixes|resolves) #<n>\\b")) | .headRefName'
+  ```
+
+  (If `#<n>` has no open PR yet, **don't guess its branch name** — warn that the dependency isn't stackable yet and fall through to the default; the user can re-run or set `Base branch:` by hand.) Otherwise default to the repo's default branch: `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` (gh is assumed available — see Scope). Git-native fallback: `git remote set-head origin --auto` (sets `origin/HEAD` if it isn't set) then `git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'` (the `--short` form would return `origin/main`, so strip the full `refs/remotes/origin/` prefix to get the bare branch name). Last resort: `main`.
 
 ### Step 3 — Create the worktree
 
@@ -293,6 +299,18 @@ Three checks before merging. **All three report-and-stop rather than auto-fix** 
 On that check, any structural defect, inaccurate subject, or marker → **report it and stop. Do not merge, and do not fix it here.** A commit-message reword needs a history rewrite + force-push and a marker/code removal needs a fresh commit — both mutate the approved PR, which this gate must never do. The fix belongs back in START (reword or strip it, re-push, let the review bot + user re-clear it). In an EPIC unattended run, mark the child **blocked** and skip it — never merge past this gate.
 
 ### Step 2 — Merge
+
+**First, check for dependents** — open PRs stacked on this branch — so a solo finish never strands them (this is what makes two dependent implementers land correctly without an epic coordinator):
+
+```bash
+gh pr list --state open --base <branch> --json number,headRefName
+```
+
+- **Dependents found + `gh stack` available:** register the chain if it isn't already (`gh stack link <this-pr> <dependent> ...`, bottom-to-top, honoring an existing `stack:` `COORD` marker or `gh stack view` — EPIC Step 6's command and one-writer rule), then merge **this layer only** with `gh stack merge <this-pr> --rebase --yes` in place of `gh pr merge` below. The dependents auto-retarget to the base and get server-side rebased (EPIC Step 7); nothing else changes in this phase.
+- **Dependents found, no `gh stack`:** merge as below, then **restack each dependent** per EPIC Step 7's unregistered rule (retarget to `<base_branch>`, rebase onto updated `origin/<base_branch>`, push, re-watch CI) before handing back — a merged parent with un-restacked children is the ad-hoc failure the stacked-PR rules exist for.
+- **No dependents:** plain merge.
+
+In every case: **never `--delete-branch`** (Step 4 covers the local branch; the remote's auto-delete retargets children first, the flag does not).
 
 Default to **rebase merge**; override per the repo's merge convention:
 
