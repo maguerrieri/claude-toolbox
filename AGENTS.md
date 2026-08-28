@@ -8,3 +8,8 @@
   suppressed feedback even when there are no inline threads. The authoritative
   procedure lives in `plugins/ticket-workflow/skills/ticket-workflow/profiles/default.md`
   under `REVIEW_BOT`; keep completion summaries consistent with it.
+- Codex heartbeat creation needs an explicit task destination: use
+  `destination: "thread"` for the current task or a known `targetThreadId`.
+  Omitting both returns `Missing targetThreadId or destination=thread` even
+  when the exposed schema marks them optional. Check the tool result before
+  claiming a follow-up exists; a validation error creates nothing.
