@@ -73,9 +73,9 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
 ## REVIEW_BOT
 
 Use `gh` + the GitHub API for review state and writes; use the host's native scheduler
-for recurring follow-ups. Follow `SKILL.md`'s **Autonomous review contract** even when
-an org profile overrides these mechanics. Copilot is the default reviewer; use an
-already configured alternative (CodeRabbit or a review action) when applicable.
+for recurring follow-ups. Follow `SKILL.md`'s **Autonomous review contract**.
+Copilot is the default reviewer; use an already configured alternative (CodeRabbit
+or a review action) when applicable.
 
 ### Scope and recurring follow-ups
 

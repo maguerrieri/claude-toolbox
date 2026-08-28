@@ -1,5 +1,8 @@
 # Editing workflow guidance
 
+- A profile override replaces the corresponding default operation in full. Do not
+  make default mechanics binding on overriding profiles; user instructions and host
+  permissions remain authoritative independently of that inheritance mechanism.
 - Before patching long prose, copy the exact context from the source file. A
   remembered wrapped line can omit a quote and make `apply_patch` fail; do not
   retry the same guessed context.

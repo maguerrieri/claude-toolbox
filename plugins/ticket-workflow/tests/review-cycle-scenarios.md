@@ -29,6 +29,7 @@ All scenarios assume earlier START implementation checkpoints are satisfied.
 | No bot / missing CI | Request errors due to network failure; no checks visible although this repo requires a check. | Neither no-bot nor no-CI exception applies. Report missing evidence/blocker. Only confirmed reviewer unavailability or confirmed inapplicable checks qualifies for an exception. |
 | Head moved | Review A was requested, B pushed during the review, then review A arrives. | Wait for the existing request's result, compare commit, request B once; repeat all gates if head changes again during final verification. |
 | Epic restack | A child PR was reviewed at A, then rebased/pushed at B after its parent merged; CI passes B. | Rerun START Step 8 for B, verify feedback/CI and follow-up shutdown, then re-enter FINISH with its user-review precondition. CI alone cannot clear the rewritten head. |
+| Profile override | The selected org profile inherits default but replaces `REVIEW_BOT` with its own reviewer/request mechanism; the user forbids deploys and the host denies scheduled writes. | Use the org operation instead of default mechanics. The override cannot expand user authorization or bypass host permissions. |
 
 ## Baseline: 0.10.0 / `2b60ce6`
 
