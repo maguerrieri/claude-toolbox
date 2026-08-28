@@ -24,7 +24,12 @@ One repo, declared per-project, works in local and cloud sessions alike.
   `/start-epic`, and `/spawn-epic`. Files an issue from conversation context and
   takes it from open to a reviewed PR and on to merged, with a pluggable
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
-  parallel fan-out.
+  parallel fan-out. Autonomous review cycles include scoped product-native recurring
+  follow-ups when supported and authorized; host permissions and opt-outs still
+  apply. Completion requires review of the latest head, all actionable feedback
+  addressed, and applicable CI passing (absent checks are reported honestly).
+  Follow-ups stop on convergence, cancellation, or a blocker needing user judgment;
+  review authorization never authorizes merge or deploy.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
