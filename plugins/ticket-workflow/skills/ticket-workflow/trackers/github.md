@@ -82,6 +82,13 @@ GitHub has no first-class issue dependencies, so derive them:
 
 Return the set of child numbers this child is blocked by, **keeping only those that are themselves children of this epic**. Empty set → it's a root.
 
+## DEPENDENCY_PR(id)  — find the open PR for a dependency (START phase)
+GitHub PRs created by this workflow close their issue from the body, so search for an exact closing reference (not merely `#<n>` appearing in discussion):
+```bash
+gh pr list --state open -L 500 --search "#<n> in:body" --json number,headRefName,body --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number,headRefName}'
+```
+Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
+
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
 The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
 ```bash
