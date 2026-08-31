@@ -2,9 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make generic and ticket spawn inherit the caller's harness by default while supporting explicit cross-harness selection.
+**Goal:** Make generic and ticket spawn inherit the caller's harness and
+execution surface by default while supporting explicit cross-harness and
+cross-surface selection.
 
-**Architecture:** Add a harness router above PR #58's Claude backend router. Harness adapters own native launch/report mechanics; ticket-workflow only constructs bounded units and delegates them to generic spawn.
+**Architecture:** Add a harness-plus-surface router above PR #58's Claude launch
+backends. Harness adapters route to one exact `desktop|cli|cloud` surface;
+ticket-workflow only constructs bounded units and delegates them to generic
+spawn. Local cross-harness selection maps to the target CLI, cloud maps to target
+cloud, and unavailable pairs never fall back.
 
 **Tech Stack:** Markdown agent skills and commands, JSON plugin manifests, pytest behavioral fixtures exercised by fresh-context agents.
 
@@ -15,7 +21,8 @@
 - Branch from PR #58's `claude/workflow-spawn-cloud-sessions-0filuk` branch.
 - Keep #57's Claude local/cloud backend behavior intact.
 - Do not add EPIC cloud support, publishing, deployment, or merge behavior.
-- Consume harness overrides as launch metadata; never forward them to child task prompts.
+- Consume harness and surface overrides as launch metadata; never forward them
+  to child task prompts.
 
 ---
 
@@ -47,45 +54,54 @@ git add docs/superpowers plugins/spawn/tests/harness-routing-scenarios.md
 git commit -m "[#63] (Codex + GPT-5.6) spawn: specify caller-harness inheritance"
 ```
 
-### Task 2: Generic Spawn Harness Router
+### Task 2: Generic Spawn Harness-and-Surface Router
 
 **Files:**
 - Modify: `plugins/spawn/skills/spawn/SKILL.md`
 - Create: `plugins/spawn/skills/spawn/harnesses/claude.md`
 - Create: `plugins/spawn/skills/spawn/harnesses/codex.md`
+- Create: `plugins/spawn/skills/spawn/surfaces/codex-desktop.md`
+- Create: `plugins/spawn/skills/spawn/surfaces/codex-cli.md`
+- Create: `plugins/spawn/skills/spawn/surfaces/codex-cloud.md`
 - Modify: `plugins/spawn/commands/spawn.md`
 
 **Interfaces:**
-- Consumes: optional `--harness codex|claude`, active runtime identity, and `(prompt, desc)` units.
-- Produces: exactly one selected harness adapter, native task/session handles, and harness-specific inspection controls.
+- Consumes: optional `--harness codex|claude`, optional
+  `--surface desktop|cli|cloud`, active runtime identity, and `(prompt, desc)`
+  units.
+- Produces: exactly one selected harness/surface adapter path, native
+  task/session handles, and pair-specific inspection controls.
 
 - [ ] **Step 1: Add the harness router**
 
-Place selection before launch: explicit override first, otherwise current
-harness. Reject invalid or ambiguous selections and never silently cross
-harnesses.
+Place selection before launch: explicit axis overrides first, otherwise inherit
+both axes for same-harness launches; map cross-harness local to target CLI and
+cloud to target cloud. Reject invalid or ambiguous selections and never fall
+back from the selected pair.
 
 - [ ] **Step 2: Add the Claude adapter**
 
-Delegate unchanged to #57's `backends/local.md` or `backends/cloud.md` based on
-`CLAUDE_CODE_REMOTE_SESSION_ID`.
+Route the already-selected CLI or cloud surface to #57's `backends/local.md` or
+`backends/cloud.md`; report Claude desktop unavailable. Require durable,
+user-accessible CLI controls before launching `claude --bg`.
 
 - [ ] **Step 3: Add the Codex adapter**
 
-Use native Codex task creation, select the saved project and isolated worktree
-target for Git repositories, preserve configured model/reasoning defaults, and
-report task IDs plus sidebar/open/inspection controls.
+Route desktop to native Codex task creation with saved-project/worktree
+selection. Document exact capability errors for CLI (no durable `--bg` launcher)
+and cloud (no unambiguous generic environment selection).
 
 - [ ] **Step 4: Update the command wrapper**
 
-Add the explicit harness argument and point the command at harness selection,
+Add both explicit launch arguments and point the command at pair selection,
 without duplicating adapter mechanics.
 
 - [ ] **Step 5: Run GREEN pressure scenarios**
 
 Fresh agents evaluate every generic-spawn case in the fixture. Expected GREEN:
-default inheritance and explicit overrides select the requested adapter; target
-capability absence reports an error rather than falling back.
+default inheritance, cross-harness mapping, and explicit overrides select the
+requested adapter; pair capability absence reports an error rather than falling
+back.
 
 - [ ] **Step 6: Commit**
 
@@ -102,8 +118,10 @@ git commit -m "[#63] (Codex + GPT-5.6) spawn: inherit the active harness"
 - Modify: `plugins/ticket-workflow/commands/make-ticket.md`
 
 **Interfaces:**
-- Consumes: issue IDs, optional briefing, profile `SPAWN_CAP`, role directive, and optional harness override.
-- Produces: generic spawn units whose prompts contain ticket semantics but no harness flag.
+- Consumes: issue IDs, optional briefing, profile `SPAWN_CAP`, role directive,
+  and optional harness/surface overrides.
+- Produces: generic spawn units whose prompts contain ticket semantics but no
+  launch flags.
 
 - [ ] **Step 1: Make SPAWN harness-neutral**
 
@@ -113,8 +131,9 @@ launching, identifiers, and inspection controls.
 
 - [ ] **Step 2: Route command overrides**
 
-Teach `/spawn-tickets` and `/make-ticket --spawn` to consume and pass the
-explicit harness selection to generic spawn while preserving the child prompt.
+Teach `/spawn-tickets` and `/make-ticket --spawn` to consume and pass explicit
+harness and surface selection to generic spawn while preserving the child
+prompt.
 
 - [ ] **Step 3: Run ticket pressure scenarios**
 

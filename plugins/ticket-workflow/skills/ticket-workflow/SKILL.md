@@ -132,11 +132,11 @@ Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. La
 ### Step 4 — Route by flag
 
 - *(no flag)* — report the new ID + URL and stop; filing was the whole request.
-- `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` task), **in the same turn** — report the ID *and* the spawned task together; never park the spawn behind the report. An optional `--harness codex|claude` is launch metadata for that SPAWN handoff; consume it there and never copy it into the child `/start-ticket` prompt.
+- `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` task), **in the same turn** — report the ID *and* the spawned task together; never park the spawn behind the report. Optional `--harness codex|claude` and `--surface desktop|cli|cloud` values are launch metadata for that SPAWN handoff; consume them there and never copy them into the child `/start-ticket` prompt.
 - `--start` — run the **START phase** on the new ID inline in this session, same turn.
 
-`--harness` is valid only with `--spawn`; reject it for file-only or `--start`
-requests because neither route launches a peer task.
+`--harness` and `--surface` are valid only with `--spawn`; reject either for
+file-only or `--start` requests because neither route launches a peer task.
 
 The composed body is exactly what the delegated session will `FETCH` as its briefing — the other reason Step 1 carries the weight.
 
@@ -402,7 +402,7 @@ If branch auto-deletion is on for the remote, no need to delete the remote branc
 
 ## SPAWN phase
 
-Fan out parallel ticket work: spawn one background task per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (harness selection, subordinate backend selection, parallel launch, naming, table, hand-back, inspect controls) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
+Fan out parallel ticket work: spawn one background task per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (harness/surface selection, parallel launch, naming, table, hand-back, inspect controls) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
 
 ### Step 1 — Parse the request
 
@@ -411,11 +411,11 @@ One or more issue IDs, optionally with briefing text. Common shapes:
 - `ABC-12: do X. ABC-13: do Y.` — per-issue briefings
 - `For all of these, also do Z: ABC-12 ABC-13` — a shared briefing
 
-Extract `(id, briefing)` pairs plus an optional `--harness codex|claude` launch
-override. Remove the harness flag from every briefing: it selects where generic
-`spawn` launches the unit and is never part of the work assigned to the child.
-Reject unknown or conflicting harness values before launching anything. No
-per-issue briefing → just the cap from Step 2.
+Extract `(id, briefing)` pairs plus optional `--harness codex|claude` and
+`--surface desktop|cli|cloud` launch overrides. Remove both flags from every
+briefing: they select where generic `spawn` launches the unit and are never part
+of the work assigned to the child. Reject unknown or conflicting values before
+launching anything. No per-issue briefing → just the cap from Step 2.
 
 ### Step 2 — Append the profile's `SPAWN_CAP`
 
@@ -433,19 +433,19 @@ For each issue, hand the `spawn` skill one unit:
   it and use their native/polled state.
 - **Keep `<briefing>` in the prompt:** `<briefing>` is the per-issue text from Step 1 (with `SPAWN_CAP` appended) and goes in the `/start-ticket` body **in full** — even when it doubles as the `<desc>` label. `<desc>` is only a short tag for the session name; never let it *replace* the briefing in the prompt, or the sibling loses its per-issue guidance.
 
-Then **spawn them via the `spawn` skill** — pass the optional harness override as
-launch metadata, issue all launches in one message (parallel), report the table,
-and hand back. The fan-out details live in `spawn`; don't repeat them here. Its
-step 3 inherits the current harness unless the user explicitly chose another,
-and the selected adapter owns native task/session creation, isolation, stable
-identifiers, inspection controls, and any subordinate backend selection.
+Then **spawn them via the `spawn` skill** — pass the optional harness and surface
+overrides as launch metadata, issue all launches in one message (parallel),
+report the table, and hand back. The fan-out details live in `spawn`; don't
+repeat them here. Its step 3 selects both axes, and the matching adapter owns
+native task/session creation, isolation, stable identifiers, and inspection
+controls.
 
 Ticket-only notes layered on top of `spawn`:
 - Siblings inherit your config home + env, so they resolve the same tracker/profile; each runs its own Step 0.
 - The exact ticket `name` is part of the generic unit; adapters preserve it
   verbatim rather than reconstructing it from their launch cwd.
 - The child prompt contains the issue ID, the complete briefing and
-  `SPAWN_CAP`, and `Role: implementer` — but never the harness override.
+  `SPAWN_CAP`, and `Role: implementer` — but never either launch override.
 - If a spawn is blocked by a permission / auto-mode classifier (e.g. it reads as deploy-adjacent), make the cap explicit in the briefing, or print the commands for the user to run.
 
 ### Step 4 — Report back

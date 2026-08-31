@@ -11,21 +11,32 @@
   `git switch -c`.
 - Generic spawn units may carry an explicit `name`; harness adapters preserve it
   verbatim. Ticket names must not be reconstructed from the caller's cwd.
-- Claude-local-to-Claude-local ticket spawns keep the `Notify:` wake-up channel.
-  Claude cloud, Codex targets, and Codex-to-Claude overrides omit it and rely on
-  their native task/PR inspection path. Resolve the spawner identity lazily
-  inside the Claude-local adapter only when caller and target share that local
-  graph; all other paths must not perform a discarded `ListAgents` lookup.
+- Claude-CLI-to-Claude-CLI ticket spawns keep the `Notify:` wake-up channel.
+  Cloud, desktop, and cross-harness targets omit it and rely on their native
+  task/PR inspection path. Resolve the spawner identity lazily only when caller
+  and target share Claude CLI's local graph; all other paths must not perform a
+  discarded `ListAgents` lookup.
 - `clientThreadId` means Codex worktree setup is queued. It is safe for the
   created-task UI directive, but not for tools that require a real `threadId`
   (`read_thread`, navigation, follow-up messages, waits, or task mutation).
 
-These are two-axis routing rules: the harness adapter owns task creation and
-isolation; the Claude adapter alone selects local versus cloud backend.
+Harness (`codex|claude`) and execution surface (`desktop|cli|cloud`) are
+independent routing axes. Same-harness spawn inherits both. Cross-harness local
+spawn maps to the target CLI; cloud maps to target cloud. An explicit surface
+always wins, and an unavailable selected pair must fail without fallback.
+
+Stock Codex CLI 0.148.0 has `codex exec` but no durable `--bg` session launcher;
+the uppercase `Codex` executable is not a separate background wrapper. Until a
+native durable CLI adapter exists, `codex+cli` spawn reports unsupported rather
+than borrowing desktop task tools or shell-backgrounding `codex exec`.
+
+For behavior changes, complete the brainstorming skill's design-approval gate
+before opening implementation-only guidance such as TDD. Treat reading that
+guidance as entering implementation, even if no file has changed yet.
 
 ## Shell inspection
 
 Tool commands run through zsh. Do not put Markdown backticks inside a
 double-quoted shell command (including an `rg` pattern): zsh executes the text
-between them. Use a single-quoted command or remove the backticks from the
-pattern.
+between them. This applies even to read-only inspection commands. Use a
+single-quoted command or remove the backticks from the pattern.

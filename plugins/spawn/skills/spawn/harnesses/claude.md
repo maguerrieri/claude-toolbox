@@ -1,28 +1,26 @@
 # Harness: Claude
 
-The selected target is a Claude session. Harness selection is complete; now
-select the Claude execution backend introduced by #57:
+The selected target is a Claude session. Harness and surface selection are
+complete; route the selected surface directly:
 
-```bash
-[ -n "$CLAUDE_CODE_REMOTE_SESSION_ID" ] && echo cloud || echo local
-```
-
+- **cli** — read `../backends/local.md` now.
 - **cloud** — read `../backends/cloud.md` now.
-- **local** — read `../backends/local.md` now.
+- **desktop** — Claude desktop has no established durable spawn adapter. Report
+  that the selected `claude+desktop` pair is unavailable and stop.
 
 Read exactly one backend and use it for launch, stable identifiers, reporting,
 and inspection controls. Do not duplicate those mechanics here.
 
 If the unit has `notify: requested`, resolve the spawner's current session
-name/handle only when the **caller harness is Claude and the target backend is
-local** (use `ListAgents` when the current name is not already known), then
+name/handle only when the caller and target are both **Claude CLI** (use
+`ListAgents` when the current name is not already known), then
 append `Notify: <spawner>` to the prompt. If that local identity cannot be
 resolved, omit the directive and report the degrade-to-poll behavior. For a
-cross-harness caller or the **cloud** backend, perform no identity lookup and
+cross-harness caller or a **cloud/desktop** surface, perform no identity lookup and
 omit the directive: those callers and targets do not share Claude local's
 messaging graph. `backends/cloud.md` documents the cloud boundary.
 
-The backend describes where the Claude sibling will live, not the subject of the
-task. An explicit `--harness claude` from Codex selects the local Claude backend
-unless the caller also actually has Claude's remote-session context. Choosing or
-building a different Claude backend is outside harness selection.
+The selected surface describes where the Claude sibling will live, not the
+subject of the task. A local cross-harness caller maps to Claude CLI, so Codex
+desktop can deliberately launch `claude --bg`. An explicit Claude cloud target
+must use the cloud adapter or fail; it never falls back to local CLI.

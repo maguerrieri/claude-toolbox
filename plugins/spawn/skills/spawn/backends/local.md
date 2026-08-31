@@ -4,6 +4,14 @@ The spawner is running on a machine the user has a shell on. Sessions are
 background jobs of the local CLI, recorded under `~/.claude/jobs/`, and the user
 inspects them with `claude agents` / `attach` / `logs`.
 
+Before launching, verify that the caller surface gives the user durable access
+to this machine and those CLI controls. A `cloud` caller does not: a
+container-local job would become unreachable when the container is reclaimed.
+For that edge, report that the selected `claude+cli` pair is unavailable from
+the caller surface and stop. Do not launch the job and do not fall back to
+Claude cloud or another harness. Likewise stop if `claude --bg` or its native
+attach/list controls are unavailable.
+
 ## Resolve a durable launch directory
 
 The bg job records its launch cwd (in `~/.claude/jobs/<id>/state.json`), and later
@@ -57,6 +65,13 @@ your session:
 
 ## Report
 
-Name column = the exact `--name` you passed. Point at the inspect commands:
-`claude agents` (list), `claude attach "<name>"` (open), `claude logs "<name>"`
-(read-only). Quote names — they contain spaces.
+Include the stable session handle returned by `claude --bg`; do not report only
+the mutable display name:
+
+| Session | Handle | Scope |
+|---|---|---|
+| `<exact --name value>` | `<returned handle>` | <one-line summary> |
+
+Point at `claude agents` (list), `claude attach "<handle>"` (open), and
+`claude logs "<handle>"` (read-only). The quoted name remains a convenient human
+label, but the returned handle is the authoritative inspection key.

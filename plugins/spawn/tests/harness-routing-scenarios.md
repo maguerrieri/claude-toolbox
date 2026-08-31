@@ -7,7 +7,8 @@ repository.
 
 For every case record:
 
-- selected harness and, for Claude, selected backend;
+- selected harness and execution surface (`desktop`, `cli`, or `cloud`), plus
+  the subordinate backend when an adapter uses one;
 - native launch mechanism;
 - stable identifier reported to the user;
 - inspection/open controls;
@@ -19,21 +20,27 @@ For every case record:
 
 | Case | Request context | Expected behavior |
 |---|---|---|
-| Codex default | From a Codex task, `/spawn investigate flaky CI` | Create a native Codex task. Report its task/thread ID and Codex sidebar/open controls. Never launch Claude. The task prompt tells work to stay in the native Codex worktree. |
-| Claude local default | From local Claude Code, `/spawn investigate flaky CI` | Select the Claude harness, then the local backend. Preserve PR #58's `claude --bg` behavior and CLI inspect controls. |
+| Codex desktop default | From a Codex desktop task, `/spawn investigate flaky CI` | Inherit Codex + desktop. Create a native Codex task, report its task/thread ID and sidebar/open controls, and never launch either CLI. The task prompt tells work to stay in the native Codex worktree. |
+| Codex CLI default | From Codex CLI, `/spawn investigate flaky CI` | Inherit Codex + CLI. If no durable non-blocking Codex CLI launcher is available, report that exact capability error and launch nothing; never jump to Codex desktop, Codex cloud, or Claude. |
+| Claude local default | From local Claude Code, `/spawn investigate flaky CI` | Select the Claude harness, then the local backend. Preserve PR #58's `claude --bg` behavior, report its stable handle, and use that handle for CLI inspect controls. |
 | Claude cloud default | From Claude Code on the web, `/spawn investigate flaky CI` | Select the Claude harness, then the cloud backend. Preserve PR #58's `create_session` source propagation and cloud inspection controls. |
-| Codex to Claude override | From Codex, `/spawn --harness claude investigate flaky CI` | Select Claude explicitly, then its applicable backend. Report Claude identifiers/controls; do not create a Codex task. |
-| Claude to Codex override | From Claude, `/spawn --harness codex investigate flaky CI` | Select Codex explicitly. Use native Codex task creation when available; if it is unavailable, report that capability error and stop without falling back to Claude. |
+| Codex desktop to Claude override | From Codex desktop, `/spawn --harness claude investigate flaky CI` | Select Claude explicitly and map the local crossing to Claude CLI. Launch `claude --bg`, report its CLI controls, and do not create a Codex task. This documented mapping is not a fallback. |
+| Claude CLI to Codex override | From local Claude Code, `/spawn --harness codex investigate flaky CI` | Select Codex explicitly and map the local crossing to Codex CLI. If that surface lacks a durable non-blocking launcher, report the capability error and stop; never substitute Codex desktop or Claude. |
+| Explicit Codex desktop crossing | From Claude CLI, `/spawn --harness codex --surface desktop investigate flaky CI` | Select exactly Codex + desktop. Use native Codex task creation when available; otherwise report that exact capability error. Strip both launch-only flags and never substitute Codex CLI or cloud. |
+| Explicit Claude cloud crossing | From Codex desktop, `/spawn --harness claude --surface cloud investigate flaky CI` | Select exactly Claude + cloud. Use the cloud adapter only when its native launcher is available; otherwise report that exact capability error. Strip both flags and never run `claude --bg`. |
+| Cloud to explicit Claude CLI | From a cloud caller, `/spawn --harness claude --surface cli investigate flaky CI` | Explicitly select Claude + CLI, then report that the pair is unavailable because the user cannot durably access container-local jobs or CLI inspect controls. Launch nothing and never fall back to Claude cloud. |
 | Invalid override | `/spawn --harness turtles investigate flaky CI` | Reject the value and list `codex` and `claude`; launch nothing. |
-| Codex ticket default | From Codex, `/spawn-tickets #63` | Create a native Codex task whose prompt contains `/start-ticket #63`, the complete `SPAWN_CAP`, `Role: implementer`, and `Worktree: current`. START reuses that one native worktree; it does not create a sibling. Report Codex identifiers/controls. |
-| Ticket override isolation | From Codex, `/spawn-tickets #63 --harness claude` | Select Claude for the launch, but omit `--harness claude` from the spawned `/start-ticket` prompt. Preserve the ticket briefing, cap, and role exactly. Because the caller is Codex, perform no Claude `ListAgents` lookup and append no `Notify:` even though the target Claude backend is local. |
-| File then spawn | From Codex, `/make-ticket investigate X --spawn` | After filing, pass the new issue ID through the same ticket SPAWN path and inherit Codex unless an explicit harness override was supplied. |
+| Invalid surface | `/spawn --surface basement investigate flaky CI` | Reject the value and list `desktop`, `cli`, and `cloud`; launch nothing. |
+| Codex desktop ticket default | From Codex desktop, `/spawn-tickets #63` | Create a native Codex task whose prompt contains `/start-ticket #63`, the complete `SPAWN_CAP`, `Role: implementer`, and `Worktree: current`. START reuses that one native worktree; it does not create a sibling. Report Codex desktop identifiers/controls. |
+| Ticket override isolation | From Codex desktop, `/spawn-tickets #63 --harness claude --surface cloud` | Select exactly Claude + cloud, but omit both launch flags from the spawned `/start-ticket` prompt. Preserve the ticket briefing, cap, and role exactly. Perform no Claude `ListAgents` lookup and append no `Notify:` across the harness/surface boundary. If cloud launch is unavailable, fail without starting local Claude. |
+| File then spawn | From Codex desktop, `/make-ticket investigate X --spawn` | After filing, pass the new issue ID through the same ticket SPAWN path and inherit Codex + desktop unless an explicit launch override was supplied. |
 | Exact delegated name | Ticket SPAWN supplies `widgets #63: inherit harness` | Every harness adapter uses that exact name/title; generic spawn does not rebuild it from cwd. |
-| Local notifier | From local Claude, `/spawn-tickets #63` with a reachable spawner name | Append `Notify: <spawner>` as adapter-supported prompt metadata so START can send `pushed:`/`done:`/`blocked:`/`filed:`. Claude cloud and Codex omit it. |
+| CLI notifier | From Claude CLI, `/spawn-tickets #63` with a reachable spawner name | Append `Notify: <spawner>` as adapter-supported prompt metadata so START can send `pushed:`/`done:`/`blocked:`/`filed:`. Cloud, desktop, and cross-harness edges omit it. |
 | Queued Codex task | Codex `create_thread` returns only `clientThreadId` | Report the queued ID and emit the created-task UI directive. Do not pass it to read/message/navigation/wait controls; those become available only after a real `threadId` exists. |
 | Managed lifecycle | A Codex `/start-ticket` with `Worktree: current` initializes submodules, later reaches `/finish-ticket`, and cleans up | Every START step uses the current checkout. Re-entering START switches to an existing issue branch instead of trying to recreate it. FINISH leaves the app-owned worktree and branch to Codex; it never removes/deletes them as workflow-owned resources. |
-| Lazy notifier resolution | `/spawn-tickets #63` from Codex, Claude cloud, and Claude local | The ticket unit requests notification without resolving a session identity. Only Claude local resolves its spawner name/handle and appends `Notify:`; Codex/cloud perform no `ListAgents` lookup. |
+| Lazy notifier resolution | `/spawn-tickets #63` from Codex desktop, Claude cloud, and Claude CLI | The ticket unit requests notification without resolving a session identity. Only Claude CLI-to-Claude-CLI resolves its spawner name/handle and appends `Notify:`; other pairs perform no `ListAgents` lookup. |
 
-Regression failure: any default crosses harnesses, an explicit override silently
-falls back, ticket bounds are dropped, or the reported identifier/inspection
-controls belong to a different harness.
+Regression failure: any default loses the caller's harness/surface, a documented
+local crossing selects a non-CLI surface, an explicit override silently falls
+back, launch-only flags leak, ticket bounds are dropped, or the reported
+identifier/inspection controls belong to a different harness or surface.

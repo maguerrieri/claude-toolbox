@@ -7,9 +7,10 @@ description: Use when asked to spawn, fan out, kick off, background, or parallel
 
 Fan out one or more **independent** background sessions for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
 
-**How** a session is launched first depends on the execution **harness** — Codex
-or Claude. The Claude harness then selects its local/cloud **backend**. Those are
-separate axes: harness selection happens in step 3, before any backend choice.
+**How** a session is launched depends on two independent launch coordinates:
+the **harness** (`codex` or `claude`) and the execution **surface** (`desktop`,
+`cli`, or `cloud`). Select both in step 3 before reading the one matching
+adapter path. A surface is never a fallback policy.
 
 ## When to use
 
@@ -41,7 +42,8 @@ Spawn adds **no** safety bound — each session does exactly what its prompt say
 
 ### 1 — Parse into units
 
-Split the request into one or more `(prompt, desc, name?, notify?)` units:
+Split the request into one or more `(prompt, desc, name?, notify?)` units plus
+launch-only `harness?` and `surface?` metadata:
 - **One task** (the common case): the whole request is the prompt. `/spawn to investigate the flaky CI` → a single unit.
 - **Several tasks:** an explicit list, or "spawn N agents to each do X" → N units.
 
@@ -64,6 +66,10 @@ overrides before launching anything. Natural-language selection counts only
 when the caller explicitly names the target harness — never infer a crossing
 from the task's subject matter.
 
+Also consume an optional `--surface desktop|cli|cloud` override. Remove it from
+every child prompt just like `--harness`; reject unknown or conflicting values
+before launching. A natural-language surface choice counts only when explicit.
+
 ### 2 — Pick a context label
 
 A short prefix that makes the task findable in the selected harness:
@@ -73,38 +79,50 @@ A short prefix that makes the task findable in the selected harness:
 When the unit has no explicit `name`, set it to `<context> <desc>`. When it does,
 keep that exact value — don't recompute it from the current directory.
 
-### 3 — Select the harness
+### 3 — Select the harness and surface
 
-First identify the **caller harness** from the runtime executing this skill.
-Retain it as launch metadata even when the target is overridden: adapters may
-need to know whether a caller-to-target communication channel actually exists.
+First identify the **caller harness** and **caller surface** from the runtime
+executing this skill. Retain both as launch metadata even when the target is
+overridden: adapters may need to know whether a communication channel exists.
 
-Target selection is deterministic:
+Target harness selection is deterministic:
 
 1. An explicit override from step 1 wins.
 2. Otherwise the target inherits the caller harness.
 
+Target surface selection is also deterministic:
+
+1. An explicit `--surface` override wins.
+2. A same-harness target inherits the caller surface exactly.
+3. A cross-harness target maps a local caller (`desktop` or `cli`) to the target
+   harness's `cli` surface, and maps a cloud caller to the target's `cloud`
+   surface. This mapping is selection, not fallback.
+
 Use the runtime identity and native task tools already present in the session.
 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` or Codex task tools identify Codex;
 `CLAUDE_SESSION_ID`, `CLAUDECODE`, or `CLAUDE_CODE_REMOTE_SESSION_ID` identify
-Claude. The executable being installed is not evidence that it is the current
-harness — a Codex machine may also have `claude`, which is the regression this
-step prevents.
+Claude. Native Codex app task tools identify the Codex `desktop` surface;
+`CLAUDE_CODE_REMOTE_SESSION_ID` identifies Claude `cloud`; otherwise an active
+Claude Code runtime is Claude `cli`. A Codex runtime without native app task
+tools is Codex `cli` unless its runtime explicitly identifies Codex cloud. The
+executable being installed is not evidence that it is the caller.
 
 - **codex** — read `harnesses/codex.md` now.
 - **claude** — read `harnesses/claude.md` now.
 
-Read exactly one harness adapter and follow it for steps 4–5. If the signals
-conflict or establish neither harness, use the known active tool/runtime context;
-if that is also ambiguous, ask instead of guessing. If an explicitly selected
-harness's native launch capability is unavailable, report that and stop — never
-silently fall back to the current harness.
+Read exactly one harness adapter; it then reads exactly one surface adapter (or
+Claude backend) and follows it for steps 4–5. If the caller signals conflict or
+establish neither harness, use the known active tool/runtime context; if that is
+also ambiguous, ask instead of guessing. If the selected harness-plus-surface
+launch capability is unavailable, name that exact pair and stop. Never
+substitute another harness or surface, whether selection was explicit,
+inherited, or cross-harness mapped.
 
 ### 4 — Spawn in parallel
 
 Launch one task per unit, **all in a single message** so they start concurrently.
-The launch mechanic is the one in the harness adapter selected in step 3 (and,
-for Claude, the backend that adapter selects).
+The launch mechanic is the one for the harness-plus-surface pair selected in
+step 3.
 
 Whichever harness you're on:
 - `name` — the explicit unit name or step 2's `<context> <desc>` fallback.
@@ -121,16 +139,16 @@ Print a table, then stop — **don't block on the sessions**:
 |---|---|
 | `misc investigate flaky CI` | <one-line summary> |
 
-Then point at the inspect/open path **for the selected harness**. Codex sidebar
-tasks, local Claude CLI jobs, and Claude cloud sessions use different controls;
-the selected adapter spells out which identifiers and controls to print.
+Then point at the inspect/open path **for the selected harness and surface**.
+Codex desktop tasks, CLI jobs, and cloud sessions use different controls; the
+selected adapter spells out which identifiers and controls to print.
 
 ## Spawn does NOT
 
-- Cross harnesses by accident — default to the active harness and cross only on
+- Cross harnesses by accident — default to the caller harness and cross only on
   an explicit request.
-- Substitute another harness when an override cannot launch — report the missing
-  native capability and stop.
+- Fall back across harnesses or surfaces when the selected pair cannot launch —
+  report the exact missing capability and stop.
 - Bypass a selected harness adapter's isolation rule. Codex project work uses a
   native worktree task; Claude's local backend resolves a durable launch
   directory; Claude cloud passes the repository explicitly.

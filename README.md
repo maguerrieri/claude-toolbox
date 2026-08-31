@@ -12,9 +12,10 @@ One repo, declared per-project, works in local and cloud sessions alike.
   message format. Candidates to move in later: merge policy, issue/epic
   structure.
 - **spawn** — generic background-task fan-out: the `spawn` skill plus the
-  `/spawn` command. It inherits the caller's Codex or Claude harness by default,
-  supports an explicit `--harness` override, and hands back without blocking;
-  Claude then independently selects its local or cloud backend.
+  `/spawn` command. It inherits both the caller's Codex/Claude harness and
+  desktop/CLI/cloud execution surface, supports explicit `--harness` and
+  `--surface` overrides, and hands back without blocking. Cross-harness local
+  calls select the target CLI; unavailable pairs fail instead of falling back.
 - **generate** — diverse bulk ideation: the `generate` skill plus the
   `/generate` command. Runs a judgment-OFF morphological-analysis loop (frame →
   diversity-prompted parallel passes → axis-tag → cluster) that fights LLM
@@ -25,9 +26,8 @@ One repo, declared per-project, works in local and cloud sessions alike.
   `/start-epic`, and `/spawn-epic`. Files an issue from conversation context and
   takes it from open to a reviewed PR and on to merged, with a pluggable
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for
-  harness-aware parallel fan-out, so `/make-ticket --spawn` and
-  `/spawn-tickets` inherit the caller's harness without duplicating launch
-  mechanics.
+  harness-and-surface-aware parallel fan-out, so `/make-ticket --spawn` and
+  `/spawn-tickets` inherit both launch axes without duplicating mechanics.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
