@@ -75,10 +75,14 @@ keep that exact value — don't recompute it from the current directory.
 
 ### 3 — Select the harness
 
-Selection precedence is deterministic:
+First identify the **caller harness** from the runtime executing this skill.
+Retain it as launch metadata even when the target is overridden: adapters may
+need to know whether a caller-to-target communication channel actually exists.
+
+Target selection is deterministic:
 
 1. An explicit override from step 1 wins.
-2. Otherwise inherit the harness executing this skill.
+2. Otherwise the target inherits the caller harness.
 
 Use the runtime identity and native task tools already present in the session.
 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` or Codex task tools identify Codex;

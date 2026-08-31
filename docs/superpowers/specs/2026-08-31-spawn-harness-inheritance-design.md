@@ -14,8 +14,9 @@ environment-specific launch backend:
 
 1. Consume an explicit `--harness codex|claude` override, or an equally explicit
    natural-language request.
-2. Otherwise inherit the active execution harness.
-3. Read exactly one harness adapter.
+2. Record the caller harness as launch metadata, then inherit it unless step 1
+   selected a different target.
+3. Read exactly one target-harness adapter.
 4. Let that adapter launch, report its stable identifier, and provide its own
    inspection controls.
 
@@ -67,11 +68,12 @@ The ticket workflow continues to own only ticket semantics:
 ticket skill does not duplicate task creation, backend detection, identifiers,
 or inspection instructions.
 
-The ticket layer passes a lazy notification request. Only the Claude local
-adapter resolves the spawner identity and applies `Notify:`; Claude cloud and
-Codex omit it without a `ListAgents` lookup because those edges cannot use
-ticket-workflow's SendMessage channel. The PR/tracker remains the durable
-completion record everywhere.
+The ticket layer passes a lazy notification request. The Claude adapter resolves
+the spawner identity and applies `Notify:` only when both caller and target are
+in Claude's local messaging graph. Claude cloud, Codex targets, and explicit
+Codex-to-Claude launches omit it without a `ListAgents` lookup because those
+edges cannot use ticket-workflow's SendMessage channel. The PR/tracker remains
+the durable completion record everywhere.
 
 EPIC cloud execution and Claude cloud source propagation are outside #63. PR
 #58 remains authoritative for Claude's backend axis.
