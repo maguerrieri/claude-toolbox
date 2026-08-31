@@ -25,14 +25,14 @@ concurrently. Prompts travel as JSON, so none of the local backend's shell-quoti
 hazards apply — pass the prompt verbatim, `$` and backticks and all.
 
 ```
-create_session({
-  prompt:          "<prompt>",                    // verbatim; no shell quoting needed
-  title:           "<context> <desc>",            // same naming convention as local
-  tags:            ["spawn:<context>"],           // makes the fan-out listable as a set
-  source_url:      "<repo clone URL>",            // REQUIRED — see below
-  source_revision: "<base branch>",               // omit only to accept the default branch
-})
+create_session({"prompt": "<prompt>", "title": "<context> <desc>", "tags": ["spawn:<context>"], "source_url": "<repo clone URL>", "source_revision": "<base branch>"})
 ```
+
+Those five fields: `prompt` is the caller's instruction **verbatim**; `title` follows the same
+`<context> <desc>` convention as the local backend; `tags` makes the whole fan-out
+listable as a set afterwards; `source_url` is the repo to check out (**required** —
+see below); and `source_revision` is the base branch, omitted only when the repo's
+default branch is the right base.
 
 **`source_url` is not optional.** Omitting `environment_id` inherits the spawner's
 *environment*, but **not its git source** — a child spawned without `source_url`
