@@ -51,3 +51,8 @@ The ticket-workflow plugin does not ship a validator under its own `scripts/`
 directory. Validate it with the system skill-creator validator:
 
 `uv run --with pyyaml python3 /Users/mario/.codex/skills/.system/skill-creator/scripts/quick_validate.py plugins/ticket-workflow/skills/ticket-workflow`
+
+## Verification scripts
+
+- Run multi-command shell verification scripts with fail-fast behavior (`set -e` at minimum; add `-u` and `pipefail` when compatible). Without it, an early failure can be followed by misleading later output and a false success summary.
+- Temporary Git repositories used in tests must disable commit signing locally (`git config commit.gpgsign false`) so the scenario does not depend on a developer's signing agent.
