@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SessionStart — session-id export + charter re-injection.
+# Claude ROLE_STATE SessionStart implementation — session-id export + charter
+# re-injection. Codex role state is prompt-durable and does not use this hook.
 #
 # Two jobs:
 #

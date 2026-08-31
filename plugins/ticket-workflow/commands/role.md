@@ -1,56 +1,26 @@
 ---
-description: Pin this session to a role charter (planner / epic-coordinator / implementer) or drop it with "none" — persists across resume and compaction, and (for planner) arms the edit drift-guard
-argument-hint: <planner | epic-coordinator | implementer | none>
+description: 'Use when asked to adopt, inspect, or clear a ticket-workflow role charter in the current task'
+argument-hint: '<planner | epic-coordinator | implementer | none>'
 ---
-Pin (or unpin) this session's role charter: **$ARGUMENTS**
+Set or clear the current task's role charter: **$ARGUMENTS**
 
-A role set here is durable: it's recorded in a per-session marker file that the
-plugin's hooks consume — the SessionStart hook re-injects the charter after
-`--resume`, `/clear`, and compaction, and the PreToolUse guard turns file edits
-into a permission prompt while the `planner` charter is pinned. This is the
-manual step `roles/planner.md` describes for the top session; the tiers below
-are normally injected by spawn edges (`Role:` directives), not by hand.
+Invoke the `ticket-workflow` skill now. Run only Step 0's active-harness
+selection and the selected adapter's `ROLE_STATE` operation; do not run a
+ticket phase.
 
-In every snippet below, first assign the marker directory (the override exists
-for testing; the hooks honor the same variable):
+1. Take the first token of `$ARGUMENTS` as the requested value. Valid values are
+   `planner`, `epic-coordinator`, `implementer`, and `none`. For an empty or
+   invalid value, report those four values plus the current role when
+   `ROLE_STATE` can identify one, then stop without changing state.
+2. For a role, call `ROLE_STATE(adopt, <role>)`. It must read
+   `roles/<role>.md` through `RESOURCES`, adopt the charter as governing for the
+   current task/work item, apply the strongest persistence this harness
+   supports, and report any persistence or guard limitation.
+3. For `none`, call `ROLE_STATE(clear)`. Stop applying the charter and clear
+   only the state this harness owns; do not claim to remove a marker or hook
+   that the adapter does not provide.
+4. Confirm the active harness, resulting role state, what the charter binds,
+   and the exact durability/guard guarantees reported by `ROLE_STATE`.
 
-```bash
-roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-```
-
-1. Take the first token of "$ARGUMENTS" as the role. Valid: `planner`,
-   `epic-coordinator`, `implementer`, `none`. Anything else (or empty): report
-   the valid values — plus, when `$CLAUDE_SESSION_ID` is set and a marker file
-   exists, the current pin (`cat "$roles_dir/$CLAUDE_SESSION_ID"`) — and stop.
-
-2. If `$CLAUDE_SESSION_ID` is unset, this plugin's SessionStart hook didn't
-   run (plugin installed mid-session, or hooks disabled) — say so, note the
-   fix (restart the session so SessionStart fires), skip the marker write in
-   step 3/4, but still do step 5 so the charter at least governs the current
-   context.
-
-3. **`none` — unpin:**
-
-   ```bash
-   rm -f "$roles_dir/$CLAUDE_SESSION_ID"
-   ```
-
-   State that the role is dropped and no charter governs the session; stop.
-
-4. **Pin:** write the marker, keyed by session id (`$CLAUDE_SESSION_ID` is
-   exported by this plugin's SessionStart hook via `CLAUDE_ENV_FILE`):
-
-   ```bash
-   mkdir -p "$roles_dir"
-   printf '%s\n' "<role>" >"$roles_dir/$CLAUDE_SESSION_ID"
-   ```
-
-5. Read the charter at
-   `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` (fall
-   back to locating `roles/<role>.md` under this plugin's skill directory if the
-   env var is unset) and **adopt it as governing for this session**, exactly as
-   START Step 1 does for a spawned `Role:` directive.
-
-6. Confirm to the user: role pinned, what it binds (`planner` also arms the
-   edit guard — edits prompt for approval until `/role none`), and that it
-   survives resume/compaction.
+Never implement role persistence here, search for a skill/plugin copy, or fall
+back to another harness's state mechanism.
