@@ -11,6 +11,9 @@
   suppressed feedback even when there are no inline threads. The authoritative
   procedure lives in `plugins/ticket-workflow/skills/ticket-workflow/profiles/default.md`
   under `REVIEW_BOT`; keep completion summaries consistent with it.
+- Never expand an abbreviated commit ID by guessing when recording review-cycle
+  state. Read the full value from the live PR or `git rev-parse HEAD`; an invented
+  suffix makes a durable follow-up point at a commit that never existed.
 - Codex heartbeat creation needs an explicit task destination: use
   `destination: "thread"` for the current task or a known `targetThreadId`.
   Omitting both returns `Missing targetThreadId or destination=thread` even
