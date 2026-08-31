@@ -197,8 +197,8 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 Before creating anything, detect whether the harness already supplied a linked worktree and whether it has a branch:
 
 ```bash
-GIT_DIR=$(cd "$(git rev-parse --git-dir)" 2>/dev/null && pwd -P)
-GIT_COMMON=$(cd "$(git rev-parse --git-common-dir)" 2>/dev/null && pwd -P)
+GIT_DIR=$(git rev-parse --absolute-git-dir)
+GIT_COMMON=$(git rev-parse --path-format=absolute --git-common-dir)
 BRANCH=$(git branch --show-current)
 ```
 
@@ -206,7 +206,7 @@ The adapter's `BRANCH` names the requested issue branch by default. If the brief
 
 Before choosing a path, run `git worktree list --porcelain` and look for the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`:
 
-- **One existing issue worktree — resume it.** Inspect its status and reuse it only when its current changes belong to this issue. Recompute its ownership marker with `git -C <path> rev-parse --git-path ticket-workflow-owner`: exact contents `workflow-created` preserve that ownership across resume; a missing/different marker means `inherited`. Run `git -C <path> fetch origin <base_branch>` so later diff verification uses a current base. Do not run `git worktree add`.
+- **One existing issue worktree — resume it.** Inspect its status and reuse it only when its current changes belong to this issue. Recompute its ownership marker with `git -C <path> rev-parse --path-format=absolute --git-path ticket-workflow-owner`: exact contents `workflow-created` preserve that ownership across resume; a missing/different marker means `inherited`. Run `git -C <path> fetch origin <base_branch>` so later diff verification uses a current base. Do not run `git worktree add`.
 - **Multiple matches — stop.** Ownership/path is ambiguous; report it without creating or removing anything.
 - **No match — choose from the current checkout below.**
 
@@ -218,7 +218,7 @@ Record both the selected checkout's exact path and ownership for FINISH: `workfl
 cd /path/to/<repo>
 git fetch origin <base_branch>
 git worktree add ../<repo>-<branch> -b <branch> origin/<base_branch>
-OWNER_MARKER=$(git -C ../<repo>-<branch> rev-parse --git-path ticket-workflow-owner)
+OWNER_MARKER=$(git -C ../<repo>-<branch> rev-parse --path-format=absolute --git-path ticket-workflow-owner)
 printf '%s\n' 'workflow-created' >"$OWNER_MARKER"
 ```
 
@@ -351,7 +351,7 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ### Step 3 — Clean up the checkout
 
-Use START's recorded checkout ownership and exact path. In a fresh session, get `<branch>` from the PR's `headRefName`, run `git worktree list --porcelain`, and select the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`. Save that exact path as `CHECKOUT_PATH`; zero or multiple matches are ambiguous. Recompute `OWNER_MARKER` with `git -C "$CHECKOUT_PATH" rev-parse --git-path ticket-workflow-owner` and verify its entire contents are `workflow-created`. **Only one matching path plus that affirmative marker authorizes removing that same `CHECKOUT_PATH`.** If discovery is ambiguous or the marker is absent, unreadable, or different, treat the checkout as inherited.
+Use START's recorded checkout ownership and exact path. In a fresh session, get `<branch>` from the PR's `headRefName`, run `git worktree list --porcelain`, and select the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`. Save that exact path as `CHECKOUT_PATH`; zero or multiple matches are ambiguous. Recompute `OWNER_MARKER` with `git -C "$CHECKOUT_PATH" rev-parse --path-format=absolute --git-path ticket-workflow-owner` and verify its entire contents are `workflow-created`. **Only one matching path plus that affirmative marker authorizes removing that same `CHECKOUT_PATH`.** If discovery is ambiguous or the marker is absent, unreadable, or different, treat the checkout as inherited.
 
 - **Workflow-created:** switch back to the main repo first (can't remove a worktree from inside it), then remove it (`--force` if it has submodules):
 
