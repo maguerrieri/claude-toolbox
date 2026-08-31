@@ -34,8 +34,8 @@ Call `create_thread` once per unit, all calls in the same message:
 
 ```text
 create_thread({
-  prompt: "<prompt>",
-  title: "<context> <desc>",
+  prompt: "<prompt + execution directive when applicable>",
+  title: "<name>",
   target: {
     type: "project",
     projectId: "<matched project id>",
@@ -44,13 +44,27 @@ create_thread({
 })
 ```
 
-Pass the prompt verbatim after the shared step removed launch-only harness flags.
-Omit `model` and `thinking` unless the caller explicitly requested overrides so
+Preserve the prompt after the shared step removed launch-only harness flags. For
+a Git project worktree target, append `Worktree: current`; that execution
+directive tells arbitrary work to stay in the native Codex checkout and tells
+ticket START to reuse it instead of creating a second worktree. Do not append
+the directive for non-Git local or projectless targets, which have no managed
+worktree. Ignore optional `notify` metadata: Codex peer tasks do not use
+ticket-workflow's in-session SendMessage edge, so their progress is read through
+native task and PR state instead.
+
+Preserve an explicit unit `name` verbatim; otherwise use the shared
+`<context> <desc>` fallback. Omit `model` and `thinking` unless the caller explicitly requested overrides so
 the task inherits the user's configured Codex defaults. Creation is non-blocking;
 do not wait for the child to finish.
 
 Record `threadId` when the task is ready or `clientThreadId` while worktree setup
-is queued. Either is the stable identifier for that row.
+is queued. They have different control contracts:
+
+- `threadId` — ready task; safe for read, navigation, wait, follow-up, and task
+  mutation tools.
+- `clientThreadId` — setup queue identifier; report it and use it only in the
+  created-task UI directive. Never pass it to a tool that requires `threadId`.
 
 ## Report
 
@@ -60,8 +74,9 @@ Use Codex task terminology and include IDs:
 |---|---|---|
 | `toolbox investigate flaky CI` | `<threadId or clientThreadId>` | <one-line summary> |
 
-The task appears in the Codex sidebar. Point at the native task controls: open it
-from the sidebar (or navigate to it when asked), inspect progress with the Codex
-task list/read controls, and send follow-ups to that task by ID. When the app
-supports a created-task directive, emit it with the returned `threadId` or
-`clientThreadId` so the row is directly openable.
+The task appears in the Codex sidebar. For a ready `threadId`, point at the
+native task controls: open it from the sidebar (or navigate to it when asked),
+inspect progress with Codex task list/read controls, and send follow-ups by
+thread ID. For a queued `clientThreadId`, say setup is pending and do not
+advertise thread-only controls yet. Emit the app's created-task directive with
+whichever identifier was returned so the queued/ready row is directly openable.

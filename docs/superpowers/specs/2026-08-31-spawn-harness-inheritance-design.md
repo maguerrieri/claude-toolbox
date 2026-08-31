@@ -42,6 +42,11 @@ project is a Git repository; otherwise it uses the supported local/projectless
 target. It preserves the user's configured model and reasoning settings unless
 the request explicitly overrides them. The stable task/thread ID and Codex
 sidebar/open controls replace Claude session handles and CLI attach commands.
+The adapter appends `Worktree: current`; ticket START treats that reserved value
+as an instruction to reuse the native Codex worktree rather than nest another
+checkout. A queued `clientThreadId` is reported only as setup state and a UI
+directive target; thread-only read/message/navigation controls wait for the real
+`threadId`.
 
 ## Ticket Workflow Integration
 
@@ -50,6 +55,8 @@ The ticket workflow continues to own only ticket semantics:
 - parse issue IDs and briefing text;
 - append `SPAWN_CAP` and `Role: implementer`;
 - construct the full `/start-ticket` prompt and short task name;
+- pass that exact name through the generic unit contract;
+- request the existing local-only notifier as optional adapter metadata;
 - consume the harness override as launch metadata; and
 - pass each unit to generic `spawn`.
 
@@ -58,9 +65,12 @@ The ticket workflow continues to own only ticket semantics:
 ticket skill does not duplicate task creation, backend detection, identifiers,
 or inspection instructions.
 
-EPIC cloud execution, Claude cloud source propagation, and cross-session
-messaging are outside #63. PR #58 remains authoritative for Claude's backend
-axis.
+The Claude local adapter applies the optional `Notify:` directive; Claude cloud
+and Codex omit it because those edges cannot use ticket-workflow's SendMessage
+channel. The PR/tracker remains the durable completion record everywhere.
+
+EPIC cloud execution and Claude cloud source propagation are outside #63. PR
+#58 remains authoritative for Claude's backend axis.
 
 ## Validation
 
@@ -70,7 +80,8 @@ A checked-in behavioral fixture covers:
 - Claude local and cloud backend preservation;
 - both explicit cross-harness selections, including unavailable-tool failure;
 - generic and ticket spawn reporting contracts; and
-- preservation of ticket caps, roles, and prompt text.
+- preservation of ticket caps, roles, prompt text, exact names, native worktree
+  reuse, local notification, and queued-identifier control boundaries.
 
 Fresh-context agents run the scenarios before and after the skill changes. JSON
 manifests and YAML frontmatter are parsed, all repository tests run, and the

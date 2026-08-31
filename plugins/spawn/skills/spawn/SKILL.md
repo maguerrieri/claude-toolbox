@@ -41,11 +41,16 @@ Spawn adds **no** safety bound — each session does exactly what its prompt say
 
 ### 1 — Parse into units
 
-Split the request into one or more `(prompt, desc)` units:
+Split the request into one or more `(prompt, desc, name?, notify?)` units:
 - **One task** (the common case): the whole request is the prompt. `/spawn to investigate the flaky CI` → a single unit.
 - **Several tasks:** an explicit list, or "spawn N agents to each do X" → N units.
 
-`prompt` = the full instruction the background session acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary for the session name.
+`prompt` = the full instruction the background session acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary. `name` is optional: a delegating workflow can supply the exact task/session title; otherwise step 2 derives one. Harness adapters preserve an explicit `name` verbatim.
+
+`notify` is also optional prompt-decoration metadata. It carries a complete
+wake-up directive (for example `Notify: <spawner>`) that an adapter appends only
+when its task edge supports that channel. An adapter without the channel omits
+it; it never substitutes a different notification mechanism.
 
 Also parse an optional launch-only harness override:
 
@@ -63,6 +68,9 @@ from the task's subject matter.
 A short prefix that makes the task findable in the selected harness:
 - In a repo / working dir → its basename (e.g. `misc`, `sonder`).
 - Otherwise → a topic word from the task.
+
+When the unit has no explicit `name`, set it to `<context> <desc>`. When it does,
+keep that exact value — don't recompute it from the current directory.
 
 ### 3 — Select the harness
 
@@ -94,8 +102,8 @@ The launch mechanic is the one in the harness adapter selected in step 3 (and,
 for Claude, the backend that adapter selects).
 
 Whichever harness you're on:
-- `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
-- Pass the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote.
+- `name` — the explicit unit name or step 2's `<context> <desc>` fallback.
+- Preserve the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote. An adapter may append only its documented execution directive and a supported `notify` directive; it never rewrites or drops the caller's bounds.
 - **Record the stable identifier** the launch returns — a Codex task/thread ID
   or the Claude backend's session handle/ID. Names can change; identifiers are
   how a stuck task is inspected later.

@@ -197,7 +197,28 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 
 ### Step 3 — Create the worktree
 
-Create it as a sibling of the repo root, branch and dir named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes):
+Create it as a sibling of the repo root, branch and dir named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive. A named value (e.g. from the EPIC orchestrator) assigns that exact branch/worktree name so it can stack and poll deterministically. The reserved value `current` means the harness already created an isolated worktree and START must reuse it.
+
+For `Worktree: current`, verify the checkout is a linked worktree (its resolved
+git dir differs from its common git dir), fetch `<base_branch>`, and use the
+adapter's `BRANCH` name for the issue branch. If that branch is not already
+checked out, create/switch it in this same worktree from
+`origin/<base_branch>`. Do **not** run `git worktree add`; all implementation and
+the native task diff stay in the current checkout. A `current` directive in a
+non-worktree checkout is a hard error — report it rather than silently creating
+a differently managed workspace.
+
+```bash
+git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
+git_common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+[ "$git_dir" != "$git_common" ] || { echo "Worktree: current requires a linked worktree" >&2; exit 1; }
+git fetch origin <base_branch>
+git switch -c <adapter-BRANCH> origin/<base_branch>  # omit when already on that branch
+```
+
+With no directive, derive `<branch>` via adapter `BRANCH`. For a named value,
+use that single whitespace-delimited token as `<branch>`. In both cases create
+the sibling worktree as before:
 
 ```bash
 cd /path/to/<repo>
@@ -379,6 +400,11 @@ Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap ap
 For each issue, hand the `spawn` skill one unit:
 - **prompt:** `/start-ticket <ID> <briefing + SPAWN_CAP>  Role: implementer` — the `Role: implementer` directive pins the sibling to single-issue altitude (START Step 1 reads `roles/implementer.md`); it's the ticket layer's altitude bound, appended alongside `SPAWN_CAP`.
 - **name:** `<repo> <ID>: <desc>` — `<repo>` is the basename of the repo the profile selected (e.g. `widgets`, `mobile-app`); `<ID>` is the issue key as-is (`ABC-12`, `#42`); `<desc>` is an under-5-word summary (e.g. `add GeoIP routing`). Spaces and special characters are fine — keep `--name` quoted. Full example: `--name "widgets #14: add rollover toggle"`.
+- **notify:** read `messaging.md` and resolve your current session name/handle;
+  provide the complete `Notify: <spawner>` directive as optional adapter
+  metadata. Generic `spawn` appends it only on an edge whose adapter declares
+  that SendMessage channel reachable (Claude local); Claude cloud and Codex
+  omit it and use their native/polled state.
 - **Keep `<briefing>` in the prompt:** `<briefing>` is the per-issue text from Step 1 (with `SPAWN_CAP` appended) and goes in the `/start-ticket` body **in full** — even when it doubles as the `<desc>` label. `<desc>` is only a short tag for the session name; never let it *replace* the briefing in the prompt, or the sibling loses its per-issue guidance.
 
 Then **spawn them via the `spawn` skill** — pass the optional harness override as
@@ -390,6 +416,8 @@ identifiers, inspection controls, and any subordinate backend selection.
 
 Ticket-only notes layered on top of `spawn`:
 - Siblings inherit your config home + env, so they resolve the same tracker/profile; each runs its own Step 0.
+- The exact ticket `name` is part of the generic unit; adapters preserve it
+  verbatim rather than reconstructing it from their launch cwd.
 - The child prompt contains the issue ID, the complete briefing and
   `SPAWN_CAP`, and `Role: implementer` — but never the harness override.
 - If a spawn is blocked by a permission / auto-mode classifier (e.g. it reads as deploy-adjacent), make the cap explicit in the briefing, or print the commands for the user to run.
@@ -474,7 +502,7 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 - **Wake-up channel (default on** — it's what makes the Step 6 poll cheap): read `messaging.md` and pass every child `Notify: <orchestrator session name>` — children ping `pushed:`/`done:`/`blocked:`/`filed:` via SendMessage instead of being purely polled, the orchestrator can redirect a child mid-run by the name it assigned at spawn, and siblings can ping each other by those same spawn names (e.g. a parent telling its stacked dependent it restacked). Pings are hints; Step 6 still verifies against the PRs.
 - **All roots spawn immediately, in parallel** — one Bash call per root in a single message.
 - A **dependent spawns only once every parent's assigned branch is pushed** — i.e. `origin/epic-<epic-id-lower>-<parent-id-lower>` exists (the orchestrator assigned that name, so it knows it exactly), which is the *only* prerequisite for the dependent's worktree fetch (START Step 3); the parent's PR being open is **not** required. (For a **diamond**, wait for *all* parents to be pushed, then build the Step 4 integration branch and pass it as the base.) That's the earliest safe moment (the parent reaches it at START Step 7's `git push`, just before its PR is opened) and maximizes overlap, at the cost of a possible restack if a parent's branch changes during review (handled at finish — Step 7). If you'd rather avoid restacks, gate the dependent on its parent being **START-complete** (green + review-clean) instead — call out which gate you chose.
-- `Base branch: <base>` and `Worktree: <name>` are honored by START (Step 2 for the base, Step 3 for the branch/worktree name — briefing directives beat the defaults), so stacking needs **no special START support** — the dependent's session just cuts its worktree (named `<name>`) from its base (the parent's assigned branch, or the diamond's integration branch).
+- `Base branch: <base>` and named `Worktree: <name>` are honored by START (Step 2 for the base, Step 3 for the branch/worktree name — briefing directives beat the defaults; `current` is reserved for a harness-provided checkout), so stacking needs **no special START support** — the dependent's session just cuts its worktree (named `<name>`) from its base (the parent's assigned branch, or the diamond's integration branch).
 
 ### Step 6 — Aggregate the stack
 
