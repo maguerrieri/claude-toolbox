@@ -143,7 +143,7 @@ The composed body is exactly what the delegated session will `FETCH` as its brie
 
 By default START runs the **full autonomous cycle** and hands back a PR that the review bot is satisfied with and CI is green on:
 
-> worktree setup → implement → tests + docs → commit → push → PR → review cycle → CI green → hand back
+> working-checkout setup → implement → tests + docs → commit → push → PR → review cycle → CI green → hand back
 
 The user then reviews the PR themself and invokes `/finish-ticket`.
 
@@ -151,8 +151,8 @@ The user then reviews the PR themself and invokes `/finish-ticket`.
 
 START is **only complete** when ALL of these are true (or an opt-out applies):
 
-- [ ] Worktree exists at the expected path
-- [ ] Issue has been implemented inside the worktree
+- [ ] A working checkout is available at the expected path (workflow-created or inherited)
+- [ ] Issue has been implemented inside the selected checkout
 - [ ] Test coverage verified / new tests added where the project's conventions call for it
 - [ ] Docs the change touches are still accurate (profile `DOCS`) — any drift fixed in this PR
 - [ ] Branch is pushed to origin
@@ -169,7 +169,7 @@ Once you reach the implementation step (or the earliest non-opt-out step), **cre
 
 Check the request for these signals — if present, stop early at the indicated step:
 
-- "setup only" / "just set up the worktree" / "don't start work" / "I'll take it from here" → stop after **Step 4** (worktree reported).
+- "setup only" / "just set up the worktree" / "don't start work" / "I'll take it from here" → stop after **Step 4** (checkout reported).
 - "stop before push" / "don't push" / "let me review the code first" / "no PR yet" → stop after **Step 6** (implementation + tests + doc check committed locally, nothing pushed).
 
 ### Step 1 — Read the issue
@@ -192,31 +192,57 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 - **Repo:** Use the profile's `REPO_SELECT` (the `default` profile: the repo named in the request, else the current repo — for personal projects you're almost always already inside it; ask if you're in an umbrella/bare dir and it's ambiguous). Org profiles may map the issue to a repo from a catalog.
 - **Base branch:** Precedence: a `Base branch:` directive in the **briefing/arguments** wins (this is how the EPIC orchestrator stacks a dependent ticket on its parent's branch — see EPIC Step 5); then a `Base branch:` line in the **issue description**; then **exactly one** dependency the issue itself declares in the tracker's `DEPS` syntax, when that dependency already has an open PR: call the adapter's `DEPENDENCY_PR(<dependency-id>)`; one exact match means base = that PR's head branch, so two solo implementers stack correctly with no coordinator in the loop. Zero matches (no open PR yet), more than one match, or more than one declared dependency: **don't guess a branch name** — warn that the dependency isn't unambiguously stackable and fall through to the default; a multi-parent child needs EPIC's integration-branch path, while a single-parent child can be retried or given `Base branch:` by hand. Otherwise default to the repo's default branch: `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` (gh is assumed available — see Scope). Git-native fallback: `git remote set-head origin --auto` (sets `origin/HEAD` if it isn't set) then `git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'` (the `--short` form would return `origin/main`, so strip the full `refs/remotes/origin/` prefix to get the bare branch name). Last resort: `main`.
 
-### Step 3 — Create the worktree
+### Step 3 — Prepare the working checkout
 
-Create it as a sibling of the repo root, branch and dir named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes):
+Before creating anything, detect whether the harness already supplied a linked worktree and whether it has a branch:
+
+```bash
+GIT_DIR=$(cd "$(git rev-parse --git-dir)" 2>/dev/null && pwd -P)
+GIT_COMMON=$(cd "$(git rev-parse --git-common-dir)" 2>/dev/null && pwd -P)
+BRANCH=$(git branch --show-current)
+```
+
+The adapter's `BRANCH` names the requested issue branch by default. If the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), use that exact value for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes).
+
+Before choosing a path, run `git worktree list --porcelain` and look for the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`:
+
+- **One existing issue worktree — resume it.** Inspect its status and reuse it only when its current changes belong to this issue. Recompute its ownership marker with `git -C <path> rev-parse --git-path ticket-workflow-owner`: exact contents `workflow-created` preserve that ownership across resume; a missing/different marker means `inherited`. Run `git -C <path> fetch origin <base_branch>` so later diff verification uses a current base. Do not run `git worktree add`.
+- **Multiple matches — stop.** Ownership/path is ambiguous; report it without creating or removing anything.
+- **No match — choose from the current checkout below.**
+
+Record both the selected checkout's exact path and ownership for FINISH: `workflow-created` when this START run executes `git worktree add` or the resumed checkout has the valid marker; otherwise `inherited`.
+
+- **No existing issue worktree + ordinary checkout (`GIT_DIR == GIT_COMMON`) — workflow-created.** Preserve the existing Claude Code/background-session behavior: create a sibling worktree from the resolved base and work there.
 
 ```bash
 cd /path/to/<repo>
 git fetch origin <base_branch>
 git worktree add ../<repo>-<branch> -b <branch> origin/<base_branch>
+OWNER_MARKER=$(git -C ../<repo>-<branch> rev-parse --git-path ticket-workflow-owner)
+printf '%s\n' 'workflow-created' >"$OWNER_MARKER"
 ```
 
-Then run the profile's `SUBMODULES` step. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
+Write the marker immediately after `git worktree add`; it lives in that created worktree's own Git metadata and is removed with the worktree. Do not write one into an inherited worktree. If the marker is later absent, unreadable, or ambiguous, FINISH must treat the checkout as inherited; leaking a workflow-created worktree is safer than removing one owned by the harness.
+
+- **No existing issue worktree + current linked worktree (`GIT_DIR != GIT_COMMON`) — inherited.** Reuse the current checkout; never create another worktree from it. First inspect its status. It is suitable when its current changes belong to this issue and its branch is safely switchable to `<branch>` or detached. Preserve any existing work: do not reset, clean, or overwrite it. If it contains unrelated changes or is otherwise unsuitable, stop and report the conflict instead of creating a redundant checkout.
+  - Run `git fetch origin <base_branch>`, then inspect `git show-ref --verify refs/heads/<branch>`. If it exists, run `git switch <branch>`; otherwise run `git switch -c <branch> origin/<base_branch>`. This creates or selects the issue branch inside the inherited checkout, not another worktree.
+  - If the harness or sandbox rejects the in-place branch operation, keep the checkout on its current branch/detached HEAD and continue without destructive git operations; Step 7's managed-checkout fallback covers branch/push/PR handoff.
+
+Then run the profile's `SUBMODULES` step in the selected checkout. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
 
 ```bash
-cd ../<repo>-<branch> && git submodule update --init
+cd /path/to/<selected-checkout> && git submodule update --init
 ```
 
-### Step 4 — Report the worktree path
+### Step 4 — Report the checkout path
 
-Tell the user the worktree path. Optionally run the adapter's `START` to mark the issue in-progress (assign yourself / move the card) — keep it light; skip if the tracker has no transition.
+Tell the user the checkout path and whether it is workflow-created or inherited. Either ownership satisfies START's working-checkout checkpoint. Optionally run the adapter's `START` to mark the issue in-progress (assign yourself / move the card) — keep it light; skip if the tracker has no transition.
 
 **Stop here** if the "setup only" opt-out applies.
 
 ### Step 5 — Implement
 
-Re-read the issue, plan, and implement inside the worktree. Commit incrementally (never batch). Message format: the tracker's `COMMIT_REF`, unless the profile's `COMMIT_STYLE` overrides it (e.g. an org's flagged format).
+Re-read the issue, plan, and implement inside the selected checkout. Commit incrementally (never batch). Message format: the tracker's `COMMIT_REF`, unless the profile's `COMMIT_STYLE` overrides it (e.g. an org's flagged format).
 
 ### Step 6 — Verify tests + docs
 
@@ -236,6 +262,8 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 ```bash
 git push -u origin <branch>
 ```
+
+**Managed-checkout fallback.** If an inherited harness-managed checkout cannot create a branch, commit, push, or open the PR, do not create another worktree and do not discard completed work. Preserve its working tree and any commits that were possible, then tell the user to use the harness's native branch/handoff controls (in Codex: **Create branch** or **Hand off to local**) and provide the intended branch name, commit message(s), and PR title/body. This is a platform constraint opt-out from the remaining START gates, not an implementation failure.
 
 Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
 
@@ -321,19 +349,23 @@ If the merge is **blocked by a permission layer** (e.g. an auto-mode classifier 
 
 Once the PR is merged — by whichever path — continue with Steps 3–5.
 
-### Step 3 — Clean up the worktree
+### Step 3 — Clean up the checkout
 
-Switch back to the main repo first (can't remove a worktree from inside it), then remove it (`--force` if it has submodules):
+Use START's recorded checkout ownership and exact path. In a fresh session, get `<branch>` from the PR's `headRefName`, run `git worktree list --porcelain`, and select the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`. Save that exact path as `CHECKOUT_PATH`; zero or multiple matches are ambiguous. Recompute `OWNER_MARKER` with `git -C "$CHECKOUT_PATH" rev-parse --git-path ticket-workflow-owner` and verify its entire contents are `workflow-created`. **Only one matching path plus that affirmative marker authorizes removing that same `CHECKOUT_PATH`.** If discovery is ambiguous or the marker is absent, unreadable, or different, treat the checkout as inherited.
+
+- **Workflow-created:** switch back to the main repo first (can't remove a worktree from inside it), then remove it (`--force` if it has submodules):
 
 ```bash
 cd /path/to/<repo>
 git worktree list
-git worktree remove --force /path/to/<repo>-<branch>
+git worktree remove --force "$CHECKOUT_PATH"
 ```
+
+- **Inherited/harness-managed:** do not remove, prune, reset, or otherwise clean up the checkout. Leave its lifecycle to the owning harness and report that cleanup was intentionally skipped.
 
 ### Step 4 — Delete the local branch
 
-Use `-D` — rebase merge creates new SHAs so git won't see the branch as merged:
+For a workflow-created checkout, use `-D` — rebase merge creates new SHAs so git won't see the branch as merged:
 
 ```bash
 git checkout <base_branch>   # leave the feature branch first — can't delete the checked-out branch
@@ -342,6 +374,8 @@ git pull --ff-only           # update the base branch
 ```
 
 If branch auto-deletion is on for the remote, no need to delete the remote branch.
+
+For an inherited/harness-managed checkout, leave its checked-out branch and base synchronization to the harness; do not switch branches or delete the local branch as part of FINISH.
 
 ### Step 5 — Close the issue + record expected outcome
 
@@ -534,6 +568,6 @@ End with FINISH's "what to watch for" note (FINISH Step 5) for the epic as a who
 
 ## Notes
 
-- If the branch/worktree already exists, check it out / reuse it and continue from the right step.
+- If the branch/worktree already exists, reuse it and continue from the right step; preserve its ownership classification so FINISH never removes a harness-managed checkout.
 - Keep tracker/profile commands out of this file — they live in `trackers/<tracker>.md` and `profiles/<profile>.md`. Adding a new tracker or environment = one new adapter file, no changes here.
 - **Org-specific behavior comes from the selected profile, not a separate command.** One installed workflow serves every `(tracker, profile)` pair — point a repo at its org profile with a `Profile:` line in that repo's `CLAUDE.md` rather than forking the commands. (Claude Code's same-name precedence still applies: a project-level command of the same name shadows this one.)
