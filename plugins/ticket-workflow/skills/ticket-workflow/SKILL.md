@@ -199,14 +199,14 @@ Before creating anything, detect whether the harness already supplied a linked w
 ```bash
 GIT_DIR=$(git rev-parse --absolute-git-dir)
 GIT_COMMON=$(git rev-parse --path-format=absolute --git-common-dir)
-BRANCH=$(git branch --show-current)
+CURRENT_BRANCH=$(git branch --show-current)
 ```
 
 The adapter's `BRANCH` names the requested issue branch by default. If the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), use that exact value for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes).
 
 Before choosing a path, run `git worktree list --porcelain` and look for the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`:
 
-- **One existing issue worktree — resume it.** Inspect its status and reuse it only when its current changes belong to this issue. Recompute its ownership marker with `git -C <path> rev-parse --path-format=absolute --git-path ticket-workflow-owner`: exact contents `workflow-created` preserve that ownership across resume; a missing/different marker means `inherited`. Run `git -C <path> fetch origin <base_branch>` so later diff verification uses a current base. Do not run `git worktree add`.
+- **One existing issue worktree — resume it.** Inspect its status and reuse it only when its current changes belong to this issue. Recompute its ownership marker, then read the file: `OWNER_MARKER=$(git -C <path> rev-parse --path-format=absolute --git-path ticket-workflow-owner)`. If it is readable and `[[ "$(<"$OWNER_MARKER")" == workflow-created ]]`, preserve `workflow-created` ownership across resume; a missing/different marker means `inherited`. Run `git -C <path> fetch origin <base_branch>` so later diff verification uses a current base. Do not run `git worktree add`.
 - **Multiple matches — stop.** Ownership/path is ambiguous; report it without creating or removing anything.
 - **No match — choose from the current checkout below.**
 
@@ -351,7 +351,14 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ### Step 3 — Clean up the checkout
 
-Use START's recorded checkout ownership and exact path. In a fresh session, get `<branch>` from the PR's `headRefName`, run `git worktree list --porcelain`, and select the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`. Save that exact path as `CHECKOUT_PATH`; zero or multiple matches are ambiguous. Recompute `OWNER_MARKER` with `git -C "$CHECKOUT_PATH" rev-parse --path-format=absolute --git-path ticket-workflow-owner` and verify its entire contents are `workflow-created`. **Only one matching path plus that affirmative marker authorizes removing that same `CHECKOUT_PATH`.** If discovery is ambiguous or the marker is absent, unreadable, or different, treat the checkout as inherited.
+Use START's recorded checkout ownership and exact path. In a fresh session, get `<branch>` from the PR's `headRefName`, run `git worktree list --porcelain`, and select the single `worktree <path>` entry whose following `branch` line is `refs/heads/<branch>`. Save that exact path as `CHECKOUT_PATH`; zero or multiple matches are ambiguous. Then run:
+
+```bash
+OWNER_MARKER=$(git -C "$CHECKOUT_PATH" rev-parse --path-format=absolute --git-path ticket-workflow-owner)
+[[ -r "$OWNER_MARKER" ]] && [[ "$(<"$OWNER_MARKER")" == workflow-created ]]
+```
+
+**Only one matching path plus that successful exact-content check authorizes removing that same `CHECKOUT_PATH`.** If discovery is ambiguous or the check fails because the marker is absent, unreadable, or different, treat the checkout as inherited.
 
 - **Workflow-created:** switch back to the main repo first (can't remove a worktree from inside it), then remove it (`--force` if it has submodules):
 
