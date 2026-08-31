@@ -6,7 +6,9 @@
   `/start-ticket` must reuse that checkout (`Worktree: current`) instead of
   creating a sibling worktree outside the task's writable/review surface.
   Carry that ownership through submodule setup and FINISH: the workflow must not
-  remove an app-owned checkout or delete its branch.
+  remove an app-owned checkout or delete its branch. START can be re-entered,
+  so switch to an existing issue branch instead of always recreating it with
+  `git switch -c`.
 - Generic spawn units may carry an explicit `name`; harness adapters preserve it
   verbatim. Ticket names must not be reconstructed from the caller's cwd.
 - Claude-local-to-Claude-local ticket spawns keep the `Notify:` wake-up channel.

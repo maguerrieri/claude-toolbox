@@ -219,7 +219,13 @@ git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
 git_common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
 [ "$git_dir" != "$git_common" ] || { echo "Worktree: current requires a linked worktree" >&2; exit 1; }
 git fetch origin <base_branch>
-git switch -c <adapter-BRANCH> origin/<base_branch>  # omit when already on that branch
+if [ "$(git branch --show-current)" != "<adapter-BRANCH>" ]; then
+  if git show-ref --verify --quiet refs/heads/<adapter-BRANCH>; then
+    git switch <adapter-BRANCH>
+  else
+    git switch -c <adapter-BRANCH> origin/<base_branch>
+  fi
+fi
 ```
 
 With no directive, derive `<branch>` via adapter `BRANCH`. For a named value,
