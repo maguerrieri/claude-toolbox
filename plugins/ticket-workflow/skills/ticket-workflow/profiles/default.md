@@ -129,7 +129,8 @@ Example durable prompt (substitute the actual identifiers and original limits):
    disappearance is not proof a review landed. Fetch all review pages, including
    full bodies and the reviewed commit:
    ```bash
-   gh api repos/OWNER/REPO/pulls/N --jq '{head: .head.sha, state, requested_reviewers}'
+   gh api repos/OWNER/REPO/pulls/N --jq \
+     '{head: .head.sha, state, requested_reviewers: [.requested_reviewers[].login], requested_teams: [.requested_teams[].slug]}'
    gh api --paginate repos/OWNER/REPO/pulls/N/reviews \
      --jq '.[] | {id, user: .user.login, state, commit_id, submitted_at, body, html_url}'
    ```
