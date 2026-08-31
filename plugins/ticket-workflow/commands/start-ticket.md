@@ -8,4 +8,4 @@ Start work on issue: **$ARGUMENTS**
 
 **Invoke the `ticket-workflow` skill now via the Skill tool** and run its **START** phase — do not read its `SKILL.md` directly. Treat the first token of "$ARGUMENTS" as the issue ID and the rest as briefing and/or opt-out signals ("setup only", "stop before push").
 
-First do the skill's **Step 0** to select the tracker + profile (project memory → repo `CLAUDE.md` → infer/default), then follow the full START cycle and its completion criteria. Don't hand back until every completion box is checked unless an opt-out applies.
+First do the skill's **Step 0** to select the tracker + profile (project memory → repo `CLAUDE.md` → infer/default), then follow the full START cycle and its completion criteria, including the **Autonomous review contract**. Native recurring follow-ups remain subject to host permissions and the original task bounds. Report pending/blocked status honestly when an opt-out or blocker prevents completion; a scheduled continuation is not a completed review.

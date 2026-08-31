@@ -41,7 +41,7 @@ The vocabulary is unchanged from the `COORD` markers — prefixed one-liners, so
 receivers and greps treat the two channels uniformly:
 
 - **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks
-  a dependent's spawn), `done:` (START-complete: CI green, review clean),
+  a dependent's spawn), `done:` (all START review/CI/follow-up gates satisfied),
   `blocked:` (stuck; say on what), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
   acceptance criteria` when it's urgent). A `filed:` ping is a **request, not an
