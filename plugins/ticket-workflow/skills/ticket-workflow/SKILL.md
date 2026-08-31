@@ -132,8 +132,11 @@ Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. La
 ### Step 4 — Route by flag
 
 - *(no flag)* — report the new ID + URL and stop; filing was the whole request.
-- `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` session), **in the same turn** — report the ID *and* the spawned session together; never park the spawn behind the report.
+- `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` task), **in the same turn** — report the ID *and* the spawned task together; never park the spawn behind the report. An optional `--harness codex|claude` is launch metadata for that SPAWN handoff; consume it there and never copy it into the child `/start-ticket` prompt.
 - `--start` — run the **START phase** on the new ID inline in this session, same turn.
+
+`--harness` is valid only with `--spawn`; reject it for file-only or `--start`
+requests because neither route launches a peer task.
 
 The composed body is exactly what the delegated session will `FETCH` as its briefing — the other reason Step 1 carries the weight.
 
@@ -185,7 +188,7 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 
 If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), skip the write and proceed with the directive as-is — the same degradation `/role` documents. No `Role:` directive → this is an interactive run and no charter applies; the human driving it isn't bounded.
 
-**Note your notifier (if directed).** If the briefing carries a `Notify: <session name>` directive (the cross-session wake-up channel spawn edges carry by default), read `messaging.md` now (read-on-demand, like a tracker/profile) and follow it: record the named spawner session and ping it via SendMessage at the events it lists (`pushed:`, `done:`, `blocked:`, `filed:`), confirming with the `ListAgents` ` [ref]` suffix if the bare name is rejected. Nothing to arm — delivery (including queued delivery to an offline spawner) is the harness's job. No directive → an edge that opted out (or a pre-messaging spawner); nothing to note.
+**Note your notifier (if directed).** If the briefing carries a `Notify: <session name>` directive (a spawn edge with a reachable wake-up channel may supply one), read `messaging.md` now (read-on-demand, like a tracker/profile) and follow it: record the named spawner session and ping it via SendMessage at the events it lists (`pushed:`, `done:`, `blocked:`, `filed:`), confirming with the `ListAgents` ` [ref]` suffix if the bare name is rejected. Nothing to arm — delivery (including queued delivery to an offline spawner) is the harness's job. No directive → that edge has no supported notifier; nothing to note.
 
 ### Step 2 — Determine target repo + base branch
 
@@ -352,7 +355,7 @@ If branch auto-deletion is on for the remote, no need to delete the remote branc
 
 ## SPAWN phase
 
-Fan out parallel ticket work: spawn one background session per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (backend selection, parallel launch, naming, table, hand-back, inspect commands) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
+Fan out parallel ticket work: spawn one background task per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (harness selection, subordinate backend selection, parallel launch, naming, table, hand-back, inspect controls) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
 
 ### Step 1 — Parse the request
 
@@ -361,7 +364,11 @@ One or more issue IDs, optionally with briefing text. Common shapes:
 - `ABC-12: do X. ABC-13: do Y.` — per-issue briefings
 - `For all of these, also do Z: ABC-12 ABC-13` — a shared briefing
 
-Extract `(id, briefing)` pairs; no per-issue briefing → just the cap from Step 2.
+Extract `(id, briefing)` pairs plus an optional `--harness codex|claude` launch
+override. Remove the harness flag from every briefing: it selects where generic
+`spawn` launches the unit and is never part of the work assigned to the child.
+Reject unknown or conflicting harness values before launching anything. No
+per-issue briefing → just the cap from Step 2.
 
 ### Step 2 — Append the profile's `SPAWN_CAP`
 
@@ -374,19 +381,17 @@ For each issue, hand the `spawn` skill one unit:
 - **name:** `<repo> <ID>: <desc>` — `<repo>` is the basename of the repo the profile selected (e.g. `widgets`, `mobile-app`); `<ID>` is the issue key as-is (`ABC-12`, `#42`); `<desc>` is an under-5-word summary (e.g. `add GeoIP routing`). Spaces and special characters are fine — keep `--name` quoted. Full example: `--name "widgets #14: add rollover toggle"`.
 - **Keep `<briefing>` in the prompt:** `<briefing>` is the per-issue text from Step 1 (with `SPAWN_CAP` appended) and goes in the `/start-ticket` body **in full** — even when it doubles as the `<desc>` label. `<desc>` is only a short tag for the session name; never let it *replace* the briefing in the prompt, or the sibling loses its per-issue guidance.
 
-Then **spawn them via the `spawn` skill** — all launches in a single message (parallel), report the table, hand back. The fan-out details live in `spawn`; don't repeat them here. In particular, **let `spawn`'s step 3 pick the backend** (local `claude --bg` vs cloud `create_session`) rather than assuming one: its backend file carries the mechanics, the naming, the `Session | Scope` table, the backend-appropriate inspect path, and the no-babysit / no-block guarantees. The block below is **not** the launch command to reach for by default — it's what the unit above works out to *once step 3 has already selected the local backend*, shown so the ticket-specific directives have a concrete form:
-
-```bash
-launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //'); launch_dir=${launch_dir:-$PWD}   # the repo's main checkout — the spawn skill's backends/local.md
-( cd "$launch_dir" && claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>  Role: implementer" )
-```
-
-On the cloud backend the same unit goes to `create_session` with the prompt as `prompt`, the name as `title`, and the repo passed explicitly as `source_url` (plus `source_revision` when the briefing pins a base branch) — see the `spawn` skill's `backends/cloud.md`.
+Then **spawn them via the `spawn` skill** — pass the optional harness override as
+launch metadata, issue all launches in one message (parallel), report the table,
+and hand back. The fan-out details live in `spawn`; don't repeat them here. Its
+step 3 inherits the current harness unless the user explicitly chose another,
+and the selected adapter owns native task/session creation, isolation, stable
+identifiers, inspection controls, and any subordinate backend selection.
 
 Ticket-only notes layered on top of `spawn`:
-- **Durable launch dir** — *local backend only* (the `spawn` skill's `backends/local.md`; the cloud backend has none): spawn from the repo's **main checkout** (first entry of `git worktree list`), **never from inside a ticket worktree** — the bg job records its launch cwd, and when the spawning ticket's worktree is removed at FINISH, attach/resume of the still-listed sibling breaks. This bites here specifically: a session spawning from mid-ticket work — an EPIC orchestrator, or an implementer launching an own-issue helper (`roles/implementer.md`) — is usually sitting inside its own disposable worktree.
 - Siblings inherit your config home + env, so they resolve the same tracker/profile; each runs its own Step 0.
-- **Wake-up channel (default on, local backend only):** read `messaging.md` and put a `Notify: <your session name>` directive in each briefing — siblings ping `pushed:`/`done:`/`blocked:`/`filed:` via SendMessage instead of being purely polled, and you can poke a sibling back by the name you spawned it with (`<repo> <ID>: <desc>`). The PR/tracker stays the durable record. **On the cloud backend there is no channel at all:** SendMessage does not span cloud sessions in either direction — `ListAgents` does not list a live cloud sibling, and a send to one comes back unreachable — so omit the `Notify:` directive there and fall back to polling the PR/tracker (and `get_session`), which is the durable record regardless.
+- The child prompt contains the issue ID, the complete briefing and
+  `SPAWN_CAP`, and `Role: implementer` — but never the harness override.
 - If a spawn is blocked by a permission / auto-mode classifier (e.g. it reads as deploy-adjacent), make the cap explicit in the briefing, or print the commands for the user to run.
 
 ### Step 4 — Report back
@@ -397,7 +402,9 @@ As `spawn` does — print a table, then hand back (don't block on the siblings):
 |---|---|---|
 | ABC-12 | `widgets ABC-12: add GeoIP routing` | `<one-line summary>` |
 
-Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
+Include the stable identifier and inspect/open path supplied by the selected
+**harness adapter**. Do not substitute Claude commands for a Codex task or Codex
+controls for a Claude session.
 
 ### SPAWN does NOT
 

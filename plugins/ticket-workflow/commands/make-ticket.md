@@ -4,10 +4,10 @@ description: >-
   ("make a ticket for this", "file an issue for that bug"), including compound
   create-and-run requests ("file an issue and spawn it", "make a ticket and start on it"),
   or when /make-ticket appears anywhere in the message
-argument-hint: <description> [--spawn | --start]
+argument-hint: '<description> [--spawn | --start] [--harness codex|claude]'
 ---
 Make a ticket for: **$ARGUMENTS**
 
-**Invoke the `ticket-workflow` skill now via the Skill tool** and run its **FILE** mini-phase — do not read its `SKILL.md` directly. Parse "$ARGUMENTS" as the issue description plus at most one routing flag: `--spawn` (file, then hand the new ID to the SPAWN phase — a background `/start-ticket` session) or `--start` (file, then run the START phase on it inline in this session). No flag → file the issue and stop.
+**Invoke the `ticket-workflow` skill now via the Skill tool** and run its **FILE** mini-phase — do not read its `SKILL.md` directly. Parse "$ARGUMENTS" as the issue description plus at most one routing flag: `--spawn` (file, then hand the new ID to the SPAWN phase — a background `/start-ticket` task) or `--start` (file, then run the START phase on it inline in this session). No flag → file the issue and stop. An optional `--harness codex|claude` is valid only with `--spawn`; pass it as launch metadata to SPAWN and remove it from the issue body and child prompt.
 
-First do the skill's **Step 0** to select the tracker + profile, then FILE: compose the issue title + body from the **conversation context** (motivation, scope, acceptance shape, links to related issues/PRs — not just the description above), check for existing open duplicates via the tracker's `SEARCH` op (per FILE Step 2 — surface hits interactively; note-and-file when unattended; non-fatal on failure), create it via the tracker's `CREATE` op, and report the new ID + URL. With `--spawn` or `--start`, complete that handoff **in the same turn** — never park it behind the report or a clarifying question.
+First do the skill's **Step 0** to select the tracker + profile, then FILE: compose the issue title + body from the **conversation context** (motivation, scope, acceptance shape, links to related issues/PRs — not just the description above), check for existing open duplicates via the tracker's `SEARCH` op (per FILE Step 2 — surface hits interactively; note-and-file when unattended; non-fatal on failure), create it via the tracker's `CREATE` op, and report the new ID + URL. With `--spawn` or `--start`, complete that handoff **in the same turn** — never park it behind the report or a clarifying question. `/make-ticket --spawn` inherits generic `spawn`'s active-harness default unless the caller supplied the explicit override.
