@@ -208,6 +208,12 @@ the native task diff stay in the current checkout. A `current` directive in a
 non-worktree checkout is a hard error — report it rather than silently creating
 a differently managed workspace.
 
+Set `<workspace_owner>` to `harness` and `<worktree_path>` to the current
+checkout. For the ordinary no-directive/named paths below, set ownership to
+`workflow` and the path to the created sibling. Carry both values through START;
+the ownership marker also travels in the PR so a later FINISH session cannot
+guess wrong.
+
 ```bash
 git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
 git_common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
@@ -226,10 +232,12 @@ git fetch origin <base_branch>
 git worktree add ../<repo>-<branch> -b <branch> origin/<base_branch>
 ```
 
-Then run the profile's `SUBMODULES` step. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
+Then run the profile's `SUBMODULES` step **inside `<worktree_path>`**. The
+`default` profile: if the repo has submodules, initialize them (builds fail
+otherwise):
 
 ```bash
-cd ../<repo>-<branch> && git submodule update --init
+cd "<worktree_path>" && git submodule update --init
 ```
 
 ### Step 4 — Report the worktree path
@@ -273,6 +281,8 @@ gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'
 - [ ] <smoke-test steps the user will run via /finish-ticket>
 
 <adapter PR_REF footer, e.g. "Closes #42">
+
+<when workspace_owner=harness: <!-- ticket-workflow-workspace: harness --> >
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -347,6 +357,16 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ### Step 3 — Clean up the worktree
 
+Read the PR body's hidden workspace marker (the same PR metadata already read by
+the pre-merge gate). `<!-- ticket-workflow-workspace: harness -->` means the
+execution harness owns the checkout. For that mode, **skip Steps 3–4 cleanup**:
+do not remove the worktree, switch its branch, or delete the branch. Report that
+Codex will retire its managed task workspace, then continue with Step 5. This is
+resource ownership, not a merge hold.
+
+Without the marker, the workflow owns the sibling worktree and cleans it up as
+before.
+
 Switch back to the main repo first (can't remove a worktree from inside it), then remove it (`--force` if it has submodules):
 
 ```bash
@@ -400,11 +420,11 @@ Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap ap
 For each issue, hand the `spawn` skill one unit:
 - **prompt:** `/start-ticket <ID> <briefing + SPAWN_CAP>  Role: implementer` — the `Role: implementer` directive pins the sibling to single-issue altitude (START Step 1 reads `roles/implementer.md`); it's the ticket layer's altitude bound, appended alongside `SPAWN_CAP`.
 - **name:** `<repo> <ID>: <desc>` — `<repo>` is the basename of the repo the profile selected (e.g. `widgets`, `mobile-app`); `<ID>` is the issue key as-is (`ABC-12`, `#42`); `<desc>` is an under-5-word summary (e.g. `add GeoIP routing`). Spaces and special characters are fine — keep `--name` quoted. Full example: `--name "widgets #14: add rollover toggle"`.
-- **notify:** read `messaging.md` and resolve your current session name/handle;
-  provide the complete `Notify: <spawner>` directive as optional adapter
-  metadata. Generic `spawn` appends it only on an edge whose adapter declares
-  that SendMessage channel reachable (Claude local); Claude cloud and Codex
-  omit it and use their native/polled state.
+- **notify:** set `requested` as lazy adapter metadata. Do not read
+  `messaging.md`, call `ListAgents`, or resolve your session identity here.
+  Generic `spawn` performs that lookup only on an edge whose adapter declares
+  the SendMessage channel reachable (Claude local); Claude cloud and Codex omit
+  it and use their native/polled state.
 - **Keep `<briefing>` in the prompt:** `<briefing>` is the per-issue text from Step 1 (with `SPAWN_CAP` appended) and goes in the `/start-ticket` body **in full** — even when it doubles as the `<desc>` label. `<desc>` is only a short tag for the session name; never let it *replace* the briefing in the prompt, or the sibling loses its per-issue guidance.
 
 Then **spawn them via the `spawn` skill** — pass the optional harness override as

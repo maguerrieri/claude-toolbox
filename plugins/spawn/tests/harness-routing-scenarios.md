@@ -31,6 +31,8 @@ For every case record:
 | Exact delegated name | Ticket SPAWN supplies `widgets #63: inherit harness` | Every harness adapter uses that exact name/title; generic spawn does not rebuild it from cwd. |
 | Local notifier | From local Claude, `/spawn-tickets #63` with a reachable spawner name | Append `Notify: <spawner>` as adapter-supported prompt metadata so START can send `pushed:`/`done:`/`blocked:`/`filed:`. Claude cloud and Codex omit it. |
 | Queued Codex task | Codex `create_thread` returns only `clientThreadId` | Report the queued ID and emit the created-task UI directive. Do not pass it to read/message/navigation/wait controls; those become available only after a real `threadId` exists. |
+| Managed lifecycle | A Codex `/start-ticket` with `Worktree: current` initializes submodules, later reaches `/finish-ticket`, and cleans up | Every START step uses the current checkout. FINISH leaves the app-owned worktree and branch to Codex; it never removes/deletes them as workflow-owned resources. |
+| Lazy notifier resolution | `/spawn-tickets #63` from Codex, Claude cloud, and Claude local | The ticket unit requests notification without resolving a session identity. Only Claude local resolves its spawner name/handle and appends `Notify:`; Codex/cloud perform no `ListAgents` lookup. |
 
 Regression failure: any default crosses harnesses, an explicit override silently
 falls back, ticket bounds are dropped, or the reported identifier/inspection

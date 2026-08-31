@@ -44,7 +44,9 @@ the request explicitly overrides them. The stable task/thread ID and Codex
 sidebar/open controls replace Claude session handles and CLI attach commands.
 The adapter appends `Worktree: current`; ticket START treats that reserved value
 as an instruction to reuse the native Codex worktree rather than nest another
-checkout. A queued `clientThreadId` is reported only as setup state and a UI
+checkout. START carries that harness ownership through submodule setup and a
+hidden PR marker; FINISH leaves worktree/branch cleanup to Codex. A queued
+`clientThreadId` is reported only as setup state and a UI
 directive target; thread-only read/message/navigation controls wait for the real
 `threadId`.
 
@@ -65,9 +67,11 @@ The ticket workflow continues to own only ticket semantics:
 ticket skill does not duplicate task creation, backend detection, identifiers,
 or inspection instructions.
 
-The Claude local adapter applies the optional `Notify:` directive; Claude cloud
-and Codex omit it because those edges cannot use ticket-workflow's SendMessage
-channel. The PR/tracker remains the durable completion record everywhere.
+The ticket layer passes a lazy notification request. Only the Claude local
+adapter resolves the spawner identity and applies `Notify:`; Claude cloud and
+Codex omit it without a `ListAgents` lookup because those edges cannot use
+ticket-workflow's SendMessage channel. The PR/tracker remains the durable
+completion record everywhere.
 
 EPIC cloud execution and Claude cloud source propagation are outside #63. PR
 #58 remains authoritative for Claude's backend axis.

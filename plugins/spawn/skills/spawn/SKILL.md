@@ -47,10 +47,11 @@ Split the request into one or more `(prompt, desc, name?, notify?)` units:
 
 `prompt` = the full instruction the background session acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary. `name` is optional: a delegating workflow can supply the exact task/session title; otherwise step 2 derives one. Harness adapters preserve an explicit `name` verbatim.
 
-`notify` is also optional prompt-decoration metadata. It carries a complete
-wake-up directive (for example `Notify: <spawner>`) that an adapter appends only
-when its task edge supports that channel. An adapter without the channel omits
-it; it never substitutes a different notification mechanism.
+`notify` is also optional, lazy prompt-decoration metadata. `requested` asks the
+selected adapter for a wake-up channel without resolving the caller's identity
+up front. Only an adapter whose edge supports that channel resolves the spawner
+name/handle and appends `Notify: <spawner>`. Other adapters omit it without
+performing an identity lookup or substituting another notification mechanism.
 
 Also parse an optional launch-only harness override:
 
