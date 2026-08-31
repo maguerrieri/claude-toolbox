@@ -1,10 +1,12 @@
 # Autonomous review scenario checks
 
 These are behavioral tests for instructions, not executable runtime tests. Run
-each prompt in a fresh agent context with the source `SKILL.md` and effective
-`profiles/default.md` (plus the implementer charter for an implementer). No external
-writes: ask for the next actions and the completion verdict. Check reasoning against
-the expected result, not exact wording. Do not include this answer key in the prompt.
+each prompt in a fresh agent context with the source
+`plugins/ticket-workflow/skills/ticket-workflow/SKILL.md` and effective
+`plugins/ticket-workflow/skills/ticket-workflow/profiles/default.md` (plus the
+implementer charter for an implementer). No external writes: ask for the next actions
+and the completion verdict. Check reasoning against the expected result, not exact
+wording. Do not include this answer key in the prompt.
 
 Use the same scenarios against the base revision before editing and the candidate
 after editing. Record failures and rerun after revisions. Runtime API examples can
