@@ -7,7 +7,9 @@ description: Use when asked to spawn, fan out, kick off, background, or parallel
 
 Fan out one or more **independent** background sessions for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
 
-**How** a session is launched depends on where you're running — local `claude --bg` jobs, or cloud sessions via MCP. That's the **backend** (step 3); everything else on this page is the same either way.
+**How** a session is launched first depends on the execution **harness** — Codex
+or Claude. The Claude harness then selects its local/cloud **backend**. Those are
+separate axes: harness selection happens in step 3, before any backend choice.
 
 ## When to use
 
@@ -45,35 +47,58 @@ Split the request into one or more `(prompt, desc)` units:
 
 `prompt` = the full instruction the background session acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary for the session name.
 
+Also parse an optional launch-only harness override:
+
+- `--harness codex` / an explicit request for a Codex task
+- `--harness claude` / an explicit request for a Claude session
+
+Remove the `--harness <value>` tokens from `prompt`; they select where the unit
+runs and are not work for the child. Reject an unknown value or conflicting
+overrides before launching anything. Natural-language selection counts only
+when the caller explicitly names the target harness — never infer a crossing
+from the task's subject matter.
+
 ### 2 — Pick a context label
 
-A short prefix that makes the session findable in whatever lists sessions on your backend (`claude agents` locally, the session list on cloud):
+A short prefix that makes the task findable in the selected harness:
 - In a repo / working dir → its basename (e.g. `misc`, `sonder`).
 - Otherwise → a topic word from the task.
 
-### 3 — Select the backend
+### 3 — Select the harness
 
-Where you're running decides how a session is launched. Check one env var:
+Selection precedence is deterministic:
 
-```bash
-[ -n "$CLAUDE_CODE_REMOTE_SESSION_ID" ] && echo cloud || echo local
-```
+1. An explicit override from step 1 wins.
+2. Otherwise inherit the harness executing this skill.
 
-- **cloud** — you're a cloud session (Claude Code on the web, or another remote environment). Read `backends/cloud.md` now.
-- **local** — you're on a machine the user has a shell on. Read `backends/local.md` now.
+Use the runtime identity and native task tools already present in the session.
+`CODEX_THREAD_ID` / `CODEX_SESSION_ID` or Codex task tools identify Codex;
+`CLAUDE_SESSION_ID`, `CLAUDECODE`, or `CLAUDE_CODE_REMOTE_SESSION_ID` identify
+Claude. The executable being installed is not evidence that it is the current
+harness — a Codex machine may also have `claude`, which is the regression this
+step prevents.
 
-Read exactly one, and follow it for steps 4–5. Don't guess the mechanics from memory: the two differ in more than the command name (the cloud backend has no launch directory at all, and needs the repo passed explicitly).
+- **codex** — read `harnesses/codex.md` now.
+- **claude** — read `harnesses/claude.md` now.
 
-The backend is about **where the spawner is**, not what the task is. A local session spawns local siblings even when the work targets a remote repo.
+Read exactly one harness adapter and follow it for steps 4–5. If the signals
+conflict or establish neither harness, use the known active tool/runtime context;
+if that is also ambiguous, ask instead of guessing. If an explicitly selected
+harness's native launch capability is unavailable, report that and stop — never
+silently fall back to the current harness.
 
 ### 4 — Spawn in parallel
 
-Launch one session per unit, **all in a single message** so they start concurrently. The launch mechanic is the one in the backend file you read in step 3.
+Launch one task per unit, **all in a single message** so they start concurrently.
+The launch mechanic is the one in the harness adapter selected in step 3 (and,
+for Claude, the backend that adapter selects).
 
-Whichever backend you're on:
+Whichever harness you're on:
 - `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
 - Pass the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote.
-- **Record the handle** the launch returns (a session handle locally, a `session_...` id on cloud) — it survives a rename and is how you inspect a stuck session later.
+- **Record the stable identifier** the launch returns — a Codex task/thread ID
+  or the Claude backend's session handle/ID. Names can change; identifiers are
+  how a stuck task is inspected later.
 
 ### 5 — Report and hand back
 
@@ -83,12 +108,19 @@ Print a table, then stop — **don't block on the sessions**:
 |---|---|
 | `misc investigate flaky CI` | <one-line summary> |
 
-Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the cloud one adds an ID column).
+Then point at the inspect/open path **for the selected harness**. Codex sidebar
+tasks, local Claude CLI jobs, and Claude cloud sessions use different controls;
+the selected adapter spells out which identifiers and controls to print.
 
 ## Spawn does NOT
 
-- Launch by the wrong mechanism for where it's running — select the backend (step 3) first. `claude --bg` from a cloud session produces sessions that die with the container and that the user can't see; `create_session` is not available locally.
-- Launch from inside a disposable worktree **on the local backend** — resolve the durable launch dir first, or attach/resume breaks when the worktree is later removed. (No launch dir exists on cloud.)
+- Cross harnesses by accident — default to the active harness and cross only on
+  an explicit request.
+- Substitute another harness when an override cannot launch — report the missing
+  native capability and stop.
+- Bypass a selected harness adapter's isolation rule. Codex project work uses a
+  native worktree task; Claude's local backend resolves a durable launch
+  directory; Claude cloud passes the repository explicitly.
 - Babysit or poll the sessions — each runs on its own.
 - Block on completion — spawn, report, hand back.
 - Add any cap — bounds live in the prompt text.
