@@ -1,6 +1,6 @@
 # claude-toolbox
 
-Portable Claude Code conventions and workflows, published as the
+Portable coding-agent conventions and Claude Code workflows, published as the
 **`maguerrieri-toolbox`** plugin marketplace. Each plugin lives in
 `plugins/<name>/` and is registered in `.claude-plugin/marketplace.json`.
 
