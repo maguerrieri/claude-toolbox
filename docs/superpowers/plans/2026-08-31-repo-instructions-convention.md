@@ -51,6 +51,8 @@
 - Modify: `plugins/conventions/.claude-plugin/plugin.json`
 - Modify: `.claude-plugin/marketplace.json`
 - Modify: `README.md`
+- Create: `AGENTS.md`
+- Modify: `CLAUDE.md`
 
 **Interfaces:**
 - Consumes: the policy constraints in issue #68.
@@ -60,6 +62,7 @@
 - [ ] **Step 2: Update `commit-conventions`.** Replace the `CLAUDE.md` canonical-override wording with `AGENTS.md`, while pointing readers to the compatibility policy.
 - [ ] **Step 3: Update discoverability and release metadata.** Mention both conventions skills in the marketplace description and README, then bump `0.1.1` to `0.2.0`.
 - [ ] **Step 4: Parse both skill frontmatters.** Assert their exact `name` and non-empty string `description` values with PyYAML.
+- [ ] **Step 5: Apply the convention to this repository.** Move the existing shared guidance to root `AGENTS.md`, reduce root `CLAUDE.md` to the pure import shim, and preserve all tracker/profile directives.
 
 ### Task 3: Adopt the convention in ticket-workflow
 
@@ -88,6 +91,8 @@
 - Verify: `.claude-plugin/marketplace.json`
 - Verify: `README.md`
 - Verify: `plugins/ticket-workflow/**`
+- Verify: `AGENTS.md`
+- Verify: `CLAUDE.md`
 
 **Interfaces:**
 - Consumes: Tasks 2–3's finished plugin surfaces.
