@@ -1,8 +1,8 @@
 # claude-toolbox
 
 Portable coding-agent conventions and Claude Code workflows, packaged as a
-[plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces). One
-repo, declared per-project, works in local and cloud sessions alike.
+[Claude-compatible plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
+One repo, declared per-project, works in local and cloud sessions alike.
 
 ## Plugins
 
