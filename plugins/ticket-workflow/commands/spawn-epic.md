@@ -21,4 +21,4 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 
 `<quick description>`: an under-5-word summary of the epic, recognizable in the session list. The `epic —` marker distinguishes this orchestrator session from the `<epic-id-lower>-<id-lower>` child sessions it will spawn.
 
-4. Report the session name and the handles — `claude agents` to list, `claude attach "<name>"` to open, `claude logs "<name>"` read-only (quote the name; it contains spaces) — and hand back without blocking.
+4. Record and report the stable session handle returned by `claude --bg` alongside the display name. Use `claude agents` to list, `claude attach "<handle>"` to open, and `claude logs "<handle>"` read-only. The name is a mutable human label; never make it the only inspection key. Then hand back without blocking.

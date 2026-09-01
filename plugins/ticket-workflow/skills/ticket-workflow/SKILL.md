@@ -275,7 +275,7 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 git push -u origin <branch>
 ```
 
-Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
+Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue). Before running the template, replace its `WORKSPACE_MARKER` line with exactly `<!-- ticket-workflow-workspace: harness -->` when `<workspace_owner>` is `harness`; otherwise delete the entire line. Never leave the literal `WORKSPACE_MARKER` text in a PR body.
 
 ```bash
 gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'EOF'
@@ -288,7 +288,7 @@ gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'
 
 <adapter PR_REF footer, e.g. "Closes #42">
 
-<when workspace_owner=harness: <!-- ticket-workflow-workspace: harness --> >
+WORKSPACE_MARKER
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
