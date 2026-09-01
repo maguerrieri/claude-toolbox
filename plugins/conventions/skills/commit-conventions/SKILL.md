@@ -59,5 +59,7 @@ Optional for tiny commits where the description carries it.
   that way.
 - When rebasing, avoid commands that open interactive editors — pass
   everything via CLI flags.
-- A repo's own CLAUDE.md may extend or override this; org playbooks (work
-  config) take precedence in org repos.
+- A repo's canonical `AGENTS.md` may extend or override this; its root
+  `CLAUDE.md` should be the pure `@AGENTS.md` compatibility shim described by
+  `conventions:repo-instructions`. Org playbooks (work config) take precedence
+  in org repos.

@@ -1,16 +1,17 @@
 # claude-toolbox
 
-Portable Claude Code conventions, packaged as a [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
-One repo, declared per-project, works in local and cloud sessions alike.
+Portable coding-agent conventions and Claude Code workflows, packaged as a
+[plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces). One
+repo, declared per-project, works in local and cloud sessions alike.
 
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
   list pulls in every plugin below. Install this one to get the full set.
   New plugins added to this repo should also be added to its dependencies.
-- **conventions** — cross-repo development conventions. Currently: commit
-  message format. Candidates to move in later: merge policy, issue/epic
-  structure.
+- **conventions** — cross-repo development conventions: commit-message format
+  and a portable repository-instruction policy built around canonical root
+  `AGENTS.md` plus a pure `CLAUDE.md` import shim.
 - **spawn** — generic background-session fan-out: the `spawn` skill plus the
   `/spawn` command, for firing off one or more independent `claude --bg`
   sessions and handing back without blocking.

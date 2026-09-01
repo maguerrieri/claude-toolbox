@@ -20,14 +20,14 @@ own work config, not here.
 ## SEARCH(query)  — find existing open tickets (FILE phase dup check)
 - Preferred: the Jira MCP search tool (e.g. `searchJiraIssuesUsingJql`) with JQL over the target project, restricted to unresolved issues:
   - `project = <KEY> AND resolution = Unresolved AND text ~ "<query>" ORDER BY updated DESC`
-  - `text ~` runs Jira's full-text match over summary + description; `<query>` is the 2–4 distinctive keywords FILE Step 2 derived. The project **key** resolves the same way `CREATE`'s does (request → project memory → repo `CLAUDE.md`); with no key, search unscoped rather than guessing one.
+  - `text ~` runs Jira's full-text match over summary + description; `<query>` is the 2–4 distinctive keywords FILE Step 2 derived. The project **key** resolves the same way `CREATE`'s does (request → project memory → repo `AGENTS.md` → compatibility `CLAUDE.md`); with no key, search unscoped rather than guessing one.
   - Cap results explicitly (e.g. `maxResults=50`) — don't rely on a tool default.
 - If MCP isn't available, use a configured Jira CLI with the same JQL; failing both, treat it as a search failure.
 - Return `(key, summary, url)` per hit. The *judgment* — is a hit the same work? — belongs to FILE Step 2, not this op.
 - Failures are **non-fatal** for FILE: report and let Step 2's degrade-to-filing path handle it.
 
 ## CREATE(title, body, labels?)  — file a new ticket (FILE phase)
-- Preferred: the Jira MCP create-issue tool (e.g. `createJiraIssue`) with the project key, an issue type (default the project's standard task type), summary `<title>`, description `<body>`, and any labels. The **project key** comes from the request, project memory, or the repo's `CLAUDE.md` — if none names one, ask; don't guess a key.
+- Preferred: the Jira MCP create-issue tool (e.g. `createJiraIssue`) with the project key, an issue type (default the project's standard task type), summary `<title>`, description `<body>`, and any labels. The **project key** comes from the request, project memory, canonical repo `AGENTS.md`, or a compatibility `CLAUDE.md` fallback — if none names one, ask; don't guess a key.
 - If MCP isn't available, use a configured Jira CLI; failing that, ask the user to create the ticket and paste the new key back.
 - Return the new issue **key** (`ABC-57`) — it's the ID every other op consumes.
 
