@@ -22,8 +22,10 @@ Valid `/role` values are `planner`, `epic-coordinator`, `implementer`, and
 `none`. For `adopt` of a non-`none` role, validate the value, read
 `roles/<role>.md` through `RESOURCES`, and adopt that charter as governing for
 the current Codex task. Keep the adoption prompt-durable in the task context
-across compaction/resume. Every spawned or forked task receives its own
-explicit `Role:` directive.
+across compaction/resume. Roles are never implicitly inherited across spawn or
+fork: only role-bearing ticket-workflow child edges receive their own explicit
+`Role:` directive. Implementer helper work items remain role-free as specified
+in `roles/implementer.md`.
 
 Codex has no ticket-workflow plugin hook or writable per-thread environment
 contract. Do not read or write Claude role markers, test

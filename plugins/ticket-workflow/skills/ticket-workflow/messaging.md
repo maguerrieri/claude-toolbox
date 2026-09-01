@@ -47,7 +47,7 @@ state through the tracker, PR, and when useful `INSPECT` before acting.
 
 - Not a replacement for `COORD`: file claims must be durable and checkable
   before anyone edits; a message can only note that a claim was posted.
-- Not for unrelated tasks: the channel stays within one delegated work tree.
+- Not for unrelated tasks: the channel stays within one delegation tree.
 - Not load-bearing: no reachable channel means polling, not failure.
 - Not a compatibility layer: use exactly the active harness's operations and
   degradation path.
