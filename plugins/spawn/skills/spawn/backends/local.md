@@ -4,6 +4,14 @@ The spawner is running on a machine the user has a shell on. Sessions are
 background jobs of the local CLI, recorded under `~/.claude/jobs/`, and the user
 inspects them with `claude agents` / `attach` / `logs`.
 
+Before launching, verify that the caller surface gives the user durable access
+to this machine and those CLI controls. A `cloud` caller does not: a
+container-local job would become unreachable when the container is reclaimed.
+For that edge, report that the selected `claude+cli` pair is unavailable from
+the caller surface and stop. Do not launch the job and do not fall back to
+Claude cloud or another harness. Likewise stop if `claude --bg` or its native
+attach/list controls are unavailable.
+
 ## Resolve a durable launch directory
 
 The bg job records its launch cwd (in `~/.claude/jobs/<id>/state.json`), and later
@@ -34,11 +42,12 @@ each wrapped in a subshell so the `cd` to the durable launch dir doesn't leak in
 your session:
 
 ```bash
-( cd "$launch_dir" && claude --bg --name "<context> <desc>" "<prompt>" )
+( cd "$launch_dir" && claude --bg --name "<name>" "<prompt + supported notify>" )
 ```
 
-- `<desc>`: under 5 words, recognizable (e.g. `investigate flaky CI`). Spaces and
-  special characters are fine — keep `--name`'s argument quoted.
+- `<name>`: preserve the generic unit's explicit name, or use its derived
+  `<context> <desc>` fallback. Spaces and special characters are fine — keep
+  `--name`'s argument quoted.
 - `<prompt>`: quote it so the shell can't mangle it. Plain prose in double quotes is
   fine (apostrophes are safe), but if the prompt contains `$`, backticks, or
   `$(...)`, double quotes will **expand** them and corrupt the spawned prompt. For
@@ -47,14 +56,22 @@ your session:
   ```bash
   read -r -d '' p <<'PROMPT'
   …prompt text, verbatim…
+  …supported notify directive, when present…
   PROMPT
-  ( cd "$launch_dir" && claude --bg --name "<context> <desc>" "$p" )
+  ( cd "$launch_dir" && claude --bg --name "<name>" "$p" )
   ```
 - `claude --bg` prints a **session handle** at spawn — record it per unit; it
   survives the user renaming the session and is how you inspect a stuck one later.
 
 ## Report
 
-Name column = the `--name` you passed. Point at the inspect commands:
-`claude agents` (list), `claude attach "<name>"` (open), `claude logs "<name>"`
-(read-only). Quote names — they contain spaces.
+Include the stable session handle returned by `claude --bg`; do not report only
+the mutable display name:
+
+| Session | Handle | Scope |
+|---|---|---|
+| `<exact --name value>` | `<returned handle>` | <one-line summary> |
+
+Point at `claude agents` (list), `claude attach "<handle>"` (open), and
+`claude logs "<handle>"` (read-only). The quoted name remains a convenient human
+label, but the returned handle is the authoritative inspection key.

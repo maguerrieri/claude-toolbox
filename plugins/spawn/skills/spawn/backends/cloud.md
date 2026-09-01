@@ -1,14 +1,17 @@
 # Backend: cloud (`create_session` MCP)
 
-The spawner is itself a cloud session (Claude Code on the web, or another remote
-environment). Siblings are **cloud sessions** created with the session-management
-MCP tools — `create_session`, plus `list_sessions` / `get_session` to inspect —
-each in its own container, and the user opens them on claude.ai/code.
+The selected target is a Claude **cloud session**. Create siblings with the
+session-management MCP tools — `create_session`, plus `list_sessions` /
+`get_session` to inspect — each in its own container, and the user opens them on
+claude.ai/code. The caller may itself be Claude cloud or may have selected this
+surface explicitly from another harness.
 
 Address those by **tool name**, not by server: they're the stable part. The server
 carrying them varies by harness configuration (in Claude Code on the web it's
 `Claude_Code_Remote`). If the tool names aren't in your tool list, search for them
-before concluding they're unavailable.
+before concluding they're unavailable. If `create_session` remains unavailable,
+report that the selected `claude+cloud` pair cannot be launched from this runtime
+and stop. Never run `claude --bg` as a fallback.
 
 **Do not use `claude --bg` here**, even though the CLI is installed in the
 container. A bg job would be a child process of a container that gets reclaimed
@@ -20,17 +23,23 @@ stability comes from the session record on the server, not from a path.
 
 ## Launch
 
+If the task requires repository work and `source_url` or the requested revision
+cannot be resolved, report that the selected `claude+cloud` pair lacks the
+required source context and stop. Never create a source-less child and never
+fall back to Claude CLI.
+
 One `create_session` call per unit, **all in a single message** so they start
 concurrently. Prompts travel as JSON, so none of the local backend's shell-quoting
 hazards apply — pass the prompt verbatim, `$` and backticks and all.
 
 ```
-create_session({"prompt": "<prompt>", "title": "<context> <desc>", "tags": ["spawn:<context>"], "source_url": "<repo clone URL>", "source_revision": "<base branch>"})
+create_session({"prompt": "<prompt>", "title": "<name>", "tags": ["spawn:<context>"], "source_url": "<repo clone URL>", "source_revision": "<base branch>"})
 ```
 
-Those five fields: `prompt` is the caller's instruction **verbatim**; `title` follows the same
-`<context> <desc>` convention as the local backend; `tags` makes the whole fan-out
-listable as a set afterwards; `source_url` is the repo to check out (**required** —
+Those five fields: `prompt` is the caller's instruction **verbatim**; `title`
+preserves the unit's explicit `name` or uses the shared `<context> <desc>`
+fallback; `tags` makes the whole fan-out listable as a set afterwards;
+`source_url` is the repo to check out (**required** —
 see below); and `source_revision` is the base branch, omitted only when the repo's
 default branch is the right base.
 
@@ -38,7 +47,8 @@ default branch is the right base.
 *environment*, but **not its git source** — a child spawned without `source_url`
 comes back with a `session_context` carrying no `sources` at all, i.e. no checkout
 to work in. Verified: a probe session spawned with the field omitted inherited the
-environment and nothing else. Resolve it from the spawner's own remote:
+environment and nothing else. Resolve it from the caller's current repository
+remote:
 
 ```bash
 git remote get-url origin

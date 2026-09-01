@@ -132,8 +132,11 @@ Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. La
 ### Step 4 — Route by flag
 
 - *(no flag)* — report the new ID + URL and stop; filing was the whole request.
-- `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` session), **in the same turn** — report the ID *and* the spawned session together; never park the spawn behind the report.
+- `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` task), **in the same turn** — report the ID *and* the spawned task together; never park the spawn behind the report. Optional `--harness codex|claude` and `--surface desktop|cli|cloud` values are launch metadata for that SPAWN handoff; consume them there and never copy them into the child `/start-ticket` prompt.
 - `--start` — run the **START phase** on the new ID inline in this session, same turn.
+
+`--harness` and `--surface` are valid only with `--spawn`; reject either for
+file-only or `--start` requests because neither route launches a peer task.
 
 The composed body is exactly what the delegated session will `FETCH` as its briefing — the other reason Step 1 carries the weight.
 
@@ -185,7 +188,7 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 
 If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), skip the write and proceed with the directive as-is — the same degradation `/role` documents. No `Role:` directive → this is an interactive run and no charter applies; the human driving it isn't bounded.
 
-**Note your notifier (if directed).** If the briefing carries a `Notify: <session name>` directive (the cross-session wake-up channel spawn edges carry by default), read `messaging.md` now (read-on-demand, like a tracker/profile) and follow it: record the named spawner session and ping it via SendMessage at the events it lists (`pushed:`, `done:`, `blocked:`, `filed:`), confirming with the `ListAgents` ` [ref]` suffix if the bare name is rejected. Nothing to arm — delivery (including queued delivery to an offline spawner) is the harness's job. No directive → an edge that opted out (or a pre-messaging spawner); nothing to note.
+**Note your notifier (if directed).** If the briefing carries a `Notify: <session name>` directive (a spawn edge with a reachable wake-up channel may supply one), read `messaging.md` now (read-on-demand, like a tracker/profile) and follow it: record the named spawner session and ping it via SendMessage at the events it lists (`pushed:`, `done:`, `blocked:`, `filed:`), confirming with the `ListAgents` ` [ref]` suffix if the bare name is rejected. Nothing to arm — delivery (including queued delivery to an offline spawner) is the harness's job. No directive → that edge has no supported notifier; nothing to note.
 
 ### Step 2 — Determine target repo + base branch
 
@@ -194,7 +197,40 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 
 ### Step 3 — Create the worktree
 
-Create it as a sibling of the repo root, branch and dir named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes):
+Create it as a sibling of the repo root, branch and dir named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive. A named value (e.g. from the EPIC orchestrator) assigns that exact branch/worktree name so it can stack and poll deterministically. The reserved value `current` means the harness already created an isolated worktree and START must reuse it.
+
+For `Worktree: current`, verify the checkout is a linked worktree (its resolved
+git dir differs from its common git dir), fetch `<base_branch>`, and use the
+adapter's `BRANCH` name for the issue branch. If that branch is not already
+checked out, create/switch it in this same worktree from
+`origin/<base_branch>`. Do **not** run `git worktree add`; all implementation and
+the native task diff stay in the current checkout. A `current` directive in a
+non-worktree checkout is a hard error — report it rather than silently creating
+a differently managed workspace.
+
+Set `<workspace_owner>` to `harness` and `<worktree_path>` to the current
+checkout. For the ordinary no-directive/named paths below, set ownership to
+`workflow` and the path to the created sibling. Carry both values through START;
+the ownership marker also travels in the PR so a later FINISH session cannot
+guess wrong.
+
+```bash
+git_dir=$(cd "$(git rev-parse --git-dir)" && pwd -P)
+git_common=$(cd "$(git rev-parse --git-common-dir)" && pwd -P)
+[ "$git_dir" != "$git_common" ] || { echo "Worktree: current requires a linked worktree" >&2; exit 1; }
+git fetch origin <base_branch>
+if [ "$(git branch --show-current)" != "<adapter-BRANCH>" ]; then
+  if git show-ref --verify --quiet refs/heads/<adapter-BRANCH>; then
+    git switch <adapter-BRANCH>
+  else
+    git switch -c <adapter-BRANCH> origin/<base_branch>
+  fi
+fi
+```
+
+With no directive, derive `<branch>` via adapter `BRANCH`. For a named value,
+use that single whitespace-delimited token as `<branch>`. In both cases create
+the sibling worktree as before:
 
 ```bash
 cd /path/to/<repo>
@@ -202,10 +238,12 @@ git fetch origin <base_branch>
 git worktree add ../<repo>-<branch> -b <branch> origin/<base_branch>
 ```
 
-Then run the profile's `SUBMODULES` step. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
+Then run the profile's `SUBMODULES` step **inside `<worktree_path>`**. The
+`default` profile: if the repo has submodules, initialize them (builds fail
+otherwise):
 
 ```bash
-cd ../<repo>-<branch> && git submodule update --init
+cd "<worktree_path>" && git submodule update --init
 ```
 
 ### Step 4 — Report the worktree path
@@ -237,7 +275,7 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 git push -u origin <branch>
 ```
 
-Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
+Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue). Before running the template, replace its `WORKSPACE_MARKER` line with exactly `<!-- ticket-workflow-workspace: harness -->` when `<workspace_owner>` is `harness`; otherwise delete the entire line. Never leave the literal `WORKSPACE_MARKER` text in a PR body.
 
 ```bash
 gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'EOF'
@@ -250,7 +288,9 @@ gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'
 
 <adapter PR_REF footer, e.g. "Closes #42">
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+WORKSPACE_MARKER
+
+🤖 Generated with an AI coding agent
 EOF
 )"
 ```
@@ -323,6 +363,16 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ### Step 3 — Clean up the worktree
 
+Read the PR body's hidden workspace marker (the same PR metadata already read by
+the pre-merge gate). `<!-- ticket-workflow-workspace: harness -->` means the
+execution harness owns the checkout. For that mode, **skip Steps 3–4 cleanup**:
+do not remove the worktree, switch its branch, or delete the branch. Report that
+Codex will retire its managed task workspace, then continue with Step 5. This is
+resource ownership, not a merge hold.
+
+Without the marker, the workflow owns the sibling worktree and cleans it up as
+before.
+
 Switch back to the main repo first (can't remove a worktree from inside it), then remove it (`--force` if it has submodules):
 
 ```bash
@@ -352,7 +402,7 @@ If branch auto-deletion is on for the remote, no need to delete the remote branc
 
 ## SPAWN phase
 
-Fan out parallel ticket work: spawn one background session per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (backend selection, parallel launch, naming, table, hand-back, inspect commands) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
+Fan out parallel ticket work: spawn one background task per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (harness/surface selection, parallel launch, naming, table, hand-back, inspect controls) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
 
 ### Step 1 — Parse the request
 
@@ -361,7 +411,11 @@ One or more issue IDs, optionally with briefing text. Common shapes:
 - `ABC-12: do X. ABC-13: do Y.` — per-issue briefings
 - `For all of these, also do Z: ABC-12 ABC-13` — a shared briefing
 
-Extract `(id, briefing)` pairs; no per-issue briefing → just the cap from Step 2.
+Extract `(id, briefing)` pairs plus optional `--harness codex|claude` and
+`--surface desktop|cli|cloud` launch overrides. Remove both flags from every
+briefing: they select where generic `spawn` launches the unit and are never part
+of the work assigned to the child. Reject unknown or conflicting values before
+launching anything. No per-issue briefing → just the cap from Step 2.
 
 ### Step 2 — Append the profile's `SPAWN_CAP`
 
@@ -372,21 +426,26 @@ Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap ap
 For each issue, hand the `spawn` skill one unit:
 - **prompt:** `/start-ticket <ID> <briefing + SPAWN_CAP>  Role: implementer` — the `Role: implementer` directive pins the sibling to single-issue altitude (START Step 1 reads `roles/implementer.md`); it's the ticket layer's altitude bound, appended alongside `SPAWN_CAP`.
 - **name:** `<repo> <ID>: <desc>` — `<repo>` is the basename of the repo the profile selected (e.g. `widgets`, `mobile-app`); `<ID>` is the issue key as-is (`ABC-12`, `#42`); `<desc>` is an under-5-word summary (e.g. `add GeoIP routing`). Spaces and special characters are fine — keep `--name` quoted. Full example: `--name "widgets #14: add rollover toggle"`.
+- **notify:** set `requested` as lazy adapter metadata. Do not read
+  `messaging.md`, call `ListAgents`, or resolve your session identity here.
+  Generic `spawn` performs that lookup only on an edge whose adapter declares
+  the SendMessage channel reachable (Claude local); Claude cloud and Codex omit
+  it and use their native/polled state.
 - **Keep `<briefing>` in the prompt:** `<briefing>` is the per-issue text from Step 1 (with `SPAWN_CAP` appended) and goes in the `/start-ticket` body **in full** — even when it doubles as the `<desc>` label. `<desc>` is only a short tag for the session name; never let it *replace* the briefing in the prompt, or the sibling loses its per-issue guidance.
 
-Then **spawn them via the `spawn` skill** — all launches in a single message (parallel), report the table, hand back. The fan-out details live in `spawn`; don't repeat them here. In particular, **let `spawn`'s step 3 pick the backend** (local `claude --bg` vs cloud `create_session`) rather than assuming one: its backend file carries the mechanics, the naming, the `Session | Scope` table, the backend-appropriate inspect path, and the no-babysit / no-block guarantees. The block below is **not** the launch command to reach for by default — it's what the unit above works out to *once step 3 has already selected the local backend*, shown so the ticket-specific directives have a concrete form:
-
-```bash
-launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //'); launch_dir=${launch_dir:-$PWD}   # the repo's main checkout — the spawn skill's backends/local.md
-( cd "$launch_dir" && claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>  Role: implementer" )
-```
-
-On the cloud backend the same unit goes to `create_session` with the prompt as `prompt`, the name as `title`, and the repo passed explicitly as `source_url` (plus `source_revision` when the briefing pins a base branch) — see the `spawn` skill's `backends/cloud.md`.
+Then **spawn them via the `spawn` skill** — pass the optional harness and surface
+overrides as launch metadata, issue all launches in one message (parallel),
+report the table, and hand back. The fan-out details live in `spawn`; don't
+repeat them here. Its step 3 selects both axes, and the matching adapter owns
+native task/session creation, isolation, stable identifiers, and inspection
+controls.
 
 Ticket-only notes layered on top of `spawn`:
-- **Durable launch dir** — *local backend only* (the `spawn` skill's `backends/local.md`; the cloud backend has none): spawn from the repo's **main checkout** (first entry of `git worktree list`), **never from inside a ticket worktree** — the bg job records its launch cwd, and when the spawning ticket's worktree is removed at FINISH, attach/resume of the still-listed sibling breaks. This bites here specifically: a session spawning from mid-ticket work — an EPIC orchestrator, or an implementer launching an own-issue helper (`roles/implementer.md`) — is usually sitting inside its own disposable worktree.
 - Siblings inherit your config home + env, so they resolve the same tracker/profile; each runs its own Step 0.
-- **Wake-up channel (default on, local backend only):** read `messaging.md` and put a `Notify: <your session name>` directive in each briefing — siblings ping `pushed:`/`done:`/`blocked:`/`filed:` via SendMessage instead of being purely polled, and you can poke a sibling back by the name you spawned it with (`<repo> <ID>: <desc>`). The PR/tracker stays the durable record. **On the cloud backend there is no channel at all:** SendMessage does not span cloud sessions in either direction — `ListAgents` does not list a live cloud sibling, and a send to one comes back unreachable — so omit the `Notify:` directive there and fall back to polling the PR/tracker (and `get_session`), which is the durable record regardless.
+- The exact ticket `name` is part of the generic unit; adapters preserve it
+  verbatim rather than reconstructing it from their launch cwd.
+- The child prompt contains the issue ID, the complete briefing and
+  `SPAWN_CAP`, and `Role: implementer` — but never either launch override.
 - If a spawn is blocked by a permission / auto-mode classifier (e.g. it reads as deploy-adjacent), make the cap explicit in the briefing, or print the commands for the user to run.
 
 ### Step 4 — Report back
@@ -397,7 +456,9 @@ As `spawn` does — print a table, then hand back (don't block on the siblings):
 |---|---|---|
 | ABC-12 | `widgets ABC-12: add GeoIP routing` | `<one-line summary>` |
 
-Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
+Include the stable identifier and inspect/open path supplied by the selected
+**harness adapter**. Do not substitute Claude commands for a Codex task or Codex
+controls for a Claude session.
 
 ### SPAWN does NOT
 
@@ -467,7 +528,7 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 - **Wake-up channel (default on** — it's what makes the Step 6 poll cheap): read `messaging.md` and pass every child `Notify: <orchestrator session name>` — children ping `pushed:`/`done:`/`blocked:`/`filed:` via SendMessage instead of being purely polled, the orchestrator can redirect a child mid-run by the name it assigned at spawn, and siblings can ping each other by those same spawn names (e.g. a parent telling its stacked dependent it restacked). Pings are hints; Step 6 still verifies against the PRs.
 - **All roots spawn immediately, in parallel** — one Bash call per root in a single message.
 - A **dependent spawns only once every parent's assigned branch is pushed** — i.e. `origin/epic-<epic-id-lower>-<parent-id-lower>` exists (the orchestrator assigned that name, so it knows it exactly), which is the *only* prerequisite for the dependent's worktree fetch (START Step 3); the parent's PR being open is **not** required. (For a **diamond**, wait for *all* parents to be pushed, then build the Step 4 integration branch and pass it as the base.) That's the earliest safe moment (the parent reaches it at START Step 7's `git push`, just before its PR is opened) and maximizes overlap, at the cost of a possible restack if a parent's branch changes during review (handled at finish — Step 7). If you'd rather avoid restacks, gate the dependent on its parent being **START-complete** (green + review-clean) instead — call out which gate you chose.
-- `Base branch: <base>` and `Worktree: <name>` are honored by START (Step 2 for the base, Step 3 for the branch/worktree name — briefing directives beat the defaults), so stacking needs **no special START support** — the dependent's session just cuts its worktree (named `<name>`) from its base (the parent's assigned branch, or the diamond's integration branch).
+- `Base branch: <base>` and named `Worktree: <name>` are honored by START (Step 2 for the base, Step 3 for the branch/worktree name — briefing directives beat the defaults; `current` is reserved for a harness-provided checkout), so stacking needs **no special START support** — the dependent's session just cuts its worktree (named `<name>`) from its base (the parent's assigned branch, or the diamond's integration branch).
 
 ### Step 6 — Aggregate the stack
 

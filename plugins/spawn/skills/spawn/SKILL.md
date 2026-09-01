@@ -1,19 +1,23 @@
 ---
 name: spawn
-description: Use when asked to spawn, fan out, kick off, background, or parallelize one or more sessions/agents for arbitrary tasks and hand back without blocking ("spawn a session to investigate X", "fan out 3 agents to each do Y", "run these in the background", "get X going while I'm out"). ALSO use whenever /spawn appears anywhere in a message, even mid-sentence ("make an issue and /spawn it"), and even if this skill is already in context. Generic — not ticket-specific; for issue/ticket fan-out use the /spawn-tickets command (ticket-workflow skill).
+description: >-
+  Use when asked to spawn, fan out, kick off, background, or parallelize one or more tasks/sessions/agents for arbitrary work and hand back without blocking ("spawn a session to investigate X", "fan out 3 agents to each do Y", "run these in the background", "get X going while I'm out"). ALSO use whenever /spawn appears anywhere in a message, even mid-sentence ("make an issue and /spawn it"), and even if this skill is already in context. Generic — not ticket-specific; for issue/ticket fan-out use the /spawn-tickets command (ticket-workflow skill).
 ---
 
-# Spawn (background-session fan-out)
+# Spawn (background-task fan-out)
 
-Fan out one or more **independent** background sessions for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
+Fan out one or more **independent** background tasks for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
 
-**How** a session is launched depends on where you're running — local `claude --bg` jobs, or cloud sessions via MCP. That's the **backend** (step 3); everything else on this page is the same either way.
+**How** a task is launched depends on two independent launch coordinates:
+the **harness** (`codex` or `claude`) and the execution **surface** (`desktop`,
+`cli`, or `cloud`). Select both in step 3 before reading the one matching
+adapter path. A surface is never a fallback policy.
 
 ## When to use
 
 - "Spawn a session to investigate this." — one background task, fire-and-forget.
 - "Fan out 3 agents to each try X." — several independent tasks at once.
-- Any time you want work to run in its own durable background session and keep your current session free.
+- Any time you want work to run as its own durable background task and keep your current session free.
 
 **Not for:** work you must watch to completion or aggregate (that's babysitting — do it inline, or use the ticket-workflow EPIC phase). Issue/ticket fan-out → use the `/spawn-tickets` command (the `ticket-workflow` skill).
 
@@ -33,63 +37,130 @@ Compound requests ("make an issue and /spawn it"): do **both halves in the same 
 
 ## No cap
 
-Spawn adds **no** safety bound — each session does exactly what its prompt says. If you want a limit, write it into the task text, e.g. `/spawn investigate the crash, read-only, don't push or merge`. (The ticket-only `SPAWN_CAP` is applied by the ticket-workflow SPAWN phase *before* it hands a prompt here; it is not part of generic spawn.)
+Spawn adds **no** safety bound — each task does exactly what its prompt says. If you want a limit, write it into the task text, e.g. `/spawn investigate the crash, read-only, don't push or merge`. (The ticket-only `SPAWN_CAP` is applied by the ticket-workflow SPAWN phase *before* it hands a prompt here; it is not part of generic spawn.)
 
 ## Steps
 
 ### 1 — Parse into units
 
-Split the request into one or more `(prompt, desc)` units:
+First consume optional `harness?` and `surface?` values as **request-global
+launch metadata**, then split the cleaned request into one or more
+`(prompt, desc, name?, notify?)` units. A selected pair applies to every unit;
+per-unit routing overrides are not supported. Remove all launch-flag tokens from
+the whole request before splitting so none can leak into any child prompt.
+Reject duplicate, conflicting, or invalid launch flags before launching
+anything.
+
+Then split the remaining work:
 - **One task** (the common case): the whole request is the prompt. `/spawn to investigate the flaky CI` → a single unit.
 - **Several tasks:** an explicit list, or "spawn N agents to each do X" → N units.
 
-`prompt` = the full instruction the background session acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary for the session name.
+`prompt` = the full instruction the background task acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary. `name` is optional: a delegating workflow can supply the exact task/session title; otherwise step 2 derives one. Harness adapters preserve an explicit `name` verbatim.
+
+`notify` is also optional, lazy prompt-decoration metadata. `requested` asks the
+selected adapter for a wake-up channel without resolving the caller's identity
+up front. Only an adapter whose edge supports that channel resolves the spawner
+name/handle and appends `Notify: <spawner>`. Other adapters omit it without
+performing an identity lookup or substituting another notification mechanism.
+
+Also parse an optional launch-only harness override:
+
+- `--harness codex` / an explicit request for a Codex task
+- `--harness claude` / an explicit request for a Claude session
+
+The request-level parse removes the `--harness <value>` tokens before unit
+construction; they select where all units run and are not work for any child.
+Natural-language selection counts only
+when the caller explicitly names the target harness — never infer a crossing
+from the task's subject matter.
+
+Also consume an optional `--surface desktop|cli|cloud` override at request
+scope. The request-level parse removes it before unit construction just like
+`--harness`. A natural-language surface choice counts only when explicit.
 
 ### 2 — Pick a context label
 
-A short prefix that makes the session findable in whatever lists sessions on your backend (`claude agents` locally, the session list on cloud):
+A short prefix that makes the task findable in the selected harness:
 - In a repo / working dir → its basename (e.g. `misc`, `sonder`).
 - Otherwise → a topic word from the task.
 
-### 3 — Select the backend
+When the unit has no explicit `name`, set it to `<context> <desc>`. When it does,
+keep that exact value — don't recompute it from the current directory.
 
-Where you're running decides how a session is launched. Check one env var:
+### 3 — Select the harness and surface
 
-```bash
-[ -n "$CLAUDE_CODE_REMOTE_SESSION_ID" ] && echo cloud || echo local
-```
+First identify the **caller harness** and **caller surface** from the runtime
+executing this skill. Retain both as launch metadata even when the target is
+overridden: adapters may need to know whether a communication channel exists.
 
-- **cloud** — you're a cloud session (Claude Code on the web, or another remote environment). Read `backends/cloud.md` now.
-- **local** — you're on a machine the user has a shell on. Read `backends/local.md` now.
+Target harness selection is deterministic:
 
-Read exactly one, and follow it for steps 4–5. Don't guess the mechanics from memory: the two differ in more than the command name (the cloud backend has no launch directory at all, and needs the repo passed explicitly).
+1. An explicit override from step 1 wins.
+2. Otherwise the target inherits the caller harness.
 
-The backend is about **where the spawner is**, not what the task is. A local session spawns local siblings even when the work targets a remote repo.
+Target surface selection is also deterministic:
+
+1. An explicit `--surface` override wins.
+2. A same-harness target inherits the caller surface exactly.
+3. A cross-harness target maps a local caller (`desktop` or `cli`) to the target
+   harness's `cli` surface, and maps a cloud caller to the target's `cloud`
+   surface. This mapping is selection, not fallback.
+
+Use the runtime identity and native task tools already present in the session.
+`CODEX_THREAD_ID` / `CODEX_SESSION_ID` or Codex task tools identify Codex;
+`CLAUDE_SESSION_ID`, `CLAUDECODE`, or `CLAUDE_CODE_REMOTE_SESSION_ID` identify
+Claude. Native Codex app task tools identify the Codex `desktop` surface;
+`CLAUDE_CODE_REMOTE_SESSION_ID` identifies Claude `cloud`; otherwise an active
+Claude Code runtime is Claude `cli`. A Codex runtime without native app task
+tools is Codex `cli` unless its runtime explicitly identifies Codex cloud. The
+executable being installed is not evidence that it is the caller.
+
+- **codex** — read `harnesses/codex.md` now.
+- **claude** — read `harnesses/claude.md` now.
+
+Read exactly one harness adapter; it then reads exactly one surface adapter (or
+Claude backend) and follows it for steps 4–5. If the caller signals conflict or
+establishes neither harness, use the known active tool/runtime context; if that is
+also ambiguous, ask instead of guessing. If the selected harness-plus-surface
+launch capability is unavailable, name that exact pair and stop. Never
+substitute another harness or surface, whether selection was explicit,
+inherited, or cross-harness mapped.
 
 ### 4 — Spawn in parallel
 
-Launch one session per unit, **all in a single message** so they start concurrently. The launch mechanic is the one in the backend file you read in step 3.
+Launch one task per unit, **all in a single message** so they start concurrently.
+The launch mechanic is the one for the harness-plus-surface pair selected in
+step 3.
 
-Whichever backend you're on:
-- `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
-- Pass the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote.
-- **Record the handle** the launch returns (a session handle locally, a `session_...` id on cloud) — it survives a rename and is how you inspect a stuck session later.
+Whichever harness you're on:
+- `name` — the explicit unit name or step 2's `<context> <desc>` fallback.
+- Preserve the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote. An adapter may append only its documented execution directive and a supported `notify` directive; it never rewrites or drops the caller's bounds.
+- **Record the stable identifier** the launch returns — a Codex task/thread ID
+  or the Claude backend's session handle/ID. Names can change; identifiers are
+  how a stuck task is inspected later.
 
 ### 5 — Report and hand back
 
-Print a table, then stop — **don't block on the sessions**:
+Print a table, then stop — **don't block on the tasks**:
 
-| Session | Scope |
+| Task | Scope |
 |---|---|
 | `misc investigate flaky CI` | <one-line summary> |
 
-Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the cloud one adds an ID column).
+Then point at the inspect/open path **for the selected harness and surface**.
+Codex desktop tasks, CLI jobs, and cloud sessions use different controls; the
+selected adapter spells out which identifiers and controls to print.
 
 ## Spawn does NOT
 
-- Launch by the wrong mechanism for where it's running — select the backend (step 3) first. `claude --bg` from a cloud session produces sessions that die with the container and that the user can't see; `create_session` is not available locally.
-- Launch from inside a disposable worktree **on the local backend** — resolve the durable launch dir first, or attach/resume breaks when the worktree is later removed. (No launch dir exists on cloud.)
-- Babysit or poll the sessions — each runs on its own.
+- Cross harnesses by accident — default to the caller harness and cross only on
+  an explicit request.
+- Fall back across harnesses or surfaces when the selected pair cannot launch —
+  report the exact missing capability and stop.
+- Bypass a selected harness adapter's isolation rule. Codex project work uses a
+  native worktree task; Claude's local backend resolves a durable launch
+  directory; Claude cloud passes the repository explicitly.
+- Babysit or poll the tasks — each runs on its own.
 - Block on completion — spawn, report, hand back.
 - Add any cap — bounds live in the prompt text.
 - Know about issues / tickets / trackers / profiles — that's the `/spawn-tickets` command (the `ticket-workflow` skill).
