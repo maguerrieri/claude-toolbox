@@ -25,12 +25,25 @@ Include when applicable, in this order, comma-or-semicolon separated:
 
 1. `CRC` — the commit addresses Code Review Comments.
 2. `<Harness> + <Model>` — AI assistance was used. Name **both** the harness
-   and the model. Prefix the model with its vendor only when the harness
-   doesn't already pin it:
+   and the model. Use the exact model identity exposed by the active harness or
+   session, preserving its version and variant when known. Normalize machine
+   IDs into readable display names without dropping detail:
+   - `gpt-5.6-sol` → `GPT-5.6 Sol`
+   - `gpt-5.6-terra` → `GPT-5.6 Terra`
+   - `gpt-5.6-luna` → `GPT-5.6 Luna`
+
+   If only a family or incomplete identity is exposed, record only what is
+   known; never infer a missing version or variant. Do not include reasoning
+   effort (`low`, `medium`, `high`, and so on) — effort is run configuration,
+   not model identity.
+
+   Prefix the model with its vendor only when the harness doesn't already pin
+   it:
    - Claude Code only drives Claude models, so the model goes bare:
      `Claude Code + Fable 5`, `Claude Code + Opus 4.8`
    - Copilot is vendor-agnostic, so the vendor is needed:
-     `Copilot + Claude Fable 5`, `Copilot + GPT-5`
+     `Copilot + Claude Fable 5`, `Copilot + GPT-5.6 Sol`
+   - Codex under the `gpt-5.6-sol` model uses `Codex + GPT-5.6 Sol`.
 
 No flags apply → omit the parentheses entirely.
 
@@ -45,6 +58,7 @@ Optional for tiny commits where the description carries it.
 [PROJ-123] (Claude Code + Fable 5) split: Add GeoIP routing
 [PROJ-123] (CRC; Claude Code + Fable 5) Fix null check per review
 [#42] (Copilot + Claude Fable 5) clubs: Cache member stats
+[#70] (Codex + GPT-5.6 Sol) conventions: Preserve exact model attribution
 [PROJ-123] Fix typo in config
 ```
 
