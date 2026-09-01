@@ -2,7 +2,7 @@
 
 The generic engineering playbook — for personal projects and any repo without an
 org-specific profile. Org playbooks live in that org's work config
-as their own profile file and are pointed to from the repo's CLAUDE.md
+as their own profile file and are pointed to from the repo's canonical `AGENTS.md`
 (`Profile: <path>`); they override these defaults.
 
 ## Authoring a profile (and `Inherits:`)
@@ -61,9 +61,9 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
   does a doc that *references* it now describe the old behavior?
 - Find candidates from the diff, don't audit the whole tree: grep the docs for the changed
   names, flags, and commands, and check any doc that sits next to changed code. Common homes:
-  `README*`, `docs/**`, `CLAUDE.md` / `.claude/**`, module- or package-level doc comments.
+  `README*`, `docs/**`, `AGENTS.md`, `CLAUDE.md` / `.claude/**`, module- or package-level doc comments.
 - Typical drift: a quickstart/README command that changed, a documented flag/default/API that
-  moved or was renamed, a `CLAUDE.md` "gotcha" or "locked decision" the change invalidates, an
+  moved or was renamed, an instruction-file "gotcha" or "locked decision" the change invalidates, an
   example that no longer runs.
 - **Fix the drift in the same commit/PR** so it rides the same review; note in the PR body which
   docs you touched and why. If a doc clearly *should* change but the right wording is unclear,
