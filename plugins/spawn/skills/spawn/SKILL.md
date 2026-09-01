@@ -43,8 +43,15 @@ Spawn adds **no** safety bound — each task does exactly what its prompt says. 
 
 ### 1 — Parse into units
 
-Split the request into one or more `(prompt, desc, name?, notify?)` units plus
-launch-only `harness?` and `surface?` metadata:
+First consume optional `harness?` and `surface?` values as **request-global
+launch metadata**, then split the cleaned request into one or more
+`(prompt, desc, name?, notify?)` units. A selected pair applies to every unit;
+per-unit routing overrides are not supported. Remove all launch-flag tokens from
+the whole request before splitting so none can leak into any child prompt.
+Reject duplicate, conflicting, or invalid launch flags before launching
+anything.
+
+Then split the remaining work:
 - **One task** (the common case): the whole request is the prompt. `/spawn to investigate the flaky CI` → a single unit.
 - **Several tasks:** an explicit list, or "spawn N agents to each do X" → N units.
 
@@ -61,15 +68,15 @@ Also parse an optional launch-only harness override:
 - `--harness codex` / an explicit request for a Codex task
 - `--harness claude` / an explicit request for a Claude session
 
-Remove the `--harness <value>` tokens from `prompt`; they select where the unit
-runs and are not work for the child. Reject an unknown value or conflicting
-overrides before launching anything. Natural-language selection counts only
+The request-level parse removes the `--harness <value>` tokens before unit
+construction; they select where all units run and are not work for any child.
+Natural-language selection counts only
 when the caller explicitly names the target harness — never infer a crossing
 from the task's subject matter.
 
-Also consume an optional `--surface desktop|cli|cloud` override. Remove it from
-every child prompt just like `--harness`; reject unknown or conflicting values
-before launching. A natural-language surface choice counts only when explicit.
+Also consume an optional `--surface desktop|cli|cloud` override at request
+scope. The request-level parse removes it before unit construction just like
+`--harness`. A natural-language surface choice counts only when explicit.
 
 ### 2 — Pick a context label
 
@@ -113,7 +120,7 @@ executable being installed is not evidence that it is the caller.
 
 Read exactly one harness adapter; it then reads exactly one surface adapter (or
 Claude backend) and follows it for steps 4–5. If the caller signals conflict or
-establish neither harness, use the known active tool/runtime context; if that is
+establishes neither harness, use the known active tool/runtime context; if that is
 also ambiguous, ask instead of guessing. If the selected harness-plus-surface
 launch capability is unavailable, name that exact pair and stop. Never
 substitute another harness or surface, whether selection was explicit,
