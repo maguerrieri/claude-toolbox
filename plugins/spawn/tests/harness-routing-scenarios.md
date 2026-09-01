@@ -41,6 +41,7 @@ For every case record:
 | Lazy notifier resolution | `/spawn-tickets #63` from Codex desktop, Claude cloud, and Claude CLI | The ticket unit requests notification without resolving a session identity. Only Claude CLI-to-Claude-CLI resolves its spawner name/handle and appends `Notify:`; other pairs perform no `ListAgents` lookup. |
 | PR workspace marker | START opens a PR first from a workflow-owned checkout, then from `Worktree: current` | The template tells the agent to delete the `WORKSPACE_MARKER` line for the workflow-owned checkout and replace it with exactly `<!-- ticket-workflow-workspace: harness -->` for the harness-owned checkout. Neither PR body contains a literal conditional placeholder. |
 | Stable Claude CLI inspection | Generic Claude CLI spawn and `/spawn-epic` each return a display name plus a session handle | Both report the stable handle and use it with `claude attach "<handle>"` / `claude logs "<handle>"`. The mutable name remains a display label, never the only inspection key. |
+| Harness-neutral terminology | A reader follows generic `spawn` for Codex desktop and Claude CLI targets | Shared instructions call spawned units background tasks and use task/session only where the selected adapter supplies that term; the title, introduction, stable-ID contract, and generic report do not imply every Codex task is a session. |
 
 Regression failure: any default loses the caller's harness/surface, a documented
 local crossing selects a non-CLI surface, an explicit override silently falls

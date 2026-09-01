@@ -1,13 +1,14 @@
 ---
 name: spawn
-description: Use when asked to spawn, fan out, kick off, background, or parallelize one or more sessions/agents for arbitrary tasks and hand back without blocking ("spawn a session to investigate X", "fan out 3 agents to each do Y", "run these in the background", "get X going while I'm out"). ALSO use whenever /spawn appears anywhere in a message, even mid-sentence ("make an issue and /spawn it"), and even if this skill is already in context. Generic — not ticket-specific; for issue/ticket fan-out use the /spawn-tickets command (ticket-workflow skill).
+description: >-
+  Use when asked to spawn, fan out, kick off, background, or parallelize one or more tasks/sessions/agents for arbitrary work and hand back without blocking ("spawn a session to investigate X", "fan out 3 agents to each do Y", "run these in the background", "get X going while I'm out"). ALSO use whenever /spawn appears anywhere in a message, even mid-sentence ("make an issue and /spawn it"), and even if this skill is already in context. Generic — not ticket-specific; for issue/ticket fan-out use the /spawn-tickets command (ticket-workflow skill).
 ---
 
-# Spawn (background-session fan-out)
+# Spawn (background-task fan-out)
 
-Fan out one or more **independent** background sessions for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
+Fan out one or more **independent** background tasks for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
 
-**How** a session is launched depends on two independent launch coordinates:
+**How** a task is launched depends on two independent launch coordinates:
 the **harness** (`codex` or `claude`) and the execution **surface** (`desktop`,
 `cli`, or `cloud`). Select both in step 3 before reading the one matching
 adapter path. A surface is never a fallback policy.
@@ -16,7 +17,7 @@ adapter path. A surface is never a fallback policy.
 
 - "Spawn a session to investigate this." — one background task, fire-and-forget.
 - "Fan out 3 agents to each try X." — several independent tasks at once.
-- Any time you want work to run in its own durable background session and keep your current session free.
+- Any time you want work to run as its own durable background task and keep your current session free.
 
 **Not for:** work you must watch to completion or aggregate (that's babysitting — do it inline, or use the ticket-workflow EPIC phase). Issue/ticket fan-out → use the `/spawn-tickets` command (the `ticket-workflow` skill).
 
@@ -36,7 +37,7 @@ Compound requests ("make an issue and /spawn it"): do **both halves in the same 
 
 ## No cap
 
-Spawn adds **no** safety bound — each session does exactly what its prompt says. If you want a limit, write it into the task text, e.g. `/spawn investigate the crash, read-only, don't push or merge`. (The ticket-only `SPAWN_CAP` is applied by the ticket-workflow SPAWN phase *before* it hands a prompt here; it is not part of generic spawn.)
+Spawn adds **no** safety bound — each task does exactly what its prompt says. If you want a limit, write it into the task text, e.g. `/spawn investigate the crash, read-only, don't push or merge`. (The ticket-only `SPAWN_CAP` is applied by the ticket-workflow SPAWN phase *before* it hands a prompt here; it is not part of generic spawn.)
 
 ## Steps
 
@@ -47,7 +48,7 @@ launch-only `harness?` and `surface?` metadata:
 - **One task** (the common case): the whole request is the prompt. `/spawn to investigate the flaky CI` → a single unit.
 - **Several tasks:** an explicit list, or "spawn N agents to each do X" → N units.
 
-`prompt` = the full instruction the background session acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary. `name` is optional: a delegating workflow can supply the exact task/session title; otherwise step 2 derives one. Harness adapters preserve an explicit `name` verbatim.
+`prompt` = the full instruction the background task acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary. `name` is optional: a delegating workflow can supply the exact task/session title; otherwise step 2 derives one. Harness adapters preserve an explicit `name` verbatim.
 
 `notify` is also optional, lazy prompt-decoration metadata. `requested` asks the
 selected adapter for a wake-up channel without resolving the caller's identity
@@ -133,9 +134,9 @@ Whichever harness you're on:
 
 ### 5 — Report and hand back
 
-Print a table, then stop — **don't block on the sessions**:
+Print a table, then stop — **don't block on the tasks**:
 
-| Session | Scope |
+| Task | Scope |
 |---|---|
 | `misc investigate flaky CI` | <one-line summary> |
 
@@ -152,7 +153,7 @@ selected adapter spells out which identifiers and controls to print.
 - Bypass a selected harness adapter's isolation rule. Codex project work uses a
   native worktree task; Claude's local backend resolves a durable launch
   directory; Claude cloud passes the repository explicitly.
-- Babysit or poll the sessions — each runs on its own.
+- Babysit or poll the tasks — each runs on its own.
 - Block on completion — spawn, report, hand back.
 - Add any cap — bounds live in the prompt text.
 - Know about issues / tickets / trackers / profiles — that's the `/spawn-tickets` command (the `ticket-workflow` skill).

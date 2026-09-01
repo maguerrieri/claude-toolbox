@@ -34,6 +34,10 @@ For behavior changes, complete the brainstorming skill's design-approval gate
 before opening implementation-only guidance such as TDD. Treat reading that
 guidance as entering implementation, even if no file has changed yet.
 
+Editing prose inside a Markdown file's `---` frontmatter is a YAML edit. Load
+the YAML skill before changing fields such as `description`, then parse the
+frontmatter and assert the exact edited value; visual inspection is not enough.
+
 ## Shell inspection
 
 Tool commands run through zsh. Do not put Markdown backticks inside a
