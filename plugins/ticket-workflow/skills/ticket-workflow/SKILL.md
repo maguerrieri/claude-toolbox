@@ -290,7 +290,7 @@ gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'
 
 WORKSPACE_MARKER
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with an AI coding agent
 EOF
 )"
 ```
