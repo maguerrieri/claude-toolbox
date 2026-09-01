@@ -44,3 +44,10 @@ Tool commands run through zsh. Do not put Markdown backticks inside a
 double-quoted shell command (including an `rg` pattern): zsh executes the text
 between them. This applies even to read-only inspection commands. Use a
 single-quoted command or remove the backticks from the pattern.
+
+## Ticket-workflow skill validation
+
+The ticket-workflow plugin does not ship a validator under its own `scripts/`
+directory. Validate it with the system skill-creator validator:
+
+`uv run --with pyyaml python3 /Users/mario/.codex/skills/.system/skill-creator/scripts/quick_validate.py plugins/ticket-workflow/skills/ticket-workflow`
