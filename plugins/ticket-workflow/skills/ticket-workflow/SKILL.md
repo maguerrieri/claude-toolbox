@@ -4,28 +4,29 @@ description: >-
   Use when the user wants to start, pick up, knock out, or begin work on an issue/ticket; to
   finish, land, merge, or close out a reviewed PR/ticket; to file or create a new issue/ticket
   from the current discussion, including compound create-and-run requests ("make a ticket for
-  this and spawn it"); to work tickets in parallel or in the background; or to run an epic and
-  its child issues — in any phrasing ("pick up #42", "land PR 7", "file an issue for that bug",
-  "get issues 3 and 5 moving while I'm out", "handle the auth epic"). ALSO use whenever
-  /make-ticket, /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or /spawn-epic
-  appears anywhere in a message, even mid-sentence ("file an issue and /spawn-tickets it"), and
-  even if this skill is already in context. Tracker-agnostic (GitHub Issues or Jira) with
-  pluggable org profiles; assumes GitHub-hosted code (PRs/CI/merges via gh).
+  this and spawn it"); to work tickets in parallel or in the background; to run an epic and its
+  child issues; or to adopt, inspect, or clear a ticket-workflow role — in any phrasing. ALSO use
+  whenever /make-ticket, /start-ticket, /finish-ticket, /spawn-tickets, /start-epic,
+  /spawn-epic, or /role appears anywhere in a message, even mid-sentence, and even if this skill
+  is already in context. Tracker-agnostic (GitHub Issues or Jira) with pluggable org profiles;
+  assumes GitHub-hosted code (PRs/CI/merges via gh).
 ---
 
 # Ticket workflow (pluggable tracker + profile)
 
-Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, and `/start-epic` commands — plus `/spawn-epic`, a thin launcher that runs the EPIC phase's `/start-epic` in a background work item, and the **FILE mini-phase** (`/make-ticket`), which creates the issue the other phases consume (or invoke the phases directly):
+Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, and `/start-epic` commands — plus the **FILE** (`/make-ticket`), **ROLE** (`/role`), and **SPAWN-EPIC** (`/spawn-epic`) mini-phases (or invoke the phases directly):
 
 - **START** — worktree → implement → tests + docs → commit → push → PR → review-bot cycle → CI green → hand back for the user's review.
 - **FINISH** — (after the user has reviewed) smoke test → rebase-merge → clean up worktree/branch → close the issue → record expected outcome.
 - **SPAWN** — fan out parallel background work items, one `/start-ticket` per issue, each running the full START cycle independently.
 - **EPIC** — expand an epic into its child tickets, run each through START **dependency-aware** (parallel where independent, stacked where one child depends on another), then aggregate and hand back the resulting **stack of PRs** — optionally finishing them.
 - **FILE** *(mini-phase)* — compose an issue from the conversation context, create it via the tracker, and optionally hand the new ID straight to SPAWN (`--spawn`) or START (`--start`) in the same turn.
+- **ROLE** *(mini-phase)* — adopt, inspect, or clear this task's role charter through the active harness.
+- **SPAWN-EPIC** *(mini-phase)* — build one portable `/start-epic` unit and delegate its launch and reporting to generic `spawn`.
 
 ## Invocation discipline
 
-A command name (`/make-ticket`, `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`) appearing **anywhere** in the user's message — mid-sentence, in any casing, woven into a sentence ("and /spawn-tickets it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same.
+A command name (`/make-ticket`, `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, `/start-epic`, `/spawn-epic`, `/role`) appearing **anywhere** in the user's message — mid-sentence, in any casing, woven into a sentence ("and /spawn-tickets it") — is an invocation of that command, not a figure of speech. Natural-language equivalents that match this skill's description count the same, including requests to adopt, inspect, or clear a ticket-workflow role.
 
 Invoke this skill via the Skill tool for **every** new request it covers, even if its content is already in your context from earlier in the session.
 
@@ -72,6 +73,26 @@ Tracker and profile say *what tracks the work* and *how this environment ships i
 - The **top planner** is the one manual step: run `/role planner` in that task (see `roles/planner.md`). Everything below inherits from the spawn edge that created it.
 
 **Persistence — `/role` + `ROLE_STATE`.** `/role <role>` and spawned `Role:` adoption both call the active harness's `ROLE_STATE` operation. Claude persists a per-session marker and re-injects the charter with plugin hooks. Codex keeps the charter prompt-durable in the current task context across compaction/resume, but has no out-of-band marker, plugin-hook reinjection, or mechanical planner edit guard. `/role none` clears the strongest state the active harness supports.
+
+### ROLE mini-phase (`/role`)
+
+Manage the role in the current task without running a ticket phase:
+
+1. Select and read the active harness adapter exactly as Step 0 specifies,
+   then use its `RESOURCES` operation; do not select a child launch harness.
+2. Take the first argument as `planner`, `epic-coordinator`, `implementer`, or
+   `none`. Empty or invalid input reports those values and the current role
+   when `ROLE_STATE` can identify one, then stops without changing state.
+3. For a role, call `ROLE_STATE(adopt, <role>)`. It reads
+   `roles/<role>.md` through `RESOURCES`, adopts the charter as governing this
+   task/work item, applies the strongest persistence the active harness
+   supports, and reports its exact persistence and guard limitations.
+4. For `none`, call `ROLE_STATE(clear)`. Stop applying the charter and clear
+   only state owned by this harness. Confirm the active harness, resulting
+   role, charter bounds, and exact durability/guard guarantees.
+
+Do not implement persistence in a command wrapper, search for another skill or
+plugin copy, or fall back to a different harness's state mechanism.
 
 ---
 
@@ -470,6 +491,38 @@ controls for a Claude session.
 - Babysit the siblings — each runs its own START cycle (PR, review, CI).
 - Block on completion — spawn, report, hand back.
 - Lift the cap — the profile's `SPAWN_CAP` bounds every sibling.
+
+---
+
+## SPAWN-EPIC mini-phase (`/spawn-epic`)
+
+Launch one background EPIC work item without running EPIC in the caller:
+
+1. Parse optional launch-only `--harness codex|claude` and
+   `--surface desktop|cli|cloud` overrides. Reject unknown, duplicate, or
+   conflicting values before launch; remove the tokens from child arguments
+   while preserving every other argument verbatim, including briefing,
+   `--finish`, `--coordinate`, `--team`, and `--independent`.
+2. Take the first remaining token as `<epic-id>`, determine `<repo>` from the
+   target repository, and derive an under-five-word `<desc>` from the briefing
+   (`epic run` when none exists). Build exactly one generic-spawn unit:
+
+   - **name:** `<repo> <epic-id>: epic — <desc>`
+   - **prompt:** `/start-epic <arguments without launch overrides>` followed
+     by `Role: epic-coordinator`
+   - **notify:** `requested`
+
+   Add no `SPAWN_CAP`: the coordinator applies the complete selected-profile
+   cap to each child, and an explicit `--finish` must reach it unchanged.
+3. Invoke generic `spawn` and pass explicit harness/surface overrides as launch
+   metadata, never prompt text. With no override it inherits the caller's
+   harness and surface. Generic `spawn` alone selects the target, resolves the
+   lazy notification request for that caller/target edge, creates the native
+   task/session, owns isolation and launch directory, and reports stable
+   identifiers plus inspect/open controls.
+4. Return generic `spawn`'s report and hand back without blocking. Do not fetch
+   the epic, enumerate children, run Step 0, launch natively, or implement any
+   EPIC step in this mini-phase.
 
 ---
 
