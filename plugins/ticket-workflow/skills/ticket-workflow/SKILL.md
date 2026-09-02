@@ -119,7 +119,12 @@ Draft the title + body from the **conversation context** — the discussion that
 - **Acceptance shape** — what done looks like: the surfaces/files touched, the behavior that becomes observable.
 - **Links** — related issues/PRs discussed in-context, so the eventual worker inherits the trail.
 
-Quality bar: a reader with zero conversation context can start the work from the body alone. If the request really is a bare one-liner with no surrounding discussion, keep the body honest and short — don't invent detail; ask only if genuinely ambiguous. Title: concise and scoped (`<area>: <what>`), per the repo's issue style.
+Quality bar: a reader with zero conversation context can start the work from the body alone. If the request really is a bare one-liner with no surrounding discussion, keep the body honest and short — don't invent detail; ask only if genuinely ambiguous — **and only when someone can answer.** Who's driving decides (the same interactive/unattended split Step 2 applies to duplicates):
+
+- **Interactive session** — ask the clarifying question; the human has the context.
+- **Unattended / spawned session** (`--spawn`, `--start` in a non-interactive run, or a session bound by a pinned role charter) — **never block on a clarifying question**; nobody is there to answer, and an idle session waiting on one is the failure. If the body can meet the bar from what you hold, file. If it can't without asking, **don't file** — put the note (what you found, what's unclear) in your PR body instead, and say so in your hand-back / `filed:`-channel ping so a human can turn it into a ticket.
+
+Title: concise and scoped (`<area>: <what>`), per the repo's issue style.
 
 ### Step 2 — Search for duplicates
 
@@ -135,11 +140,11 @@ No hits, or hits judged unrelated → proceed to Step 3 without comment.
 
 ### Step 3 — Create it
 
-Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. Labels only when they clearly apply in the target repo — CREATE treats them as best-effort.
+Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. Labels only when they clearly apply in the target repo — CREATE treats them as best-effort. **Exception — an epic's enumerating label/milestone.** A follow-up filed from inside an epic's child (a `Role: implementer` leaf, or any session working a child issue) must **not** carry the label or milestone that `EPIC_CHILDREN` enumerates by (e.g. `epic:<name>`), however clearly it "applies": that label enrolls the new issue as a child on the next `/start-epic` run, i.e. spawns work no tier above approved. Link the parent issue in the body instead and let the coordinator parent it deliberately (the `filed:` ping is how it learns about it).
 
 ### Step 4 — Route by flag
 
-- *(no flag)* — report the new ID + URL and stop; filing was the whole request.
+- *(no flag)* — report the new ID + URL, then **return control to whatever invoked FILE.** Standalone `/make-ticket` (filing was the whole request) → stop. Invoked from inside another phase — e.g. a mid-START implementer filing a follow-up per `roles/implementer.md` — → this is a detour, not the end of the run: send the `filed:` ping if a `Notify:` directive is wired, then resume the invoking phase at the step you left.
 - `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` session), **in the same turn** — report the ID *and* the spawned session together; never park the spawn behind the report.
 - `--start` — run the **START phase** on the new ID inline in this session, same turn.
 

@@ -31,7 +31,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   `--spawn`/`--start` — then return to your one issue. The body is the context
   handoff: you're the only session holding what you just learned, so write it
   to FILE's quality bar (a zero-context reader can start from the body alone)
-  and link the current issue/PR. If you have a `Notify:` directive, ping
+  and link the current issue/PR. **Don't apply the epic's enumerating
+  label/milestone** (the `epic:<name>` label or milestone `EPIC_CHILDREN`
+  lists by) — that would enroll the follow-up as a child on the next
+  `/start-epic` run; linking the parent is enough, and the coordinator parents
+  it deliberately from your ping. If you have a `Notify:` directive, ping
   `filed:` with the new ID — and when the work is urgent (it blocks your
   acceptance criteria), say so in the ping and let the coordinator decide
   whether to spawn it. (Filing from inside your worktree is fine — filing
