@@ -2,7 +2,7 @@
 
 The spawner is running on a machine the user has a shell on. Sessions are
 background jobs of the local CLI, recorded under `~/.claude/jobs/`, and the user
-inspects them with `claude agents` / `attach` / `logs`.
+inspects them with `claude agents`, `claude attach`, and `claude logs`.
 
 ## Resolve a durable launch directory
 

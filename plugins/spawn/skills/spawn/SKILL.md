@@ -56,7 +56,7 @@ A short prefix that makes the session findable in whatever lists sessions on you
 Where you're running decides how a session is launched. Check one env var:
 
 ```bash
-[ -n "$CLAUDE_CODE_REMOTE_SESSION_ID" ] && echo cloud || echo local
+[ -n "${CLAUDE_CODE_REMOTE_SESSION_ID:-}" ] && echo cloud || echo local
 ```
 
 - **cloud** — you're a cloud session (Claude Code on the web, or another remote environment). Read `backends/cloud.md` now.
