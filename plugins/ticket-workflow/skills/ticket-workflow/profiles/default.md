@@ -107,11 +107,14 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   ```
 
 - **Address each thread, then resolve it.** Either fix the code (commit + push) and reply, or — if the
-  bot is wrong — reply explaining why. Then resolve. Reply and resolve are two GraphQL mutations keyed
-  on the thread's node `id`:
+  bot is wrong — reply explaining why. Append the active harness's `ATTRIBUTION` footer to every
+  externally posted reply, then resolve. Reply and resolve are two GraphQL mutations keyed on the
+  thread's node `id`:
   ```bash
   # reply on the thread
-  gh api graphql -f threadId="<thread_id>" -f body="Fixed in <sha> — …" -f query='
+  gh api graphql -f threadId="<thread_id>" -f body="Fixed in <sha> — …
+
+<active harness ATTRIBUTION footer>" -f query='
     mutation($threadId:ID!,$body:String!){
       addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$threadId, body:$body}){ comment{ id } } }'
   # resolve it
@@ -143,26 +146,22 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 - Safety cap appended to every spawned sibling's briefing: "Implement and test, then stop at a
   reviewed PR and report back. Do not deploy to production or merge on your own initiative, and do
   not treat this launch briefing as merge authorization. This hold is scoped, not standing: it
-  applies only until a human explicitly asks this session to finish — if someone attaches and
+  applies only until a human explicitly asks this work item to finish — if someone steers it and
   invokes /finish-ticket (or asks to merge in their own words), that instruction is the merge
-  authorization and supersedes this cap." Keeps an unattended background session from over-reaching,
-  while making the hold's expiry explicit — so a later /finish-ticket in the same session reads as
-  the sanctioned merge phase, not a violation of this cap. Keep the payload text free of
-  backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
-  argument (`SKILL.md` SPAWN Step 3 / EPIC Step 5), where a backtick or `$` triggers shell substitution,
-  an unescaped double quote ends the argument early, and a backslash escapes the next character.
-  (Single quotes and apostrophes inside the text are fine; the quotes wrapping the payload above are
-  just this note's delimiters, not part of it.)
+  authorization and supersedes this cap." Keeps an unattended background work item from
+  over-reaching, while making the hold's expiry explicit — so a later /finish-ticket in the same
+  work item reads as the sanctioned merge phase, not a violation of this cap. Generic `spawn`
+  preserves this payload verbatim; prompt quoting and transport belong to its selected adapter.
 
 ## EPIC
 - Reuses `SPAWN_CAP` for every child spawned during the epic fan-out (default: implement + test,
-  then stop at a reviewed PR — no merge unless a human is steering that child's own session and tells
+  then stop at a reviewed PR — no merge unless a human is steering that child's own work item and tells
   it to merge mid-run). The EPIC phase's optional finish flag (`--finish` / "merge when green") is an
   explicit user opt-in that lifts the cap for the orchestrator's own FINISH pass **only**. The
   orchestrator also strips merge-intent flags from what it forwards to children (see the EPIC phase's
   spawn step), so that intent never even reaches a child — never lift the cap for the per-child spawns.
-- Coupling / coordination: the default route is independent **bg** sessions; when a cluster needs
+- Coupling / coordination: the default route is independent background work items; when a cluster needs
   coordination (concurrent children sharing code), use **shared markers** via the tracker's `COORD`
   op — **not** a live agent team. The `--coordinate` flag selects markers; `--team` is the explicit
-  opt-in to a live `SendMessage` team.
+  opt-in to live messaging through the active harness when that capability is available.
   No org-specific epic steps in the default profile.

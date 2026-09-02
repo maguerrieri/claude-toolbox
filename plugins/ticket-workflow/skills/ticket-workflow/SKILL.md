@@ -31,7 +31,7 @@ Invoke this skill via the Skill tool for **every** new request it covers, even i
 
 | Rationalization | Reality |
 |---|---|
-| "The skill is already in context — I'll just run the gh/claude commands myself" | Hand-rolled runs drift from the skill (adapters, caps, naming, reporting) and silently skip skill updates. Invoke the skill. |
+| "The skill is already in context — I'll just run the tracker/harness commands myself" | Hand-rolled runs drift from the skill (adapters, caps, naming, reporting) and silently skip skill updates. Invoke the skill. |
 | "It's a small one-off" | Size doesn't change the mechanics. Invoke the skill. |
 | "The user only mentioned the command in passing" | Mentioning `/spawn-tickets` with a target IS calling it. Invoke the skill. |
 
@@ -44,6 +44,12 @@ The body below is written against **three orthogonal adapters**, all selected in
 - **Harness** — the active execution runtime: *how this skill resolves packaged resources, adopts role state, addresses tasks/work items, sends state-change hints, inspects children, and attributes generated artifacts.* Ops: `RESOURCES`, `ROLE_STATE`, `IDENTITY`, `MESSAGE`, `INSPECT`, `ATTRIBUTION`. Lives in `harnesses/<harness>.md`.
 
 Tracker = *what tracks the work*; profile = *how this environment builds and ships it*; harness = *how the current task interacts with its runtime*. All three are orthogonal. A launch-only `--harness` override belongs to generic `spawn` and does not change the adapter used by the caller's current task.
+
+Use the active harness's `ATTRIBUTION` output verbatim for PR footers and any
+agent-authored tracker or review comment. Attribution follows the runtime
+executing the workflow, never a child launch override; do not hardcode another
+harness's footer. For machine-readable tracker markers, keep the marker on the
+first line and append `ATTRIBUTION` after a blank line.
 
 > **Scope:** this skill assumes the **code is hosted on GitHub** — PRs, CI checks, and merges go through `gh`. The tracker adapter abstracts only the **issue tracker** (Jira or GitHub Issues), so e.g. Jira tickets on a GitHub-hosted repo work fine; it does **not** abstract the git host.
 
@@ -77,7 +83,7 @@ Use the selected adapter's `RESOURCES` operation for every bundled support file:
 
 Pick a **tracker** and a **profile** from these sources, **highest priority first**:
 
-1. **Project memory (local, not committed) — highest.** Check this project's memory for a `Tracker:` / `Profile:` directive. Project memory is surfaced in your context automatically and lives under your Claude config (`…/projects/<project-slug>/memory/`), **not in the repo** — so a directive here pins or overrides the project for *you only*, without committing anything to a shared repo. Use this to test or override without affecting coworkers.
+1. **Project memory (local, not committed) — highest.** When the active runtime surfaces project memory in the current context, check it for a `Tracker:` / `Profile:` directive. Its storage is harness-specific and **not in the repo**, so a directive here pins or overrides the project for *you only*, without committing anything to a shared repo. Use this to test or override without affecting coworkers. If the runtime exposes no project memory, continue to the repo config.
 2. **Repo `CLAUDE.md` (committed/shared).** Read the project's `CLAUDE.md` (and `.claude/CLAUDE.md`) for `Tracker:` / `Profile:` lines (also accept `Issue tracker: …`).
 3. **Fallback.** *Tracker:* infer from the remote (`git remote get-url origin` — a personal `github.com` repo with no Jira directive → **github**); if still ambiguous, **ask**. *Profile:* use `profiles/default.md`.
 
@@ -213,7 +219,7 @@ Before choosing a path, run `git worktree list --porcelain` and look for the sin
 
 Record both the selected checkout's exact path and ownership for FINISH: `workflow-created` when this START run executes `git worktree add` or the resumed checkout has the valid marker; otherwise `inherited`.
 
-- **No existing issue worktree + ordinary checkout (`GIT_DIR == GIT_COMMON`) — workflow-created.** Preserve the existing Claude Code/background-session behavior: create a sibling worktree from the resolved base and work there.
+- **No existing issue worktree + ordinary checkout (`GIT_DIR == GIT_COMMON`) — workflow-created.** Preserve the existing ordinary-checkout behavior: create a sibling worktree from the resolved base and work there.
 
 ```bash
 cd /path/to/<repo>
@@ -266,7 +272,7 @@ git push -u origin <branch>
 
 **Managed-checkout fallback.** If an inherited harness-managed checkout cannot create a branch, commit, push, or open the PR, do not create another worktree and do not discard completed work. Preserve its working tree and any commits that were possible, then tell the user to use the harness's native branch/handoff controls (in Codex: **Create branch** or **Hand off to local**) and provide the intended branch name, commit message(s), and PR title/body. This is a platform constraint opt-out from the remaining START gates, not an implementation failure.
 
-Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue). Before running the template, replace its `WORKSPACE_MARKER` line with exactly `<!-- ticket-workflow-workspace: harness -->` when the selected checkout is inherited/harness-managed; otherwise delete the entire line. Never leave the literal `WORKSPACE_MARKER` text in a PR body.
+Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue). Resolve `ATTRIBUTION` from the active harness and use its exact footer in the template below. Before running the template, replace its `WORKSPACE_MARKER` line with exactly `<!-- ticket-workflow-workspace: harness -->` when the selected checkout is inherited/harness-managed; otherwise delete the entire line. Never leave the literal `WORKSPACE_MARKER` text in a PR body.
 
 ```bash
 gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'EOF'
@@ -427,10 +433,9 @@ For each issue, hand the `spawn` skill one unit:
 - **prompt:** `/start-ticket <ID> <briefing + SPAWN_CAP>  Role: implementer` — the `Role: implementer` directive pins the sibling to single-issue altitude (START Step 1 reads `roles/implementer.md`); it's the ticket layer's altitude bound, appended alongside `SPAWN_CAP`.
 - **name:** `<repo> <ID>: <desc>` — `<repo>` is the basename of the repo the profile selected (e.g. `widgets`, `mobile-app`); `<ID>` is the issue key as-is (`ABC-12`, `#42`); `<desc>` is an under-5-word summary (e.g. `add GeoIP routing`). Spaces and special characters are fine — keep `--name` quoted. Full example: `--name "widgets #14: add rollover toggle"`.
 - **notify:** set `requested` as lazy adapter metadata. Do not read
-  `messaging.md`, call `ListAgents`, or resolve your session identity here.
-  Generic `spawn` performs that lookup only on an edge whose adapter declares
-  the SendMessage channel reachable (Claude local); Claude cloud and Codex omit
-  it and use their native/polled state.
+  `messaging.md` or resolve runtime identity here. Generic `spawn` performs an
+  identity lookup only on an edge whose adapter declares a reverse notification
+  channel reachable; other adapters omit it and use their native/polled state.
 - **Keep `<briefing>` in the prompt:** `<briefing>` is the per-issue text from Step 1 (with `SPAWN_CAP` appended) and goes in the `/start-ticket` body **in full** — even when it doubles as the `<desc>` label. `<desc>` is only a short display tag; never let it *replace* the briefing in the prompt, or the sibling loses its per-issue guidance.
 
 Then **spawn them via the `spawn` skill** — pass the optional harness and surface

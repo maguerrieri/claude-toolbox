@@ -8,7 +8,7 @@ Run the epic: **$ARGUMENTS**
 
 - the **epic ID** (first token);
 - shared **briefing** text;
-- orchestrator **flags**: `--finish` (also "merge when green" / "and finish them"); and a routing override — `--independent` (force bg), `--coordinate` (coordinated via shared markers / the tracker's `COORD` op), or `--team` (the live-`SendMessage`-team upgrade). The three routing flags are **distinct, not synonyms**.
+- orchestrator **flags**: `--finish` (also "merge when green" / "and finish them"); and a routing override — `--independent` (force background work items), `--coordinate` (coordinated via shared markers / the tracker's `COORD` op), or `--team` (the active harness's live `MESSAGE` channel when available, otherwise `--coordinate` semantics). The three routing flags are **distinct, not synonyms**.
 
 **Strip those flags — and any `Role:` directive — from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`, nor the orchestrator's own `Role: epic-coordinator` (each child gets its own `Role: implementer` from EPIC Step 5).
 
