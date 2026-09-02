@@ -1,7 +1,8 @@
 # claude-toolbox
 
-Portable Claude Code conventions and workflows, published as the
-**`maguerrieri-toolbox`** plugin marketplace. Each plugin lives in
+Portable agent conventions and workflows, published as the Claude-packaged
+**`maguerrieri-toolbox`** plugin marketplace. Harness-aware workflows may run
+from Claude Code or Codex; each plugin lives in
 `plugins/<name>/` and is registered in `.claude-plugin/marketplace.json`.
 
 ## Ticket workflow
@@ -22,13 +23,15 @@ Work is tracked in **GitHub Issues**. Commits and PRs follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
 brackets, AI-assistance flags in the subject parens.
 
-A session can also carry a **role** (`planner` / `epic-coordinator` /
+A task or work item can also carry a **role** (`planner` / `epic-coordinator` /
 `implementer`) that pins its altitude and propagates down the spawn edges as a
 `Role:` briefing directive — see the skill's `roles/`. Set only the top planner
-by hand with `/role planner` (a per-session marker + hooks make it durable
-across resume/compaction and gate a pinned planner's edits behind a permission
-prompt); the lower tiers are injected by `/spawn-epic` and the SPAWN/EPIC
-phases. `/role none` unpins.
+by hand with `/role planner`; the lower tiers are injected by `/spawn-epic` and
+the SPAWN/EPIC phases. `/role` delegates state to the active harness: Claude
+Code uses a per-session marker plus hooks for resume/compaction and its planner
+edit guard, while Codex keeps the charter prompt-durable in the current task
+without an out-of-band marker or mechanical edit guard. `/role none` unpins
+the strongest state that harness supports.
 
 ## Development workflow
 
@@ -39,25 +42,35 @@ Pairs with the ticket workflow above.
 
 ## SKILL.md size — when to split phases into their own files
 
-ticket-workflow's `SKILL.md` deliberately stays a **single file** (~540 lines as of
-#45 — over the ~500 marker, but that trigger is for *phase-sized* additions): the
-phases cross-reference each other's steps by number (EPIC → START Steps 2/3/7,
-FINISH's gate → START Step 6), and one file keeps full-context reads the
-default — splitting reintroduces the #22 bypass failure in a new form (skim the
-index, skip the phase file). Don't split preemptively. Split phases into
-read-on-demand `phases/*.md` (the same read-on-demand idiom as `trackers/`,
-`profiles/`, and `roles/`) when one of these fires:
+ticket-workflow's `SKILL.md` keeps the shared adapter contract plus FILE,
+START, FINISH, and SPAWN. Issue #65 extracted the complete EPIC flow to the
+read-on-demand `phases/epic.md` when harness portability made the already-large
+entrypoint grow again; its index now requires reading that phase file in full
+before acting. This is the same read-on-demand idiom as `trackers/`, `profiles/`,
+`harnesses/`, and `roles/`, with an explicit read gate to prevent the #22 bypass
+failure (skim the index, skip the phase file).
+
+Keep the main skill around the ~500-line marker. Split another self-contained
+phase into `phases/*.md` when one of these fires:
 
 - a phase-sized addition (e.g. a `--epic` variant of `/make-ticket`, a sixth
-  phase) pushes it past ~500 lines — split as part of that PR, not as a
-  standalone refactor;
+  phase) pushes it past ~500 lines — split the next best-contained phase as
+  part of that PR, not as a standalone refactor; never inline EPIC again;
 - two concurrent tickets produce a merge conflict in `SKILL.md`;
 - wording micro-tests show agents missing steps mid-file.
 
-Extract **EPIC first** — biggest, most self-contained, least invoked. Whatever
-splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0, and a
-one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
+Whatever splits, `SKILL.md` keeps the frontmatter, invocation discipline,
+Step 0, shared adapter contract, and a one-paragraph-per-extracted-phase index
+that requires reading `phases/<phase>.md` completely before acting; the
 completion-criteria checklists move with their phase.
+
+Keep the integration boundaries explicit: issue #63's generic `spawn` owns
+harness/surface selection, native launch, prompt transport, stable task/session
+addresses, and launch reporting. Issue #64's START/FINISH contract owns linked
+worktree detection, issue-branch reuse, ownership markers, and cleanup. New
+ticket-workflow phases consume those contracts; they must not add another
+launcher, inject a default `Worktree:` directive, or remove a harness-owned
+checkout.
 
 ## Releasing (version bumps)
 

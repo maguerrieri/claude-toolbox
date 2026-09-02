@@ -41,10 +41,12 @@ gh issue edit <n> --add-label "in progress"
 Skip silently if it errors (e.g. label doesn't exist) — START is best-effort.
 
 ## COMMIT_REF(id)  — commit message format
-- Follow the repo's commit convention. In this marketplace that's the `conventions` plugin's
+- Follow the repo's commit convention. In this marketplace, invoke the
+  `conventions:commit-conventions` skill and use its
   format: `[#<n>] (<flags>) <scope>: <description>` — the GitHub issue in brackets, AI-assistance
-  flags in the subject parens.
-  - e.g. `[#42] (Claude Code + Opus 4.8) upload: retry transient 5xx with backoff`
+  flags in the subject parens. Resolve those flags from the active repository contract; when AI
+  assistance applies, name the actual harness and model rather than copying a fixed example.
+  - shape: `[#42] (<active harness> + <model>) upload: retry transient 5xx with backoff`
 - If the repo documents no convention, a plain conventional-commit subject that references the
   issue in trailing parens is fine: `<scope>: <description> (#42)`.
 
@@ -58,9 +60,15 @@ Skip silently if it errors (e.g. label doesn't exist) — START is best-effort.
 
 ## DONE(id)  — close the issue
 - If the PR body had `Closes #<n>`, merging already closed it — verify with `gh issue view <n> --json state -q .state` (expect `CLOSED`).
-- If it's still open:
+- If it's still open, append the active harness's `ATTRIBUTION` footer to the
+  externally posted comment:
 ```bash
-gh issue close <n> --comment "Resolved by #<pr> (merged)."
+gh issue close <n> --comment "$(cat <<'EOF'
+Resolved by #<pr> (merged).
+
+<active harness ATTRIBUTION footer>
+EOF
+)"
 ```
 
 ## EPIC_CHILDREN(id)  — list an epic's child tickets (EPIC phase)
@@ -90,10 +98,15 @@ gh pr list --state open -L 500 --search "#<n> in:body" --json number,headRefName
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
-The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
+The shared, durable channel sibling work items use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**. Keep the machine-readable marker on the first line and append the active harness's `ATTRIBUTION` footer after a blank line:
 ```bash
-gh issue comment <epic_id> --body "claim: <session> -> <files>"   # post a marker
-gh issue view <epic_id> --json comments -q '.comments[].body'      # read existing markers
+gh issue comment <epic_id> --body "$(cat <<'EOF'
+claim: <work-item> -> <files>
+
+<active harness ATTRIBUTION footer>
+EOF
+)"                                                                  # post a marker
+gh issue view <epic_id> --json comments -q '.comments[].body'        # read existing markers
 ```
 Markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6) so siblings can grep them. Keeps coordination tracker-native and inspectable; no live agent team required.
 

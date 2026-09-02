@@ -135,9 +135,11 @@ step 3.
 Whichever harness you're on:
 - `name` — the explicit unit name or step 2's `<context> <desc>` fallback.
 - Preserve the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote. An adapter may append only its documented execution directive and a supported `notify` directive; it never rewrites or drops the caller's bounds.
-- **Record the stable identifier** the launch returns — a Codex task/thread ID
-  or the Claude backend's session handle/ID. Names can change; identifiers are
-  how a stuck task is inspected later.
+- **Record the stable address or identifier** the launch returns. A ready Codex
+  desktop task is addressed by `threadId` plus `hostId`; a `clientThreadId` is
+  only a queued-setup identifier. Other surfaces supply their documented task
+  ID, session handle, or session ID. Names can change; the selected adapter's
+  stable address/identifier is how a stuck task is inspected later.
 
 ### 5 — Report and hand back
 

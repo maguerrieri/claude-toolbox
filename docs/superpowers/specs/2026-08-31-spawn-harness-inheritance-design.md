@@ -56,10 +56,12 @@ project is a Git repository; otherwise it uses the supported local/projectless
 target. It preserves the user's configured model and reasoning settings unless
 the request explicitly overrides them. The stable task/thread ID and Codex
 sidebar/open controls replace Claude session handles and CLI attach commands.
-The adapter appends `Worktree: current`; ticket START treats that reserved value
-as an instruction to reuse the native Codex worktree rather than nest another
-checkout. START carries that harness ownership through submodule setup and a
-hidden PR marker; FINISH leaves worktree/branch cleanup to Codex. A queued
+The Codex desktop adapter injects no default `Worktree:` directive. Ticket START
+detects the native linked checkout and uses the tracker's `BRANCH` when the unit
+has no directive. If the unit carries an explicit named `Worktree:`, the adapter
+preserves it as the sole directive and START uses that exact issue branch in the
+linked checkout. START carries that harness ownership through submodule setup
+and a hidden PR marker; FINISH leaves worktree/branch cleanup to Codex. A queued
 `clientThreadId` is reported only as setup state and a UI
 directive target; thread-only read/message/navigation controls wait for the real
 `threadId`.

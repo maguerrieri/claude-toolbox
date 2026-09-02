@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# PreToolUse — planner drift guard.
+# Claude ROLE_STATE PreToolUse implementation — planner drift guard. Codex has
+# no mechanical ticket-workflow edit guard and does not use this hook.
 #
 # A session pinned to the `planner` charter shouldn't edit files: it decomposes,
 # files tickets, and spawns. This escalates an edit to a permission prompt

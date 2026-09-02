@@ -43,24 +43,39 @@ create_thread({
 ```
 
 Preserve the prompt after the shared step removed launch-only harness and
-surface flags. For a Git project worktree target, append `Worktree: current`;
-that execution directive tells arbitrary work to stay in the native Codex
-checkout and tells ticket START to reuse it instead of creating a second
-worktree. Do not append the directive for non-Git local or projectless targets,
-which have no managed worktree. Ignore optional `notify` metadata: Codex peer
-tasks do not use ticket-workflow's in-session SendMessage edge, so their progress
-is read through native task and PR state instead.
+surface flags. Do not append a `Worktree:` directive for any target. For a Git
+project worktree target, preserve the unit's workspace contract in exactly one
+of these shapes:
+
+- **No explicit `Worktree:` directive in the unit prompt:** leave the prompt
+  without one. The native Codex target already supplies the linked checkout.
+- **An explicit `Worktree:` directive is present:** preserve it unchanged as
+  the sole directive. In particular, an EPIC child keeps its named
+  `Worktree: epic-...` assignment.
+
+Both ticket shapes depend on ticket-workflow START's managed-checkout contract:
+START detects the native linked worktree and reuses it as inherited. Without a
+directive it selects the tracker's issue branch; with a named directive it
+selects that exact issue branch in the same checkout. Generic spawn does not
+duplicate that lifecycle logic. Non-Git local and projectless targets likewise
+receive no workspace directive.
+
+Ignore optional `notify` metadata: Codex peer tasks do not use
+ticket-workflow's in-session SendMessage edge, so their progress is read through
+native task and PR state instead.
 
 Preserve an explicit unit `name` verbatim; otherwise use the shared
 `<context> <desc>` fallback. Omit `model` and `thinking` unless the caller
 explicitly requested overrides so the task inherits the user's configured Codex
 defaults. Creation is non-blocking; do not wait for the child to finish.
 
-Record `threadId` when the task is ready or `clientThreadId` while worktree setup
-is queued. They have different control contracts:
+Record the ready task address as both `threadId` and `hostId`, or record
+`clientThreadId` while worktree setup is queued. They have different control
+contracts:
 
-- `threadId` — ready task; safe for read, navigation, wait, follow-up, and task
-  mutation tools.
+- `threadId` + `hostId` — ready task address; retain and report both. Pass both
+  to read, wait, follow-up, and mutation controls that accept the host. Native
+  navigation uses the `threadId`.
 - `clientThreadId` — setup queue identifier; report it and use it only in the
   created-task UI directive. Never pass it to a tool that requires `threadId`.
 
@@ -68,13 +83,15 @@ is queued. They have different control contracts:
 
 Use Codex task terminology and include IDs:
 
-| Task | ID | Scope |
+| Task | Address | Scope |
 |---|---|---|
-| `toolbox investigate flaky CI` | `<threadId or clientThreadId>` | <one-line summary> |
+| `toolbox investigate flaky CI` | `<threadId> + <hostId>` or `<clientThreadId> (queued)` | <one-line summary> |
 
-The task appears in the Codex sidebar. For a ready `threadId`, point at the
-native task controls: open it from the sidebar (or navigate to it when asked),
-inspect progress with Codex task list/read controls, and send follow-ups by
-thread ID. For a queued `clientThreadId`, say setup is pending and do not
-advertise thread-only controls yet. Emit the app's created-task directive with
-whichever identifier was returned so the queued/ready row is directly openable.
+The task appears in the Codex sidebar. For a ready `threadId` + `hostId`, point
+at the native task controls: open it from the sidebar (or navigate by
+`threadId` when asked), inspect progress with Codex task list/read controls,
+and send follow-ups using the ready address, including `hostId` wherever the
+control accepts it. For a queued `clientThreadId`, say setup is pending and do
+not advertise thread-only controls yet. Emit the app's created-task directive
+with the returned `threadId` or queued `clientThreadId` so the row is directly
+openable; the directive does not replace reporting the ready task's `hostId`.

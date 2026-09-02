@@ -2,9 +2,13 @@
 
 ## Spawn harness integration invariants
 
-- A native Codex project task already owns a managed worktree. A spawned
-  `/start-ticket` must reuse that checkout (`Worktree: current`) instead of
-  creating a sibling worktree outside the task's writable/review surface.
+- A native Codex project task already owns a managed worktree. Generic spawn
+  must not append `Worktree: current`; START relies on linked-worktree
+  detection to reuse that checkout instead of creating a sibling outside the
+  task's writable/review surface.
+- An explicit named `Worktree:` in a spawn unit remains the exact issue-branch
+  directive for that linked checkout. Generic spawn preserves it as the sole
+  workspace directive.
   Carry that ownership through submodule setup and FINISH: the workflow must not
   remove an app-owned checkout or delete its branch. START can be re-entered,
   so switch to an existing issue branch instead of always recreating it with
@@ -44,3 +48,16 @@ Tool commands run through zsh. Do not put Markdown backticks inside a
 double-quoted shell command (including an `rg` pattern): zsh executes the text
 between them. This applies even to read-only inspection commands. Use a
 single-quoted command or remove the backticks from the pattern.
+
+## Ticket-workflow skill validation
+
+The ticket-workflow plugin does not ship a validator under its own `scripts/`
+directory. Validate it with the system skill-creator validator:
+
+`uv run --with pyyaml python3 /Users/mario/.codex/skills/.system/skill-creator/scripts/quick_validate.py plugins/ticket-workflow/skills/ticket-workflow`
+
+## Verification scripts
+
+- Run multi-command shell verification scripts with fail-fast behavior (`set -e` at minimum; add `-u` and `pipefail` when compatible). Without it, an early failure can be followed by misleading later output and a false success summary.
+- Temporary Git repositories used in tests must disable commit signing locally (`git config commit.gpgsign false`) so the scenario does not depend on a developer's signing agent.
+- Commands run under zsh: do not use reserved/read-only parameters such as `status` for scratch variables; choose task-specific names (for example, `checks_exit`).

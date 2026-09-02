@@ -35,10 +35,12 @@ own work config, not here.
 - Transition the issue to "In Progress" and assign to the user, via the Jira MCP/CLI if available. Best-effort; skip if not wired.
 
 ## COMMIT_REF(id)  — commit message format
-- Follow the repo's commit convention. In this marketplace that's the `conventions` plugin's
+- Follow the repo's commit convention. In this marketplace, invoke the
+  `conventions:commit-conventions` skill and use its
   format: `[<ID>] (<flags>) <scope>: <description>` — the Jira key in brackets, AI-assistance
-  flags in the subject parens.
-  - e.g. `[ABC-123] (Claude Code + Opus 4.8) upload: retry transient 5xx with backoff`
+  flags in the subject parens. Resolve those flags from the active repository contract; when AI
+  assistance applies, name the actual harness and model rather than copying a fixed example.
+  - shape: `[ABC-123] (<active harness> + <model>) upload: retry transient 5xx with backoff`
 - If the repo documents no convention, the bare Jira form `[<ID>] <description>` is the fallback.
 
 ## PR_REF(id)  — PR title + issue link
@@ -46,7 +48,7 @@ own work config, not here.
 - **Body:** reference the ticket (link or `<ID>`). Jira doesn't auto-close from PR keywords, so closing happens in `DONE`.
 
 ## DONE(id)  — resolve the ticket
-- Transition the issue to its resolved/done state via the Jira MCP/CLI. Add fix version / resolution per the project's conventions if required.
+- Transition the issue to its resolved/done state via the Jira MCP/CLI. Add fix version / resolution per the project's conventions if required. If the operation posts a comment, append the active harness's `ATTRIBUTION` footer.
 - If a Jira automation already closes on merge, just verify the state.
 
 ## EPIC_CHILDREN(id)  — list an epic's child tickets (EPIC phase)
@@ -72,7 +74,7 @@ gh pr list --state open -L 500 --search "<ID> in:title,body" --json number,headR
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
-The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On Jira, use **comments on the epic issue** via the Jira MCP/CLI (add-comment / read-comments on `<epic_id>`); markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6). Unlike GitHub's `gh issue comment`, this goes through the MCP comment API, not a CLI flag — which is exactly why the channel is an adapter op rather than hard-coded in the skill body. If comments aren't agent-writable here, the coordinated route isn't available — **fall back to `--independent` bg routing and note the overlap risk**, rather than improvising an unspecified channel. For the `stack:` record specifically, an unwritable channel is not blocking: put the stack number in the EPIC Step 6 aggregate report instead, and Step 7 re-derives or re-links it just-in-time.
+The shared, durable channel sibling work items use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On Jira, use **comments on the epic issue** via the Jira MCP/CLI (add-comment / read-comments on `<epic_id>`); markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6). Keep the marker on the first line and append the active harness's `ATTRIBUTION` footer after a blank line. Unlike GitHub's `gh issue comment`, this goes through the MCP comment API, not a CLI flag — which is exactly why the channel is an adapter op rather than hard-coded in the skill body. If comments aren't agent-writable here, the coordinated route isn't available — **fall back to `--independent` background-work-item routing and note the overlap risk**, rather than improvising an unspecified channel. For the `stack:` record specifically, an unwritable channel is not blocking: put the stack number in the EPIC Step 6 aggregate report instead, and Step 7 re-derives or re-links it just-in-time.
 
 ## Review bot
 - The review bot is a **profile** concern — see the selected profile's `REVIEW_BOT` (e.g. an org profile may drive a Copilot or CodeRabbit cycle).

@@ -1,7 +1,9 @@
 # claude-toolbox
 
-Portable Claude Code conventions, packaged as a [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
-One repo, declared per-project, works in local and cloud sessions alike.
+Portable agent conventions, packaged as a [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
+The marketplace and install commands remain Claude-packaged; harness-aware
+workflows can execute from Claude Code or Codex and across their supported
+desktop, CLI, and cloud surfaces.
 
 ## Plugins
 
@@ -25,9 +27,12 @@ One repo, declared per-project, works in local and cloud sessions alike.
   plus `/make-ticket`, `/start-ticket`, `/finish-ticket`, `/spawn-tickets`,
   `/start-epic`, and `/spawn-epic`. Files an issue from conversation context and
   takes it from open to a reviewed PR and on to merged, with a pluggable
-  **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for
-  harness-and-surface-aware parallel fan-out, so `/make-ticket --spawn` and
-  `/spawn-tickets` inherit both launch axes without duplicating mechanics.
+  **tracker** (GitHub Issues or Jira), **profile**, and active **harness**
+  adapter. The workflow itself can execute from Claude Code or Codex while
+  retaining harness-correct role state, task inspection, and attribution.
+  Builds on `spawn` for harness-and-surface-aware parallel fan-out, so
+  `/make-ticket --spawn`, `/spawn-tickets`, and `/spawn-epic` inherit both
+  launch axes without duplicating mechanics.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
