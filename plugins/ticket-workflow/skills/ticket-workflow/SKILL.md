@@ -76,25 +76,7 @@ Tracker and profile say *what tracks the work* and *how this environment ships i
 
 ### ROLE mini-phase (`/role`)
 
-Manage the role in the current task without running a ticket phase:
-
-1. Select and read the active harness adapter exactly as Step 0 specifies,
-   then use its `RESOURCES` operation; do not select a child launch harness.
-2. Take the first argument as `planner`, `epic-coordinator`, `implementer`, or
-   `none`. Empty or invalid input reports those values and the current role
-   when `ROLE_STATE` can identify one, then stops without changing state.
-3. For a role, call `ROLE_STATE(adopt, <role>)`. It reads
-   `roles/<role>.md` through `RESOURCES`, adopts the charter as governing this
-   task/work item, applies the strongest persistence the active harness
-   supports, and reports its exact persistence and guard limitations.
-4. For `none`, call `ROLE_STATE(clear)`. Stop applying the charter and clear
-   only state owned by this harness. Confirm the active harness, resulting
-   role, charter bounds, and exact durability/guard guarantees.
-
-Do not implement persistence in a command wrapper, search for another skill or
-plugin copy, or fall back to a different harness's state mechanism.
-
----
+For `/role` or a natural request to adopt, inspect, or clear a role, use `RESOURCES` to read `phases/role.md` completely before acting; that file is the authoritative ROLE procedure. It selects the active harness and routes role state through its `ROLE_STATE` operation without running a ticket phase.
 
 ## Step 0 — Select the adapters (always do this first)
 
@@ -496,33 +478,7 @@ controls for a Claude session.
 
 ## SPAWN-EPIC mini-phase (`/spawn-epic`)
 
-Launch one background EPIC work item without running EPIC in the caller:
-
-1. Parse optional launch-only `--harness codex|claude` and
-   `--surface desktop|cli|cloud` overrides. Reject unknown, duplicate, or
-   conflicting values before launch; remove the tokens from child arguments
-   while preserving every other argument verbatim, including briefing,
-   `--finish`, `--coordinate`, `--team`, and `--independent`.
-2. Take the first remaining token as `<epic-id>`, determine `<repo>` from the
-   target repository, and derive an under-five-word `<desc>` from the briefing
-   (`epic run` when none exists). Build exactly one generic-spawn unit:
-
-   - **name:** `<repo> <epic-id>: epic — <desc>`
-   - **prompt:** `/start-epic <arguments without launch overrides>` followed
-     by `Role: epic-coordinator`
-   - **notify:** `requested`
-
-   Add no `SPAWN_CAP`: the coordinator applies the complete selected-profile
-   cap to each child, and an explicit `--finish` must reach it unchanged.
-3. Invoke generic `spawn` and pass explicit harness/surface overrides as launch
-   metadata, never prompt text. With no override it inherits the caller's
-   harness and surface. Generic `spawn` alone selects the target, resolves the
-   lazy notification request for that caller/target edge, creates the native
-   task/session, owns isolation and launch directory, and reports stable
-   identifiers plus inspect/open controls.
-4. Return generic `spawn`'s report and hand back without blocking. Do not fetch
-   the epic, enumerate children, run Step 0, launch natively, or implement any
-   EPIC step in this mini-phase.
+For `/spawn-epic`, use `RESOURCES` to read `phases/spawn-epic.md` completely before acting; that file is the authoritative thin-launch procedure. It builds one named `/start-epic` unit and delegates launch, lazy notifier resolution, stable identifiers, inspection guidance, and reporting solely to generic `spawn`.
 
 ---
 
