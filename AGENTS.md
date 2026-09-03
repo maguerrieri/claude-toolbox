@@ -25,6 +25,10 @@ Tracker: github
 Profile: default
 ```
 
+(An optional `Worktree dir: <path>` line in the same block — or in project memory —
+overrides where `/start-ticket` creates worktrees; the default, `.claude/worktrees/`,
+is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.)
+
 Work is tracked in **GitHub Issues**. Commits and PRs follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
 brackets, AI-assistance flags in the subject parens.
