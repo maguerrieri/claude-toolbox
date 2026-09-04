@@ -102,7 +102,7 @@ Edge cases — both are **hard errors; stop and report, don't loop or guess** (a
 
 **No `Inherits:` line → unchanged behavior:** the file is the complete, standalone profile (the original single-file semantics). This is the default, so every existing profile keeps working untouched.
 
-One optional setting rides the same sources (project memory → repo `CLAUDE.md`): `Worktree dir: <path>`, which overrides where START Step 3 creates worktrees (default `[repo]/.claude/worktrees`). Absent → the default; see Step 3 for the prompt-related caveat.
+One optional setting rides the same sources, in the same priority order (project memory → root `AGENTS.md` → root `CLAUDE.md` / `.claude/CLAUDE.md` fallbacks): `Worktree dir: <path>`, which overrides where START Step 3 creates worktrees (default: `.claude/worktrees/` under the repo root). Absent → the default; see Step 3 for the prompt-related caveat.
 
 Keep tracker- and profile-specific commands out of this file — they live in their adapter files.
 
