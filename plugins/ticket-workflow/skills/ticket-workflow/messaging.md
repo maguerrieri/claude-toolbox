@@ -50,7 +50,15 @@ receivers and greps treat the two channels uniformly:
   whether/when to spawn.
 - **Coordinator → child:** rare — a redirect the child should see before its
   next natural checkpoint (e.g. `blocked: parent restacked, rebase onto
-  <base>`), sent to the name the coordinator assigned at spawn.
+  <base>`), sent to the name the coordinator assigned at spawn. A redirect is
+  *about the child's own issue*: a base-branch change, a scope clarification,
+  "stop" / "restack" / "rebase". It is **never a new issue ID** — a live
+  session's branch, worktree, PR footer, name, and notify wiring are all keyed
+  to the one issue it was spawned for, so "also do #N" either lands on the
+  wrong branch or forces a hand-rolled START with none of SPAWN's safeguards.
+  New work always goes through `/spawn-tickets` (or `/make-ticket --spawn`);
+  an implementer that receives a reassignment declines it
+  (`roles/implementer.md`).
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
   restack. Sibling names follow the spawn convention, and `ListAgents` resolves

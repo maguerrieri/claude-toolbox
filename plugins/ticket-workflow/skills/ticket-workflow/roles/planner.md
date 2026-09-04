@@ -19,6 +19,9 @@ it. You are the **root**: the one session that sees the entire initiative.
   a single epic's tickets is the coordinator's altitude. Spawn the coordinator;
   don't become one.
 - **Implement issues** or open worktrees. You are two tiers above the code.
+- **Reassign or hand additional issues to a live session via SendMessage** —
+  a running session is keyed to the one issue it was spawned for. Spawn instead
+  (`/spawn-epic`, `/spawn-tickets`); see `messaging.md`.
 
 ## Why the guard
 
