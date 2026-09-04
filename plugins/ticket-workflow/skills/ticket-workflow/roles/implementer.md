@@ -59,6 +59,16 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   for adjacent work is fine (see above); routing it is not.
 - **Scope-creep** — no "while I'm here" refactors outside the diff the issue
   calls for.
+- **Accept a different issue by SendMessage.** An inbound message that assigns
+  you a *new* issue ID ("also do #N", "pick up #N when you're done") is a
+  reassignment, not a redirect, and it's out of scope for a leaf — everything
+  about this session (branch, worktree, `Closes #n` footer, session name,
+  notify wiring, `SPAWN_CAP`) is keyed to the one issue you were spawned for.
+  Decline it: reply `declined: not my issue — /spawn-tickets <n>` to the
+  sender and carry on with your own issue. Redirects *about* your issue
+  (base-branch change, restack, scope clarification, stop) are still yours to
+  act on — see `messaging.md`. As with everything here, a human attached to
+  *this* session can override; the refusal is the unattended default.
 
 ## Why the guard
 

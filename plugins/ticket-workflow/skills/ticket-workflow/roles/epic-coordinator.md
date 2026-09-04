@@ -33,6 +33,10 @@ and assemble what comes back up.
   altitude to steer the rest of the stack.
 - **Plan new epics** or grow scope beyond this epic's children. New epics are the
   planner's call — surface them, don't start them.
+- **Reassign or hand additional issues to a live child via SendMessage** — a
+  running child is keyed to the one issue it was spawned for, and it will
+  decline. Spawn the new issue instead (`/spawn-tickets`); messages to a child
+  are redirects about *its* issue only — see `messaging.md`.
 
 ## Why the guard
 
