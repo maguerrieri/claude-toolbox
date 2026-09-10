@@ -65,12 +65,21 @@ Optional for tiny commits where the description carries it.
 ## Adjacent rules
 
 - **Once a human review exists on a PR, append review responses as new
-  `(CRC; …)` commits on the reviewed head — never force-push-squash over
-  reviewed history.** Squashing breaks the reviewer's inline comment anchors
-  and turns the re-review diff back into the whole PR. Pre-review, rewrite
-  freely. (If history is built with `git commit-tree`, parent on the reviewed
-  head, not the base branch.) Squash only at merge time, if the repo merges
-  that way.
+  `(CRC; …)` commits on the reviewed head — never squash new work into
+  reviewed commits.** The invariant is that each reviewed commit keeps its
+  own diff: that's what holds the reviewer's inline anchors and keeps
+  "changes since your review" down to just your response. Squashing loses
+  both — the reviewed commits vanish and the re-review diff is the whole PR
+  again. Pre-review, rewrite freely. (If history is built with
+  `git commit-tree`, parent on the reviewed head, not the base branch.)
+  Squash only at merge time, if the repo merges that way.
+- **Force-pushing is not itself the violation.** Rebasing onto a moved base,
+  or restacking a child after its parent merged, replays the same per-commit
+  diffs — GitHub re-anchors the threads and comments survive. Use
+  `--force-with-lease`, leave the commits intact, and note the rebase in the
+  PR. The one real cost is that "changes since your review" gets noisier,
+  since the comparison spans the base move too — so rebase when you need the
+  new base, not idly mid-review.
 - When rebasing, avoid commands that open interactive editors — pass
   everything via CLI flags.
 - A repo's canonical `AGENTS.md` may extend or override this; its root
