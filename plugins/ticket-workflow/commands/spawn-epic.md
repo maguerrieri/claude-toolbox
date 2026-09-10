@@ -21,7 +21,7 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 ( cd "$launch_dir" && claude --bg --name "<repo> <epic-id>: epic — <quick description>" "$p" )
 ```
 
-   **Cloud** — one `create_session` call; the prompt travels as JSON, so no shell quoting applies. No `outcome_branch` (the orchestrator pushes no branch of its own — its children get theirs from the EPIC phase's Step 5) and no `Notify:` (no cross-session channel on cloud). `source_revision` only when the briefing pins a base branch; `source_url` always (`git remote get-url origin`):
+   **Cloud** — one `create_session` call; the prompt travels as JSON, so no shell quoting applies (`$ARGUMENTS` below is this command's argument placeholder, substituted into the text before you see it — the same token the local heredoc carries — not a shell variable; what you pass is the user's actual arguments). No `outcome_branch` (the orchestrator pushes no branch of its own — its children get theirs from the EPIC phase's Step 5) and no `Notify:` (no cross-session channel on cloud). `source_revision` only when the briefing pins a base branch; `source_url` always (`git remote get-url origin`):
 
 ```
 create_session({

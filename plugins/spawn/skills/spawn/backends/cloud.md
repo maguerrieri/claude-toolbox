@@ -82,7 +82,8 @@ the durable handle, and unlike a title it can't be renamed out from under you.
 
 ## Don't lead the prompt with a slash command the target lacks
 
-A prompt that **begins** with a slash command (`/start-ticket …`, `/spawn …`) is
+A prompt that **begins** with a slash command (`/start-ticket …`, `/start-epic …`,
+`/spawn …`) is
 dispatched as a command by the child's harness *before the model runs*. If that
 command isn't installed in the child's environment — the plugin isn't enabled
 there, even though the repo may carry it — the harness rejects the prompt with
