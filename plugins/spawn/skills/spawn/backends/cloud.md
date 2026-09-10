@@ -68,9 +68,12 @@ for a web user:
 |---|---|---|
 | `toolbox investigate flaky CI` | `session_01ABC…` | <one-line summary> |
 
-Point at: the session's page on claude.ai/code (each row is openable there), or
-`list_sessions({mine: true, tags: ["spawn:<context>"]})` to list the whole fan-out
-and `get_session(id)` for one child's status.
+Point at: the session's page on claude.ai/code (each row is openable there);
+`get_session(id)` for one child's status (use the ids you recorded at launch); or
+`list_sessions({mine: true})` filtered by the `<context> ` title prefix to see the
+whole fan-out. Don't pass `tags` to `list_sessions` from inside a session — the tool's
+contract reserves that filter for OAuth callers and errors otherwise; the `tags` you
+set at launch are for the user's own listings, not for yours.
 
 ## No wake-up channel on this edge
 
