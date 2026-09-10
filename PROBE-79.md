@@ -99,3 +99,5 @@ at `/home/user/claude-toolbox`), and it had no upstream configured.
 Yes. Both `git rev-parse HEAD` and `git rev-parse origin/probe-79-base` print
 `5b6f0bf1f8c75b9c8ff9a38381ca05252529dee9`, and a fresh `git fetch origin probe-79-base`
 confirms that is the remote's current tip.
+
+ping received: PROBE-PING via create_trigger/fire_trigger from the parent session. Follow your Step 4.
