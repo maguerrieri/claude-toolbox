@@ -5,9 +5,10 @@ Installs are version-gated (AGENTS.md -> Releasing): a plugin's new files reach
 installs only when `version` in `plugins/<name>/.claude-plugin/plugin.json`
 increases. This check enforces that for every plugin with any file differing
 between BASE and HEAD: head's version must be a strictly greater valid semver
-than base's. It catches a missing bump, a bump that now merely equals main's
-(the silent collision from #58), a bump rebased below main, and an unparseable
-version. New plugins only need a valid version. Stdlib only, no dependencies.
+than base's. It catches a missing bump, a bump that now merely equals the base
+branch's (the silent collision from #58), a bump rebased below the base branch,
+and an unparseable version. New plugins only need a valid version. Stdlib only,
+no dependencies.
 
 Usage (from the repo root; CI passes the PR's base SHA and the merge commit):
   python3 .github/scripts/check-plugin-versions <base-ref> <head-ref>

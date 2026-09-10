@@ -86,4 +86,4 @@ same PR** (semver: patch for fixes, minor for features) — otherwise the change
 latest version." `marketplace.json` carries no version; each plugin's own `plugin.json`
 is the source of truth. CI enforces this: the `plugin versions` check
 (`.github/workflows/plugin-versions.yml`) fails any PR whose touched plugin isn't at a
-strictly greater version than `main`.
+strictly greater version than the PR's base branch (normally `main`).
