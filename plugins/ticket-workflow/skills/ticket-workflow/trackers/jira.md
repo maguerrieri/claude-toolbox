@@ -55,7 +55,7 @@ Jira epics are first-class. `<EPIC-ID>` is the **key** (e.g. `ABC-40`), not a nu
   - company-managed: JQL `"Epic Link" = <EPIC-ID>`
   - team-managed / next-gen: JQL `parent = <EPIC-ID>`
   - The field name `"Epic Link"` contains a space, so it **must stay double-quoted inside the JQL**. Through the MCP tool that's just the param value; through a shell CLI, escape the inner quotes (e.g. `--jql '"Epic Link" = ABC-40'` with single-quotes, or `\"Epic Link\"`) or the field collapses to an invalid unquoted token.
-- Return `(key, summary, labels, components)` for each child — labels/components feed the EPIC coupling router (SKILL.md EPIC Step 3).
+- Return `(key, summary, labels, components)` for each child — labels/components feed the EPIC coupling router (`phases/epic.md` Step 3).
 - If MCP/CLI isn't wired, ask the user to paste the child keys.
 
 ## DEPS(id)  — intra-epic dependencies for a child (EPIC phase)
