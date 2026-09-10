@@ -48,12 +48,24 @@ def git(*args):
 
 
 def version_at(ref, plugin):
-    """Version string from plugin.json at <ref>, or None if the file doesn't exist there."""
+    """Version string from plugin.json at <ref>; None if the file doesn't exist there.
+
+    Malformed JSON or a missing `version` key comes back as a non-semver string so
+    the caller reports it as unparseable rather than skipping the plugin.
+    """
     manifest = f"plugins/{plugin}/.claude-plugin/plugin.json"
     result = subprocess.run(["git", "show", f"{ref}:{manifest}"], capture_output=True, text=True)
     if result.returncode != 0:
         return None
-    return str(json.loads(result.stdout).get("version"))
+    try:
+        return str(json.loads(result.stdout).get("version"))
+    except ValueError as exc:
+        return f"<malformed plugin.json: {exc}>"
+
+
+def exists_at(ref, plugin):
+    """True if plugins/<plugin>/ has any tracked file at <ref>."""
+    return bool(git("ls-tree", "-r", "--name-only", ref, "--", f"plugins/{plugin}/").strip())
 
 
 def main(argv):
@@ -66,7 +78,10 @@ def main(argv):
     for plugin in plugins:
         old, new = version_at(base, plugin), version_at(head, plugin)
         if new is None:
-            continue  # plugin removed (or has no manifest) at head: nothing to gate
+            if exists_at(head, plugin):
+                failures.append(f"{plugin}: plugin files changed but"
+                                " .claude-plugin/plugin.json is missing on head")
+            continue  # whole plugin removed on head: nothing to gate
         new_key = parse(new)
         if new_key is None:
             failures.append(f"{plugin}: head version {new!r} is not valid semver")
