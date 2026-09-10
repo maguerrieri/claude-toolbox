@@ -70,10 +70,20 @@ for a web user:
 
 Point at: the session's page on claude.ai/code (each row is openable there);
 `get_session(id)` for one child's status (use the ids you recorded at launch); or
-`list_sessions({mine: true})` filtered by the `<context> ` title prefix to see the
-whole fan-out. Don't pass `tags` to `list_sessions` from inside a session — the tool's
-contract reserves that filter for OAuth callers and errors otherwise; the `tags` you
-set at launch are for the user's own listings, not for yours.
+`list_sessions()` filtered to rows whose `parent_session_id` equals **your own id**
+(`$CLAUDE_CODE_REMOTE_SESSION_ID`) to see the whole fan-out. Every session created
+by `create_session` records its spawner there, so that filter is exact — unlike
+title, which the user can rename, or a `<context>` prefix, which collides across
+fan-outs.
+
+Two things about `list_sessions` that aren't obvious from its name:
+
+- `mine: true` scopes by **account**, not by spawner — it exists for shared bot
+  pools (Slack) and is a no-op on a personal account. It is not "sessions I
+  spawned"; `parent_session_id` is.
+- Don't pass `tags` from inside a session — the tool's contract reserves that
+  filter for OAuth callers and errors otherwise. The `tags` you set at launch are
+  for the user's own listings, not for yours.
 
 ## No wake-up channel on this edge
 
