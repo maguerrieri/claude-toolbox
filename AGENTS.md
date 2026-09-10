@@ -84,4 +84,6 @@ So **any PR that changes a plugin's behavior must bump that plugin's `version` i
 same PR** (semver: patch for fixes, minor for features) — otherwise the change lands on
 `main` but never reaches installs, and `/plugin` reports the plugin is "already at the
 latest version." `marketplace.json` carries no version; each plugin's own `plugin.json`
-is the source of truth.
+is the source of truth. CI enforces this: the `plugin versions` check
+(`.github/workflows/plugin-versions.yml`) fails any PR whose touched plugin isn't at a
+strictly greater version than `main`.
