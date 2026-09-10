@@ -149,7 +149,7 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   while making the hold's expiry explicit — so a later /finish-ticket in the same session reads as
   the sanctioned merge phase, not a violation of this cap. Keep the payload text free of
   backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
-  argument (`SKILL.md` SPAWN Step 3 / EPIC Step 5), where a backtick or `$` triggers shell substitution,
+  argument (`SKILL.md` SPAWN Step 3 / `phases/epic.md` Step 5), where a backtick or `$` triggers shell substitution,
   an unescaped double quote ends the argument early, and a backslash escapes the next character.
   (Single quotes and apostrophes inside the text are fine; the quotes wrapping the payload above are
   just this note's delimiters, not part of it.)

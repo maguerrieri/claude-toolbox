@@ -73,7 +73,7 @@ gh api graphql --paginate -f query='query($owner:String!,$repo:String!,$num:Int!
 - **Task-list / tracking issue:** the epic's body has a checklist that references child issues (`- [ ] #123`). Parse `#<n>` refs from the body — use `-q .body` so you get raw text, not a JSON object with escaped newlines: `gh issue view <n> --json body -q .body`.
 - **Shared label or milestone:** `gh issue list --label "epic:<name>" --json number,title,state,labels -L 500` (or `--milestone "<name>"`) — set `-L`/`--limit` explicitly; `gh issue list` defaults to **30**, which would silently cap a large epic.
 
-Return `(number, title, labels)` for each child — the labels feed the EPIC coupling router (SKILL.md EPIC Step 3). If none of these apply, ask the user for the child IDs.
+Return `(number, title, labels)` for each child — the labels feed the EPIC coupling router (`phases/epic.md` Step 3). If none of these apply, ask the user for the child IDs.
 
 ## DEPS(id)  — intra-epic dependencies for a child (EPIC phase)
 GitHub has no first-class issue dependencies, so derive them:

@@ -224,7 +224,7 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   cd <worktree_dir>/<branch> && git submodule update --init
   ```
 
-- **(b) Already checked out — `git branch --show-current` already prints `<branch>`** (a cloud session launched with `outcome_branch`, EPIC Step 5; or a resumed session): there is no worktree to add or enter. Stay in the clone on that branch, skip the `git worktree add` and `EnterWorktree` above, and run the same `SUBMODULES` step from the clone's own directory (`git submodule update --init` in `/path/to/<repo>`). Everywhere below, "the worktree" then means this clone, and FINISH Step 3's worktree removal is a no-op for it.
+- **(b) Already checked out — `git branch --show-current` already prints `<branch>`** (a cloud session launched with `outcome_branch`, EPIC Step 5; or a resumed session): there is no worktree to add or enter. Stay in the clone on that branch, skip the `git worktree add` and `EnterWorktree` above, and run the same `SUBMODULES` step from the clone's own directory (`git submodule update --init` in `/path/to/<repo>`). Everywhere below, "the worktree" then means this clone, and FINISH Step 3's worktree removal does not apply — skip it (there is nothing to remove; running it would error).
 
 ### Step 4 — Report the worktree path
 
@@ -341,7 +341,7 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ### Step 3 — Clean up the worktree
 
-Leave the worktree first (can't remove a worktree from inside it): if the session entered via the `EnterWorktree` tool, use `ExitWorktree`; otherwise `cd` back to the main repo as below. Then remove it (`--force` if it has submodules):
+If START Step 3 took its already-checked-out path (b) — the work happened in the clone itself, no worktree was created — **skip this step**: there is nothing to remove, and the command below would error. Otherwise leave the worktree first (can't remove a worktree from inside it): if the session entered via the `EnterWorktree` tool, use `ExitWorktree`; otherwise `cd` back to the main repo as below. Then remove it (`--force` if it has submodules):
 
 ```bash
 cd /path/to/<repo>
@@ -427,7 +427,7 @@ Print the inspect path your **backend** specifies — locally `claude agents` / 
 
 ## EPIC phase
 
-Take a whole **epic** (a parent issue with child tickets) and drive every child through START, **dependency-aware**: independent children run in parallel background sessions (like SPAWN); a child that depends on another is **stacked** on its parent's branch. The orchestrator enumerates the children (tracker `EPIC_CHILDREN` / `DEPS`), assesses coupling and picks an execution mode per cluster, assigns each child a deterministic `epic-<epic-id-lower>-<id-lower>` branch, spawns in dependency waves on whichever backend the `spawn` skill selects (local `claude --bg`, or cloud `create_session` with a **re-woken** rather than long-lived orchestrator), aggregates the resulting **stack of PRs** (grounded in PR state, registered as a native stack where the shape allows), and hands it back — or, only on an explicit finish flag, runs FINISH across the stack in dependency order. The phase is a superset of SPAWN and the biggest in this skill, so it lives in its own read-on-demand file (the same idiom as `trackers/`, `profiles/`, and `roles/`); every "EPIC Step N" reference elsewhere in this skill points into it, and its completion criteria live with it. **Read `phases/epic.md` now.**
+Take a whole **epic** (a parent issue with child tickets) and drive every child through START, **dependency-aware**: independent children run in parallel background sessions (like SPAWN); a child that depends on another is **stacked** on its parent's branch. The orchestrator enumerates the children (tracker `EPIC_CHILDREN` / `DEPS`), assesses coupling and picks an execution mode per cluster, assigns each child a deterministic `epic-<epic-id-lower>-<id-lower>` branch, spawns in dependency waves on whichever backend the `spawn` skill selects (local `claude --bg`, or cloud `create_session` with a **re-woken** rather than long-lived orchestrator), aggregates the resulting **stack of PRs** (grounded in PR state, registered as a native stack where the shape allows), and hands it back — or, only on an explicit finish flag, runs FINISH across the stack in dependency order. The phase is a superset of SPAWN and the biggest in this skill, so it lives in its own read-on-demand file (the same idiom as `trackers/`, `profiles/`, and `roles/`); read every "EPIC Step N" reference elsewhere in this skill and its adapter files as pointing into that file, and its completion criteria live with it. **Read `phases/epic.md` now.**
 
 ---
 
