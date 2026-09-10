@@ -9,8 +9,8 @@ than base's. It catches a missing bump, a bump that now merely equals main's
 (the silent collision from #58), a bump rebased below main, and an unparseable
 version. New plugins only need a valid version. Stdlib only, no dependencies.
 
-Usage:
-  check-plugin-versions <base-ref> <head-ref>
+Usage (from the repo root; CI passes the PR's base SHA and the merge commit):
+  python3 .github/scripts/check-plugin-versions <base-ref> <head-ref>
 Exit 0 if every touched plugin bumped; 1 (with FAIL lines) otherwise.
 """
 import json
@@ -18,7 +18,13 @@ import re
 import subprocess
 import sys
 
-SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
+# The official grammar from semver.org: no leading zeros in numeric identifiers,
+# no empty prerelease/build identifiers.
+SEMVER = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$"
+)
 
 
 def parse(version):
