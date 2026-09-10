@@ -25,14 +25,20 @@ concurrently. Prompts travel as JSON, so none of the local backend's shell-quoti
 hazards apply — pass the prompt verbatim, `$` and backticks and all.
 
 ```
-create_session({"prompt": "<prompt>", "title": "<context> <desc>", "tags": ["spawn:<context>"], "source_url": "<repo clone URL>", "source_revision": "<base branch>"})
+create_session({"prompt": "<prompt>", "title": "<context> <desc>", "source_url": "<repo clone URL>"})
 ```
 
-Those five fields: `prompt` is the caller's instruction **verbatim**; `title` follows the same
-`<context> <desc>` convention as the local backend; `tags` makes the whole fan-out
-listable as a set afterwards; `source_url` is the repo to check out (**required** —
-see below); and `source_revision` is the base branch, omitted only when the repo's
-default branch is the right base.
+Those three are the required core: `prompt` is the caller's instruction **verbatim**;
+`title` follows the same `<context> <desc>` convention as the local backend;
+`source_url` is the repo to check out (**required** — see below).
+
+Two optional fields, added only when they apply:
+
+- `source_revision: "<base branch>"` — when the caller pinned a base other than the
+  repo's default branch.
+- `tags: ["spawn:<context>"]` — metadata for the **user's** own session listings.
+  It is not how *you* find the fan-out afterwards (see Report: `parent_session_id`),
+  and you can't filter on it from inside a session.
 
 **`source_url` is not optional.** Omitting `environment_id` inherits the spawner's
 *environment*, but **not its git source** — a child spawned without `source_url`
