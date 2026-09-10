@@ -206,21 +206,25 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 
 **Location.** Default: **under the repo's `.claude/worktrees/` directory** (`<worktree_dir>` = `[repo]/.claude/worktrees`). Claude Code prompts for manual approval whenever a session enters a worktree outside that directory, and the prompt is **not suppressible** by any permission rule or setting (only `bypassPermissions` skips it) — so the old sibling-of-the-repo layout stalls every unattended/spawned session. To override the default, put a `Worktree dir: <path>` line where Step 0 looks for `Tracker:`/`Profile:` (project memory wins over the repo `CLAUDE.md`); the path is absolute, `~`-prefixed, or relative to the repo root (e.g. `Worktree dir: ../worktrees` for a sibling layout). Overriding to anywhere outside `.claude/worktrees/` brings the approval prompt back, so only do it for repos worked interactively or under `bypassPermissions`. Use the resolved `<worktree_dir>` everywhere below and in FINISH Step 3.
 
-Branch named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes). If that branch is **already checked out** in the session's clone (`git branch --show-current` equals it — a cloud session launched with `outcome_branch`, EPIC Step 5), there is nothing to add: work in the clone on that branch and skip the worktree commands below.
+Branch named via the adapter's `BRANCH` — **unless** the briefing/arguments supply an explicit `Worktree:` directive (e.g. from the EPIC orchestrator, which assigns deterministic branch names so it can stack and poll on them exactly), in which case use that exact name for `<branch>` (a single whitespace-delimited token — distinct from `Base branch:`, which Step 2 consumes).
 
-```bash
-cd /path/to/<repo>
-git fetch origin <base_branch>
-git worktree add <worktree_dir>/<branch> -b <branch> origin/<base_branch>
-```
+Two paths from here; pick by whether `<branch>` is already checked out:
 
-Then, if the harness provides the **`EnterWorktree` tool**, switch the session into it with `EnterWorktree(path: <worktree_dir>/<branch>)` — the `path` form, so the branch name stays exactly `<branch>` (the `name` form invents its own `worktree-…` branch name, which would break a `Worktree:` directive's deterministic naming). No `EnterWorktree` tool → just `cd` into the worktree; the location under `.claude/worktrees/` is what avoids the approval prompt either way.
+- **(a) Normal — `<branch>` does not exist yet:** create the worktree, enter it, then init submodules:
 
-Then run the profile's `SUBMODULES` step. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
+  ```bash
+  cd /path/to/<repo>
+  git fetch origin <base_branch>
+  git worktree add <worktree_dir>/<branch> -b <branch> origin/<base_branch>
+  ```
 
-```bash
-cd <worktree_dir>/<branch> && git submodule update --init
-```
+  Then, if the harness provides the **`EnterWorktree` tool**, switch the session into it with `EnterWorktree(path: <worktree_dir>/<branch>)` — the `path` form, so the branch name stays exactly `<branch>` (the `name` form invents its own `worktree-…` branch name, which would break a `Worktree:` directive's deterministic naming). No `EnterWorktree` tool → just `cd` into the worktree; the location under `.claude/worktrees/` is what avoids the approval prompt either way. Then run the profile's `SUBMODULES` step in the worktree. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
+
+  ```bash
+  cd <worktree_dir>/<branch> && git submodule update --init
+  ```
+
+- **(b) Already checked out — `git branch --show-current` already prints `<branch>`** (a cloud session launched with `outcome_branch`, EPIC Step 5; or a resumed session): there is no worktree to add or enter. Stay in the clone on that branch, skip the `git worktree add` and `EnterWorktree` above, and run the same `SUBMODULES` step from the clone's own directory (`git submodule update --init` in `/path/to/<repo>`). Everywhere below, "the worktree" then means this clone, and FINISH Step 3's worktree removal is a no-op for it.
 
 ### Step 4 — Report the worktree path
 
