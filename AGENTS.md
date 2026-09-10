@@ -56,24 +56,26 @@ Use a task-specific name such as `file_path` instead.
 
 ## SKILL.md size — when to split phases into their own files
 
-ticket-workflow's `SKILL.md` deliberately stays a **single file** (~540 lines as of
-#45 — over the ~500 marker, but that trigger is for *phase-sized* additions): the
-phases cross-reference each other's steps by number (EPIC → START Steps 2/3/7,
-FINISH's gate → START Step 6), and one file keeps full-context reads the
-default — splitting reintroduces the #22 bypass failure in a new form (skim the
-index, skip the phase file). Don't split preemptively. Split phases into
-read-on-demand `phases/*.md` (the same read-on-demand idiom as `trackers/`,
-`profiles/`, and `roles/`) when one of these fires:
+ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~430
+lines as of #79): the phases cross-reference each other's steps by number (EPIC →
+START Steps 2/3/7, FINISH's gate → START Step 6), and one file keeps full-context
+reads the default — splitting reintroduces the #22 bypass failure in a new form
+(skim the index, skip the phase file). **EPIC is the one phase already split
+out** (`phases/epic.md`, done in #79 when its cloud port made it phase-sized):
+`SKILL.md` carries a one-paragraph index for it ending "Read `phases/epic.md`
+now", and the phase file carries its own completion checklist. Don't split
+another phase preemptively. Split it into a read-on-demand `phases/<phase>.md`
+(the same read-on-demand idiom as `trackers/`, `profiles/`, and `roles/`) when
+one of these fires:
 
 - a phase-sized addition (e.g. a `--epic` variant of `/make-ticket`, a sixth
-  phase) pushes it past ~500 lines — split as part of that PR, not as a
+  phase) pushes `SKILL.md` past ~500 lines — split as part of that PR, not as a
   standalone refactor;
 - two concurrent tickets produce a merge conflict in `SKILL.md`;
 - wording micro-tests show agents missing steps mid-file.
 
-Extract **EPIC first** — biggest, most self-contained, least invoked. Whatever
-splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0, and a
-one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
+Whatever splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0,
+and a one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
 completion-criteria checklists move with their phase.
 
 ## Releasing (version bumps)
