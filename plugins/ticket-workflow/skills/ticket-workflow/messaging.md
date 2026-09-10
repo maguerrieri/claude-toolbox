@@ -84,7 +84,7 @@ the PR/tracker before acting.
   session, its siblings are separate cloud sessions (the `spawn` skill's
   `backends/cloud.md`) and this channel does not reach them **in either
   direction**: `ListAgents` does not list a live, connected cloud sibling, and a
-  send addressed to one comes back unreachable. So a cloud spawn edge carries
+  `SendMessage` addressed to one comes back unreachable. So a cloud spawn edge carries
   **no** `Notify:` directive, and its spawner polls — PR/tracker state, plus
   `get_session` for whether a child is still running. This is the degrade-to-poll
   case above, not a reduced-messaging one: there is nothing to arm and nothing
