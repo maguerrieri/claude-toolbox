@@ -1,0 +1,18 @@
+name: plugin versions
+
+# Runs on every PR (no path filter on purpose): the point is catching plugins
+# that changed without touching plugin.json. Incomplete without branch
+# protection's "Require branches to be up to date before merging" on main --
+# otherwise main can land the same version after this check went green.
+on:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Every touched plugin bumps version above base
+        run: python3 .github/scripts/check-plugin-versions "${{ github.event.pull_request.base.sha }}" HEAD

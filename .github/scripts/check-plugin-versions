@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Fail when a plugin changed in a PR without its version rising above the base.
+
+Installs are version-gated (AGENTS.md -> Releasing): a plugin's new files reach
+installs only when `version` in `plugins/<name>/.claude-plugin/plugin.json`
+increases. This check enforces that for every plugin with any file differing
+between BASE and HEAD: head's version must be a strictly greater valid semver
+than base's. It catches a missing bump, a bump that now merely equals main's
+(the silent collision from #58), a bump rebased below main, and an unparseable
+version. New plugins only need a valid version. Stdlib only, no dependencies.
+
+Usage:
+  check-plugin-versions <base-ref> <head-ref>
+Exit 0 if every touched plugin bumped; 1 (with FAIL lines) otherwise.
+"""
+import json
+import re
+import subprocess
+import sys
+
+SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
+
+
+def parse(version):
+    """Return a sortable tuple for a semver string, or None if unparseable."""
+    match = SEMVER.match(version or "")
+    if not match:
+        return None
+    major, minor, patch, pre = match.groups()
+    # A release sorts above any prerelease of the same core; identifiers compare
+    # numerically when all-digit, else as strings (numeric < alphanumeric).
+    pre_key = (
+        (1,)
+        if pre is None
+        else (0,) + tuple((0, int(p)) if p.isdigit() else (1, p) for p in pre.split("."))
+    )
+    return (int(major), int(minor), int(patch), pre_key)
+
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+
+
+def version_at(ref, plugin):
+    """Version string from plugin.json at <ref>, or None if the file doesn't exist there."""
+    manifest = f"plugins/{plugin}/.claude-plugin/plugin.json"
+    result = subprocess.run(["git", "show", f"{ref}:{manifest}"], capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    return str(json.loads(result.stdout).get("version"))
+
+
+def main(argv):
+    if len(argv) != 3:
+        sys.exit(__doc__)
+    base, head = argv[1], argv[2]
+    changed = git("diff", "--name-only", base, head, "--", "plugins/").split()
+    plugins = sorted({f.split("/")[1] for f in changed if f.count("/") >= 2})
+    failures = []
+    for plugin in plugins:
+        old, new = version_at(base, plugin), version_at(head, plugin)
+        if new is None:
+            continue  # plugin removed (or has no manifest) at head: nothing to gate
+        new_key = parse(new)
+        if new_key is None:
+            failures.append(f"{plugin}: head version {new!r} is not valid semver")
+        elif old is None:
+            print(f"ok   {plugin}: new plugin at {new}")
+        elif parse(old) is None:
+            failures.append(f"{plugin}: base version {old!r} is not valid semver")
+        elif new_key == parse(old):
+            failures.append(f"{plugin}: head version {new} equals base's"
+                            " -- missing bump, or the base branch already landed that number")
+        elif new_key < parse(old):
+            failures.append(f"{plugin}: head version {new} is below base's {old}"
+                            " -- rebased over a newer base without re-bumping?")
+        else:
+            print(f"ok   {plugin}: {old} -> {new}")
+    if not plugins:
+        print("ok   no plugin touched")
+    for failure in failures:
+        print(f"FAIL {failure}")
+    if failures:
+        print("Installs are version-gated: bump `version` in plugins/<name>/.claude-plugin/plugin.json"
+              " above the base branch's (see AGENTS.md -> Releasing).")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
