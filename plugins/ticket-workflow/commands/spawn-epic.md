@@ -24,7 +24,12 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
    **Cloud** — one `create_session` call; the prompt travels as JSON, so no shell quoting applies. No `outcome_branch` (the orchestrator pushes no branch of its own — its children get theirs from the EPIC phase's Step 5) and no `Notify:` (no cross-session channel on cloud). `source_revision` only when the briefing pins a base branch; `source_url` always (`git remote get-url origin`):
 
 ```
-create_session({"prompt": "/start-epic $ARGUMENTS\nRole: epic-coordinator", "title": "<repo> <epic-id>: epic — <quick description>", "source_url": "<repo clone URL>"})
+create_session({
+  "prompt": "/start-epic $ARGUMENTS\nRole: epic-coordinator",
+  "title": "<repo> <epic-id>: epic — <quick description>",
+  "source_url": "<repo clone URL>",
+  "source_revision": "<base branch — include this line only when the briefing pins one; omit it otherwise>"
+})
 ```
 
    Mind `backends/cloud.md`'s slash-command caveat: a prompt that *begins* with `/start-epic` is dispatched as a command before the model runs, and an environment where the plugin isn't installed rejects the launch ("Unknown command"). The child inherits your environment, so if *you* reached this command as a slash command the prompt above is right; if you are following this file because the command wasn't there, open the prompt with prose instead — `Run the epic <epic-id>. Read <path>/plugins/ticket-workflow/skills/ticket-workflow/SKILL.md and its phases/epic.md and follow the EPIC phase for: $ARGUMENTS` — then the `Role: epic-coordinator` line.

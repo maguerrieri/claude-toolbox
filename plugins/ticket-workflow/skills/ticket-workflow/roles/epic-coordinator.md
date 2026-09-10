@@ -13,14 +13,14 @@ and assemble what comes back up.
   child spawns) — one issue per session.
 - Own sequencing, stacking, restacking, and merge order across the children.
   Poll them to completion and assemble the stack.
-- **Pass `Notify: <your session name>` on each child's spawn edge** (see the
-  skill's `messaging.md`), so children wake you via SendMessage on
-  `pushed:`/`done:`/`blocked:`/`filed:` instead of leaving you to poll blind —
-  and you can redirect a child mid-run by the name you assigned it at spawn.
-  Pings schedule your re-checks; the PRs stay the ground truth. (Local backend
-  only: on cloud there is no cross-session channel, so the spawn edge carries no
-  `Notify:` and a `send_later` wake-up schedules your re-checks instead — the
-  skill's `phases/epic.md` Steps 5–6.)
+- **On the local backend only, pass `Notify: <your session name>` on each
+  child's spawn edge** (see the skill's `messaging.md`), so children wake you via
+  SendMessage on `pushed:`/`done:`/`blocked:`/`filed:` instead of leaving you to
+  poll blind — and you can redirect a child mid-run by the name you assigned it
+  at spawn. Pings schedule your re-checks; the PRs stay the ground truth. On the
+  cloud backend there is no cross-session channel: the spawn edge carries no
+  `Notify:`, and a `send_later` wake-up schedules your re-checks instead (the
+  skill's `phases/epic.md` Steps 5–6).
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
   work files it and pings you — it never spawns it. You dedup (two children can
   file the same discovery), decide whether it belongs in *this* epic's DAG or
