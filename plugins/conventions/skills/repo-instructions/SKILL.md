@@ -78,11 +78,12 @@ sessions and in cloud sessions (verified on Claude Code 2.1.268; headless
 `claude -p`/SDK runs install nothing from project settings and are out of
 scope here):
 
-- **List a meta-plugin's dependencies next to it.** The install that project
-  settings trigger on the trust prompt does not resolve a plugin's
-  `dependencies`, so a bundle plugin enabled alone ends up disabled
-  (`dependency-unsatisfied`) and loads nothing. Enable the bundle *and* each
-  plugin it depends on.
+- **List every enabled plugin's dependencies next to it.** The install that
+  project settings trigger on the trust prompt does not resolve any plugin's
+  `dependencies`, so a plugin enabled without them ends up disabled
+  (`dependency-unsatisfied`) and loads nothing: a bundle plugin without the
+  plugins it bundles, or a single plugin without the one it builds on. Enable
+  each plugin *and* everything its manifest depends on.
 - **Install from a SessionStart hook for cloud sessions.** Cloud sessions honor
   repo-declared hooks but skip repo-declared plugins ("enabled only by
   repo-authored settings"), and headless runs (`claude -p`, the SDK) install
@@ -103,6 +104,7 @@ scope here):
     "hooks": {
       "SessionStart": [
         {
+          "matcher": "startup|resume",
           "hooks": [
             {
               "type": "command",
