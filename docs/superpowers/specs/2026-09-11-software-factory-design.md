@@ -244,7 +244,7 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 
 | Ruleset | Rules | Bypass actors |
 |---|---|---|
-| `main-integrity` | require PR; **require the `ci-gate` workflow to pass** (the ruleset's *Require workflows to pass* rule, bound to `.github/workflows/ci-gate.yml` on `main` in this repository — not a status-check *name*, which a PR-added `pull_request` workflow could publish under the same `github-actions` app); **require branches to be up to date before merging**; block force-push and deletion | none |
+| `main-integrity` | require PR; **require the `factory/ci-gate` check to pass**, bound to its *source* and not only its name: on personal repos, a **required status check** whose *source* is pinned to a dedicated `factory-ci` GitHub App (the ruleset's per-check "source" selector; the check is posted by `ci-gate`'s base-branch workflow with a `factory-ci` installation token, never by `github-actions`, so a PR-added `pull_request` workflow publishing the same name under the `github-actions` app does not satisfy it); on organization repos the ruleset may *additionally* use *Require workflows to pass* bound to `.github/workflows/ci-gate.yml` on `main`, which GitHub offers only at organization and enterprise scope, not on personal repos; **require branches to be up to date before merging**; block force-push and deletion | none |
 
 **Organization repos.** The same design applies to repos under the user's
 organization (`sprue.works`), with two differences the plan must budget
@@ -316,6 +316,27 @@ reports `success` only when every expected run exists and succeeded,
 expected but has not started yet keeps the gate pending, never green. It
 is the one check `main-integrity` requires, and it guarantees the
 "non-empty check set" rule in 1b and 3b always has a member.
+**How the check is bound on a personal repo.** *Require workflows to
+pass* is an organization/enterprise ruleset rule; personal repos only get
+*Require status checks to pass*, which matches on check **name** plus an
+optional **source** app. A name alone is spoofable (a PR-added
+`pull_request` workflow can post any name under `github-actions`), so
+`ci-gate` never posts its verdict with `GITHUB_TOKEN`. Instead its
+base-branch (`pull_request_target` / `workflow_run`) run has a secretless
+evaluate job and a `report` job bound to a `factory-ci` deployment
+environment (restricted to `main`, like `factory-merge` in 3b) that mints
+an installation token for a dedicated, minimal `factory-ci` GitHub App
+(`checks: write` only) and posts `factory/ci-gate` as that App. The
+ruleset requires `factory/ci-gate` **from `factory-ci`**, so nothing
+posted by `github-actions` — or by any other app — can satisfy it. On
+organization repos the same binding works and *Require workflows to pass*
+may be layered on top. Two things item 4 verifies before rollout, since the
+docs describe the selector but not these edge cases: that a same-name check
+from a second source is ignored rather than merged into the required one,
+and that a check the App posts on a `pull_request_target` head SHA is the
+one the ruleset evaluates. If either fails, item 4 falls back to requiring
+the check from the `factory-auto-merge` App of 3b (one App, two checks)
+rather than to a name-only binding.
 What `ci-gate` cannot do is make PR-authored CI trustworthy: build and test
 workflows run from the PR's own YAML, so a PR can weaken its own tests.
 That is the ordinary state of in-repo CI and is covered by human review for
@@ -378,11 +399,14 @@ security control", `hooks/role-guard.sh`) and stays that way. Add the block
 to `toolbox/.claude/settings.json` (currently absent) and extend
 `claude-toolbox/.claude/settings.json`.
 
-**2b. Two cloud environments** (manual, one-time, personal account):
+**2b. Two cloud environment tiers** (manual, one-time, personal account;
+the implementer tier is one environment per factory repo once 2d's token
+broker lands, because each carries a broker credential bound to exactly one
+repo — until then a single `factory-implementer` serves all repos):
 
 | Environment | Network | Setup script |
 |---|---|---|
-| `factory-implementer` | Trusted + the hosts a project needs (GCP APIs for log reading) | see below |
+| `factory-implementer-<repo>` (one per factory repo) | Trusted + the hosts a project needs (GCP APIs for log reading, the token broker) | see below |
 | `factory-coordinator` | None beyond GitHub + Anthropic | none |
 
 The setup script body lives in git, but the environment must never execute
@@ -492,7 +516,7 @@ exist:
   cloud backend below, which passes `environment_id` explicitly from
   `origin/main`, and (b) the web/Desktop environment picker, which is
   user-owned UI. The user's own `/remote-env` default is set to
-  `factory-implementer` for convenience only. Two controls make drift
+  one implementer environment for convenience only. Two controls make drift
   visible: `ci-gate` (1d) fails any PR that introduces a `remote.*` key
   under `.claude/settings.json`, so the override cannot reach `main`; and
   `cloud-setup.sh` logs `PROJECT remote.* OVERRIDE PRESENT` when the
@@ -622,24 +646,45 @@ pushing actor is the user too. Therefore:
    anywhere. That removes the machine user from the plan entirely: no
    second account, no collaborator invite, no per-org seat.
 
-   *Mechanism per tier:* the App ID and private key live in the
-   `factory-implementer` environment as environment variables; the
-   session mints a short-lived installation token for the current repo's
-   installation at start (`cloud-setup.sh` is the wrong place — it is
-   cached — so a small `factory-token` helper runs on demand and caches
-   for the token's lifetime) and exports it as `GH_TOKEN`. The docs state
-   a token set this way "passes through to the container unchanged, so
-   your scripts and GitHub's `gh` CLI use it directly", so `gh pr create`
-   authors the PR as `<slug>[bot]` while coordinator and interactive
-   sessions keep the user's identity; git pushes still go through the
-   proxy as the user unless the session runs `gh auth setup-git` with the
-   minted token. The private key is an ordinary environment variable
-   readable by any branch's hooks, exactly like a PAT would be — under
-   2a's credential rule that exposure is acceptable because the App can
-   do nothing on `main` the rulesets don't already gate, its permissions
-   are the two writes above, and each minted token expires within an
-   hour; the key can also be rotated from the App settings without
-   touching any account.
+   *Mechanism per tier — the signing key never enters a session.* An
+   App private key in a VM environment variable would let any PR branch's
+   hooks mint tokens for **every** installation of the App (org and
+   personal, every repo), so the key is held only by a **token broker**:
+   a small Cloud Run service in the `toolbox` GCP project that stores the
+   key in Secret Manager and exposes one endpoint, *mint a token for the
+   repository this caller is bound to*. It is reached through the
+   environment's **API credentials** feature (the same mechanism 2a uses
+   for read-only service keys): the agent proxy attaches a per-environment
+   bearer to requests for the broker's host *after they leave the VM*, so
+   the session holds neither the App key nor the bearer. The broker maps
+   each bearer to **exactly one repository** and mints an installation
+   token with `repositories: [<that repo>]` and the App's two permissions
+   (`contents: write`, `pull_requests: write`), expiring in at most an
+   hour. Because a bearer is bound to one repo, the implementer tier
+   becomes **one environment per factory repo** —
+   `factory-implementer-toolbox`, `factory-implementer-claude-toolbox`,
+   `factory-implementer-<org-repo>` — differing only in that one API
+   credential; 2c's `Environment:` resolution picks the environment for
+   the repo being worked (the AGENTS.md block lists the repo's own IDs).
+   A `factory-token` helper in the plugin calls the broker on demand and
+   caches for the token's lifetime, exporting it as `GH_TOKEN` (the docs
+   state a token set this way "passes through to the container unchanged,
+   so your scripts and GitHub's `gh` CLI use it directly"), so `gh pr
+   create` authors the PR as `<slug>[bot]` while coordinator and
+   interactive sessions keep the user's identity; git pushes still go
+   through the proxy as the user unless the session runs `gh auth
+   setup-git` with the minted token. What a compromised branch can now do
+   is what the token can do: write to non-protected branches and PRs of
+   **its own repo** for an hour — nothing on `main` the rulesets don't
+   already gate, and nothing in any other repo. Isolation test (item 8b):
+   from a session in `factory-implementer-<A>`, attempt to obtain a token
+   for repo B by calling the broker directly with any repository
+   parameter, by replaying the helper, and by reading the environment;
+   every path must yield only an A-scoped token or nothing, and a token
+   minted for A must be rejected by the API for B. The broker is
+   Terraform-managed alongside the MCP services, its bearers are rotated
+   from the environment page, and the App key is rotated from the App
+   settings without touching any account.
 
    *Alternatives kept for the record:* (a) a **machine user** with a
    fine-grained PAT as `GH_TOKEN` — same mechanics, but a second account
@@ -1184,17 +1229,17 @@ must cite both numbers and the independent signal the new class relies on
 | 1 | Evidence block (JSON contract) in START PR template | 1a | — |
 | 2 | `check-evidence.sh <pr> <issue>` FINISH gate (all checks, threads, exact closing reference, one known risk label, current-approval state for high risk, block validation with types) + tests; Step 0 refuses non-GitHub trackers. Lands in two PRs: script + tests first, then the FINISH wiring | 1b | 1, 3 |
 | 3 | `--risk` flag (default `normal`), `required_labels` in `CREATE`, provisioning of the four `risk:*` labels **and** `auto-merge: requested`, one-time `risk:normal` backfill of open issues | 1c | — |
-| 4 | `ci-gate` aggregate workflow in both repos; assert `main` is the default branch; rulesets `main-integrity` (requiring the `ci-gate` **workflow** by file, up-to-date branches) and `agent-branches`; record JSON in this spec | 1d | — |
+| 4 | `ci-gate` aggregate workflow in both repos, posting `factory/ci-gate` as the `factory-ci` App from a `main`-only `factory-ci` deployment environment; assert `main` is the default branch; rulesets `main-integrity` (required status check `factory/ci-gate` **pinned to the `factory-ci` source**; *Require workflows to pass* layered on org repos only; up-to-date branches) and `agent-branches`; verify the same-name-second-source and `pull_request_target`-head-SHA behaviours before rollout; record JSON in this spec | 1d | — |
 | 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed **and is the factory's standard implementer launcher** (8b landed and in use), so ordinary factory PRs are not blocked | 1d | 8, 8b |
 | 5 | Repo `permissions` blocks | 2a | — |
-| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
+| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; one coordinator environment plus one implementer environment **per factory repo** (each carrying only its own broker API credential); user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
-| 8 | Spike: a distinct PR author on both the personal account and the org. Leading candidate: one org-owned public GitHub App installed on both, with a `factory-token` helper minting installation tokens into `GH_TOKEN` on `factory-implementer`; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by `<slug>[bot]` (or `claude[bot]`) on one personal and one org repo, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on. **Security exit criteria for the Action variant**, since a GitHub-hosted runner has none of 2b's boundaries: workflow `GITHUB_TOKEN` permissions limited to `contents: write`, `pull-requests: write`; the Anthropic key in a `main`-only deployment environment; the model step tool-restricted and network-sandboxed per 3a's container pattern; the issue body and briefing passed as delimited data; egress and tool tests as in item 10 — otherwise the App-on-cloud path (which keeps 2b) wins by default | 2d | — |
-| 8b | Whichever the spike picks: either the App setup (App registration, both installations, key in the implementer environment, `factory-token` helper, optional `gh auth setup-git`), or a `spawn` backend `action` firing `repository_dispatch` with `{issue, briefing, tier}` into a `factory-implement` workflow running the Claude Code Action in automation mode | 2d | 8 |
+| 8 | Spike: a distinct PR author on both the personal account and the org. Leading candidate: one org-owned public GitHub App installed on both, tokens minted by a token broker outside the VM (key never in a session) and exported as `GH_TOKEN` by a `factory-token` helper; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by `<slug>[bot]` (or `claude[bot]`) on one personal and one org repo, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on. **Security exit criteria for the Action variant**, since a GitHub-hosted runner has none of 2b's boundaries: workflow `GITHUB_TOKEN` permissions limited to `contents: write`, `pull-requests: write`; the Anthropic key in a `main`-only deployment environment; the model step tool-restricted and network-sandboxed per 3a's container pattern; the issue body and briefing passed as delimited data; egress and tool tests as in item 10 — otherwise the App-on-cloud path (which keeps 2b) wins by default | 2d | — |
+| 8b | Whichever the spike picks: either the App setup (App registration, both installations, Terraform-managed Cloud Run token broker holding the key in Secret Manager and minting `repositories: [repo]`-scoped tokens, one bearer per implementer environment mapped to exactly one repo, `factory-token` helper, optional `gh auth setup-git`, and the cross-repo isolation test: a repo-A session cannot obtain a repo-B token even bypassing the helper), or a `spawn` backend `action` firing `repository_dispatch` with `{issue, briefing, tier}` into a `factory-implement` workflow running the Claude Code Action in automation mode | 2d | 8 |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`, verified by workflow path + `pull_request_target` event) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 3, 4 |
-| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; resolves `workflow_run` targets from a `factory-target.json` artifact; sweep merges as a matrix); `ci-gate` as a `workflow_run`-driven aggregator with revert-marker validation and `factory/revert-of` snapshot; `inert-paths` composite action pinned by SHA | 3b | 1, 2, 3, 4, 10 |
+| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment (same App-posts-check pattern as item 4's `factory-ci`) + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; resolves `workflow_run` targets from a `factory-target.json` artifact; sweep merges as a matrix); `ci-gate` as a `workflow_run`-driven aggregator with revert-marker validation and `factory/revert-of` snapshot; `inert-paths` composite action pinned by SHA | 3b | 1, 2, 3, 4, 10 |
 | 11b | `factory-shadow` workflow (`pull_request_target: closed` on `main`, merged only, `checks: write` only) with per-class candidate predicates in the policy file; posts `mode: shadow` records for every merged PR of a shadow class | 3c | 11 |
 | 12 | Metrics routine (keyed by `factory/merge-record`, reconciling enrolled merges against records, unattributed reverts, and shadow samples per class) | 3c | 1, 11, 11b |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
