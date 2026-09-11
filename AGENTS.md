@@ -79,16 +79,23 @@ verified on Claude Code 2.1.268:
   the individually listed plugins alike, and the same for the `superpowers`
   entry. Interactive terminal sessions and `claude --bg` do install them.
 - **Cloud sessions (Claude Code on the web) get nothing from these settings.**
-  Two throwaway cloud sessions on this branch ended with only
-  `claude-plugins-official` in `known_marketplaces.json` and no plugins
-  installed: the container never trusts the folder, so the project-level
-  `extraKnownMarketplaces` isn't registered at all, and the headless install
-  wouldn't install the plugins anyway (previous bullet). Until that changes, a
-  cloud session reads the skill files by hand, and a child launched with a
-  leading `/start-ticket` is rejected (`plugins/spawn/skills/spawn/backends/cloud.md`).
-  The workaround lives in the cloud environment's setup script, not in this repo:
-  `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
-  (that path does resolve dependencies).
+  The cloud launcher runs Claude Code in SDK mode with the folder untrusted, and
+  its startup log says why the plugins never arrive: `Skipped auto-recording
+  <plugin> — enabled only by repo-authored settings`. That's a consent policy,
+  not a bug in this config: a cloned repo can't install code on its own. (The
+  cloud-environments doc's claim that project-declared plugins install at session
+  start didn't hold on 2.1.268; three throwaway cloud sessions on this branch
+  ended with no marketplace and no plugins.) Until that changes, a cloud session
+  reads the skill files by hand, and a child launched with a leading
+  `/start-ticket` is rejected (`plugins/spawn/skills/spawn/backends/cloud.md`).
+  Two sanctioned workarounds, both outside this repo:
+  - enable the marketplace on your claude.ai account (Customize › Plugins › Add
+    marketplace › from a repository, `maguerrieri/claude-toolbox`); cloud
+    sessions download account-enabled plugins and load them as `<name>@synced`
+    with no trust dialog (hooks may not run there);
+  - or add `claude plugin marketplace add maguerrieri/claude-toolbox && claude
+    plugin install defaults@maguerrieri-toolbox` to the cloud environment's
+    setup script (that path does resolve dependencies).
 
 ## Shell: zsh special parameters
 

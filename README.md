@@ -2,7 +2,9 @@
 
 Portable coding-agent conventions and Claude Code workflows, packaged as a
 [Claude-compatible plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
-One repo, declared per-project, works in local and cloud sessions alike.
+One repo, declared per-project for local sessions; cloud sessions load it
+once the marketplace is enabled on your claude.ai account or installed by the
+environment's setup script (see [Usage](#usage)).
 
 ## Plugins
 
@@ -63,13 +65,18 @@ List the dependencies out, not just `defaults`: the install that project
 settings trigger on trust caches `defaults` but does not resolve its
 `dependencies`, so on its own it ends up disabled (`dependency-unsatisfied`)
 and nothing loads (verified on Claude Code 2.1.268). Drop what you don't want
-for an à la carte pick. Headless sessions (`claude -p`, the SDK) register the
-marketplace but install nothing from `enabledPlugins`; see the repo's
-`AGENTS.md` for the details.
+for an à la carte pick. Two surfaces get nothing from these settings: headless
+sessions (`claude -p`, the SDK) register the marketplace but install nothing
+from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
+repo-authored plugin settings entirely. For cloud sessions, either enable the
+marketplace on your claude.ai account (Customize › Plugins › Add marketplace ›
+from a repository) so its plugins sync into every cloud session, or put the
+user-wide install below in the cloud environment's setup script. Details in the
+repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
-— that path does resolve `defaults`' dependencies, so one install pulls in
-every plugin above.
+— that path does resolve `defaults`' dependencies, so one install pulls in the
+five default plugins (`gm` isn't a `defaults` dependency; install it separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these
