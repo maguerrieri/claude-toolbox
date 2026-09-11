@@ -41,10 +41,13 @@ budget_re='^Budget: wall_clock_min=[0-9]+ review_rounds=[0-9]+$'
 overrun_re='budget_exceeded: (wall_clock_min|review_rounds) [0-9]+ of [0-9]+'
 
 # --- 1. the SPAWN_CAP payload ------------------------------------------------
-# The payload is the text between the first pair of double quotes in the
-# profile's `## SPAWN_CAP` section (the quotes are the note's delimiters, not
-# part of the payload). Lines are joined with spaces, as the spawn command's
-# single double-quoted argument would carry them.
+# The payload is the text between the pair of double quotes in the first
+# bullet of the profile's `## SPAWN_CAP` section (the quotes are the note's
+# delimiters, not part of the payload). That bullet must hold exactly those
+# two quotes — a third would be a quote *inside* the payload, which the
+# extraction below could not tell from the closing delimiter. Lines are
+# joined with spaces, as the spawn command's single double-quoted argument
+# would carry them.
 section_text() { # <file> <heading regex>: the section body up to the next `## `
 	awk -v heading="$2" '
 		!inside && $0 ~ heading { inside = 1; next }
@@ -52,7 +55,9 @@ section_text() { # <file> <heading regex>: the section body up to the next `## `
 		inside { print }
 	' "$1"
 }
-payload=$(section_text "$profile" '^## SPAWN_CAP[[:space:]]*$' | tr '\n' ' ' | sed -E 's/^[^"]*"//; s/".*$//; s/  +/ /g; s/ $//')
+cap_bullet=$(section_text "$profile" '^## SPAWN_CAP[[:space:]]*$' | awk 'NR > 1 && /^- / { exit } { print }')
+assert "SPAWN_CAP: the payload bullet holds exactly one pair of delimiting quotes" test "$(grep -o '"' <<<"$cap_bullet" | wc -l)" -eq 2
+payload=$(tr '\n' ' ' <<<"$cap_bullet" | sed -E 's/^[^"]*"//; s/".*$//; s/  +/ /g; s/ $//')
 assert "SPAWN_CAP: extracted a payload" test -n "$payload"
 refute "SPAWN_CAP payload: no backtick, double quote, \$, or backslash" grep -q '[`"$\\]' <<<"$payload"
 budget_line=$(grep -Eo 'Budget: [^"]*$' <<<"$payload" || true)
@@ -103,7 +108,7 @@ assert "SKILL.md START Step 8 carries the budget check" grep -q 'Budget check' <
 assert "SKILL.md START Step 7 documents the budget_exceeded clause" grep -q 'budget_exceeded' <<<"$start_text"
 assert "SKILL.md START opt-outs list the budget stop" grep -q 'Budget exhausted' <<<"$start_text"
 assert "SKILL.md SPAWN Step 2 merges a Budget: override" grep -q 'Budget:.*overrides' <<<"$spawn_text"
-assert "phases/epic.md Step 5 forwards the Budget: line" grep -q "effective \`Budget:\` line" "$epic"
+assert "phases/epic.md Step 5 replaces the cap Budget: line with the effective one" grep -q "\`Budget:\` line \*\*replaced\*\* by the effective one" "$epic"
 assert "spawn-tickets accepts a Budget: override" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$commands/spawn-tickets.md"
 assert "spawn-epic accepts a Budget: override" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$commands/spawn-epic.md"
 # The profile's own prose documents the shape a spawner must reproduce.
