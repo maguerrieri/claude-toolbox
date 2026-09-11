@@ -1,0 +1,31 @@
+name: ticket-workflow CI
+
+# Runs every plugins/ticket-workflow/tests/test-*.sh (bash + jq, no
+# dependencies). Add a test file; the workflow picks it up without edits. The
+# software-factory spec is in the trigger set because the evidence-block test
+# parses its 1a example.
+on:
+  push:
+    paths:
+      - "plugins/ticket-workflow/**"
+      - "docs/superpowers/specs/2026-09-11-software-factory-design.md"
+      - ".github/workflows/ticket-workflow-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/ticket-workflow/**"
+      - "docs/superpowers/specs/2026-09-11-software-factory-design.md"
+      - ".github/workflows/ticket-workflow-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shell tests
+        run: |
+          status=0
+          for test_file in plugins/ticket-workflow/tests/test-*.sh; do
+            echo "== $test_file"
+            bash "$test_file" || status=1
+          done
+          exit "$status"
