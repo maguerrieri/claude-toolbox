@@ -71,18 +71,45 @@ check() { # <json> <filter>
 	printf '%s' "$1" | jq -es 'length == 1' >/dev/null && printf '%s' "$1" | jq -e "$2"
 }
 
-# The one-block rule, counted from a PR body: one `## Evidence` heading, and
-# under it exactly one ```json fence before the next `## ` heading.
-count_evidence_headings() { grep -c '^## Evidence[[:space:]]*$' "$1" || true; }
-count_evidence_fences() {
+# The one-block rule, read from a PR body the way a Markdown renderer would: a
+# `## Evidence` heading and, under it, exactly one closed ```json fence. Fenced
+# regions are tracked throughout, so a `## Evidence` line or a ```json snippet
+# quoted inside some other fence (a test-plan example, say) never counts.
+# MODE=headings prints the heading count, MODE=fences the count of closed json
+# fences under the heading, MODE=extract the body of the first such fence.
+evidence_parser='
+	function ticks(s) { match(s, /^`+/); return RLENGTH }
+	!infence && /^```/ {
+		infence = 1; width = ticks($0)
+		info = substr($0, width + 1); sub(/[[:space:]]+$/, "", info)
+		json = (inside && info == "json"); buf = ""
+		next
+	}
+	infence && /^`+[[:space:]]*$/ && ticks($0) >= width {
+		infence = 0
+		if (json) { fences++; if (MODE == "extract" && !done) { printf "%s", buf; done = 1 } }
+		json = 0; next
+	}
+	infence { if (json) buf = buf $0 "\n"; next }
+	/^## Evidence[[:space:]]*$/ { headings++; inside = 1; next }
+	/^## / { inside = 0 }
+	END { if (MODE == "headings") print headings + 0; else if (MODE == "fences") print fences + 0 }
+'
+count_evidence_headings() { awk -v MODE=headings "$evidence_parser" "$1"; }
+count_evidence_fences() { awk -v MODE=fences "$evidence_parser" "$1"; }
+extract_evidence_block() { awk -v MODE=extract "$evidence_parser" "$1"; }
+
+# The PR body START Step 7's template renders: the heredoc between `cat <<'EOF'`
+# and `EOF` in the `gh pr create` example — judged exactly as a real body is.
+extract_template_body() { # <SKILL.md>
 	awk '
-		/^## Evidence[[:space:]]*$/ { inside = 1; next }
-		inside && /^## / { inside = 0 }
-		inside && !infence && /^```json[[:space:]]*$/ { infence = 1; next }
-		inside && infence && /^```[[:space:]]*$/ { infence = 0; n++ }
-		END { print n + 0 }
+		/^### Step 7 / { step7 = 1 }
+		step7 && !inbody && /cat <<'"'"'EOF'"'"'/ { inbody = 1; next }
+		inbody && /^EOF$/ { exit }
+		inbody { print }
 	' "$1"
 }
+
 # Membership in the git tree at HEAD — the contract's "exists in the PR's head
 # tree" — not the working tree, which also holds untracked and ignored files.
 # HEAD must be the PR head, not a merge preview: the ticket-workflow CI workflow
@@ -112,9 +139,14 @@ while IFS= read -r read_path; do
 done < <(printf '%s' "$spec_block" | jq -r '.context_reads[]')
 
 # --- 2. the SKILL.md template ----------------------------------------------
-assert "SKILL.md: exactly one '## Evidence' heading" test "$(count_evidence_headings "$skill")" -eq 1
-assert "SKILL.md: exactly one closed json fence under it" test "$(count_evidence_fences "$skill")" -eq 1
-template=$(extract_json_after "$skill" '^## Evidence[[:space:]]*$')
+assert "SKILL.md: the literal '## Evidence' line appears exactly once" test "$(grep -c '^## Evidence[[:space:]]*$' "$skill")" -eq 1
+template_body=$(mktemp)
+trap 'rm -f "$template_body"' EXIT
+extract_template_body "$skill" >"$template_body"
+assert "template body: extracted from the Step 7 heredoc" test -s "$template_body"
+assert "template body: exactly one '## Evidence' heading" test "$(count_evidence_headings "$template_body")" -eq 1
+assert "template body: exactly one closed json fence under it" test "$(count_evidence_fences "$template_body")" -eq 1
+template=$(extract_evidence_block "$template_body")
 assert "template: extracted a block" test -n "$template"
 assert "template: is strict JSON" check "$template" '.'
 run_rules "template" "$template" "${structural[@]}"
@@ -173,22 +205,39 @@ refute "critic outside {ran, not run} is rejected" check "$(printf '%s' "$filled
 
 # A PR body assembled from the template carries exactly one block; zero or two fail.
 tmp=$(mktemp)
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp" "$template_body"' EXIT
 printf '## Summary\n- x\n\nCloses #1\n' >"$tmp"
 refute "a body with no '## Evidence' heading fails the one-block rule" test "$(count_evidence_headings "$tmp")" -eq 1
 refute "a body with no '## Evidence' heading has no fence to count" test "$(count_evidence_fences "$tmp")" -eq 1
-refute "a body with no '## Evidence' heading yields no block" test -n "$(extract_json_after "$tmp" '^## Evidence[[:space:]]*$')"
+refute "a body with no '## Evidence' heading yields no block" test -n "$(extract_evidence_block "$tmp")"
 printf '## Summary\n- x\n\n## Evidence\nno fence here\n\nCloses #1\n' >"$tmp"
 refute "a heading with no json fence fails the one-block rule" test "$(count_evidence_fences "$tmp")" -eq 1
 printf '## Summary\n- x\n\n## Evidence\n```json\n%s\n' "$filled_block" >"$tmp"
 refute "an unterminated json fence fails the one-block rule" test "$(count_evidence_fences "$tmp")" -eq 1
-refute "an unterminated json fence yields no block" test -n "$(extract_json_after "$tmp" '^## Evidence[[:space:]]*$')"
+refute "an unterminated json fence yields no block" test -n "$(extract_evidence_block "$tmp")"
 {
 	printf '## Summary\n- x\n\n## Evidence\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
 } >"$tmp"
 assert "assembled PR body: one '## Evidence' heading" test "$(count_evidence_headings "$tmp")" -eq 1
 assert "assembled PR body: one json fence under it" test "$(count_evidence_fences "$tmp")" -eq 1
-assert "assembled PR body: block extracts and parses" check "$(extract_json_after "$tmp" '^## Evidence[[:space:]]*$')" "$has_required"
+assert "assembled PR body: block extracts and parses" check "$(extract_evidence_block "$tmp")" "$has_required"
+decoy=$(printf '%s' "$filled_block" | jq '.session = "session_DECOY"')
+{
+	# A 4-backtick outer fence: in CommonMark a bare ``` would close a 3-backtick one.
+	printf '## Summary\n- x\n\n## Test plan\nExample body:\n````text\n## Evidence\n```json\n%s\n```\n````\n\nCloses #1\n' "$decoy"
+} >"$tmp.decoy"
+refute "a '## Evidence' heading quoted inside another fence does not count" test "$(count_evidence_headings "$tmp.decoy")" -eq 1
+refute "a json fence quoted inside another fence does not count" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+refute "a quoted decoy yields no block" test -n "$(extract_evidence_block "$tmp.decoy")"
+printf '\n## Evidence\n```json\n%s\n```\n' "$filled_block" >>"$tmp.decoy"
+assert "decoy followed by the real section: one heading" test "$(count_evidence_headings "$tmp.decoy")" -eq 1
+assert "decoy followed by the real section: one fence" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+assert "decoy followed by the real section: the real block is extracted" check "$(extract_evidence_block "$tmp.decoy")" '.session == "session_01ABCDEF"'
+{
+	printf '## Summary\n- x\n\n## Evidence\n````md\n```json\n%s\n```\n````\n\nCloses #1\n' "$decoy"
+} >"$tmp.decoy"
+refute "a json fence nested inside a longer fence under the heading does not count" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+rm -f "$tmp.decoy"
 cp "$tmp" "$tmp.two-fences"
 printf '\n```json\n%s\n```\n' "$filled_block" >>"$tmp.two-fences"
 assert "two fences under one heading: still one heading" test "$(count_evidence_headings "$tmp.two-fences")" -eq 1

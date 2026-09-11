@@ -16,6 +16,11 @@ on:
       - "docs/superpowers/specs/2026-09-11-software-factory-design.md"
       - ".github/workflows/ticket-workflow-ci.yml"
 
+# The job runs shell from the PR head and needs no GitHub API access, so the
+# token is read-only and is not persisted into the checkout's git config.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -27,6 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - name: Run shell tests
         run: |
           status=0

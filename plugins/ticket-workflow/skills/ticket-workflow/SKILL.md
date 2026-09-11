@@ -276,7 +276,7 @@ gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'
   "tests": "<command(s) run in Step 6 and their result — or none: plus the reason>",
   "docs": "<Step 6 DOCS outcome: no doc impact, or the docs touched and why>",
   "context_reads": ["<repo-relative path read for this ticket>", "<another>"],
-  "session": "<session id: session_… on cloud, or local>",
+  "session": "<session id: $CLAUDE_CODE_REMOTE_SESSION_ID on cloud, or local>",
   "role": "implementer",
   "wall_clock_min": "<whole minutes from Step 1 to this PR>",
   "critic": "not run"
@@ -296,7 +296,7 @@ EOF
 - `tests` — the command(s) Step 6 ran and their result, e.g. `uv run pytest plugins/x/tests -q (passed)`; nothing ran → `none: ` plus the reason (`none: docs-only change, no test surface`). `TODO`, `TBD`, a bare `n/a`, or a leftover `<…>` placeholder fail the checker.
 - `docs` — Step 6's `DOCS` outcome: `no doc impact`, or the docs touched and why (same placeholder rules).
 - `context_reads` — a non-empty array of **repo-relative** paths of the instruction, skill, spec, and profile files you read for this ticket (root `AGENTS.md`, `profiles/default.md` when the plugin is checked out here, a design spec…). Each must exist in the PR's head tree — the checker resolves them against the head commit — so nothing from outside the repo (a `~/.claude` profile, this plugin's files when it's installed from the marketplace) and nothing invented.
-- `session` — this session's id: on the cloud backend the `session_…` id (`get_session()` with no argument describes the calling session; the launcher recorded the same id); a local session records `local` (a local Claude Code session id is a UUID, outside the contract's `cse_…` / `session_…` / `local` set).
+- `session` — this session's id: on the cloud backend `$CLAUDE_CODE_REMOTE_SESSION_ID` (the `cse_…` form the `spawn` skill's `backends/cloud.md` documents; the `session_…` id the launcher recorded names the same session and is equally valid); a local session records `local` (a local Claude Code session id is a UUID, outside the contract's `cse_…` / `session_…` / `local` set).
 - `role` — the `Role:` directive adopted in Step 1 (`implementer`, `epic-coordinator`, `planner`). No directive (an interactive run) → leave the default `implementer`, so an unmarked run never produces a block the gate rejects.
 - `wall_clock_min` — whole minutes from the time noted in Step 1 to opening the PR, as a digit string (`"23"`; `"0"` is valid; no sign, no decimals). If the Step 1 timestamp didn't survive a resume/compaction, measure from the branch's first commit instead: `git log --reverse --format=%ct origin/<base_branch>..HEAD | head -1` against `date +%s`.
 - `critic` — optional, reserved for rung 3's `REVIEW_CRITIC`; until that op exists leave `not run` (the only other value is `ran`).
