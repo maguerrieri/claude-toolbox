@@ -251,6 +251,8 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 - Each commit subject matches the tracker's `COMMIT_REF` (via `COMMIT_STYLE`) and accurately describes its diff — reword stale/placeholder subjects with `git rebase` now, while nothing's reviewed yet.
 - No hold / placeholder / leftover-debug markers — the same commit/diff markers FINISH Step 1's gate blocks on (`DO NOT MERGE`, `WIP`, qualified `FIXME`/`XXX`/`HACK`, stray debug) — remain in the commit messages or the diff (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`).
 
+**Factory identity (cloud implementer sessions only).** If the environment carries `FACTORY_BROKER_URL` (a `factory-implementer-<repo>` environment; spec 2d item 8b), the push and the PR must carry the factory's App identity, not the user's: read `factory-identity.md` now, run `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" setup-git` in the checkout before the push (it installs the git credential helper and the App's commit author; ideally already done before the first commit), and prefix every `gh` call below with `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" exec --`. A helper exit of 3 means the environment is still in proxy-injected mode — stop and report; a PR opened anyway would be authored as the user. No `FACTORY_BROKER_URL` → an ordinary session; skip this.
+
 ```bash
 git push -u origin <branch>
 ```
