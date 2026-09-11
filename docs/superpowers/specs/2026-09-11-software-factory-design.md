@@ -686,14 +686,19 @@ key. Its trust model:
   the way 3b verifies the critic's. The merge call and the record write are
   ordered merge-then-record, and a record failure after a successful merge
   is a hard job failure that pages the user. Because that write is not
-  atomic with the merge, 3c **reconciles**: it lists every PR merged into
-  `main` in the window that carried `auto-merge: requested` or closed an
-  issue with a `risk:*` label, and any such PR with no
-  `factory/merge-record` on its merge commit is reported as *unrecorded*,
-  which is treated like an unattributed revert: detection incomplete, no
-  widening. Item 11's test creates the record with exactly the declared
-  grants and verifies that a simulated record failure after merge is
-  surfaced by the reconciliation.
+  atomic with the merge, 3c **reconciles against a durable enrollment**
+  rather than against labels or issue classes: when the `resolve` job first
+  evaluates a PR as a live candidate it posts a `factory/enrolled` check
+  run on the head SHA (with `GITHUB_TOKEN`, `checks: write`), and the
+  expected-record set is exactly the merged PRs whose merge commit carries
+  `factory/enrolled` or a shadow record (below). A merged PR in that set
+  with no `factory/merge-record` is *unrecorded*, treated like an
+  unattributed revert: detection incomplete, no widening. An ordinary
+  human merge of a `risk:normal` ticket is never enrolled, so it produces
+  no false "missing record". Item 11's test: one docs PR auto-merged with a
+  record, one docs PR whose record write is simulated to fail after merge
+  (reported as unrecorded), and one human-merged normal ticket (not
+  counted).
 
 *Ruleset compatibility.* `main-review` (1d) requires one approving review and
 an Actions job cannot supply one. The `factory-auto-merge` App is added as the
@@ -737,13 +742,42 @@ incomplete** and rung 4 does not widen any class.
 Records exist only for merges that went through 3b, so a class that has
 never auto-merged has an **empty sample**, not a clean one. Rung 4 may
 widen a class only when that class already has records — which for a new
-class means running it first in a *shadow* mode where 3b evaluates the
-predicate and posts a `factory/merge-record` with `mode: shadow` on
-human-merged PRs of that class (the record write is the same job, gated on
-the same predicate, minus the merge call). Shadow records over the minimum
-sample with zero reverts are what justify turning the merge on. The
-routine posts the table as a comment on the epic. This is the input for
-widening classes in rung 4.
+class means running it first in **shadow mode**, a separate mechanism from
+3b's live path because 3b's predicate (`risk:docs`, inert paths, open PR,
+label/`workflow_run` events) can never match a merged `risk:low` test
+change:
+
+- A `factory-shadow` workflow runs on `pull_request_target` with `types:
+  [closed]`, `branches: [main]`, and `if: merged == true` — base-branch
+  YAML, no checkout, secretless apart from `GITHUB_TOKEN` with
+  `checks: write` (no App key, no Anthropic key; it never merges).
+- Its configured **shadow class set** (initially `low`) and a **per-class
+  candidate predicate** live in the same `inert-paths` policy file as the
+  docs allowlist: for `low`, "every changed path matches the test-only or
+  version-bump-only allowlist" plus the class-agnostic checks (exactly one
+  risk label of that class on the single closing issue, latest attempt of
+  every check context green at the merged SHA, latest `factory/critic`
+  success where one exists, no unresolved threads at merge).
+- For **every** merged PR whose closing issue carries a shadow-class label
+  it posts a `factory/merge-record` with `mode: shadow` and `eligible:
+  true|false` plus the reasons — so the record itself is the enrollment,
+  the class's reconciliation set is complete by construction, and the
+  routine can count both "would have auto-merged" and "would not".
+  Shadow records never make a PR auto-merge eligible and never touch 3b.
+- Rung 4 turns the live merge on for a class only when the shadow sample
+  meets the minimum and the `eligible: true` subset shows zero reverts;
+  switching a class to live is a reviewed change to the policy file and a
+  new class-specific path allowlist in 3b, never a widening of the docs
+  predicate.
+
+Test: a human-merged `risk:low` PR touching only `tests/**` gets a shadow
+record with `eligible: true` and is not auto-merged; the same PR with one
+non-test file gets `eligible: false`; a human-merged `risk:normal` PR gets
+no record and is not counted as unrecorded. The revert metric's scope is
+the enumerated forms (git revert line, `Revert` title, exact inversion);
+partial or rewritten rollbacks are out of scope and the routine says so in
+its table header. The routine posts the table as a comment on the epic.
+This is the input for widening classes in rung 4.
 
 ### Rung 4 — Spec-driven planning
 
@@ -773,8 +807,9 @@ must cite both numbers and the independent signal the new class relies on
 | 8 | Spike: which launch paths yield `claude[bot]` on the personal account | 2d | — |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 4 |
-| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/merge-record`; shadow mode for classes without records); `ci-gate` revert-marker validation; `inert-paths` composite action | 3b | 3, 4, 10 |
-| 12 | Metrics routine (keyed by `factory/merge-record`, with unrecorded-merge and unattributed-revert reconciliation) | 3c | 1, 11 |
+| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge); `ci-gate` revert-marker validation; `inert-paths` composite action | 3b | 3, 4, 10 |
+| 11b | `factory-shadow` workflow (`pull_request_target: closed` on `main`, merged only, `checks: write` only) with per-class candidate predicates in the policy file; posts `mode: shadow` records for every merged PR of a shadow class | 3c | 11 |
+| 12 | Metrics routine (keyed by `factory/merge-record`, reconciling enrolled merges against records, unattributed reverts, and shadow samples per class) | 3c | 1, 11, 11b |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
 | 14 | *(optional, Team)* self-hosted environment with per-session tokens | 2d | 4 |
 | 15 | *(follow-up)* Jira: `RISK_OF` / `RISK_SET` tracker ops and a merge-workflow contract so rungs 1–3 work on `Tracker: jira` | 1–3 | 2, 11 |
@@ -975,6 +1010,12 @@ must cite both numbers and the independent signal the new class relies on
   the next hourly sweep after the thread is resolved, with no other action
   and within one hour; the same for any eligibility change GitHub emits no
   Actions event for.
+- Rung 3 shadow mode: a human-merged `risk:low` PR touching only `tests/**`
+  receives a `mode: shadow`, `eligible: true` record and is never
+  auto-merged; with one extra source file it receives `eligible: false`; a
+  human-merged `risk:normal` PR receives no record and the routine does not
+  report it as unrecorded; a docs PR that was enrolled and merged but whose
+  record write failed is reported as unrecorded.
 - Rung 3 merge record: the record is created with only `checks: write` on
   `GITHUB_TOKEN`; with that grant removed the merge job fails after the
   merge and the metrics routine reports the PR as unrecorded and refuses to
