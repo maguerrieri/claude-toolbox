@@ -88,7 +88,7 @@ verified on Claude Code 2.1.268:
   ended with no marketplace and no plugins.) Until that changes, a cloud session
   reads the skill files by hand, and a child launched with a leading
   `/start-ticket` is rejected (`plugins/spawn/skills/spawn/backends/cloud.md`).
-  Two sanctioned workarounds, both outside this repo:
+  Three workarounds — the first two live outside this repo, the third in it:
   - enable the marketplace on your claude.ai account (Customize › Plugins › Add
     marketplace › from a repository, `maguerrieri/claude-toolbox`, then enable
     `defaults`); cloud sessions download account-enabled plugins and load them
