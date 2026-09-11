@@ -7,6 +7,11 @@
   },
   "enabledPlugins": {
     "defaults@maguerrieri-toolbox": true,
+    "conventions@maguerrieri-toolbox": true,
+    "spawn@maguerrieri-toolbox": true,
+    "generate@maguerrieri-toolbox": true,
+    "ticket-workflow@maguerrieri-toolbox": true,
+    "yaml@maguerrieri-toolbox": true,
     "superpowers@claude-plugins-official": true
   },
   "permissions": {
