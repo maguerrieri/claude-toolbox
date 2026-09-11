@@ -63,16 +63,17 @@ jobs:
         id: event
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || inputs.head_sha }}
-        # The dispatch input is typed by a person: validate the scalar before it
-        # touches GITHUB_OUTPUT (a newline in it could otherwise add an output
-        # line), and let the evaluator reject a bad value with a real message.
+        # The dispatch input is typed by a person: validate the *whole* value
+        # before it touches GITHUB_OUTPUT (a newline in it could otherwise add
+        # an output line; a per-line tool such as grep -x would pass a value
+        # with one valid line), and let the evaluator reject a bad value with
+        # a real message.
         run: |
-          sha=$(printf '%s' "$HEAD_SHA" | tr '[:upper:]' '[:lower:]')
-          if printf '%s' "$sha" | grep -Eqx '[0-9a-f]{40}'; then
-            echo "head_sha=$sha" >> "$GITHUB_OUTPUT"
-          else
-            echo "head_sha=" >> "$GITHUB_OUTPUT"
-          fi
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, re
+          value = os.environ["HEAD_SHA"].strip().lower()
+          print("head_sha=" + (value if re.fullmatch(r"[0-9a-f]{40}", value) else ""))
+          PY
       - name: Fetch the evaluator from the base commit (no checkout)
         env:
           GH_TOKEN: ${{ github.token }}
