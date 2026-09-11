@@ -148,10 +148,11 @@ copied verbatim; `push` and other triggers are not recorded), and the name in
 `ci-gate.yml`'s `workflow_run.workflows` list. The `factory scripts` workflow
 runs the evaluator's tests plus that same lint on every `.github/**` change
 (`uvx --with pyyaml pytest .github/scripts/tests -q` locally), so drift fails
-before merge. A PR that *adds* a workflow needs one manual re-evaluation once
-that workflow has finished (re-run the last `ci-gate` run, or dispatch
-`ci-gate` with the PR number), because `main`'s copy of `ci-gate.yml` does not
-yet listen for it. The rulesets that require the check live under
+before merge. A PR that *adds or renames* a workflow needs one manual
+re-evaluation once that workflow has finished (re-run the last `ci-gate` run, or
+dispatch `ci-gate` with the PR's head SHA), because `workflow_run` matches by
+name and `main`'s copy of `ci-gate.yml` does not yet listen for the new one; the
+gate's summary flags the affected row. Every listed workflow needs a `name:`. The rulesets that require the check live under
 `.github/rulesets/` and are applied by hand with
 `.github/scripts/apply-rulesets` (see the spec for the App and environment
 setup).

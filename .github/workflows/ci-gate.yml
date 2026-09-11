@@ -13,10 +13,11 @@ name: ci-gate
 #
 # Re-evaluated on every PR head change and after every listed workflow
 # completes. `workflow_run.workflows` must name exactly the workflows in
-# `.github/factory-ci.yml` (the evaluator lints this). A PR that adds a new CI
-# workflow is re-evaluated by main's copy of this file, which does not yet
-# listen for the new workflow: re-run the last ci-gate run, or dispatch this
-# workflow with the PR number, once the new workflow has finished.
+# `.github/factory-ci.yml` (the evaluator lints this). workflow_run matches by
+# workflow *name*, so a PR that adds or renames a CI workflow is re-evaluated by
+# main's copy of this file, which does not yet listen for the new name: re-run
+# the last ci-gate run, or dispatch this workflow with the PR's head SHA, once
+# that workflow has finished (the evaluator's summary flags this case).
 
 on:
   pull_request_target:
@@ -27,17 +28,17 @@ on:
     types: [completed]
   workflow_dispatch:
     inputs:
-      pr:
-        description: "Pull request number to re-evaluate"
+      head_sha:
+        description: "Head commit SHA (40 hex) of the open PR to re-evaluate"
         required: true
         type: string
 
 permissions: {}
 
-# Serialize evaluations per head SHA so a stale verdict can never be posted
-# after a fresher one.
+# Serialize evaluations per head SHA -- every trigger, dispatch included, keys
+# on the same SHA -- so a stale verdict can never be posted after a fresher one.
 concurrency:
-  group: "ci-gate-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || inputs.pr }}"
+  group: "ci-gate-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || inputs.head_sha }}"
   cancel-in-progress: false
 
 jobs:
@@ -57,7 +58,7 @@ jobs:
       - name: Head SHA from the event
         id: event
         env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || inputs.head_sha }}
         run: echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
       - name: Fetch the evaluator from the base commit (no checkout)
         env:

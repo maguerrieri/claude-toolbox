@@ -59,6 +59,7 @@ PR_EVENTS = ("pull_request", "pull_request_target")
 SUPPORTED_KEYS = {"types", "branches", "branches-ignore", "paths", "paths-ignore"}
 DEFAULT_TYPES = ["opened", "synchronize", "reopened"]
 HEAD_TYPES = {"opened", "synchronize"}
+CLOSE_TYPES = {"closed"}
 # GitHub evaluates path filters against at most 300 changed files.
 MAX_CHANGED_FILES = 300
 SETTINGS_FILE = ".claude/settings.json"
@@ -83,7 +84,10 @@ def pattern_to_regex(pattern: str) -> re.Pattern:
     while i < n:
         c = pattern[i]
         if c == "*":
-            if pattern.startswith("**", i):
+            if pattern.startswith("**/", i):
+                out.append("(?:.*/)?")  # zero or more directories: **/x matches x at the root
+                i += 3
+            elif pattern.startswith("**", i):
                 out.append(".*")
                 i += 2
             else:
@@ -207,6 +211,9 @@ def lint(manifest, workflows: dict[str, object], gate_doc) -> list[str]:
             errors.append(f"{MANIFEST_PATH}: {filename} is listed but {WORKFLOWS_DIR}/{filename} does not exist")
             continue
         try:
+            name = doc.get("name") if isinstance(doc, dict) else None
+            if not isinstance(name, str) or not name.strip():
+                raise GateError("workflow has no `name:`; ci-gate subscribes to workflow_run by name, so every listed workflow needs one")
             declared_norm = normalize_on(declared if declared is not None else {})
             if set(declared_norm) - set(PR_EVENTS):
                 raise GateError("manifest entries may only declare pull_request / pull_request_target")
@@ -258,10 +265,14 @@ def lint(manifest, workflows: dict[str, object], gate_doc) -> list[str]:
 def validate_constructs(event: str, cfg: dict) -> None:
     """Reject trigger configs whose GitHub behaviour this evaluator cannot mirror."""
     types = set(cfg.get("types", DEFAULT_TYPES))
-    if types & HEAD_TYPES and not HEAD_TYPES <= types:
+    if not HEAD_TYPES <= types and not types <= CLOSE_TYPES:
+        # A workflow that runs only on e.g. `labeled` or `reopened` may or may
+        # not have run for this head; ci-gate cannot know, so it refuses rather
+        # than ignore a run GitHub did execute. Only `closed` is never part of
+        # validating an open head.
         raise GateError(
             f"{event}.types {sorted(types)}: must include both opened and synchronize "
-            "(or neither) for ci-gate to know whether a head SHA triggers it"
+            "(or be only closed) for ci-gate to know whether a head SHA triggers it"
         )
     if "branches" in cfg and "branches-ignore" in cfg:
         raise GateError(f"{event}: branches and branches-ignore cannot both be set")
@@ -279,8 +290,8 @@ def is_expected(cfg: dict, changed_files: list[str], base_ref: str) -> bool:
     """Would GitHub run a workflow with this pull_request config for this PR head?"""
     validate_constructs("pull_request", cfg)
     types = set(cfg.get("types", DEFAULT_TYPES))
-    if not HEAD_TYPES <= types:
-        return False  # e.g. types: [closed] -- never runs when a head SHA appears
+    if types <= CLOSE_TYPES:
+        return False  # types: [closed] -- never part of validating an open head
     if "branches" in cfg and select(cfg["branches"], base_ref) is not True:
         return False
     if "branches-ignore" in cfg and select(cfg["branches-ignore"], base_ref) is True:
@@ -423,9 +434,6 @@ class Api:
     def open_prs(self, base: str) -> list[dict]:
         return self.paginate("pulls", params={"state": "open", "base": base})
 
-    def pull(self, number: int) -> dict:
-        return self.get(f"pulls/{number}")
-
     def changed_files(self, number: int) -> list[dict]:
         return self.paginate(f"pulls/{number}/files")
 
@@ -433,18 +441,11 @@ class Api:
         return self.paginate("actions/runs", key="workflow_runs", params={"head_sha": head_sha})
 
 
-def resolve_pr(api: Api, head_sha: str | None, pr_number: int | None) -> tuple[str, dict | None, list[str]]:
-    """Pick the one open PR to `main` for this evaluation.
+def resolve_pr(api: Api, head_sha: str) -> tuple[str, dict | None, list[str]]:
+    """Pick the one open PR to `main` whose head is `head_sha`.
 
     Returns (`ok`|`skip`|`failure`, pr, reasons). `skip` means nothing to report.
     """
-    if pr_number is not None:
-        pr = api.pull(pr_number)
-        if pr.get("state") != "open":
-            return "skip", None, [f"PR #{pr_number} is not open"]
-        if pr["base"]["ref"] != PROTECTED_BASE:
-            return "skip", None, [f"PR #{pr_number} targets {pr['base']['ref']}, not {PROTECTED_BASE}"]
-        head_sha = pr["head"]["sha"]
     candidates = [pr for pr in api.open_prs(PROTECTED_BASE) if pr["head"]["sha"] == head_sha]
     if not candidates:
         return "skip", None, [f"no open PR to {PROTECTED_BASE} has head {head_sha}"]
@@ -454,11 +455,16 @@ def resolve_pr(api: Api, head_sha: str | None, pr_number: int | None) -> tuple[s
     return "ok", candidates[0], []
 
 
-def evaluate(api: Api, head_sha: str | None, pr_number: int | None, own_run_id) -> dict:
-    """Full evaluation. Returns a result dict; `verdict` is success|failure|pending|skip."""
+def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -> dict:
+    """Full evaluation. Returns a result dict; `verdict` is success|failure|pending|skip.
+
+    `base_sha` is the commit the running copy of ci-gate.yml comes from; when
+    given, a pending workflow whose name that copy is not subscribed to is
+    flagged, since its completion will not re-trigger this gate.
+    """
     reasons: list[str] = []
     rows: list[dict] = []
-    status, pr, why = resolve_pr(api, head_sha, pr_number)
+    status, pr, why = resolve_pr(api, head_sha)
     if status == "skip":
         return {"verdict": "skip", "head_sha": head_sha, "reasons": why, "rows": rows}
     head_sha = pr["head"]["sha"]
@@ -515,7 +521,42 @@ def evaluate(api: Api, head_sha: str | None, pr_number: int | None, own_run_id) 
 
     expected = expected_set(manifest, changed, pr["base"]["ref"])
     verdict, rows = aggregate(expected, api.runs(head_sha), own_run_id)
+    if base_sha:
+        flag_unsubscribed(rows, workflows, subscribed_names(api, base_sha))
     return {"verdict": verdict, "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows, "changed_files": len(changed)}
+
+
+def subscribed_names(api: Api, base_sha: str) -> list[str] | None:
+    """The `workflow_run.workflows` names in the copy of ci-gate.yml at `base_sha`."""
+    text = api.raw(f"{WORKFLOWS_DIR}/{SELF_WORKFLOW}", base_sha)
+    if text is None:
+        return None
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None
+    raw_on = doc.get("on", doc.get(True)) if isinstance(doc, dict) else None
+    names = ((raw_on or {}).get("workflow_run") or {}).get("workflows") if isinstance(raw_on, dict) else None
+    return [names] if isinstance(names, str) else list(names or [])
+
+
+def flag_unsubscribed(rows: list[dict], workflows: dict[str, object], subscribed: list[str] | None) -> None:
+    """Mark pending rows whose completion the running ci-gate will never hear about.
+
+    `workflow_run` matches by workflow *name*, so a PR that adds or renames a
+    workflow is re-evaluated by `main`'s copy of ci-gate.yml, which still
+    subscribes to the old list; the head lint cannot fix that. Say so in the
+    row rather than leave the gate silently pending.
+    """
+    if subscribed is None:
+        return
+    for row in rows:
+        name = workflow_name(row["workflow"], workflows.get(row["workflow"]))
+        if row["state"] == "pending" and name not in subscribed:
+            row["detail"] += (
+                f"; the running ci-gate is not subscribed to {name!r} (added or renamed on this branch), "
+                "so its completion will not re-evaluate this PR: re-run ci-gate or dispatch it with this head SHA"
+            )
 
 
 # --- Rendering + Actions glue -----------------------------------------------
@@ -594,6 +635,14 @@ def write_outputs(result: dict, title: str, summary: str) -> None:
             fh.write(f"## {CHECK_NAME}: {result['verdict']} — {title}\n\n{summary}")
 
 
+def dispatch_head_sha(event: dict) -> str:
+    """The `head_sha` input of a workflow_dispatch event, validated as a full SHA."""
+    value = str((event.get("inputs") or {}).get("head_sha", "")).strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", value):
+        raise GateError(f"workflow_dispatch input head_sha must be a 40-hex commit SHA, got {value!r}")
+    return value
+
+
 def main() -> int:
     repo = os.environ["GITHUB_REPOSITORY"]
     token = os.environ.get("GH_TOKEN") or os.environ["GITHUB_TOKEN"]
@@ -602,18 +651,17 @@ def main() -> int:
     with open(os.environ["GITHUB_EVENT_PATH"]) as fh:
         event = json.load(fh)
 
-    head_sha = pr_number = None
     if event_name == "pull_request_target":
         head_sha = event["pull_request"]["head"]["sha"]
     elif event_name == "workflow_run":
         head_sha = event["workflow_run"]["head_sha"]
     elif event_name == "workflow_dispatch":
-        pr_number = int(event["inputs"]["pr"])
+        head_sha = dispatch_head_sha(event)
     else:
         print(f"ci-gate: unsupported event {event_name!r}", file=sys.stderr)
         return 1
 
-    result = evaluate(api, head_sha, pr_number, os.environ.get("GITHUB_RUN_ID"))
+    result = evaluate(api, head_sha, os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_SHA"))
     title, summary = render(result)
     print(f"{CHECK_NAME}: {result['verdict']} — {title}\n\n{summary}")
     write_outputs(result, title, summary)

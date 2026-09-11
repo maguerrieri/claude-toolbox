@@ -56,6 +56,10 @@ WORKFLOWS = {
     ("v[0-9]+", "v12", True),
     ("v[0-9]+", "vx", False),
     ("READ?ME", "REAME", True),  # ? = zero or one of the preceding character
+    ("**/package.json", "package.json", True),  # **/ = zero or more directories
+    ("**/package.json", "a/b/package.json", True),
+    ("**/package.json", "apackage.json", False),
+    ("src/**/x.py", "src/x.py", True),
     ("a.b", "axb", False),  # literal dot
 ])
 def test_pattern(pattern, value, expected):
@@ -149,6 +153,25 @@ def test_lint_missing_gate_file():
 def test_lint_wrong_schema():
     m = dict(MANIFEST, schema="factory-ci/2")
     assert any("schema must be" in e for e in ci_gate.lint(m, WORKFLOWS, WORKFLOWS["ci-gate.yml"]))
+
+
+def test_lint_requires_workflow_name():
+    w = copy.deepcopy(WORKFLOWS)
+    del w["plugin-versions.yml"]["name"]
+    w["ci-gate.yml"] = gate(["gm CI", ".github/workflows/plugin-versions.yml"])
+    errors = ci_gate.lint(MANIFEST, w, w["ci-gate.yml"])
+    assert any("plugin-versions.yml: workflow has no `name:`" in e for e in errors)
+
+
+def test_lint_rejects_event_only_types():
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["plugin-versions.yml"] = {"pull_request": {"types": ["labeled"]}}
+    w = copy.deepcopy(WORKFLOWS)
+    w["plugin-versions.yml"]["on"] = {"pull_request": {"types": ["labeled"]}}
+    errors = ci_gate.lint(m, w, w["ci-gate.yml"])
+    assert any("must include both opened and synchronize" in e for e in errors)
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.is_expected({"types": ["reopened"]}, ["a"], "main")
 
 
 def test_lint_unsupported_types_split():
@@ -279,8 +302,9 @@ def test_settings_paths_to_lint():
 # --- evaluation over a fake API ---------------------------------------------
 
 class FakeApi:
-    def __init__(self, prs, files, tree, runs, default="main"):
+    def __init__(self, prs, files, tree, runs, default="main", base_tree=None):
         self.prs, self.files, self.tree, self._runs, self.default = prs, files, tree, runs, default
+        self.base_tree = tree if base_tree is None else base_tree
 
     def default_branch(self):
         return self.default
@@ -288,14 +312,11 @@ class FakeApi:
     def open_prs(self, base):
         return [p for p in self.prs if p["state"] == "open" and p["base"]["ref"] == base]
 
-    def pull(self, number):
-        return next(p for p in self.prs if p["number"] == number)
-
     def changed_files(self, number):
         return [{"filename": f} for f in self.files]
 
     def raw(self, path, ref):
-        return self.tree.get(path)
+        return (self.base_tree if ref == "base" else self.tree).get(path)
 
     def listing(self, path, ref):
         return [{"name": p.split("/")[-1], "type": "file"} for p in self.tree if p.startswith(path + "/") and p.count("/") == path.count("/") + 1]
@@ -318,65 +339,81 @@ TREE = {
 
 def test_evaluate_docs_only_pr_green_without_gm_ci():
     api = FakeApi([pr(1, "abc")], ["docs/guide.md"], TREE, [run("plugin-versions.yml")])
-    result = ci_gate.evaluate(api, "abc", None, "999")
+    result = ci_gate.evaluate(api, "abc", "999")
     assert result["verdict"] == "success"
     assert [r["workflow"] for r in result["rows"]] == ["plugin-versions.yml"]
 
 
 def test_evaluate_gm_pr_pending_until_gm_ci_completes():
     api = FakeApi([pr(1, "abc")], ["plugins/gm/bin/roll"], TREE, [run("plugin-versions.yml")])
-    result = ci_gate.evaluate(api, "abc", None, "999")
+    result = ci_gate.evaluate(api, "abc", "999")
     assert result["verdict"] == "pending"
     api._runs.append(run("gm-ci.yml", id=2))
-    assert ci_gate.evaluate(api, "abc", None, "999")["verdict"] == "success"
+    assert ci_gate.evaluate(api, "abc", "999")["verdict"] == "success"
 
 
 def test_evaluate_skips_sha_without_pr():
     api = FakeApi([pr(1, "abc")], [], TREE, [])
-    assert ci_gate.evaluate(api, "zzz", None, "1")["verdict"] == "skip"
+    assert ci_gate.evaluate(api, "zzz", "1")["verdict"] == "skip"
 
 
 def test_evaluate_skips_pr_not_targeting_main():
     api = FakeApi([pr(1, "abc", base="epic-89-92")], ["a"], TREE, [])
-    assert ci_gate.evaluate(api, "abc", None, "1")["verdict"] == "skip"
-    assert ci_gate.evaluate(api, None, 1, "1")["verdict"] == "skip"
+    assert ci_gate.evaluate(api, "abc", "1")["verdict"] == "skip"
 
 
 def test_evaluate_two_prs_same_head_fail_closed():
     api = FakeApi([pr(1, "abc"), pr(2, "abc")], ["a"], TREE, [])
-    result = ci_gate.evaluate(api, "abc", None, "1")
+    result = ci_gate.evaluate(api, "abc", "1")
     assert result["verdict"] == "failure" and "more than one open PR" in result["reasons"][0]
 
 
 def test_evaluate_default_branch_not_main_fails():
     api = FakeApi([pr(1, "abc")], ["a"], TREE, [run("plugin-versions.yml")], default="master")
-    result = ci_gate.evaluate(api, "abc", None, "1")
+    result = ci_gate.evaluate(api, "abc", "1")
     assert result["verdict"] == "failure" and "default branch" in result["reasons"][0]
 
 
 def test_evaluate_remote_setting_fails():
     tree = dict(TREE, **{".claude/settings.json": '{"remote": {"defaultEnvironmentId": "env_x"}}'})
     api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
-    result = ci_gate.evaluate(api, "abc", None, "1")
+    result = ci_gate.evaluate(api, "abc", "1")
     assert result["verdict"] == "failure" and "remote.*" in result["reasons"][0]
 
 
 def test_evaluate_missing_manifest_fails():
     tree = {k: v for k, v in TREE.items() if k != ".github/factory-ci.yml"}
     api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
-    result = ci_gate.evaluate(api, "abc", None, "1")
+    result = ci_gate.evaluate(api, "abc", "1")
     assert result["verdict"] == "failure" and "factory-ci.yml is missing" in result["reasons"][0]
 
 
 def test_evaluate_too_many_files_fails():
     api = FakeApi([pr(1, "abc")], [f"f{i}" for i in range(301)], TREE, [run("plugin-versions.yml")])
-    assert ci_gate.evaluate(api, "abc", None, "1")["verdict"] == "failure"
+    assert ci_gate.evaluate(api, "abc", "1")["verdict"] == "failure"
 
 
-def test_evaluate_dispatch_by_pr_number():
-    api = FakeApi([pr(4, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")])
-    result = ci_gate.evaluate(api, None, 4, "999")
-    assert result["verdict"] == "success" and result["pr"] == 4 and result["head_sha"] == "abc"
+def test_dispatch_head_sha_input():
+    assert ci_gate.dispatch_head_sha({"inputs": {"head_sha": " " + "A" * 40}}) == "a" * 40
+    for bad in ("", "abc", "42", "z" * 40):
+        with pytest.raises(ci_gate.GateError):
+            ci_gate.dispatch_head_sha({"inputs": {"head_sha": bad}})
+
+
+def test_evaluate_flags_workflow_main_is_not_subscribed_to():
+    """A workflow added or renamed on the branch: main's ci-gate never hears it finish."""
+    base_tree = dict(TREE, **{".github/workflows/ci-gate.yml": yaml.safe_dump(gate(["plugin versions"]))})
+    api = FakeApi([pr(1, "abc")], ["plugins/gm/bin/roll"], TREE, [run("plugin-versions.yml")], base_tree=base_tree)
+    result = ci_gate.evaluate(api, "abc", "999", base_sha="base")
+    assert result["verdict"] == "pending"
+    gm = next(r for r in result["rows"] if r["workflow"] == "gm-ci.yml")
+    assert "not subscribed to 'gm CI'" in gm["detail"]
+    pv = next(r for r in result["rows"] if r["workflow"] == "plugin-versions.yml")
+    assert "not subscribed" not in pv["detail"]
+    # Same evaluation against a base that already subscribes: no flag.
+    api = FakeApi([pr(1, "abc")], ["plugins/gm/bin/roll"], TREE, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", "999", base_sha="base")
+    assert all("not subscribed" not in r["detail"] for r in result["rows"])
 
 
 def test_render_mentions_rows_and_reasons():
