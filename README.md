@@ -2,7 +2,7 @@
 
 Portable coding-agent conventions and Claude Code workflows, packaged as a
 [Claude-compatible plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
-One repo, declared per-project for local sessions; cloud sessions load it
+One repo, declared per-project for interactive local sessions; cloud sessions load it
 once the marketplace is enabled on your claude.ai account or installed by the
 environment's setup script (see [Usage](#usage)).
 
@@ -10,8 +10,8 @@ environment's setup script (see [Usage](#usage)).
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
   list pulls in every plugin below except `gm`. Install this one to get the
-  default set. New plugins added to this repo should also be added to its
-  dependencies.
+  default set. New default plugins added to this repo should also be added to
+  its dependencies.
 - **conventions** — cross-repo development conventions: commit-message format
   and a portable repository-instruction policy built around canonical root
   `AGENTS.md` plus a pure `CLAUDE.md` import shim.
@@ -65,8 +65,8 @@ Per repo, in `.claude/settings.json`:
 List the dependencies out, not just `defaults`: the install that project
 settings trigger on trust caches `defaults` but does not resolve its
 `dependencies`, so on its own it ends up disabled (`dependency-unsatisfied`)
-and nothing loads (verified on Claude Code 2.1.268). Drop what you don't want
-for an à la carte pick. Two surfaces get nothing from these settings: headless
+and nothing loads (verified on Claude Code 2.1.268). For an à la carte pick,
+remove `defaults` and enable only the plugins you want. Two surfaces get nothing from these settings: headless
 sessions (`claude -p`, the SDK) register the marketplace but install nothing
 from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
 repo-authored plugin settings entirely. For cloud sessions, either enable the
