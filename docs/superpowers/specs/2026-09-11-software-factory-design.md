@@ -622,7 +622,11 @@ pushing actor is the user too. Therefore:
 
 1. Rulesets bind both actors (the user and the `claude` app) identically —
    still required, since the App path exists for routines/Auto-fix and
-   commit signatures already carry the bot identity.
+   commit signatures already carry the bot identity. The spike below adds
+   a third actor, the factory App's `<slug>[bot]`, which 8b registers:
+   1d's `agent-branches` binding and item 4's ruleset definition must
+   admit it, or 8b's App-identity pushes are rejected (a 1d edit, on the
+   coordinator's list).
 2. The "distinct author" the review ruleset needs is a distinct **PR
    author**; `claude[bot]` commits on a user-opened PR do not count.
 3. The spike (item 8) is now narrower: confirm which launch paths (the
@@ -823,11 +827,11 @@ marked).*
    the proxy as the user while the PR is App-authored, that rule would
    block the user's approval. Keep it off, or route pushes through the App
    token (`gh auth setup-git`) so the pusher is the App.
-7. **No hosted launch path yields a distinct PR author on its own.**
-   Routines: "commits and pull requests carry your GitHub user" (docs);
-   ordinary sessions: as observed; Auto-fix and Claude Tag use the
-   *official* App's installation token and would author as `claude[bot]`,
-   but neither is a launcher a coordinator can call. The distinct author
+7. **No launch path a coordinator can call yields a distinct PR author on
+   its own.** Routines: "commits and pull requests carry your GitHub
+   user" (docs); ordinary sessions: as observed. Auto-fix and Claude Tag
+   do author as `claude[bot]`, through the *official* App's installation
+   token, but neither is a launcher a coordinator can invoke for a ticket. The distinct author
    has to be brought in by us: our App's token, on cloud or on a runner.
 
 *Action variant against the exit criteria (from the
@@ -852,17 +856,27 @@ App-on-cloud path wins") applies. 8b changes in four ways:
 
 - Implementer environments set `GH_TOKEN` in their variables to a
   non-secret sentinel (`factory-token-required`) so sessions run in
-  pass-through mode; `factory-token` replaces it with the broker's token
-  before START Step 7 and runs `gh auth setup-git` so pushes carry the App
-  identity too. Its `user.email` step runs earlier, at SessionStart,
-  because commits are made in START Step 5 and a later config change
-  cannot re-author them. That token is the **one write-capable credential this
+  pass-through mode. `factory-token` is a **wrapper, not an exporter**:
+  an `export` in one Bash call does not reach the next, and `gh auth
+  setup-git` configures git's credential helper rather than `gh`'s own
+  auth, so START Step 7 runs its push and `gh pr create` as
+  `factory-token exec <command>`, which reads the token from a mode-600
+  file (minting or refreshing it through the broker when absent or near
+  expiry) and execs the command with `GH_TOKEN` set for that process
+  only; the git push goes through the same wrapper with `gh auth
+  setup-git` in effect, which is **required**, not optional as item 8b's
+  row still says (on the coordinator's list), so the pushing actor is the
+  App. That token is the **one write-capable credential this
   design admits into a session**, and it is admitted deliberately: item 4
   above bounds it to one repo, two permissions, non-protected branches,
   and one hour, and 8b's isolation test asserts those bounds. 2b's blanket
   "write-capable API keys never enter a session" needs that carve-out
-  spelled out (a 2b edit, left to the coordinator); the broker *bearer*,
-  which mints tokens without limit, is not admitted anywhere. Whether
+  spelled out, and the Testing section's Rung 2 credential-boundary test
+  ("no write-capable API key is reachable") needs the same carve-out for
+  the one-repo, one-hour token while still rejecting the bearer and
+  cross-repo access (both edits outside 2d, left to the coordinator); the
+  broker *bearer*, which mints tokens without limit, is not admitted
+  anywhere. Whether
   pass-through mode stops the proxy's substitution
   is M1, and **8b does not start until M1 passes.** If M1 fails, the
   hosted App path is closed and **8b is blocked**: item 14 (self-hosted
@@ -884,9 +898,14 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   an exception to 2b, not a fallback: it needs an explicit revision of 2b
   and its credential-boundary test, decided by the user (M3), before any
   Team implementer environment is created.
-- `factory-token` sets `user.email` to the App's noreply address at
-  SessionStart, before any commit, so commits, not only the PR, carry the
-  App identity; the token itself is minted only when Step 7 needs it.
+- Commit identity is enforced **at Step 7, fail closed**, not promised
+  by SessionStart: 2b already records that a branch controls the
+  SessionStart hook and can delete it, so an early `user.email` write is
+  only an optimization. Before pushing, `factory-token exec` re-authors
+  every commit on the branch whose author email is not the App's noreply
+  address (a pre-review rewrite, which the commit conventions allow) and
+  refuses to push if any remains, so commits as well as the PR carry the
+  App identity whatever the branch did to the hooks.
 - 2c derives the launching account from the calling session's
   `environment_id` (a membership test against the per-account lines),
   since the session record carries no account field.
@@ -897,8 +916,9 @@ token (personal account, personal repo); **M2** the pushing actor under
 pass-through with and without `gh auth setup-git`; **M3** how Team-account implementers obtain an hour-scoped installation
 token with no broker bearer in the VM: wait for API credentials on Team
 plans, item 14, or an explicit 2b exception naming the *installation
-token* (the broker bearer stays excluded under every option); **M4** the four App-authored PRs are
-approvable by the user under a test `main-review`.
+token* (the broker bearer stays excluded under every option); **M4** all five App-authored PRs (the four matrix cells plus the
+sentinel variant of step 5b) are approvable by the user under a test
+`main-review`.
 
 *Manual runbook to complete the matrix (about an hour; everything is
 throwaway).*
@@ -925,7 +945,8 @@ throwaway).*
    account's *production* implementer environments stay gated on M3 or
    item 14 as the decision says.
 5. From each account, launch a session into each environment
-   (`create_session` with `source_url`, `outcome_branch`, and the
+   (`create_session` with `prompt` = the briefing below, `title` =
+   `spike #94 <account>-><owner>`, `source_url`, `outcome_branch`, and the
    throwaway environment's `environment_id` passed **explicitly**, since
    omitting it inherits the parent's environment; one branch per cell,
    `94-spike-<account>-<owner>`, a name the 1d `agent-branches` ruleset's
@@ -962,10 +983,13 @@ throwaway).*
    that returns the token to a bearer), with the endpoint's bearer held
    as an API credential on the environment so the proxy attaches it after
    the request leaves the VM. The session runs `curl -fsS <endpoint> -o
-   ~/.factory-token && chmod 600 ~/.factory-token && export
-   GH_TOKEN="$(<~/.factory-token)"`, which prints nothing; only the
-   probes' status codes and the identity results reach the model. Then
-   repeat step 5's probes, `gh auth setup-git`, push, and `gh pr create`.
+   ~/.factory-token && chmod 600 ~/.factory-token`, which prints nothing,
+   and then prefixes **each** later command with
+   `GH_TOKEN="$(<~/.factory-token)"` (an `export` does not survive to the
+   next Bash call, and gh's git credential helper reads the variable at
+   push time), so only the probes' status codes and the identity results
+   reach the model. Then repeat step 5's probes, `gh auth setup-git`,
+   push, and `gh pr create` that way.
    M1 passes only if both the preconfigured token (step 5) and the
    runtime replacement (this step) yield the 401 probe result and an
    App-authored PR. Renewal after expiry is 8b's helper test, not part
