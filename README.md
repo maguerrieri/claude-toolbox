@@ -88,6 +88,13 @@ can't point it at a new source), and locally it's a no-op:
 Or copy `.claude/hooks/session-start.sh` from this repo and point the hook at
 the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
+This repo's own `settings.json` also carries a `permissions` block: `allow` for
+its test/lint commands, `deny` for `terraform apply`, `gcloud run deploy`,
+`firebase deploy`, force-push without a lease, and writes under `~/.config`.
+That is ergonomics and drift control for unattended implementer sessions, not a
+security boundary; copy the `deny` list into your own repo's settings and see
+`AGENTS.md` → *Repo permissions* for the rule shapes.
+
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
 five default plugins (`gm` isn't a `defaults` dependency; install it separately).

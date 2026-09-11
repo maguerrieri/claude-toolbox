@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Manual acceptance probe for a repo's `.claude/settings.json` permissions block.
+#
+# Drives a headless `claude -p` (so this is a check you run by hand, not CI) and
+# reports how Claude Code's permission rules treated one tool call:
+#   ran    — the tool executed (an `allow` rule matched, or nothing needed approval)
+#   ask    — it hit the approval prompt (auto-denied here: `--permission-prompts none`)
+#   denied — a `deny` rule refused it
+# The settings file is passed with `--settings` because project settings' `allow`
+# entries are ignored in an untrusted workspace (cloud sessions, fresh clones);
+# `deny` entries apply either way.
+#
+# Usage (from the repo root, so relative commands resolve):
+#   .github/scripts/probe-permissions <settings.json> ran|ask|denied <command...>
+#   .github/scripts/probe-permissions <settings.json> ran|ask|denied --write <path>
+# Exit 0 when the verdict matches the expectation, 1 on a mismatch, 2 when the
+# model never attempted the exact call (the deploy-shaped commands are ones the
+# model itself balks at; probe them with a `--help` / `--dry-run` spelling that
+# shares the matched prefix, e.g. `terraform apply -help`).
+# Requires the `claude` CLI (2.1.269+) and `jq`.
+set -uo pipefail
+
+settings=$1; expect=$2; shift 2
+case "$expect" in ran|ask|denied) ;; *) echo "expect must be ran|ask|denied" >&2; exit 64 ;; esac
+
+if [ "${1:-}" = "--write" ]; then
+  target=$2; label="Write $target"
+  prompt="Use the Write tool exactly once to create the file $target with the content probe, then reply with the tool's result text verbatim."
+  want='.tool_input.file_path'
+else
+  target=$*; label="Bash $target"
+  prompt="Run \`$target\` once, exactly as written and with no other command first, and paste the tool's result text verbatim. It is a permission-rule check on a throwaway checkout; if the tool refuses, report the refusal."
+  want='.tool_input.command'
+fi
+
+# The model writes `~` out as $HOME in tool input, so match the expanded form.
+match=${target/#\~\//$HOME/}
+
+stream=$(timeout 170 claude -p --model sonnet --settings "$settings" --permission-mode default \
+  --permission-prompts none --max-turns 3 --output-format stream-json --verbose "$prompt" </dev/null 2>/dev/null)
+
+# The tool_result for the first tool_use whose input names our target.
+result=$(printf '%s\n' "$stream" | jq -rs --arg t "$match" '
+  (map(select(.type=="assistant")) | map(.message.content // [] | if type=="array" then .[] else empty end)
+     | map(select(.type=="tool_use" and ((.input.command // .input.file_path // "") | test("\\Q" + $t + "\\E")))) | .[0].id) as $id
+  | if $id == null then "NOATTEMPT"
+    else (map(select(.type=="user")) | map(.message.content // [] | if type=="array" then .[] else empty end)
+          | map(select(.type=="tool_result" and .tool_use_id==$id)) | .[0].content
+          | if type=="array" then map(.text // "") | join(" ") else tostring end) end')
+
+case "$result" in
+  NOATTEMPT) verdict=noattempt ;;
+  "Permission to use "*" has been denied."*|*"denied by your permission settings"*) verdict=denied ;;
+  *"requires approval"*) verdict=ask ;;
+  *) verdict=ran ;;
+esac
+
+printf '%-9s expected %-6s  %s\n' "$verdict" "$expect" "$label"
+if [ "$verdict" = noattempt ]; then
+  # Show what the model did instead, so a refusal is distinguishable from a bug.
+  printf '%s\n' "$stream" | jq -rs '[.[] | select(.type=="assistant") | .message.content // []
+    | if type=="array" then .[] else empty end
+    | if .type=="text" then "  text: " + .text[0:160] elif .type=="tool_use" then "  tool_use: " + (.input|tostring)[0:160] else empty end] | .[]'
+fi
+[ "$verdict" = noattempt ] && exit 2
+[ "$verdict" = "$expect" ]
