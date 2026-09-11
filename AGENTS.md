@@ -116,11 +116,14 @@ by any spelling of the command; these rules only make the common spellings fail
 fast and legibly. Two lists:
 
 - **`allow`** — this repo's own test/lint commands, so implementers don't stall
-  on prompts: the `plugin versions` check, `pytest` (gm's tests), `bash -n`
-  (hook syntax), `claude plugin validate`, plus gm's `roll`/`campaign`
-  binaries. Seeded from what CI and contributors actually run (no transcripts
-  existed to feed `/fewer-permission-prompts`); extend it when a new test/lint
-  command shows up as a recurring prompt.
+  on prompts: what the two workflows run (`python3
+  .github/scripts/check-plugin-versions`, `uvx pytest`, `python3
+  plugins/gm/bin/validate-adapter`), the local spellings of the same
+  (`python3 -m pytest`, `pytest`), `bash -n` (hook syntax), `claude plugin
+  validate`, plus gm's `roll`/`campaign` binaries. Seeded from what CI and
+  contributors actually run (no transcripts existed to feed
+  `/fewer-permission-prompts`); extend it when a new test/lint command shows
+  up as a recurring prompt.
 - **`deny`** — the deploy-shaped commands an implementer session must never
   run (`terraform apply`, `gcloud run deploy`, `firebase deploy`), force-push
   without a lease (`--force` / `-f`; `--force-with-lease` still prompts
@@ -139,7 +142,9 @@ Rule shapes, verified against the permissions doc on Claude Code 2.1.269:
 - The space in `git push --force *` is part of the rule; that is what keeps
   `git push --force-with-lease …` out of it. The force-push rules come in
   `git push …` and `git * push …` pairs so a global option before the
-  subcommand (`git -C <dir> push --force`) is caught as well.
+  subcommand (`git -C <dir> push --force`) is caught as well, and
+  `git push * +*` catches the leading-`+` refspec form (`git push origin
+  +HEAD:main`), which is an unleased force-push with no flag.
 - Path rules are `Edit(...)`, never `Write(...)`: Claude Code consults only
   `Edit`/`Read` path rules and ignores a `Write` one (with a startup warning).
   `Edit(~/.config/**)` covers the Edit and Write tools and `> ~/.config/…`

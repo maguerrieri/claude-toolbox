@@ -14,11 +14,17 @@
 #   .github/scripts/probe-permissions <settings.json> ran|ask|denied <command...>
 #   .github/scripts/probe-permissions <settings.json> ran|ask|denied --write <path>
 # Exit 0 when the verdict matches the expectation, 1 on a mismatch, 2 when the
-# model never attempted the exact call (the deploy-shaped commands are ones the
-# model itself balks at; probe them with a `--help` / `--dry-run` spelling that
-# shares the matched prefix, e.g. `terraform apply -help`).
+# model never attempted the exact call (it ran something else, or refused: the
+# deploy-shaped commands are ones the model itself balks at, so probe them with a
+# `--help` / `--dry-run` spelling that shares the matched prefix, e.g.
+# `terraform apply -help`), 3 when the probe itself failed (no claude/jq, no
+# stream, unparseable output).
 # Requires the `claude` CLI (2.1.269+) and `jq`.
 set -uo pipefail
+
+for dep in claude jq; do
+  command -v "$dep" >/dev/null || { echo "probe-permissions: $dep not found" >&2; exit 3; }
+done
 
 settings=$1; expect=$2; shift 2
 case "$expect" in ran|ask|denied) ;; *) echo "expect must be ran|ask|denied" >&2; exit 64 ;; esac
@@ -39,14 +45,21 @@ match=${target/#\~\//$HOME/}
 stream=$(timeout 170 claude -p --model sonnet --settings "$settings" --permission-mode default \
   --permission-prompts none --max-turns 3 --output-format stream-json --verbose "$prompt" </dev/null 2>/dev/null)
 
-# The tool_result for the first tool_use whose input names our target.
+# The tool_result for the first tool_use whose command/path is exactly our target.
 result=$(printf '%s\n' "$stream" | jq -rs --arg t "$match" '
   (map(select(.type=="assistant")) | map(.message.content // [] | if type=="array" then .[] else empty end)
-     | map(select(.type=="tool_use" and ((.input.command // .input.file_path // "") | test("\\Q" + $t + "\\E")))) | .[0].id) as $id
+     | map(select(.type=="tool_use" and ((.input.command // .input.file_path // "") == $t))) | .[0].id) as $id
   | if $id == null then "NOATTEMPT"
     else (map(select(.type=="user")) | map(.message.content // [] | if type=="array" then .[] else empty end)
           | map(select(.type=="tool_result" and .tool_use_id==$id)) | .[0].content
-          | if type=="array" then map(.text // "") | join(" ") else tostring end) end')
+          | if type=="array" then map(.text // "") | join(" ") else tostring end) end') || result=""
+
+# An empty stream (claude failed to start, timed out) or a jq parse failure must
+# not read as "ran": a broken probe is an error, not a pass.
+if [ -z "$result" ]; then
+  echo "error     probe produced no verdict for: $label (claude or jq failed; rerun with --verbose stream to inspect)" >&2
+  exit 3
+fi
 
 case "$result" in
   NOATTEMPT) verdict=noattempt ;;

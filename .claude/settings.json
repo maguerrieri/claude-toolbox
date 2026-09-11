@@ -32,6 +32,8 @@
       "Bash(roll:*)",
       "Bash(campaign:*)",
       "Bash(python3 .github/scripts/check-plugin-versions *)",
+      "Bash(uvx pytest *)",
+      "Bash(python3 plugins/gm/bin/validate-adapter *)",
       "Bash(python3 -m pytest *)",
       "Bash(pytest *)",
       "Bash(bash -n *)",
@@ -59,6 +61,8 @@
       "Bash(git * push -f *)",
       "Bash(git * push * -f)",
       "Bash(git * push * -f *)",
+      "Bash(git push * +*)",
+      "Bash(git * push * +*)",
       "Edit(~/.config/**)"
     ]
   }
