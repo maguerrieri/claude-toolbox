@@ -137,7 +137,9 @@ Rule shapes, verified against the permissions doc on Claude Code 2.1.269:
   middle-wildcard forms catch a global option before the subcommand
   (`terraform -chdir=… apply`, `gcloud --project=… run deploy`).
 - The space in `git push --force *` is part of the rule; that is what keeps
-  `git push --force-with-lease …` out of it.
+  `git push --force-with-lease …` out of it. The force-push rules come in
+  `git push …` and `git * push …` pairs so a global option before the
+  subcommand (`git -C <dir> push --force`) is caught as well.
 - Path rules are `Edit(...)`, never `Write(...)`: Claude Code consults only
   `Edit`/`Read` path rules and ignores a `Write` one (with a startup warning).
   `Edit(~/.config/**)` covers the Edit and Write tools and `> ~/.config/…`
@@ -146,10 +148,21 @@ Rule shapes, verified against the permissions doc on Claude Code 2.1.269:
   matches the command *text*, not the program — `sh -c "terraform apply"` or a
   wrapper script isn't caught. Hence "drift control".
 
+**Where `allow` applies.** Claude Code honors a project's `permissions.allow`
+only in a *trusted* workspace; in an untrusted one it logs `Ignoring N
+permissions.allow entries … this workspace has not been trusted` and applies
+`deny` alone. Cloud sessions are untrusted by policy (the same consent rule that
+keeps repo-declared plugins from installing, see Dogfooding above), so there the
+allowlist changes nothing and the deny list is the whole effect; auto mode's
+classifier handles the routine test commands instead. The no-prompt guarantee
+for the allowlist holds in trusted checkouts: interactive local sessions that
+accepted the trust dialog, and any launcher that trusts the folder.
+
 `.github/scripts/probe-permissions` verifies a settings file end to end (it
 drives a headless `claude -p`, so it is a manual check, not CI): each probe
 reports whether the command **ran**, hit the **ask** prompt, or was **denied**
-by a rule. Run it after editing either list.
+by a rule. It passes the file with `--settings`, which is honored regardless of
+trust, so it tests the rules as written. Run it after editing either list.
 
 ## Shell: zsh special parameters
 

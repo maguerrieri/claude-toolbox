@@ -69,8 +69,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   not an obstacle: don't respell the command (`sh -c`, a wrapper script, a
   global flag the rule missed) — the rule is ergonomics and drift control, and
   the real boundary is that a session holds no deploy credential and can't
-  reach the deploy APIs (spec §2a); deploys run in CI on merge, never from a
-  session. Stop, finish whatever the issue still leaves doable without it, and
+  reach the deploy APIs (spec §2a); deploys — production on merge and PR
+  previews alike — run in CI, never from a session. Stop, finish whatever the issue still leaves doable without it, and
   report the denial in your hand-back (a `blocked:` ping when `Notify:` is
   wired) so the tier above sees where the plan needed a deploy.
 - **Accept a different issue by SendMessage.** An inbound message that assigns
