@@ -9,8 +9,9 @@ environment's setup script (see [Usage](#usage)).
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
-  list pulls in every plugin below. Install this one to get the full set.
-  New plugins added to this repo should also be added to its dependencies.
+  list pulls in every plugin below except `gm`. Install this one to get the
+  default set. New plugins added to this repo should also be added to its
+  dependencies.
 - **conventions** — cross-repo development conventions: commit-message format
   and a portable repository-instruction policy built around canonical root
   `AGENTS.md` plus a pure `CLAUDE.md` import shim.
