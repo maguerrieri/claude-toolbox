@@ -461,14 +461,33 @@ git proxy authenticates *ordinary user sessions* as the session creator, and
 installation token — those are the PRs that appear as `claude[bot]`. The
 identity is not selectable per session on a personal plan, and per-session
 minted tokens exist only in self-hosted environments (Team/Enterprise).
-Therefore:
 
-1. Rulesets bind both actors (the user and the `claude` app) identically.
-2. Prefer launch paths that yield `claude[bot]`-authored PRs where they
-   occur: a distinct author lets the user's own review satisfy "1 approval".
-3. A spike issue confirms which launch paths produce `claude[bot]` on the
-   personal account, and whether routines (`/schedule` + API fire) can be the
-   standard implementer launcher for that reason.
+**Observed on this PR (2026-09-11, ordinary user session on the personal
+account):** commit attribution and PR authorship are *separate*. The
+hosted environment's global git config is `user.name Claude`,
+`user.email noreply@anthropic.com`, with SSH commit signing through a
+proxy signer whose key lives outside the sandbox. GitHub maps that
+address to the `claude[bot]` account, so every commit shows as
+`claude[bot]` (overriding `user.name` alone does not change that; the
+email is what GitHub matches). The PR, its comments, review replies, and
+thread resolutions were all created through the API as the user. So an
+ordinary session yields `claude[bot]` **commits** on a **user-authored**
+PR, and GitHub's "author cannot approve" rule keys on PR authorship — this
+path does not, by itself, give the user an approvable PR. Pushes go
+through the git proxy with the user's token, so for ruleset purposes the
+pushing actor is the user too. Therefore:
+
+1. Rulesets bind both actors (the user and the `claude` app) identically —
+   still required, since the App path exists for routines/Auto-fix and
+   commit signatures already carry the bot identity.
+2. The "distinct author" the review ruleset needs is a distinct **PR
+   author**; `claude[bot]` commits on a user-opened PR do not count.
+3. The spike (item 8) is now narrower: confirm which launch paths (routine,
+   Auto-fix, Claude Tag, `--cloud` from a bundle) open the *PR* as
+   `claude[bot]`, whether that PR can be approved by the user, and whether
+   routines (`/schedule` + API fire) can be the standard implementer
+   launcher for that reason. Record commit-author, PR-author, and
+   pushing-actor for each path in the spec.
 4. **Team-account option:** a self-hosted environment with a wrapper script
    that mints a short-lived, least-scoped GitHub App installation token per
    session (`--capacity 1`, ephemeral container). This is the cleanest least-
