@@ -87,7 +87,7 @@ evidence_parser='
 		json = (inside && info == "json"); buf = ""
 		next
 	}
-	infence && substr($0, 1, 1) == fchar && run($0, fchar) >= width && $0 ~ /^[`~]+[[:space:]]*$/ {
+	infence && substr($0, 1, 1) == fchar && run($0, fchar) >= width && $0 ~ ("^[" fchar "]+[[:space:]]*$") {
 		infence = 0
 		if (json) { fences++; if (MODE == "extract" && !done) { printf "%s", buf; done = 1 } }
 		json = 0; next
@@ -95,7 +95,13 @@ evidence_parser='
 	infence { if (json) buf = buf $0 "\n"; next }
 	/^## Evidence[[:space:]]*$/ { headings++; inside = 1; next }
 	/^## / { inside = 0 }
-	END { if (MODE == "headings") print headings + 0; else if (MODE == "fences") print fences + 0 }
+	# A json fence still open at EOF is malformed, whatever came before it:
+	# report -1 so an "exactly one" comparison fails rather than counting the
+	# earlier closed block as the whole story.
+	END {
+		if (infence && json) fences = -1
+		if (MODE == "headings") print headings + 0; else if (MODE == "fences") print fences + 0
+	}
 '
 count_evidence_headings() { awk -v MODE=headings "$evidence_parser" "$1"; }
 count_evidence_fences() { awk -v MODE=fences "$evidence_parser" "$1"; }
@@ -254,6 +260,15 @@ assert "a tilde-fenced json block extracts" check "$(extract_evidence_block "$tm
 	printf '## Summary\n- x\n\n## Evidence\n~~~json\n%s\n```\n\nCloses #1\n' "$filled_block"
 } >"$tmp.decoy"
 refute "a tilde fence is not closed by a backtick line" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+{
+	printf '## Summary\n- x\n\n## Evidence\n```json\n%s\n```~~~\n\nCloses #1\n' "$filled_block"
+} >"$tmp.decoy"
+refute "a mixed-marker line does not close a backtick fence" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+refute "a mixed-marker line yields no block" test -n "$(extract_evidence_block "$tmp.decoy")"
+{
+	printf '## Summary\n- x\n\n## Evidence\n```json\n%s\n```\n```json\n%s\n' "$filled_block" "$filled_block"
+} >"$tmp.decoy"
+refute "a closed block followed by an unterminated json fence fails the one-block rule" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
 rm -f "$tmp.decoy"
 cp "$tmp" "$tmp.two-fences"
 printf '\n```json\n%s\n```\n' "$filled_block" >>"$tmp.two-fences"
