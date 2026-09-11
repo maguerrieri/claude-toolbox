@@ -67,8 +67,11 @@ SUPPORTED_KEYS = {"types", "branches", "branches-ignore", "paths", "paths-ignore
 DEFAULT_TYPES = ["opened", "synchronize", "reopened"]
 HEAD_TYPES = {"opened", "synchronize"}
 CLOSE_TYPES = {"closed"}
-# GitHub evaluates path filters against at most 300 changed files.
+# GitHub evaluates path filters against at most 300 changed files, and runs
+# every path-filtered workflow regardless when it cannot compute the diff at
+# all (documented for pushes of more than 1000 commits, or a diff timeout).
 MAX_CHANGED_FILES = 300
+MAX_COMMITS = 1000
 SETTINGS_FILE = ".claude/settings.json"
 
 
@@ -357,6 +360,21 @@ def expected_set(manifest: dict, changed_files: list[str], base_ref: str) -> lis
     return out
 
 
+def observed_unexpected(manifest: dict, runs: list[dict], expected: list[tuple[str, str]], own_run_id) -> list[tuple[str, str]]:
+    """Manifest workflows that have a PR run on this head although their filters did not select it.
+
+    GitHub runs every path-filtered workflow when it cannot compute the diff,
+    so a run that exists is evidence the filters did not predict; it is
+    aggregated rather than ignored, and its failure blocks like any other.
+    """
+    out = []
+    for filename in (manifest.get("workflows") or {}):
+        for event in PR_EVENTS:
+            if (filename, event) not in expected and latest_run(runs, filename, event, own_run_id) is not None:
+                out.append((filename, event))
+    return out
+
+
 # --- Aggregation ------------------------------------------------------------
 
 
@@ -478,6 +496,9 @@ class Api:
     def open_prs(self, base: str) -> list[dict]:
         return self.paginate("pulls", params={"state": "open", "base": base})
 
+    def pull(self, number: int) -> dict:
+        return self.get(f"pulls/{number}")
+
     def changed_files(self, number: int) -> list[dict]:
         return self.paginate(f"pulls/{number}/files")
 
@@ -523,6 +544,9 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     changed = [f["filename"] for f in files]
     if len(changed) > MAX_CHANGED_FILES:
         reasons.append(f"{len(changed)} changed files: GitHub evaluates path filters on at most {MAX_CHANGED_FILES}, which ci-gate cannot mirror")
+    commits = int(api.pull(number).get("commits") or 0)
+    if commits > MAX_COMMITS:
+        reasons.append(f"{commits} commits: GitHub skips path filtering (runs everything) above {MAX_COMMITS}, which ci-gate cannot mirror")
 
     # Head-tree manifest + workflows.
     workflows: dict[str, object] = {}
@@ -565,8 +589,13 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     if reasons:
         return {"verdict": "failure", "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows, "changed_files": len(changed)}
 
+    runs = api.runs(head_sha)
     expected = expected_set(manifest, changed, pr["base"]["ref"])
-    verdict, rows = aggregate(expected, api.runs(head_sha), own_run_id)
+    observed = observed_unexpected(manifest, runs, expected, own_run_id)
+    verdict, rows = aggregate(expected + observed, runs, own_run_id)
+    for row in rows:
+        if (row["workflow"], row["event"]) in observed:
+            row["detail"] += "; ran although its filters did not select this PR (GitHub diff fallback?), so it counts"
     if base_sha:
         flag_unsubscribed(rows, workflows, subscribed_names(api, base_sha))
     return {"verdict": verdict, "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows,

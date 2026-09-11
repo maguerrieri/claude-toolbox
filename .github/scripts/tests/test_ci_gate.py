@@ -339,9 +339,13 @@ def test_settings_paths_to_lint():
 # --- evaluation over a fake API ---------------------------------------------
 
 class FakeApi:
-    def __init__(self, prs, files, tree, runs, default="main", base_tree=None):
+    def __init__(self, prs, files, tree, runs, default="main", base_tree=None, commits=1):
         self.prs, self.files, self.tree, self._runs, self.default = prs, files, tree, runs, default
         self.base_tree = tree if base_tree is None else base_tree
+        self.commits = commits
+
+    def pull(self, number):
+        return dict(next(p for p in self.prs if p["number"] == number), commits=self.commits)
 
     def default_branch(self):
         return self.default
@@ -423,6 +427,27 @@ def test_evaluate_missing_manifest_fails():
     api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
     result = ci_gate.evaluate(api, "abc", "1")
     assert result["verdict"] == "failure" and "factory-ci.yml is missing" in result["reasons"][0]
+
+
+def test_evaluate_unexpected_run_still_counts():
+    """GitHub ran gm CI on a docs-only PR (diff fallback): its result is aggregated, not ignored."""
+    runs = [run("plugin-versions.yml", id=1), run("gm-ci.yml", id=2, conclusion="failure")]
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], TREE, runs)
+    result = ci_gate.evaluate(api, "abc", "999")
+    assert result["verdict"] == "failure"
+    gm = next(r for r in result["rows"] if r["workflow"] == "gm-ci.yml")
+    assert "diff fallback" in gm["detail"]
+    runs[1]["conclusion"] = "success"
+    assert ci_gate.evaluate(api, "abc", "999")["verdict"] == "success"
+    # A push-event run of an unexpected workflow is not evidence of a pull_request run.
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml", id=1), run("gm-ci.yml", id=2, event="push", conclusion="failure")])
+    assert ci_gate.evaluate(api, "abc", "999")["verdict"] == "success"
+
+
+def test_evaluate_too_many_commits_fails():
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")], commits=1001)
+    result = ci_gate.evaluate(api, "abc", "999")
+    assert result["verdict"] == "failure" and any("1001 commits" in r for r in result["reasons"])
 
 
 def test_evaluate_too_many_files_fails():
