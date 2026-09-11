@@ -87,8 +87,13 @@ verified on Claude Code 2.1.268:
   install at session start didn't hold on 2.1.268.) Cloud sessions *do* honor
   repo-declared hooks, so `.claude/hooks/session-start.sh` does the install:
   when `CLAUDE_CODE_REMOTE` is `true` it reads this same `settings.json` with
-  `jq`, runs `claude plugin marketplace add` for each marketplace and
-  `claude plugin install` for each enabled plugin, and exits 0 no matter what.
+  `jq` and, for each enabled plugin, runs `claude plugin marketplace add` for
+  its marketplace and `claude plugin install` for the plugin, exiting 0 no
+  matter what. Only marketplaces on the script's allowlist (this toolbox and
+  `claude-plugins-official`) are ever used: a repo hook already runs arbitrary
+  shell in cloud sessions, so that's defense in depth rather than a boundary,
+  but it means a settings-only change on a branch can't point the hook at a
+  new source.
   The settings file stays the single source of truth; the hook never changes
   when the plugin set does, and is a no-op locally. Other repos run the same
   file with one hook line (`curl -fsSL <raw URL on main> | bash`; see the
