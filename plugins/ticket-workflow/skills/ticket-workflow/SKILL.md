@@ -224,7 +224,7 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   cd <worktree_dir>/<branch> && git submodule update --init
   ```
 
-- **(b) Already checked out — `git branch --show-current` already prints `<branch>`** (a cloud session launched with `outcome_branch`, EPIC Step 5; or a resumed session): there is no worktree to add or enter. Stay in the clone on that branch, skip the `git worktree add` and `EnterWorktree` above, and run the same `SUBMODULES` step from the clone's own directory (`git submodule update --init` in `/path/to/<repo>`). Everywhere below, "the worktree" then means this clone, and FINISH Step 3's worktree removal does not apply — skip it (there is nothing to remove; running it would error).
+- **(b) Already checked out in the main clone — `git branch --show-current` already prints `<branch>` *and* this checkout is not a linked worktree** (`[ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ]` holds for a plain clone and fails inside a `git worktree`): a cloud session launched with `outcome_branch` (EPIC Step 5). A local session resumed *inside* the worktree that path (a) created also prints `<branch>` but fails the second test — that is a resumed path (a): keep working there, and FINISH Step 3 still removes it. On a true path (b) there is no worktree to add or enter. Stay in the clone on that branch, skip the `git worktree add` and `EnterWorktree` above, and run the same `SUBMODULES` step from the clone's own directory (`git submodule update --init` in `/path/to/<repo>`). Everywhere below, "the worktree" then means this clone, and FINISH Step 3's worktree removal does not apply — skip it (there is nothing to remove; running it would error).
 
 ### Step 4 — Report the worktree path
 
