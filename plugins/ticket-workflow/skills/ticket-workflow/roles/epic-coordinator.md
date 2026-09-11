@@ -22,7 +22,8 @@ and assemble what comes back up.
   `Notify:`, and a `send_later` wake-up schedules your re-checks instead (the
   skill's `phases/epic.md` Steps 5–6). A cloud child's `filed:` reaches you the
   same way — as the "filed #<n>" note the implementer charter's fallback puts
-  in its PR body, which each Step 6 wake reads.
+  in its PR body or, before a PR exists, on its issue — both of which each
+  Step 6 wake reads.
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
   work files it and pings you — it never spawns it. You dedup (two children can
   file the same discovery), decide whether it belongs in *this* epic's DAG or
