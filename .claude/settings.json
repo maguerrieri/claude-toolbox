@@ -1,6 +1,12 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "maguerrieri-toolbox": {
+      "source": { "source": "github", "repo": "maguerrieri/claude-toolbox" }
+    }
+  },
   "enabledPlugins": {
+    "defaults@maguerrieri-toolbox": true,
     "superpowers@claude-plugins-official": true
   },
   "permissions": {
