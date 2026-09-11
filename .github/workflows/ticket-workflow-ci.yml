@@ -1,9 +1,12 @@
 name: ticket-workflow CI
 
-# Runs every plugins/ticket-workflow/tests/test-*.sh (bash + jq, no
-# dependencies). Add a test file; the workflow picks it up without edits. The
-# software-factory spec is in the trigger set because the evidence-block test
-# parses its 1a example.
+# Two test suites for the ticket-workflow plugin:
+#   - shell: every plugins/ticket-workflow/tests/test-*.sh (bash + jq, no
+#     dependencies). Add a test file; the workflow picks it up without edits.
+#     The software-factory spec is in the trigger set because the
+#     evidence-block test parses its 1a example.
+#   - script: pytest over plugins/ticket-workflow/tests (the provisioning
+#     script's tests), run with uv.
 on:
   push:
     paths:
@@ -17,7 +20,7 @@ on:
       - ".github/workflows/ticket-workflow-ci.yml"
 
 jobs:
-  test:
+  shell-tests:
     runs-on: ubuntu-latest
     steps:
       # On pull_request the default checkout is the synthetic merge commit; the
@@ -35,3 +38,12 @@ jobs:
             bash "$test_file" || status=1
           done
           exit "$status"
+
+  script-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Run script tests
+        run: uvx pytest plugins/ticket-workflow/tests -q
