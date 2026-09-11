@@ -23,7 +23,25 @@ configure it for this repo:
 ```
 Tracker: github
 Profile: default
+Implementer environment (personal): env_PENDING
+Coordinator environment (personal): env_PENDING
+Implementer environment (team): env_PENDING
+Coordinator environment (team): env_PENDING
 ```
+
+The four `… environment (<account>)` lines are the factory's environment
+selection (design spec
+`docs/superpowers/specs/2026-09-11-software-factory-design.md`, §2c): one
+implementer and one coordinator cloud environment per Claude account, labelled
+`personal` and `team`. The launcher reads them from `origin/main`, never from a
+briefing or the checkout, and determines the launching account by finding which
+label's lines contain the calling session's own `environment_id`, refusing
+unless exactly one label matches (§2d: the session record carries no account
+field). `env_PENDING` means the environment has not been created yet — it is a
+GUI-only step in each account (§2b; the steps are in the PR for #96) — and no
+session's `environment_id` can equal it, so the launcher refuses until a real
+ID replaces it. Keep the block parseable: one `Key: value` line each, no
+duplicates.
 
 (An optional `Worktree dir: <path>` line in the same block — or in project memory —
 overrides where `/start-ticket` creates worktrees; the default, `.claude/worktrees/`,
@@ -97,12 +115,56 @@ verified on Claude Code 2.1.268:
   The settings file stays the single source of truth; the hook never changes
   when the plugin set does, and is a no-op locally. Other repos run the same
   file with one hook line (`curl -fsSL <raw URL on main> | bash`; see the
-  README). Delete it once cloud sessions honor the settings natively. Alternatives that also work, outside
+  README). Delete it once cloud sessions honor the settings natively. In this
+  repo's own factory-implementer environment the plugins are already in the
+  cached snapshot (see *Cloud environment provisioning* below), so the loop
+  finds them installed and skips. Alternatives that also work, outside
   the repo: enable the marketplace on your claude.ai account (Customize ›
   Plugins › Add marketplace › from a repository) so the plugins sync into cloud
   sessions as `<name>@synced` (skills verified; `claude plugin list` shows
   nothing for them, which is expected), or run the same install from the cloud
   environment's setup script.
+
+## Cloud environment provisioning (`.claude/cloud-setup.sh`)
+
+The factory's implementer cloud environment (spec §2b, item 6) is provisioned
+by `.claude/cloud-setup.sh`, which the environment's GUI setup script runs
+**from `origin/main`**, never from the checked-out branch — the GUI holds only
+the fail-fast stub recorded verbatim in §2b (`set -euo pipefail`, fetch
+`origin/main`, `git show origin/main:.claude/cloud-setup.sh` into a variable,
+refuse if empty, run it under `bash -euo pipefail`; its `(v1)` comment is the
+rebuild trigger). The script's header states its one rule — it never executes
+anything from the checkout — and `ci-gate` lints it for `make`, package
+managers, sourcing, and relative invocations, so a branch that plants a
+`Makefile` or a `postinstall` hook cannot get it run at setup. Three modes:
+
+- **provision** (no argument): reads `enabledPlugins` from
+  `origin/main:.claude/settings.json`, installs them from the two allowlisted
+  marketplaces pinned as git URLs at `#main`, and writes a snapshot manifest
+  (`~/.factory-setup/manifest`) holding the SHA-256 of `origin/main`'s script
+  and of `.claude/cloud-allowlist`. This repo declares no GCP project, so it
+  materializes no credential; `toolbox`'s copy (same text, two constants
+  filled in) activates the read-only logs-viewer key from
+  `FACTORY_LOGS_VIEWER_KEY` and asserts its IAM scope.
+- **`--verify`**: run per session by `.claude/hooks/session-start.sh` (which
+  fetches `origin/main` and runs *that* copy) and prints `SETUP STALE` when
+  `main`'s script or allowlist changed after the snapshot was built (fix: bump
+  the `(v1)` comment in the GUI stub in each account), `UNTRUSTED .claude/`
+  when the checkout's `.claude/` differs from `origin/main` (content, not
+  branch name; `.claude/worktrees/` excluded), and `PROJECT remote.* OVERRIDE
+  PRESENT` when `.claude/settings.json` carries a `remote.*` key. Nudges for
+  the session and the log, never a boundary — a hook cannot block a session
+  and the setup result is a shared snapshot (§2b explains why the boundary is
+  the credential rule instead).
+- **`--assert-iam`**: the IAM assertion (`projects.testIamPermissions`) for a
+  repo that declares a key; a no-op here.
+
+`.claude/cloud-allowlist` mirrors the environment's network allowlist
+(`level:` / `host:` lines); nothing reads it at runtime, but its hash is part
+of the staleness check, so changing the GUI allowlist means changing the file
+and bumping the stub. `.github/scripts/tests/test_cloud_setup.py` runs the
+real script against a throwaway origin with recording stubs; the
+`factory scripts` workflow runs it on every `.claude/**` change.
 
 ## Repo permissions (`.claude/settings.json`)
 

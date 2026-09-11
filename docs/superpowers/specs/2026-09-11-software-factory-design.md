@@ -593,7 +593,7 @@ copy:
 ```bash
 # factory-implementer setup script (v1)
 set -euo pipefail
-git -C "$CLAUDE_PROJECT_DIR" fetch --depth=1 origin main
+git -C "$CLAUDE_PROJECT_DIR" fetch --depth=1 origin +refs/heads/main:refs/remotes/origin/main
 script=$(git -C "$CLAUDE_PROJECT_DIR" show origin/main:.claude/cloud-setup.sh)
 [ -n "$script" ] || { echo "cloud-setup.sh missing on origin/main" >&2; exit 1; }
 bash -euo pipefail -c "$script"
@@ -643,7 +643,13 @@ exposure to any branch is acceptable**:
   **API credentials** feature, which the agent proxy attaches after requests
   leave the VM; the session never holds them.
 - Anything beyond read-only — deploy credentials, Terraform state access,
-  write-capable API keys — never enters a session; deploys run in CI on
+  write-capable API keys — never enters a session, with the one carve-out
+  2d item 4 admits deliberately: the hour-scoped, single-repo GitHub App
+  installation token that `factory-token` mints for START Step 7 is the one
+  write-capable credential this design admits into a session (bounded to
+  one repo, two permissions, non-protected branches, and one hour; 8b's
+  isolation test asserts those bounds). The broker *bearer*, which mints
+  such tokens without limit, is admitted nowhere. Deploys run in CI on
   merge (2a).
 
 `cloud-setup.sh` still performs the `.claude/` diff and `--verify` checks
@@ -677,6 +683,65 @@ account's environment set is part of the baseline (the constraint above),
 created from the same definitions; optionally those can be made
 organization-shared environments there, which changes nothing else.
 
+**Implementation (item 6, 2026-09-11).** `.claude/cloud-setup.sh` lands in
+both repos with the same text apart from two constants at its top
+(`GCP_PROJECT`, `LOGS_VIEWER_SA`; `claude-toolbox` declares neither and so
+materializes no key), plus `.claude/cloud-allowlist` (`level:` and `host:`
+lines mirroring the GUI; nothing parses it at runtime, its hash is what
+matters). Three modes: none provisions; `--verify` is the SessionStart
+nudge; `--assert-iam` is the IAM test. Provisioning fetches `origin/main`
+with an explicit refspec (so a single-branch clone still gets
+`origin/main`; the stub above does the same), reads `enabledPlugins` from
+`origin/main:.claude/settings.json` — never the checkout — registers only
+the two allowlisted marketplaces, each as a git URL pinned `#main`
+(`claude plugin marketplace add <url>#<ref>` is the ref-pinned form),
+installs what is missing and updates what is present, then materializes
+the key only when the working tree's `.claude/` matches `origin/main`
+(`.claude/worktrees/` excluded; drift prints `UNTRUSTED .claude/` and
+skips the key). The key arrives in the environment variable
+`FACTORY_LOGS_VIEWER_KEY` (JSON or base64) and is written into the gcloud
+config dir by `gcloud auth activate-service-account`; the 1Password `op`
+path the old hook used is kept as a labelled transitional fallback, since
+an `OP_SERVICE_ACCOUNT_TOKEN` reaches its whole vault and is therefore
+broader than the credential rule allows in a factory environment. After
+activation the script POSTs `projects.testIamPermissions` (needs no
+permission, changes nothing) for logging.viewer's own permissions plus
+nineteen read and write permissions beyond it, and any excess revokes the
+key and fails provisioning; `--assert-iam` runs the same check from a
+session, which is the "IAM assertion test" the credential-boundary test
+below relies on. The snapshot manifest (`~/.factory-setup/manifest`)
+records the SHA-256 of `origin/main`'s script and allowlist and the `main`
+commit; `--verify` prints `SETUP OK`, `SETUP STALE`, `SETUP ABSENT` (no
+manifest: not a factory environment), or `SETUP VERIFY SKIPPED`
+(`origin/main` unreachable), then `UNTRUSTED .claude/` and `PROJECT
+remote.* OVERRIDE PRESENT` as applicable, and always exits 0. The hooks
+run `origin/main`'s copy in `--verify` mode, not the checkout's, so a
+branch edit to the script cannot silence its own nudge; `claude-toolbox`'s
+hook keeps its plugin-install loop after that (a no-op where the snapshot
+already holds the plugins, still needed by the other environments and the
+repos that curl the hook), while `toolbox`'s hook drops the install and
+`gcloud` steps, keeps the `CLOUDSDK_AUTH_ACCESS_TOKEN` unset, and, until
+its factory environments exist, runs `origin/main`'s provisioning when
+`--verify` reports `SETUP ABSENT`. `ci-gate` gains `cloud_setup_lint`: the
+head tree's script must carry the header line `NEVER EXECUTES ANYTHING
+FROM THE CHECKOUT` and no line may invoke `make`, a Node or Python package
+manager, a build tool, `terraform`/`docker`/`direnv`, a `./` or `../`
+path, a sourced file, or an interpreter on a relative script (comments
+excluded). `.github/scripts/tests/test_cloud_setup.py` runs the real
+script against a throwaway origin with recording `claude`/`gcloud`/`curl`/
+`op` stubs and covers the setup-script tests below that need no
+environment (branch marker never runs, planted `Makefile` and `postinstall`
+never run, unreachable `origin/main` fails closed, `SETUP STALE` after a
+`main` change, key withheld under drift, IAM excess fails, the recorded
+stub itself); the cloud-child and warm-cache tests wait on the
+environments, which are GUI-only and were not created by item 6's PR —
+its body lists the manual steps (per account: `factory-coordinator` with
+no setup script and `factory-implementer-<repo>` with the allowlist, the
+key variable, and the stub above; then the `env_…` values into each
+repo's `AGENTS.md` block, which ships with `env_PENDING` placeholders that
+no session's `environment_id` can match, so 2c's launcher refuses until
+real IDs land).
+
 **2c. Environment selection in-repo.** Two mechanisms, because two launchers
 exist:
 
@@ -708,8 +773,8 @@ exist:
   `Profile:`) gains, **per Claude account**, two lines — `Implementer
   environment (<account>): env_…` and `Coordinator environment
   (<account>): env_…`, where `<account>` is a short label (`personal`,
-  `team`) mapped to the account UUID in the same block — and the launcher
-  reads them from
+  `team`; the block carries no account UUID, since 2d found that the
+  session record exposes none) — and the launcher reads them from
   **`origin/main`**, fetched immediately before parsing (`git fetch origin
   main && git show origin/main:AGENTS.md`) so a long-lived coordinator never
   launches children from a stale remote-tracking ref after `main` rotates
@@ -717,10 +782,15 @@ exist:
   out at a `source_revision` has no guarantee of one), or the block lacks
   either line **for the launching account**, the launch **refuses** rather
   than falling back to the checkout or the parent's environment. The
-  launching account is determined from the session API (the calling
-  session's own record names its account), never from a briefing, so a
-  child always lands in an environment of the account that owns the
-  parent — cross-account launches are not a factory path. The tier selector is **launcher-
+  launching account is determined by an `environment_id` **membership
+  test** (2d): the session record carries no account field, and
+  environments are personal to the account that created them, so the
+  launcher finds which account's lines in `origin/main`'s block contain the
+  calling session's own `environment_id` and refuses unless **exactly one**
+  account matches (zero matches, or an ID listed under more than one label,
+  both refuse) — never a briefing — so a child always lands in an
+  environment of the account that owns the parent; cross-account launches
+  are not a factory path. The tier selector is **launcher-
   owned structured metadata, not a line in the briefing**: the `spawn`
   skill's cloud backend takes a `tier: implementer|coordinator` argument
   separate from the prompt text, SPAWN Step 3 and `/spawn-epic` set it

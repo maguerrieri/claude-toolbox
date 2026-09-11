@@ -86,7 +86,11 @@ can't point it at a new source), and locally it's a no-op:
 ```
 
 Or copy `.claude/hooks/session-start.sh` from this repo and point the hook at
-the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
+the copy, as this repo does for itself. Details in the repo's `AGENTS.md`. The
+hook also runs `origin/main`'s `.claude/cloud-setup.sh --verify` when that file
+exists, a drift nudge for repos provisioned by the factory's cloud environments
+(`AGENTS.md` → *Cloud environment provisioning*); in a repo without it the
+hook skips straight to the install.
 
 This repo's own `settings.json` also carries a `permissions` block: `allow` for
 its test/lint commands, `deny` for `terraform apply`, `gcloud run deploy`,
