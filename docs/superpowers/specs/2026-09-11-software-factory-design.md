@@ -151,8 +151,14 @@ head**, not the body:
    required ones, and "all green" is never satisfied vacuously. GitHub
    retains earlier attempts for a SHA, so a re-run that turns a context
    green recovers without a new commit; an older red attempt is ignored
-   only when a newer attempt of the *same* context exists. 3b applies the
-   identical rule;
+   only when a newer attempt of the *same* context exists. Check runs
+   from `pull_request`-triggered workflows are attached by GitHub to the
+   PR's **head** commit even though the job checks out the synthetic
+   `refs/pull/<n>/merge` ref — that is what `gh pr checks` and the PR
+   status rollup read — so the head-SHA lookup sees `plugin-versions` and
+   `gm-ci` results; item 2's first test asserts exactly this against a
+   real PR before anything relies on it, and the gate reads the PR's
+   `statusCheckRollup` as a cross-check. 3b applies the identical rule;
 2. the paginated `reviewThreads` GraphQL query (the one `REVIEW_BOT` already
    uses) returns any unresolved thread;
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
@@ -169,7 +175,12 @@ head**, not the body:
    reviewer's latest review on that SHA is `CHANGES_REQUESTED`** (an older
    approval object survives a later change request, so "any approval
    exists" is not "currently approved"; the gate evaluates each reviewer's
-   most recent review). The command shape cannot prove a human is present
+   most recent review, and a `DISMISSED` approval is not an approval;
+   `PENDING` reviews are unsubmitted and never count — the gate reads the
+   platform's current review decision via `reviewDecision == APPROVED`
+   on the PR and confirms the approving reviewer's identity from the
+   review objects, rather than reconstructing state from raw review
+   history). The command shape cannot prove a human is present
    — a routine runs full cloud sessions with no permission prompts and
    could issue `/finish-ticket <id> --confirm-high` itself, and the
    generic `/spawn` skill forwards prompts verbatim with no cap — so the
@@ -289,9 +300,16 @@ report success before it finishes. So `ci-gate` is **re-evaluated after
 every relevant workflow completes**: it triggers on `pull_request_target`
 (to post a `pending` check immediately) and on `workflow_run: completed`
 for every other workflow in the repo, and on each evaluation it (i)
-computes the **expected set** of workflows for this PR by reading each
-workflow file's `on.pull_request.paths` filter from the base branch and
-matching it against the PR's changed files, (ii) reads the latest attempt
+computes the **expected set** of workflows for this PR from a committed
+manifest, `.github/factory-ci.yml`, that lists each CI workflow with the
+trigger it is expected under (`pull_request` types, `branches`, `paths`,
+`paths-ignore`); `ci-gate` evaluates the manifest's filters against the
+PR's changed files, base branch, and event type with the same semantics
+GitHub applies, and a lint in `ci-gate` fails if any listed workflow's
+actual `on:` block differs from its manifest entry or uses a trigger
+construct the evaluator does not implement — so a workflow can never be
+counted when GitHub would skip it (pending forever) or skipped when
+GitHub would run it (green too early). (ii) It reads the latest attempt
 of every expected workflow's check contexts on the head SHA, and (iii)
 reports `success` only when every expected run exists and succeeded,
 `failure` if any failed, and stays `pending` otherwise. A workflow that is
@@ -519,7 +537,7 @@ Risk class → tier mapping:
 | `risk:` | Runs unattended? | Environment |
 |---|---|---|
 | `docs`, `low`, `normal` | yes (merge gating differs per rung 3) | `factory-implementer` |
-| `high` | START runs unattended; FINISH requires `--confirm-high`, which only a human can supply (1b) | `factory-implementer` |
+| `high` | START runs unattended; FINISH requires a current human approval on the PR (the authorization) plus the `--confirm-high` acknowledgement, which automation may pass but cannot use as authorization (1b item 5) | `factory-implementer` |
 | coordinators / planners | n/a | `factory-coordinator` |
 
 Risk changes *who may finish*, not *where the code runs*; there is no
@@ -822,7 +840,14 @@ extra action after START Step 8 — apply `auto-merge: requested` and stop.
 The child never runs FINISH; **only the merge itself is unattended**, and it
 is performed by the workflow below. Post-merge cleanup and issue closure run
 through the existing EPIC Step 7 / routine paths, which already handle
-cloud-child branches. The label is provisioned with the `risk:*` labels
+cloud-child branches. Two launch paths can otherwise race: under
+`/spawn-epic … --finish`, EPIC Step 7 runs its own FINISH pass over the
+children, and a docs child that labeled itself could be auto-merged before
+Step 7 reaches it. So the carve-out is **disabled for children of a
+finish epic** (EPIC strips it from `SPAWN_CAP` when `--finish` is set, so
+the orchestrator's FINISH is the single merge path), and EPIC Step 7 is
+made idempotent regardless: a child whose PR is already merged is
+reported as *merged (auto)* and skipped, never treated as a failure. The label is provisioned with the `risk:*` labels
 (item 3) and a failed label operation is a hard error, never a silent skip.
 
 *Merge path.* A `docs-auto-merge` GitHub Actions workflow with **two jobs**:
@@ -900,8 +925,12 @@ key. Its trust model:
   `pull_request_target` (it can be the base SHA). So the upstream
   workflows (`ci-gate`, `factory-critic`) each record the PR number and
   the PR head SHA they evaluated in their own run metadata — as a run
-  **artifact** named `factory-target.json` — and the merge workflow reads
-  that artifact from the completed run through the API, then re-validates
+  **artifact** named `factory-target.json` — and the merge workflow's
+  `resolve` job reads that artifact from the completed run through the
+  API under an explicit `permissions` block of `actions: read`,
+  `contents: read`, `pull-requests: read`, `issues: read`, `checks: read`
+  (and `checks: write` only for posting `factory/enrolled`; the App token
+  is never used for reads), then re-validates
   it against the PR: the artifact's PR must be open, same-repo, base
   `main`, and its current `head.sha` must equal the artifact's SHA;
   otherwise the run is ignored and the sweep will reconsider the PR. Where
@@ -964,10 +993,19 @@ key. Its trust model:
   the merge, `factory/merge-record` is posted on the **same PR head SHA**
   (the pre-merge object, which the PR API still reports as `head.sha`
   after merge) with the PR number and the resulting `merge_commit_sha`.
-  Reconciliation enumerates merged PRs through the PR API (fully
-  paginated), and for each looks up both check runs on that PR's
-  `head.sha`: the expected-record set is the merged PRs whose head carries
-  `factory/enrolled`; a member with no `factory/merge-record` on the same
+  Enrollment is re-posted on every new head the resolver evaluates as
+  eligible (each `synchronize` re-runs the resolver), so the enrollment
+  that matters is the one on the PR's **final** head. Reconciliation
+  enumerates merged PRs through the PR API (fully paginated), and for
+  each looks up both check runs on that PR's final `head.sha` and reads
+  `merged_by`: the expected-record set is the merged PRs whose final head
+  carries `factory/enrolled` **and** whose `merged_by` is the
+  `factory-auto-merge` App; a PR enrolled on its final head but merged by
+  a human (after the factory declined or failed) is classified
+  *human-merged after enrollment* — counted in the class's human-merge
+  column, never as unrecorded; an enrollment only on an earlier head is
+  not an enrollment of what merged. A member of the expected set with no
+  `factory/merge-record` on the same
   head is *unrecorded*, treated like an unattributed revert: detection
   incomplete, no widening. Nothing is ever looked up on the merge commit.
   An ordinary human merge of a `risk:normal` ticket is never enrolled, so
@@ -1070,7 +1108,21 @@ change:
   own — a latest `factory/critic` success **required** whenever the
   class's policy enables the critic (3a is fail-closed: a missing critic
   check is `eligible: false` with reason `critic-missing`, never accepted),
-  no unresolved threads at merge).
+  no unresolved threads at merge). Check state is mutable after merge (a
+  re-run on the head replaces the latest attempt), so the workflow
+  **snapshots** what it read — the check-run IDs and conclusions, the
+  critic run ID, the review decision, and the thread count — into the
+  shadow record at the `closed` event, and eligibility is computed from
+  that snapshot only; a record with no snapshot is `eligible: false`. The
+  window between merge and the `closed` handler is seconds and is
+  accepted.
+- The **closing issue is snapshotted at merge too**: `closingIssuesReferences`
+  derives from the editable PR body, so both the shadow workflow and the
+  routine's independent enumeration identify the issue from the *issue's*
+  immutable timeline — the `closed` event whose closer is the PR's merge
+  commit — rather than from the body at read time; a PR whose body was
+  edited after merge to add or drop a closing reference does not move in
+  or out of the population.
 - The class is determined by the closing issue's `risk:*` label **as of
   the merge timestamp**, not as of when the workflow runs: labels are
   mutable after merge, so the workflow (and the routine's independent
@@ -1133,12 +1185,12 @@ must cite both numbers and the independent signal the new class relies on
 | 2 | `check-evidence.sh <pr> <issue>` FINISH gate (all checks, threads, exact closing reference, one known risk label, current-approval state for high risk, block validation with types) + tests; Step 0 refuses non-GitHub trackers. Lands in two PRs: script + tests first, then the FINISH wiring | 1b | 1, 3 |
 | 3 | `--risk` flag (default `normal`), `required_labels` in `CREATE`, provisioning of the four `risk:*` labels **and** `auto-merge: requested`, one-time `risk:normal` backfill of open issues | 1c | — |
 | 4 | `ci-gate` aggregate workflow in both repos; assert `main` is the default branch; rulesets `main-integrity` (requiring the `ci-gate` **workflow** by file, up-to-date branches) and `agent-branches`; record JSON in this spec | 1d | — |
-| 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed and in use | 1d | 8 |
+| 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed **and is the factory's standard implementer launcher** (8b landed and in use), so ordinary factory PRs are not blocked | 1d | 8, 8b |
 | 5 | Repo `permissions` blocks | 2a | — |
 | 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
-| 8 | Spike: a distinct PR author on both the personal account and the org. Leading candidate: one org-owned public GitHub App installed on both, with a `factory-token` helper minting installation tokens into `GH_TOKEN` on `factory-implementer`; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by `<slug>[bot]` (or `claude[bot]`) on one personal and one org repo, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on | 2d | — |
+| 8 | Spike: a distinct PR author on both the personal account and the org. Leading candidate: one org-owned public GitHub App installed on both, with a `factory-token` helper minting installation tokens into `GH_TOKEN` on `factory-implementer`; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by `<slug>[bot]` (or `claude[bot]`) on one personal and one org repo, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on. **Security exit criteria for the Action variant**, since a GitHub-hosted runner has none of 2b's boundaries: workflow `GITHUB_TOKEN` permissions limited to `contents: write`, `pull-requests: write`; the Anthropic key in a `main`-only deployment environment; the model step tool-restricted and network-sandboxed per 3a's container pattern; the issue body and briefing passed as delimited data; egress and tool tests as in item 10 — otherwise the App-on-cloud path (which keeps 2b) wins by default | 2d | — |
 | 8b | Whichever the spike picks: either the App setup (App registration, both installations, key in the implementer environment, `factory-token` helper, optional `gh auth setup-git`), or a `spawn` backend `action` firing `repository_dispatch` with `{issue, briefing, tier}` into a `factory-implement` workflow running the Claude Code Action in automation mode | 2d | 8 |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`, verified by workflow path + `pull_request_target` event) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 3, 4 |
