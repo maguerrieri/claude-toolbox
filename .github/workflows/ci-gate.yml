@@ -43,6 +43,10 @@ concurrency:
 
 jobs:
   evaluate:
+    # A manual dispatch can be started from any ref; only main's copy of this
+    # workflow and of the evaluator may run (the report environment is
+    # main-only regardless).
+    if: ${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -76,9 +80,9 @@ jobs:
   report:
     needs: evaluate
     # Runs even when evaluate failed (the verdict is then `failure`), but not
-    # when it was cancelled by a newer evaluation of the same head, and not
-    # when there is nothing to report.
-    if: ${{ !cancelled() && needs.evaluate.outputs.verdict != 'skip' }}
+    # when it was cancelled by a newer evaluation of the same head, not when it
+    # was skipped (a dispatch off main), and not when there is nothing to report.
+    if: ${{ !cancelled() && needs.evaluate.result != 'skipped' && needs.evaluate.outputs.verdict != 'skip' }}
     runs-on: ubuntu-latest
     environment: factory-ci
     permissions: {}
@@ -102,6 +106,8 @@ jobs:
         run: |
           python3 - <<'PY' > payload.json
           import json, os
+          from datetime import datetime, timezone
+          now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
           verdict = os.environ["VERDICT"]
           if os.environ["EVALUATE_RESULT"] != "success" or verdict not in ("success", "failure", "pending"):
               verdict, title = "failure", "ci-gate evaluator did not complete"
@@ -116,12 +122,14 @@ jobs:
               "external_id": os.environ["GITHUB_RUN_ID"],
               "details_url": os.environ["RUN_URL"],
               "output": {"title": title, "summary": summary},
+              "started_at": now,
           }
           if verdict == "pending":
               payload["status"] = "in_progress"
           else:
               payload["status"] = "completed"
               payload["conclusion"] = verdict
+              payload["completed_at"] = now
           print(json.dumps(payload))
           PY
           test -n "$HEAD_SHA" || { echo "no head SHA to post on"; exit 1; }

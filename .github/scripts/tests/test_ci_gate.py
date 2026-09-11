@@ -156,6 +156,12 @@ def test_lint_gate_trigger_shape():
         "wrong branch": gate(["gm CI", "plugin versions"], pull_request_target={"types": ["opened", "synchronize", "reopened"], "branches": ["dev"]}),
         "run types": gate(["gm CI", "plugin versions"], workflow_run={"workflows": ["gm CI", "plugin versions"], "types": ["requested"]}),
         "no dispatch": gate(["gm CI", "plugin versions"], workflow_dispatch=None),
+        "bare dispatch": gate(["gm CI", "plugin versions"], workflow_dispatch=None),
+        "optional head_sha": gate(["gm CI", "plugin versions"], workflow_dispatch={"inputs": {"head_sha": {"required": False, "type": "string"}}}),
+        "renamed input": gate(["gm CI", "plugin versions"], workflow_dispatch={"inputs": {"pr": {"required": True, "type": "string"}}}),
+        "target paths": gate(["gm CI", "plugin versions"], pull_request_target={"types": ["opened", "synchronize", "reopened"], "branches": ["main"], "paths": ["docs/**"]}),
+        "target paths-ignore": gate(["gm CI", "plugin versions"], pull_request_target={"types": ["opened", "synchronize", "reopened"], "branches": ["main"], "paths-ignore": ["docs/**"]}),
+        "run branches": gate(["gm CI", "plugin versions"], workflow_run={"workflows": ["gm CI", "plugin versions"], "types": ["completed"], "branches": ["main"]}),
     }
     for label, doc in cases.items():
         if label == "no dispatch":

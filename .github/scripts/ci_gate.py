@@ -63,6 +63,9 @@ PROTECTED_BASE = "main"
 PR_EVENTS = ("pull_request",)
 GATE_EVENT = "pull_request_target"
 GATE_TYPES = {"opened", "synchronize", "reopened"}
+GATE_TARGET_KEYS = {"types", "branches"}
+GATE_RUN_KEYS = {"workflows", "types"}
+GATE_DISPATCH_INPUT = "head_sha"
 SUPPORTED_KEYS = {"types", "branches", "branches-ignore", "paths", "paths-ignore"}
 DEFAULT_TYPES = ["opened", "synchronize", "reopened"]
 HEAD_TYPES = {"opened", "synchronize"}
@@ -281,6 +284,10 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
     if not isinstance(target, dict):
         errors.append(f"on.{GATE_EVENT} must be present as a mapping")
     else:
+        if set(target) - GATE_TARGET_KEYS:
+            # A path filter here would let GitHub skip the gate for some PRs,
+            # so the required check would never be posted.
+            errors.append(f"on.{GATE_EVENT} may only set {sorted(GATE_TARGET_KEYS)}, got {sorted(set(target) - GATE_TARGET_KEYS)}")
         types = set(_as_list(target.get("types")))
         if not GATE_TYPES <= types:
             errors.append(f"on.{GATE_EVENT}.types must include {sorted(GATE_TYPES)}, got {sorted(types)}")
@@ -290,6 +297,10 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
     if not isinstance(run, dict):
         errors.append("on.workflow_run must be present as a mapping")
     else:
+        if set(run) - GATE_RUN_KEYS:
+            # A branch filter here would stop completions on PR branches from
+            # re-evaluating the gate.
+            errors.append(f"on.workflow_run may only set {sorted(GATE_RUN_KEYS)}, got {sorted(set(run) - GATE_RUN_KEYS)}")
         if _as_list(run.get("types")) != ["completed"]:
             errors.append("on.workflow_run.types must be exactly ['completed']")
         names = sorted(_as_list(run.get("workflows")))
@@ -299,8 +310,10 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
                 f"      ci-gate:  {names}\n"
                 f"      manifest: {expected_names}"
             )
-    if "workflow_dispatch" not in raw:
-        errors.append("on.workflow_dispatch must be present (manual re-evaluation by head SHA)")
+    dispatch = raw.get("workflow_dispatch") if "workflow_dispatch" in raw else None
+    head_input = (dispatch.get("inputs") or {}).get(GATE_DISPATCH_INPUT) if isinstance(dispatch, dict) else None
+    if not isinstance(head_input, dict) or head_input.get("required") is not True:
+        errors.append(f"on.workflow_dispatch must declare a required `{GATE_DISPATCH_INPUT}` input (manual re-evaluation by head SHA)")
     return errors
 
 
