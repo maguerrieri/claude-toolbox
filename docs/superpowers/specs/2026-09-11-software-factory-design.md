@@ -760,8 +760,13 @@ filters by account without exposing it. The only account-scoped value is
 `environment_id`: environments are personal to the account that created
 them, so the launcher determines its account by finding which account's
 ID lines in `origin/main`'s AGENTS.md block contain the calling session's
-`environment_id`, and refuses when none does. 2c's "account UUID in the
-same block" becomes a label only; the check is environment-ID membership.
+`environment_id`, and refuses when none does. This supersedes 2c's
+sentence "the calling session's own record names its account" and the
+account-UUID mapping in the AGENTS.md block (the UUID becomes a label; the
+check is environment-ID membership), and item 7's acceptance gains the
+matching refusal test: a calling session whose `environment_id` appears
+under no account's lines is refused. The 2c and item-7 text itself is left
+to the epic coordinator, since this PR is confined to 2d.
 
 *Platform facts that bear on the App path (verified in this session unless
 marked).*
@@ -831,8 +836,10 @@ marked).*
 | Opens the PR itself | met only through our App | "Claude doesn't create PRs by default. Instead, it pushes commits to a branch and provides a link to a pre-filled PR submission page." With `Bash(gh pr create:*)` allowed and `GH_TOKEN` set to a `create-github-app-token` token, `gh` authors the PR as `<slug>[bot]`: the same identity the App path uses, on a different runtime. |
 | Lands in the launching account's implementer environment (2c) | **not applicable** | No Claude account is in the loop; the Action runs on a GitHub runner with a secret. The account dimension of the matrix disappears rather than being satisfied, and with it the session record, `get_session` polling, `send_later` re-wakes, and the coordinator's cloud-backend contract (`phases/epic.md` Steps 5–6). |
 
-*Decision: App + token broker on cloud (8b), with 8b amended by facts 1, 2,
-and 5.* The Action fails the sandbox criterion for an implementer and
+*Decision, provisional until M1 passes: App + token broker on cloud (8b),
+with 8b amended by facts 1, 2, and 5.* (The work-items table still reads
+"whichever the spike picks" for 8b; read it as this decision, gated on M1.)
+The Action fails the sandbox criterion for an implementer and
 cannot satisfy the environment criterion at all, and the identity it would
 bring is our App's token in either case, so the default rule above ("the
 App-on-cloud path wins") applies. 8b changes in four ways:
@@ -843,15 +850,25 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   before START Step 7 and runs `gh auth setup-git` so pushes carry the App
   identity too. Whether pass-through mode stops the proxy's substitution
   is M1, and **8b does not start until M1 passes.** If M1 fails, the
-  hosted App path is closed and the fallback order is item 14 (self-hosted
-  environment, Team repos only), then the Action with our App's token,
-  accepting the criterion it fails.
+  hosted App path is closed and **8b is blocked**: item 14 (self-hosted
+  environment, Team repos only) is the one remaining path that meets the
+  criteria, and it cannot serve personal repos. The Action is *not* an
+  automatic fallback, since it fails the sandbox criterion above; using it
+  would need an explicit human decision that revises the exit criteria in
+  this section, recorded here before 8b starts.
 - Personal-account environments carry the broker bearer as an API
-  credential; Team-account environments carry it as an environment
-  variable, bound at the broker to one repo and rotated from the
-  environment page. Exposure of a Team bearer widens the *duration* of the
-  stated blast radius (until rotation instead of one hour), not its scope.
-  M3 decides this before the Team environments are created.
+  credential, outside the VM as 2b requires. Team-account environments
+  cannot: API credentials do not exist on Team plans, and a bearer that
+  mints repo-write tokens is a write-capable credential, which 2b's rule
+  keeps out of every hosted session. So Team-account implementers wait on
+  either API credentials reaching Team plans or item 14 (self-hosted, with
+  per-session minted tokens); until then the Team account launches
+  coordinators only, and implementers for org repos launch from the
+  personal account (the App is installed on both owners, so the identity
+  is the same). Putting the bearer in a Team environment variable would be
+  an exception to 2b, not a fallback: it needs an explicit revision of 2b
+  and its credential-boundary test, decided by the user (M3), before any
+  Team implementer environment is created.
 - `factory-token` sets `user.email` to the App's noreply address so
   commits, not only the PR, carry the App identity.
 - 2c derives the launching account from the calling session's
@@ -861,8 +878,8 @@ App-on-cloud path wins") applies. 8b changes in four ways:
 *Open questions, scoped to what could not be reached, each closed by one
 step of the runbook:* **M1** pass-through mode honors a caller-supplied
 token (personal account, personal repo); **M2** the pushing actor under
-pass-through with and without `gh auth setup-git`; **M3** Team bearer as an
-environment variable versus item 14; **M4** the four App-authored PRs are
+pass-through with and without `gh auth setup-git`; **M3** whether 2b is revised to allow a Team bearer in an environment
+variable, or Team implementers wait on item 14; **M4** the four App-authored PRs are
 approvable by the user under a test `main-review`.
 
 *Manual runbook to complete the matrix (about an hour; everything is
@@ -893,10 +910,11 @@ throwaway).*
    proxy still substitutes and the hosted App path is closed); run
    `gh api /installation/repositories --jq '.repositories[].full_name'`
    (expect only that repo); set `user.email` to
-   `<app-id>+<slug>[bot]@users.noreply.github.com`, commit a one-line
-   change, push once through the proxy and once after
-   `gh auth setup-git` (**M2**: record the pusher of each from the repo's
-   Activity view); run `gh pr create` (expect author `<slug>[bot]`);
+   `<app-id>+<slug>[bot]@users.noreply.github.com`; commit a one-line
+   change and push it through the proxy, then run `gh auth setup-git`,
+   commit a second one-line change, and push again (**M2**: two ref
+   updates, so the repo's Activity view shows the pusher of each); run
+   `gh pr create` (expect author `<slug>[bot]`);
    record `get_session`'s `environment_id`.
 6. On each repo, add a test ruleset `main-review` (1 approval, branch
    pattern = that PR's base), approve the PR as the user (**M4**: the
