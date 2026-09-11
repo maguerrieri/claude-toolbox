@@ -557,7 +557,9 @@ rung 4 must name the independent signal that class relies on.
 
 Gates verify the check run's provenance by **immutable identity, never by
 name**: `app.slug == github-actions`, and the check run's suite resolves to
-a workflow run whose `path` is `.github/workflows/factory-critic.yml`
+a workflow run — followed through the API, not inferred: check run →
+`check_suite.id` → `GET /repos/{o}/{r}/actions/runs?check_suite_id=…` →
+that run's fields — whose `path` is `.github/workflows/factory-critic.yml`
 *and* whose `event` is `pull_request_target` — a PR can add a workflow with
 the same `name`, or even the same filename on its branch, but that run's
 `event` is `pull_request` (PR YAML), so it is rejected. (An alternative
@@ -767,18 +769,28 @@ key. Its trust model:
   ordered merge-then-record, and a record failure after a successful merge
   is a hard job failure that pages the user. Because that write is not
   atomic with the merge, 3c **reconciles against a durable enrollment**
-  rather than against labels or issue classes: when the `resolve` job first
-  evaluates a PR as a live candidate it posts a `factory/enrolled` check
-  run on the head SHA (with `GITHUB_TOKEN`, `checks: write`), and the
-  expected-record set is exactly the merged PRs whose merge commit carries
-  `factory/enrolled` or a shadow record (below). A merged PR in that set
-  with no `factory/merge-record` is *unrecorded*, treated like an
-  unattributed revert: detection incomplete, no widening. An ordinary
-  human merge of a `risk:normal` ticket is never enrolled, so it produces
-  no false "missing record". Item 11's test: one docs PR auto-merged with a
-  record, one docs PR whose record write is simulated to fail after merge
-  (reported as unrecorded), and one human-merged normal ticket (not
-  counted).
+  rather than against labels or issue classes. The repo's merge method is
+  rebase, and rebase-and-merge always creates **new SHAs**, so a check run
+  posted on the PR head never appears on the merge commit; both records
+  are therefore keyed by **PR number**, not by commit. When the `resolve`
+  job first evaluates a PR as a live candidate it posts a
+  `factory/enrolled` check run on the **PR head SHA** (with `GITHUB_TOKEN`,
+  `checks: write`) whose summary carries the PR number and that SHA; after
+  the merge, `factory/merge-record` is posted on the **same PR head SHA**
+  (the pre-merge object, which the PR API still reports as `head.sha`
+  after merge) with the PR number and the resulting `merge_commit_sha`.
+  Reconciliation enumerates merged PRs through the PR API (fully
+  paginated), and for each looks up both check runs on that PR's
+  `head.sha`: the expected-record set is the merged PRs whose head carries
+  `factory/enrolled`; a member with no `factory/merge-record` on the same
+  head is *unrecorded*, treated like an unattributed revert: detection
+  incomplete, no widening. Nothing is ever looked up on the merge commit.
+  An ordinary human merge of a `risk:normal` ticket is never enrolled, so
+  it produces no false "missing record". Item 11's test, run with real
+  rebase-merge semantics: one docs PR auto-merged with a record, one docs
+  PR whose record write is simulated to fail after merge (reported as
+  unrecorded, even though its merge commit differs from its head), and one
+  human-merged normal ticket (not counted).
 
 *Ruleset compatibility.* `main-review` (1d) requires one approving review and
 an Actions job cannot supply one. The `factory-auto-merge` App is added as the
@@ -836,14 +848,29 @@ change:
   docs allowlist: for `low`, "every changed path matches the test-only or
   version-bump-only allowlist" plus the class-agnostic checks (exactly one
   risk label of that class on the single closing issue, latest attempt of
-  every check context green at the merged SHA, latest `factory/critic`
-  success where one exists, no unresolved threads at merge).
+  every check context green at the **PR head SHA as of merge** — the
+  pre-merge evidence, since the rebase-merge commit has no checks of its
+  own — latest `factory/critic` success where one exists, no unresolved
+  threads at merge).
 - For **every** merged PR whose closing issue carries a shadow-class label
   it posts a `factory/merge-record` with `mode: shadow` and `eligible:
-  true|false` plus the reasons — so the record itself is the enrollment,
-  the class's reconciliation set is complete by construction, and the
-  routine can count both "would have auto-merged" and "would not".
-  Shadow records never make a PR auto-merge eligible and never touch 3b.
+  true|false` plus the reasons, on the PR head SHA and keyed by PR number
+  as above. The record is the *result*, not the enrollment: if the
+  workflow is skipped or the check write fails, no record exists and a
+  record-only view would silently drop exactly the failures that matter.
+  So the **expected shadow population is enumerated independently** by the
+  routine: every merged PR in the window (PR API, fully paginated) whose
+  single closing issue carries a label in the shadow class set, where the
+  class set is read from the policy file at the pinned tag the routine
+  reports in its table header (a durable snapshot, so a later policy edit
+  cannot shrink the population retroactively). Any PR in that population
+  with no shadow record is *unrecorded shadow* and blocks widening the
+  same way an unrecorded live merge does. The routine can then count both
+  "would have auto-merged" and "would not". Shadow records never make a
+  PR auto-merge eligible and never touch 3b. Tests: a shadow-class PR
+  merged while the workflow is disabled, and one whose check write is
+  simulated to fail, both surface as unrecorded and block widening until
+  repaired.
 - Rung 4 turns the live merge on for a class only when the shadow sample
   meets the minimum and the `eligible: true` subset shows zero reverts;
   switching a class to live is a reviewed change to the policy file and a
