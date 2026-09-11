@@ -46,8 +46,10 @@ done
 } |
   while read -r source; do
     [ -n "$source" ] || continue
+    # Already registered (a resume, or the launcher got there first): skip the clone.
+    claude plugin marketplace list 2>/dev/null | grep -qF "($source)" && continue
     claude plugin marketplace add "$source" >/dev/null 2>&1 ||
-      echo "session-start: could not add marketplace $source (already added?)" >&2
+      echo "session-start: could not add marketplace $source" >&2
   done
 
 # Then every enabled plugin. `defaults` pulls its dependencies in; the explicit
@@ -55,6 +57,8 @@ done
 jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key' "$settings_file" |
   while read -r plugin; do
     [ -n "$plugin" ] || continue
+    # Already installed: skip. `claude plugin list` prints each as "> name@marketplace".
+    claude plugin list 2>/dev/null | grep -qF "> $plugin" && continue
     claude plugin install "$plugin" >/dev/null 2>&1 ||
       echo "session-start: could not install $plugin" >&2
   done
