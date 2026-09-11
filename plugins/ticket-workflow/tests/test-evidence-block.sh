@@ -162,6 +162,8 @@ for bad in TODO tbd 'n/a' 'N/A' '<fill me>'; do
 done
 assert "'n/a' with a reason is accepted" check "$(printf '%s' "$filled_block" | jq '.tests = "n/a: docs-only change, no test surface"')" "$no_placeholders"
 refute "a fence holding two JSON objects is rejected" check "$(printf '%s\n%s' "$filled_block" "$filled_block")" '.'
+refute "an invalid first object followed by a valid one is rejected" check "$(printf '{"schema": 1,\n%s' "$filled_block")" '.'
+refute "a valid first object followed by an invalid one is rejected" check "$(printf '%s\n{"schema":' "$filled_block")" '.'
 refute "critic outside {ran, not run} is rejected" check "$(printf '%s' "$filled_block" | jq '.critic = "clean"')" "$critic_known"
 
 # A PR body assembled from the template carries exactly one block; two fail.
