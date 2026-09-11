@@ -25,6 +25,19 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
+# Allowlist. Only these marketplaces are ever registered or installed from,
+# whatever settings.json says. A repo-declared hook already runs arbitrary
+# shell in cloud sessions, so this is defense in depth rather than a security
+# boundary: it keeps a settings-only change on a branch or PR from pulling in a
+# marketplace this hook was never meant to serve. Extend it here, in the
+# script, not in settings.
+allowed_source() {
+  case "$1" in
+    maguerrieri-toolbox) echo maguerrieri/claude-toolbox ;;
+    claude-plugins-official) echo anthropics/claude-plugins-official ;;
+  esac
+}
+
 settings_file="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/settings.json"
 for tool in claude jq; do
   if ! command -v "$tool" >/dev/null; then
@@ -34,33 +47,43 @@ for tool in claude jq; do
 done
 [ -f "$settings_file" ] || exit 0
 
-# Marketplaces first: github sources carry `repo`, git sources carry `url`.
-# The official marketplace isn't in extraKnownMarketplaces — Claude Code adds
-# it itself, but asynchronously after this hook has run — so register it here
-# too whenever an enabled plugin comes from it.
-{
-  jq -r '.extraKnownMarketplaces // {} | to_entries[] | .value.source | (.repo // .url // empty)' "$settings_file"
-  if jq -e '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key | endswith("@claude-plugins-official")' "$settings_file" >/dev/null; then
-    echo anthropics/claude-plugins-official
-  fi
-} |
-  while read -r source; do
-    [ -n "$source" ] || continue
-    # Already registered (a resume, or the launcher got there first): skip the clone.
-    claude plugin marketplace list 2>/dev/null | grep -qF "($source)" && continue
-    claude plugin marketplace add "$source" >/dev/null 2>&1 ||
-      echo "session-start: could not add marketplace $source" >&2
-  done
+installed=$(claude plugin list 2>/dev/null)
+marketplaces=$(claude plugin marketplace list 2>/dev/null)
 
-# Then every enabled plugin. `defaults` pulls its dependencies in; the explicit
-# entries for those dependencies are then no-ops.
+# One pass over the enabled plugins, each with its marketplace. `defaults`
+# pulls its dependencies in; the explicit entries for those are then no-ops.
 jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key' "$settings_file" |
   while read -r plugin; do
     [ -n "$plugin" ] || continue
-    # Already installed: skip. `claude plugin list` prints each as "> name@marketplace".
-    claude plugin list 2>/dev/null | grep -qF "> $plugin" && continue
-    claude plugin install "$plugin" >/dev/null 2>&1 ||
+    marketplace="${plugin##*@}"
+    source=$(allowed_source "$marketplace")
+    if [ -z "$source" ]; then
+      echo "session-start: skipping $plugin: marketplace $marketplace is not on this hook's allowlist" >&2
+      continue
+    fi
+    declared=$(jq -r --arg m "$marketplace" '.extraKnownMarketplaces[$m].source.repo // empty' "$settings_file")
+    if [ -n "$declared" ] && [ "$declared" != "$source" ]; then
+      echo "session-start: skipping $plugin: settings declare $marketplace as $declared, expected $source" >&2
+      continue
+    fi
+    # Register the marketplace once. The official one isn't in
+    # extraKnownMarketplaces — Claude Code adds it itself, but asynchronously
+    # after this hook has run — so it goes through the same path.
+    if ! grep -qF "($source)" <<<"$marketplaces"; then
+      if claude plugin marketplace add "$source" >/dev/null 2>&1; then
+        marketplaces=$(claude plugin marketplace list 2>/dev/null)
+      else
+        echo "session-start: could not add marketplace $source; skipping $plugin" >&2
+        continue
+      fi
+    fi
+    # Already installed (a resume, or an earlier plugin's dependency): skip.
+    grep -qF "> $plugin" <<<"$installed" && continue
+    if claude plugin install "$plugin" >/dev/null 2>&1; then
+      installed=$(claude plugin list 2>/dev/null)
+    else
       echo "session-start: could not install $plugin" >&2
+    fi
   done
 
 exit 0
