@@ -1,0 +1,404 @@
+#!/usr/bin/env bash
+# check-evidence.sh — the machine-checked FINISH gate (software-factory design,
+# item 1b; docs/superpowers/specs/2026-09-11-software-factory-design.md).
+#
+#   check-evidence.sh <pr> <issue> [--confirm-high] [--repo OWNER/REPO]
+#
+# Re-derives "is this PR done?" from the platform — never from the PR body —
+# and refuses (exit 1, with a FAIL line per broken rule) when any of these
+# holds, each checked against the PR's CURRENT HEAD:
+#
+#   1. the set of check contexts on the head SHA is empty, or the latest
+#      attempt of any context (check run or commit status, required or not)
+#      is not `success`; cross-checked against the PR's statusCheckRollup;
+#   2. any review thread is unresolved (the paginated reviewThreads query
+#      the profile's REVIEW_BOT step uses);
+#   3. the PR's closing references are not exactly [<issue>];
+#   4. <issue> does not carry exactly one `risk:*` label, or that label is
+#      not one of risk:docs / risk:low / risk:normal / risk:high;
+#   5. the label is risk:high and the PR lacks BOTH the --confirm-high
+#      acknowledgement AND a current human approval: reviewDecision must be
+#      APPROVED, and an APPROVED review on the head SHA must come from a
+#      login in policy/human-reviewers.txt (read from the repository's
+#      default branch via the API, never from this checkout) who is not the
+#      PR author, with no reviewer's latest review on that SHA requesting
+#      changes. The flag never substitutes for the review;
+#   6. the `## Evidence` block (item 1a) is absent, duplicated, malformed,
+#      fails the required-key / schema / type / placeholder rules, or names
+#      a context_reads path that is not in the head tree.
+#
+# It is a record-checker and a drift control, not a security boundary (the
+# spec says so): the unattended merge path (item 11) re-implements every
+# predicate in a base-branch workflow. Report-and-stop only — nothing here
+# writes to GitHub. Every list read is fully paginated.
+#
+# Exit status: 0 every rule holds; 1 the gate refuses; 2 usage or API error
+# (nothing was decided). Needs gh (authenticated), jq, git. Written to run
+# from a piped copy (`git show origin/main:…/check-evidence.sh | bash -s --
+# <pr> <issue>`), so nothing is resolved relative to $0. A unit test with a
+# fake gh serving fixture JSON lives in ../tests/test-check-evidence.sh.
+set -euo pipefail
+
+EVIDENCE_SCHEMAS='["ticket-workflow/evidence/1"]'
+RISK_CLASSES='["risk:docs","risk:low","risk:normal","risk:high"]'
+ALLOWLIST_PATH='policy/human-reviewers.txt'
+
+usage() {
+	cat <<'USAGE'
+usage: check-evidence.sh <pr> <issue> [--confirm-high] [--repo OWNER/REPO]
+
+  <pr>            pull request number (a leading # is fine)
+  <issue>         the issue this PR must close — passed by FINISH, never
+                  inferred from the PR (a PR can reference several)
+  --confirm-high  the local acknowledgement FINISH forwards only when it
+                  appeared literally in the /finish-ticket arguments; required
+                  for a risk:high issue, never sufficient on its own
+  --repo          OWNER/REPO; default: parsed from `git remote get-url origin`
+
+exit 0 pass, 1 refused (see FAIL lines), 2 usage/API error
+USAGE
+}
+
+die() { # <status> <message>
+	printf 'check-evidence: %s\n' "$2" >&2
+	exit "$1"
+}
+
+# --- arguments ----------------------------------------------------------------
+pr='' issue='' confirm_high=0 repo=''
+while [ $# -gt 0 ]; do
+	case $1 in
+	--confirm-high) confirm_high=1 ;;
+	--repo)
+		shift
+		repo=${1-}
+		;;
+	--repo=*) repo=${1#--repo=} ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	-*)
+		usage >&2
+		die 2 "unknown flag: $1"
+		;;
+	*)
+		if [ -z "$pr" ]; then pr=${1#\#}; elif [ -z "$issue" ]; then issue=${1#\#}; else
+			usage >&2
+			die 2 "unexpected argument: $1"
+		fi
+		;;
+	esac
+	shift
+done
+[[ $pr =~ ^[0-9]+$ && $issue =~ ^[0-9]+$ ]] || {
+	usage >&2
+	die 2 "need a numeric <pr> and <issue>"
+}
+for tool in gh jq git; do
+	command -v "$tool" >/dev/null || die 2 "$tool is required"
+done
+if [ -z "$repo" ]; then
+	remote=$(git remote get-url origin 2>/dev/null) || die 2 "no origin remote; pass --repo OWNER/REPO"
+	repo=$(printf '%s' "$remote" | sed -E 's#^(https?://[^/]+/|ssh://[^/]+/|[^@/]+@[^:]+:)##; s#\.git$##; s#/$##')
+fi
+[[ $repo =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] || die 2 "cannot derive OWNER/REPO (got '$repo'); pass --repo"
+owner=${repo%/*}
+name=${repo#*/}
+
+# --- output + API helpers -------------------------------------------------------
+failures=0
+ok() { printf 'ok   - %s\n' "$1"; }
+fail() {
+	printf 'FAIL - %s\n' "$1"
+	failures=$((failures + 1))
+}
+note() { printf 'note - %s\n' "$1"; }
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+errfile="$tmpdir/stderr"
+
+# api <gh api args…> — one read; any failure is an API error (exit 2), since a
+# gate that cannot read the platform must not decide.
+api() {
+	local out
+	if ! out=$(gh api "$@" 2>"$errfile"); then
+		die 2 "gh api $* failed: $(tr '\n' ' ' <"$errfile")"
+	fi
+	printf '%s' "$out"
+}
+# api_list <gh api args…> — a paginated read whose per-page --jq emits a stream
+# of items; returns them as one JSON array.
+api_list() { api --paginate "$@" | jq -s '.'; }
+# graphql_list <OpName> <query> <per-page jq> — paginated GraphQL, same contract.
+graphql_list() {
+	api_list graphql -f owner="$owner" -f name="$name" -F pr="$pr" -f query="$2" --jq "$3"
+}
+# head_has_path <path> — 0 when the path exists in the head tree, 1 on 404;
+# any other failure is an API error.
+head_has_path() {
+	local encoded
+	encoded=$(printf '%s' "$1" | jq -Rr 'split("/") | map(@uri) | join("/")')
+	if gh api "repos/$repo/contents/$encoded?ref=$head" >/dev/null 2>"$errfile"; then return 0; fi
+	grep -q 'HTTP 404' "$errfile" && return 1
+	die 2 "gh api repos/$repo/contents/$1 failed: $(tr '\n' ' ' <"$errfile")"
+}
+
+# --- reads ------------------------------------------------------------------------
+repo_json=$(api "repos/$repo")
+default_branch=$(printf '%s' "$repo_json" | jq -r '.default_branch')
+repo_owner=$(printf '%s' "$repo_json" | jq -r '.owner.login')
+
+pull_json=$(api "repos/$repo/pulls/$pr")
+pr_state=$(printf '%s' "$pull_json" | jq -r '.state')
+[ "$pr_state" = open ] || die 2 "PR #$pr is $pr_state, not open; nothing to gate"
+head=$(printf '%s' "$pull_json" | jq -r '.head.sha')
+pr_author=$(printf '%s' "$pull_json" | jq -r '.user.login')
+printf '%s' "$pull_json" | jq -r '.body // ""' | tr -d '\r' >"$tmpdir/body"
+
+# One un-paginated GraphQL read for the scalar facts. closingIssuesReferences
+# is read with first:100 but decided on totalCount — rule 3 needs the nodes
+# only when there is exactly one, so no page can hide a second reference.
+pr_gate_query='query PrGate($owner:String!,$name:String!,$pr:Int!){
+  repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+    headRefOid author{login} reviewDecision
+    closingIssuesReferences(first:100){ totalCount nodes{ number repository{nameWithOwner} } }
+    commits(last:1){ nodes{ commit{ oid statusCheckRollup{ state } } } } } } }'
+gate_json=$(api graphql -f owner="$owner" -f name="$name" -F pr="$pr" -f query="$pr_gate_query" --jq '.data.repository.pullRequest')
+[ "$(printf '%s' "$gate_json" | jq -r '.headRefOid')" = "$head" ] ||
+	die 2 "PR #$pr's head moved between reads (REST $head vs GraphQL $(printf '%s' "$gate_json" | jq -r '.headRefOid')); re-run"
+
+printf 'check-evidence: %s PR #%s (head %s) against issue #%s\n' "$repo" "$pr" "${head:0:12}" "$issue"
+
+# --- rule 1: every check context on the head SHA, latest attempt, is success ------
+# filter=all returns every attempt GitHub retains for the SHA; a context is
+# (check suite, name) for check runs — the same name recurs across suites when
+# two workflows or two triggers share a job name, and each must be green — and
+# the context string for commit statuses. The newest attempt (highest id) wins.
+runs_json=$(api_list "repos/$repo/commits/$head/check-runs?filter=all&per_page=100" --jq '.check_runs[]')
+statuses_json=$(api_list "repos/$repo/commits/$head/statuses?per_page=100" --jq '.[]')
+contexts_json=$(jq -n --argjson runs "$runs_json" --argjson statuses "$statuses_json" '
+	def run_ctx: {kind: "check", key: "\(.app.slug // "unknown-app")/\(.name) [suite \(.check_suite.id // "?")]", name: .name,
+		state: (if .status == "completed" then (.conclusion // "no conclusion") else .status end),
+		green: (.status == "completed" and .conclusion == "success")};
+	def status_ctx: {kind: "status", key: .context, name: .context, state: .state, green: (.state == "success")};
+	($runs | group_by([.check_suite.id, .name]) | map(max_by(.id) | run_ctx))
+	+ ($statuses | group_by(.context) | map(max_by(.id) | status_ctx))')
+superseded=$(jq -n --argjson runs "$runs_json" --argjson statuses "$statuses_json" --argjson ctx "$contexts_json" \
+	'($runs | length) + ($statuses | length) - ($ctx | length)')
+if [ "$(printf '%s' "$contexts_json" | jq 'length')" -eq 0 ]; then
+	fail "1 checks: no check runs or statuses on head $head (\"all green\" is never vacuous)"
+else
+	[ "$superseded" -gt 0 ] && note "1 checks: $superseded older attempt(s) superseded by a newer attempt of the same context"
+	while IFS=$'\t' read -r kind key state green; do
+		if [ "$green" = true ]; then ok "1 $kind $key: $state"; else fail "1 $kind $key: $state (latest attempt is not success)"; fi
+	done < <(printf '%s' "$contexts_json" | jq -r '.[] | [.kind, .key, .state, .green] | @tsv')
+fi
+# Cross-check: the platform's own rollup for the head commit must agree — SUCCESS
+# overall, and every context the rollup lists must be one the direct read saw
+# (the read is a superset by construction: filter=all, every suite, plus commit
+# statuses, and each extra it sees is still held to "success" above — so only
+# a rollup context the read missed can weaken the gate).
+rollup_state=$(printf '%s' "$gate_json" | jq -r '.commits.nodes[0].commit.statusCheckRollup.state // "none"')
+rollup_query='query RollupContexts($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$name){ pullRequest(number:$pr){ commits(last:1){ nodes{ commit{ statusCheckRollup{
+    contexts(first:100, after:$endCursor){ pageInfo{ hasNextPage endCursor }
+      nodes{ __typename ... on CheckRun{ name status conclusion } ... on StatusContext{ context state } } } } } } } } } }'
+rollup_json=$(graphql_list RollupContexts "$rollup_query" \
+	'(.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup // {contexts: {nodes: []}}).contexts.nodes[]')
+if [ "$rollup_state" = SUCCESS ]; then
+	ok "1 statusCheckRollup on head: SUCCESS"
+else
+	fail "1 statusCheckRollup on head: $rollup_state (cross-check; expected SUCCESS)"
+fi
+name_diff=$(jq -n --argjson ctx "$contexts_json" --argjson rollup "$rollup_json" '
+	([$ctx[].name] | unique) as $ours
+	| ([$rollup[] | (.name // .context)] | unique) as $theirs
+	| {missing_from_read: ($theirs - $ours), extra_in_read: ($ours - $theirs)}')
+if [ "$(printf '%s' "$name_diff" | jq '.missing_from_read | length')" -eq 0 ]; then
+	ok "1 statusCheckRollup contexts are all in the head-SHA read ($(printf '%s' "$contexts_json" | jq 'length') context(s) read)"
+else
+	fail "1 statusCheckRollup lists context(s) the head-SHA read did not see: $(printf '%s' "$name_diff" | jq -r '.missing_from_read | join(", ")')"
+fi
+[ "$(printf '%s' "$name_diff" | jq '.extra_in_read | length')" -eq 0 ] ||
+	note "1 head-SHA read saw context(s) the rollup does not list (each still held to success): $(printf '%s' "$name_diff" | jq -r '.extra_in_read | join(", ")')"
+
+# --- rule 2: no unresolved review threads ------------------------------------------
+threads_query='query ReviewThreads($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+    reviewThreads(first:100, after:$endCursor){ pageInfo{ hasNextPage endCursor }
+      nodes{ id isResolved path comments(first:1){ nodes{ author{login} body } } } } } } }'
+threads_json=$(graphql_list ReviewThreads "$threads_query" '.data.repository.pullRequest.reviewThreads.nodes[]')
+unresolved=$(printf '%s' "$threads_json" | jq '[.[] | select(.isResolved | not)]')
+if [ "$(printf '%s' "$unresolved" | jq 'length')" -eq 0 ]; then
+	ok "2 review threads: none unresolved ($(printf '%s' "$threads_json" | jq 'length') total)"
+else
+	while IFS=$'\t' read -r path author body; do
+		fail "2 unresolved review thread on ${path:-<no file>} by ${author:-unknown}: ${body}"
+	done < <(printf '%s' "$unresolved" | jq -r '.[] | [(.path // ""), (.comments.nodes[0].author.login // ""), ((.comments.nodes[0].body // "") | gsub("[\\r\\n\\t]+"; " ") | .[0:80])] | @tsv')
+fi
+
+# --- rule 3: closing references are exactly [<issue>] -----------------------------------
+closing_count=$(printf '%s' "$gate_json" | jq -r '.closingIssuesReferences.totalCount')
+closing_list=$(printf '%s' "$gate_json" | jq -r '[.closingIssuesReferences.nodes[] | "\(.repository.nameWithOwner)#\(.number)"] | join(", ")')
+if [ "$closing_count" -eq 1 ] && [ "$closing_list" = "$repo#$issue" ]; then
+	ok "3 closing references: exactly #$issue"
+elif [ "$closing_count" -eq 0 ]; then
+	fail "3 closing references: none (the PR body needs a closing keyword for #$issue)"
+else
+	fail "3 closing references: expected exactly $repo#$issue, got $closing_count: ${closing_list:-?}"
+fi
+
+# --- rule 4: the issue carries exactly one known risk label -----------------------------
+issue_json=$(api "repos/$repo/issues/$issue")
+labels_json=$(api_list "repos/$repo/issues/$issue/labels?per_page=100" --jq '.[]')
+risk_labels=$(printf '%s' "$labels_json" | jq -c '[.[].name | select(startswith("risk:"))] | sort')
+risk_class=''
+if [ "$(printf '%s' "$issue_json" | jq 'has("pull_request")')" = true ]; then
+	fail "4 #$issue is a pull request, not an issue"
+elif [ "$(printf '%s' "$risk_labels" | jq --argjson known "$RISK_CLASSES" 'length == 1 and (.[0] | IN($known[]))')" = true ]; then
+	risk_class=$(printf '%s' "$risk_labels" | jq -r '.[0]')
+	ok "4 issue #$issue risk label: $risk_class"
+elif [ "$(printf '%s' "$risk_labels" | jq 'length')" -eq 0 ]; then
+	fail "4 issue #$issue has no risk:* label (provision + backfill: scripts/provision-risk-labels)"
+else
+	fail "4 issue #$issue must carry exactly one of $(printf '%s' "$RISK_CLASSES" | jq -r 'join(", ")'); has $(printf '%s' "$risk_labels" | jq -r 'join(", ")')"
+fi
+
+# --- rule 5: risk:high needs the flag AND a current human approval -----------------
+if [ "$risk_class" = "risk:high" ]; then
+	if [ "$confirm_high" -eq 1 ]; then
+		ok "5 risk:high: --confirm-high acknowledged (never sufficient on its own)"
+	else
+		fail "5 risk:high: --confirm-high is required (pass it literally in the /finish-ticket arguments)"
+	fi
+	# The allowlist comes from the default branch through the API, so the ticket
+	# checkout cannot allowlist its own reviewer. Absent → the repository owner.
+	if allowlist_raw=$(gh api -H 'Accept: application/vnd.github.raw+json' "repos/$repo/contents/$ALLOWLIST_PATH?ref=$default_branch" 2>"$errfile"); then
+		allowlist=$(printf '%s\n' "$allowlist_raw" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | jq -R . | jq -sc '.')
+		note "5 human-reviewer allowlist from $default_branch:$ALLOWLIST_PATH: $(printf '%s' "$allowlist" | jq -r 'join(", ")')"
+	elif grep -q 'HTTP 404' "$errfile"; then
+		allowlist=$(jq -nc --arg o "$repo_owner" '[$o]')
+		note "5 no $ALLOWLIST_PATH on $default_branch; allowlist defaults to the repository owner ($repo_owner)"
+	else
+		die 2 "reading $ALLOWLIST_PATH from $default_branch failed: $(tr '\n' ' ' <"$errfile")"
+	fi
+	review_decision=$(printf '%s' "$gate_json" | jq -r '.reviewDecision // "null"')
+	if [ "$review_decision" = APPROVED ]; then
+		ok "5 reviewDecision: APPROVED"
+	else
+		fail "5 reviewDecision: $review_decision (expected APPROVED)"
+	fi
+	reviews_query='query Reviews($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+    reviews(first:100, after:$endCursor){ pageInfo{ hasNextPage endCursor }
+      nodes{ state author{login} commit{oid} submittedAt } } } } }'
+	reviews_json=$(graphql_list Reviews "$reviews_query" '.data.repository.pullRequest.reviews.nodes[]')
+	# Each reviewer's most recent submitted review ON THE HEAD SHA is what counts:
+	# an approval on an older commit, a dismissed one, or an unsubmitted (PENDING)
+	# one is not a current approval.
+	verdict=$(jq -n --argjson reviews "$reviews_json" --argjson allow "$allowlist" --arg head "$head" --arg author "$pr_author" '
+		[$reviews[] | select(.commit.oid == $head and .state != "PENDING")]
+		| group_by(.author.login) | map(sort_by(.submittedAt) | last) as $latest
+		| {
+			changes_requested: [$latest[] | select(.state == "CHANGES_REQUESTED") | .author.login],
+			approvers: [$latest[] | select(.state == "APPROVED") | .author.login],
+			valid: [$latest[] | select(.state == "APPROVED" and .author.login != $author and (.author.login | IN($allow[]))) | .author.login],
+			older_approvals: [$reviews[] | select(.state == "APPROVED" and .commit.oid != $head) | .author.login] | unique
+		}')
+	if [ "$(printf '%s' "$verdict" | jq '.changes_requested | length')" -gt 0 ]; then
+		fail "5 changes requested on head by: $(printf '%s' "$verdict" | jq -r '.changes_requested | join(", ")')"
+	fi
+	if [ "$(printf '%s' "$verdict" | jq '.valid | length')" -gt 0 ]; then
+		ok "5 current APPROVED review on head from an allowlisted non-author: $(printf '%s' "$verdict" | jq -r '.valid | join(", ")')"
+	else
+		approvers=$(printf '%s' "$verdict" | jq -r '.approvers | join(", ")')
+		older=$(printf '%s' "$verdict" | jq -r '.older_approvals | join(", ")')
+		reason="no APPROVED review on head ${head:0:12}"
+		[ -n "$approvers" ] && reason="APPROVED on head only by ${approvers} (the author, or not in the allowlist)"
+		[ -z "$approvers" ] && [ -n "$older" ] && reason="$reason; approval(s) by $older are on an older commit"
+		fail "5 risk:high needs a current APPROVED review on the head SHA from an allowlisted human who is not the author: $reason"
+	fi
+elif [ "$confirm_high" -eq 1 ]; then
+	note "5 --confirm-high given but the issue is ${risk_class:-unclassified}; the flag is ignored"
+fi
+
+# --- rule 6: exactly one well-formed Evidence block -------------------------------------
+# Print the first ```json fenced block after a line matching <anchor> (ERE via
+# awk -v, so metacharacters use bracket expressions, never backslashes).
+extract_json_after() { # <file> <anchor regex>
+	awk -v anchor="$2" '
+		!found && $0 ~ anchor { found = 1; next }
+		found && !infence && /^```json[[:space:]]*$/ { infence = 1; next }
+		infence && /^```[[:space:]]*$/ { exit }
+		infence { print }
+	' "$1"
+}
+count_evidence_headings() { grep -c '^## Evidence[[:space:]]*$' "$1" || true; }
+count_evidence_fences() { # json fences under the Evidence heading, before the next `## `
+	awk '
+		/^## Evidence[[:space:]]*$/ { inside = 1; next }
+		inside && /^## / { inside = 0 }
+		inside && /^```json[[:space:]]*$/ { n++ }
+		END { print n + 0 }
+	' "$1"
+}
+headings=$(count_evidence_headings "$tmpdir/body")
+fences=$(count_evidence_fences "$tmpdir/body")
+block=''
+if [ "$headings" -eq 0 ]; then
+	fail "6 evidence: no '## Evidence' section in the PR body"
+elif [ "$headings" -gt 1 ]; then
+	fail "6 evidence: $headings '## Evidence' sections; exactly one block per PR"
+elif [ "$fences" -ne 1 ]; then
+	fail "6 evidence: expected one \`\`\`json fence under '## Evidence', found $fences"
+else
+	block=$(extract_json_after "$tmpdir/body" '^## Evidence[[:space:]]*$')
+fi
+if [ -n "$block" ]; then
+	# One object per fence: `jq -e` would otherwise report only the last value.
+	if ! printf '%s' "$block" | jq -es 'length == 1 and (.[0] | type == "object")' >/dev/null 2>&1; then
+		fail "6 evidence: the block is not exactly one strict JSON object"
+		block=''
+	fi
+fi
+if [ -n "$block" ]; then
+	# The item 1a contract, as named jq predicates; each failing name is reported.
+	problems=$(printf '%s' "$block" | jq -r --argjson schemas "$EVIDENCE_SCHEMAS" '
+		def placeholder: test("^\\s*(TODO|TBD|n/?a)\\s*$"; "i") or test("<[^>]*>");
+		def relative: (test("^/") | not) and (test("(^|/)[.][.]?(/|$)") | not);
+		(["schema","tests","docs","context_reads","session","role","wall_clock_min"] - keys) as $missing
+		| [
+			(if ($missing | length) > 0 then "missing key(s): \($missing | join(", "))" else empty end),
+			(if (.schema | type) == "string" and (.schema | IN($schemas[])) then empty else "schema must be one of \($schemas | join(", "))" end),
+			(if (to_entries | map(select(.key != "context_reads")) | all(.value | type == "string")) then empty else "every scalar must be a quoted string" end),
+			(if ((.context_reads | type) == "array" and (.context_reads | length) > 0 and (.context_reads | all(type == "string" and length > 0))) then empty else "context_reads must be a non-empty array of strings" end),
+			(if ((.context_reads | type) == "array" and (.context_reads | all(type == "string" and relative))) then empty else "context_reads must be repo-relative (no leading /, no . or .. segment)" end),
+			(if ([.tests, .docs] | all(type == "string" and length > 0)) then empty else "tests and docs must be non-empty" end),
+			(if ([.tests, .docs] + (if (.context_reads | type) == "array" then .context_reads else [] end) | all(type == "string" and (placeholder | not))) then empty else "placeholder left in tests, docs, or context_reads (TODO, TBD, n/a without a reason, <…>)" end),
+			(if (.session | type) == "string" and (.session | test("^(cse_[A-Za-z0-9]+|session_[A-Za-z0-9]+|local)$")) then empty else "session must match ^(cse_…|session_…|local)$" end),
+			(if (.role | type) == "string" and (.role | IN("planner", "epic-coordinator", "implementer")) then empty else "role must be planner, epic-coordinator, or implementer" end),
+			(if (.wall_clock_min | type) == "string" and (.wall_clock_min | test("^[0-9]+$")) then empty else "wall_clock_min must be a digit string" end),
+			(if (has("critic") | not) or ((.critic | type) == "string" and (.critic | IN("ran", "not run"))) then empty else "critic must be \"ran\" or \"not run\"" end)
+		] | .[]')
+	if [ -z "$problems" ]; then
+		ok "6 evidence block: well-formed ($(printf '%s' "$block" | jq -r '.schema'))"
+		while IFS= read -r read_path; do
+			if head_has_path "$read_path"; then
+				ok "6 context_reads path is in the head tree: $read_path"
+			else
+				fail "6 context_reads path is not in the head tree: $read_path"
+			fi
+		done < <(printf '%s' "$block" | jq -r '.context_reads[]')
+	else
+		while IFS= read -r problem; do fail "6 evidence block: $problem"; done <<<"$problems"
+	fi
+fi
+
+# --- verdict -------------------------------------------------------------------------------
+if [ "$failures" -gt 0 ]; then
+	printf 'REFUSED: %d rule violation(s) on PR #%s; report and stop — never auto-fix from FINISH\n' "$failures" "$pr"
+	exit 1
+fi
+printf 'PASS: PR #%s satisfies the FINISH gate for issue #%s\n' "$pr" "$issue"

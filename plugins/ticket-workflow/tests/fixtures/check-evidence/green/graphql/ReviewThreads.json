@@ -1,0 +1,6 @@
+{"data": {"repository": {"pullRequest": {"reviewThreads": {
+  "pageInfo": {"hasNextPage": false, "endCursor": null},
+  "nodes": [
+    {"id": "PRRT_1", "isResolved": true, "path": "README.md", "comments": {"nodes": [{"author": {"login": "copilot-pull-request-reviewer"}, "body": "nit: typo"}]}}
+  ]
+}}}}}

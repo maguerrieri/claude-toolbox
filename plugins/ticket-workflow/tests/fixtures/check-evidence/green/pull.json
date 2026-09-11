@@ -1,0 +1,16 @@
+{
+  "number": 7,
+  "state": "open",
+  "draft": false,
+  "head": {
+    "sha": "0123456789abcdef0123456789abcdef01234567",
+    "ref": "42-add-the-thing"
+  },
+  "base": {
+    "ref": "main"
+  },
+  "user": {
+    "login": "author"
+  },
+  "body": "## Summary\n- Adds the thing #42 asks for\n\n## Test plan\n- [x] CI passes\n\n## Evidence\n```json\n{\n  \"schema\": \"ticket-workflow/evidence/1\",\n  \"tests\": \"bash plugins/ticket-workflow/tests/test-check-evidence.sh (passed)\",\n  \"docs\": \"no doc impact\",\n  \"context_reads\": [\"AGENTS.md\", \"plugins/ticket-workflow/skills/ticket-workflow/profiles/default.md\"],\n  \"session\": \"session_01ABCDEF\",\n  \"role\": \"implementer\",\n  \"wall_clock_min\": \"23\",\n  \"critic\": \"not run\"\n}\n```\n\nCloses #42\n"
+}

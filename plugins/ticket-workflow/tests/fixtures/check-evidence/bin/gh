@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# A stand-in for the gh CLI, serving `gh api` reads from fixture JSON so
+# test-check-evidence.sh can drive check-evidence.sh through every refusal
+# case without the network. Only the read surface the gate uses exists:
+#
+#   gh api repos/O/R                                   -> repo.json
+#   gh api repos/O/R/pulls/N                           -> pull.json
+#   gh api --paginate repos/O/R/commits/SHA/check-runs?filter=all&per_page=100 --jq F
+#                                                      -> check-runs.json [+ .page2.json …]
+#   gh api --paginate repos/O/R/commits/SHA/statuses?per_page=100 --jq F
+#                                                      -> statuses.json [+ pages]
+#   gh api repos/O/R/issues/N                          -> issue.json
+#   gh api --paginate repos/O/R/issues/N/labels?… --jq F -> issue-labels.json [+ pages]
+#   gh api -H 'Accept: …raw…' repos/O/R/contents/policy/human-reviewers.txt?ref=B
+#                                                      -> human-reviewers.txt (404 if absent)
+#   gh api repos/O/R/contents/PATH?ref=SHA             -> 200 iff PATH is a line of head-tree.txt
+#   gh api [--paginate] graphql -f query='query <Op>(…' --jq F
+#                                                      -> graphql/<Op>.json [+ pages]
+#
+# --jq is applied per page with real jq, as gh does; --paginate serves
+# <base>.json then <base>.page2.json, <base>.page3.json, … in order. Every
+# call is appended to $FAKE_GH_LOG. SHA-addressed reads must name pull.json's
+# head sha, and check-runs must ask for filter=all — anything else is a
+# loud failure, so the test catches a gate that reads the wrong commit or
+# only GitHub's pre-filtered latest attempts. Any non-GET method is refused:
+# the gate never writes.
+set -euo pipefail
+fixtures=${FAKE_GH_FIXTURES:?FAKE_GH_FIXTURES must point at a fixture directory}
+printf '%s\n' "$*" >>"${FAKE_GH_LOG:-/dev/null}"
+
+bad() { printf 'fake gh: %s\n' "$1" >&2; exit 1; }
+not_found() { printf '{"message":"Not Found","status":"404"}'; printf 'gh: Not Found (HTTP 404)\n' >&2; exit 1; }
+
+[ "${1-}" = api ] || bad "only 'gh api' is supported, got: $*"
+shift
+paginate=0 jqf='' query='' target='' raw=0 method=GET
+while [ $# -gt 0 ]; do
+	case $1 in
+	--paginate) paginate=1 ;;
+	--jq) shift; jqf=$1 ;;
+	--jq=*) jqf=${1#--jq=} ;;
+	-f | -F) shift; case $1 in query=*) query=${1#query=} ;; esac ;;
+	-H) shift; case $1 in *raw*) raw=1 ;; esac ;;
+	-X | --method) shift; method=$1 ;;
+	-*) bad "unsupported flag $1" ;;
+	*) target=$1 ;;
+	esac
+	shift
+done
+[ "$method" = GET ] || bad "mutating call refused: $method $target"
+
+serve() { # <fixture base name> — every page, --jq applied per page
+	local base=$1 found=0 f
+	for f in "$fixtures/$base.json" "$fixtures/$base".page*.json; do
+		[ -e "$f" ] || continue
+		found=1
+		if [ -n "$jqf" ]; then jq -r "$jqf" "$f"; else cat "$f"; fi
+		[ "$paginate" -eq 1 ] || break
+	done
+	[ "$found" -eq 1 ] || not_found
+}
+head_sha() { jq -r '.head.sha' "$fixtures/pull.json"; }
+require_head() { # <sha>
+	[ "$1" = "$(head_sha)" ] || bad "read addressed $1, but the PR head is $(head_sha)"
+}
+sha_of() { local rest=${1#repos/*/*/commits/}; printf '%s' "${rest%%/*}"; }
+
+case $target in
+graphql)
+	op=$(printf '%s' "$query" | sed -nE 's/^[[:space:]]*query[[:space:]]+([A-Za-z]+).*/\1/p' | head -1)
+	[ -n "$op" ] || bad "GraphQL query has no operation name"
+	serve "graphql/$op"
+	;;
+repos/*/*/pulls/*) serve pull ;;
+repos/*/*/commits/*/check-runs*)
+	require_head "$(sha_of "$target")"
+	[[ $target == *filter=all* ]] || bad "check-runs must be read with filter=all (every attempt), got $target"
+	serve check-runs
+	;;
+repos/*/*/commits/*/statuses*)
+	require_head "$(sha_of "$target")"
+	serve statuses
+	;;
+repos/*/*/issues/*/labels*) serve issue-labels ;;
+repos/*/*/issues/*) serve issue ;;
+repos/*/*/contents/*)
+	path=${target#repos/*/*/contents/}
+	ref=${path##*ref=}
+	path=${path%%\?*}
+	if [ "$path" = policy/human-reviewers.txt ]; then
+		[ "$raw" -eq 1 ] || bad "the allowlist must be read raw (Accept: application/vnd.github.raw+json)"
+		[ "$ref" = "$(jq -r '.default_branch' "$fixtures/repo.json")" ] || bad "allowlist read from ref '$ref', not the default branch"
+		[ -e "$fixtures/human-reviewers.txt" ] || not_found
+		cat "$fixtures/human-reviewers.txt"
+	else
+		require_head "$ref"
+		grep -Fxq -- "$path" "$fixtures/head-tree.txt" 2>/dev/null || not_found
+		printf '{"type":"file","path":"%s"}' "$path"
+	fi
+	;;
+repos/*/*) serve repo ;;
+*) bad "unsupported target $target" ;;
+esac

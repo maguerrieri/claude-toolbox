@@ -1,0 +1,2 @@
+AGENTS.md
+plugins/ticket-workflow/skills/ticket-workflow/profiles/default.md
