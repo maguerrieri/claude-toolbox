@@ -808,8 +808,11 @@ marked).*
    *user* `claude` (id 81847), not the `claude[bot]` App (id 41898282).
    After the user's rebase-merge the commit is unsigned with the user as
    committer. For App-attributed commits the `factory-token` helper sets
-   `user.email` to `<app-id>+<slug>[bot]@users.noreply.github.com`
-   alongside the token.
+   `user.email` to `<bot-user-id>+<slug>[bot]@users.noreply.github.com`
+   alongside the token, where `<bot-user-id>` is the numeric `id` of the
+   App's `<slug>[bot]` user (`GET /users/<slug>%5Bbot%5D`), a different
+   number from the App ID; GitHub's `create-github-app-token` README
+   shows the same form.
 6. **Approvability.** GitHub docs: "Pull request authors cannot approve
    their own pull requests." An App-authored PR is approvable by the user.
    Caveat for 1d: the optional "require approval of the most recent
@@ -894,7 +897,9 @@ throwaway).*
 
 1. Register a throwaway App under `sprue.works`: public ("Any account");
    permissions Contents read & write, Pull requests read & write, Metadata
-   read; no webhook; note the App ID and slug; generate a private key.
+   read; no webhook; note the App ID, the slug, and, separately, the
+   numeric `id` returned by `GET /users/<slug>%5Bbot%5D` (the bot user
+   ID, used in the commit email below); generate a private key.
 2. Install it on `maguerrieri/claude-toolbox` and on one org repo (for
    example `sprue-works/polyglot-slides`), "Only select repositories" on
    each.
@@ -924,12 +929,26 @@ throwaway).*
    proxy still substitutes and the hosted App path is closed); run
    `gh api /installation/repositories --jq '.repositories[].full_name'`
    (expect only that repo); set `user.email` to
-   `<app-id>+<slug>[bot]@users.noreply.github.com`; commit a one-line
+   `<bot-user-id>+<slug>[bot]@users.noreply.github.com`; commit a one-line
    change and push it through the proxy, then run `gh auth setup-git`,
    commit a second one-line change, and push again (**M2**: two ref
    updates, so the repo's Activity view shows the pusher of each); run
    `gh pr create` (expect author `<slug>[bot]`);
    record `get_session`'s `environment_id`.
+5b. **Sentinel-to-token transition, required for M1.** The production
+   path starts the environment with the non-secret sentinel and replaces
+   it at runtime, which step 5 does not exercise. So for the
+   personal-account, personal-repo cell also create an environment with
+   `GH_TOKEN=factory-token-required`, launch into it, and confirm the
+   sentinel is what the session sees; then hand the session a freshly
+   minted token by follow-up message with the instruction to `export
+   GH_TOKEN` from it without echoing or logging it (a throwaway,
+   hour-scoped, one-repo token; the transcript exposure is accepted for
+   the spike only), and repeat step 5's probes, `gh auth setup-git`,
+   push, and `gh pr create`. M1 passes only if both the preconfigured
+   token (step 5) and the runtime replacement (this step) yield the
+   401 probe result and an App-authored PR. Renewal after expiry is
+   8b's helper test, not part of the spike.
 6. On each repo, add a test ruleset `main-review` (1 approval, branch
    pattern = that PR's base), approve the PR as the user (**M4**: the
    approval counts), then delete the ruleset, close the PRs, delete the
