@@ -2,9 +2,9 @@
 
 Portable coding-agent conventions and Claude Code workflows, packaged as a
 [Claude-compatible plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces).
-One repo, declared per-project for interactive local sessions; cloud sessions load it
-once the marketplace is enabled on your claude.ai account or installed by the
-environment's setup script (see [Usage](#usage)).
+One repo, declared per-project: interactive local sessions install it on the
+trust prompt, and a committed SessionStart hook installs it in cloud sessions
+(see [Usage](#usage)).
 
 ## Plugins
 
@@ -66,14 +66,15 @@ List the dependencies out, not just `defaults`: the install that project
 settings trigger on trust caches `defaults` but does not resolve its
 `dependencies`, so on its own it ends up disabled (`dependency-unsatisfied`)
 and nothing loads (verified on Claude Code 2.1.268). For an à la carte pick,
-remove `defaults` and enable only the plugins you want. Two surfaces get nothing from these settings: headless
-sessions (`claude -p`, the SDK) register the marketplace but install nothing
-from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
-repo-authored plugin settings entirely. For cloud sessions, either enable the
-marketplace on your claude.ai account (Customize › Plugins › Add marketplace ›
-from a repository) so its plugins sync into every cloud session, or put the
-user-wide install below in the cloud environment's setup script. Details in the
-repo's `AGENTS.md`.
+remove `defaults` and enable only the plugins you want. Two surfaces get nothing from these settings on their own:
+headless sessions (`claude -p`, the SDK) register the marketplace but install
+nothing from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
+repo-authored plugin settings entirely. Cloud sessions do run repo-declared
+hooks, so copy this repo's `.claude/hooks/session-start.sh` and register it as
+a `SessionStart` hook in the same `settings.json`: in cloud sessions it reads
+the settings above and runs `claude plugin marketplace add` / `claude plugin
+install` for everything declared; locally it's a no-op. Details in the repo's
+`AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the

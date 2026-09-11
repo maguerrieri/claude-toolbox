@@ -78,35 +78,25 @@ verified on Claude Code 2.1.268:
   loader reports every enabled plugin as `plugin-cache-miss` — `defaults` and
   the individually listed plugins alike, and the same for the `superpowers`
   entry. Interactive terminal sessions and `claude --bg` do install them.
-- **Cloud sessions (Claude Code on the web) get nothing from these settings.**
-  The cloud launcher runs Claude Code in SDK mode with the folder untrusted, and
-  its startup log says why the plugins never arrive: `Skipped auto-recording
-  <plugin> — enabled only by repo-authored settings`. That's a consent policy,
-  not a bug in this config: a cloned repo can't install code on its own. (The
-  cloud-environments doc's claim that project-declared plugins install at session
-  start didn't hold on 2.1.268; three throwaway cloud sessions on this branch
-  ended with no marketplace and no plugins.) Until that changes, a cloud session
-  reads the skill files by hand, and a child launched with a leading
-  `/start-ticket` is rejected (`plugins/spawn/skills/spawn/backends/cloud.md`).
-  Three workarounds — the first two live outside this repo, the third in it:
-  - enable the marketplace on your claude.ai account (Customize › Plugins › Add
-    marketplace › from a repository, `maguerrieri/claude-toolbox`, then enable
-    `defaults`); cloud sessions download account-enabled plugins and load them
-    as `<name>@synced` with no trust dialog. Verified: a cloud session started
-    from the web UI sees the plugin skills. `claude plugin list` still prints
-    nothing there, which is expected — synced plugins have no marketplace and
-    no install record. Hooks may not run there;
-  - or add `claude plugin marketplace add maguerrieri/claude-toolbox && claude
-    plugin install defaults@maguerrieri-toolbox` to the cloud environment's
-    setup script (that path does resolve dependencies).
-  - or a **SessionStart hook in the repo** that does the install itself, which
-    is what `maguerrieri/toolbox` does (`.claude/hooks/session-start.sh`): when
-    `CLAUDE_CODE_REMOTE` is `true`, it reads the repo's `.claude/settings.json`
-    with `jq` and runs `claude plugin marketplace add <repo>` for each
-    `extraKnownMarketplaces` entry, then `claude plugin install <plugin>` for
-    each enabled plugin. Cloud sessions honor repo-declared hooks, so the
-    settings stay the single source of truth and the plugins load with their
-    commands and hooks. This repo doesn't carry that hook yet.
+- **Cloud sessions (Claude Code on the web) install them from a hook.** The
+  cloud launcher runs Claude Code in SDK mode with the folder untrusted, and its
+  startup log says why the plugins never arrive on their own: `Skipped
+  auto-recording <plugin> — enabled only by repo-authored settings`. That's a
+  consent policy, not a bug in this config: a cloned repo can't install code on
+  its own. (The cloud-environments doc's claim that project-declared plugins
+  install at session start didn't hold on 2.1.268.) Cloud sessions *do* honor
+  repo-declared hooks, so `.claude/hooks/session-start.sh` does the install:
+  when `CLAUDE_CODE_REMOTE` is `true` it reads this same `settings.json` with
+  `jq`, runs `claude plugin marketplace add` for each marketplace and
+  `claude plugin install` for each enabled plugin, and exits 0 no matter what.
+  The settings file stays the single source of truth; the hook never changes
+  when the plugin set does, and is a no-op locally. Delete it once cloud
+  sessions honor the settings natively. Alternatives that also work, outside
+  the repo: enable the marketplace on your claude.ai account (Customize ›
+  Plugins › Add marketplace › from a repository) so the plugins sync into cloud
+  sessions as `<name>@synced` (skills verified; `claude plugin list` shows
+  nothing for them, which is expected), or run the same install from the cloud
+  environment's setup script.
 
 ## Shell: zsh special parameters
 
