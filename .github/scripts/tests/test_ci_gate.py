@@ -416,6 +416,17 @@ def test_evaluate_flags_workflow_main_is_not_subscribed_to():
     assert all("not subscribed" not in r["detail"] for r in result["rows"])
 
 
+def test_ci_change_note_when_pr_edits_ci_config():
+    api = FakeApi([pr(1, "abc")], [".github/factory-ci.yml", "docs/a.md"], TREE, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", "999")
+    assert result["verdict"] == "success"
+    assert result["notes"] and "`.github/factory-ci.yml`" in result["notes"][0]
+    _, summary = ci_gate.render(result)
+    assert "⚠ This PR changes CI configuration" in summary
+    assert ci_gate.ci_change_notes(["docs/a.md", ".github/rulesets/x.json"]) == []
+    assert ci_gate.ci_change_notes([".github/workflows/gm-ci.yml"])
+
+
 def test_render_mentions_rows_and_reasons():
     title, summary = ci_gate.render({"verdict": "failure", "head_sha": "abc", "pr": 1, "reasons": ["boom"], "rows": [], "changed_files": 2})
     assert title == "Blocked" and "- boom" in summary

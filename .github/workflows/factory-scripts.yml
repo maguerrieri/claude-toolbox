@@ -9,6 +9,10 @@ on:
     paths:
       - ".github/**"
 
+# Runs PR-controlled test code, so the token it holds must be read-only.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

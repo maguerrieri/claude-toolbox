@@ -523,7 +523,24 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     verdict, rows = aggregate(expected, api.runs(head_sha), own_run_id)
     if base_sha:
         flag_unsubscribed(rows, workflows, subscribed_names(api, base_sha))
-    return {"verdict": verdict, "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows, "changed_files": len(changed)}
+    return {"verdict": verdict, "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows,
+            "changed_files": len(changed), "notes": ci_change_notes(changed)}
+
+
+def ci_change_notes(changed_files: list[str]) -> list[str]:
+    """Call out a PR that edits the inputs the expected set is computed from.
+
+    The manifest and workflows are read from the PR head (see the module
+    docstring), so a PR can narrow its own CI; the lint guarantees such a
+    change always shows in the manifest diff, and this note puts it in the
+    check output where the reviewer looks. It is information for the human
+    review that covers every non-docs class, not a verdict.
+    """
+    touched = sorted(f for f in changed_files if f == MANIFEST_PATH or f.startswith(WORKFLOWS_DIR + "/"))
+    if not touched:
+        return []
+    return ["This PR changes CI configuration; the expected set above is computed from the PR's own copy of it, "
+            "so review these files for removed or narrowed triggers: " + ", ".join(f"`{f}`" for f in touched)]
 
 
 def subscribed_names(api: Api, base_sha: str) -> list[str] | None:
@@ -580,6 +597,8 @@ def render(result: dict) -> tuple[str, str]:
             lines.append(f"| `{row['workflow']}` | `{row['event']}` | {row['state']} | {detail} |")
     elif verdict == "success":
         lines += ["", "No CI workflow is expected for these files; nothing to wait for."]
+    for note in result.get("notes") or []:
+        lines += ["", f"⚠ {note}"]
     titles = {
         "success": "All expected CI workflows succeeded",
         "failure": "Blocked",

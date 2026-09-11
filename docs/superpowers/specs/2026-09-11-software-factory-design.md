@@ -257,7 +257,7 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 
 | Ruleset | Rules | Bypass actors |
 |---|---|---|
-| `main-integrity` | require PR; **require the `factory/ci-gate` check to pass**, bound to its *source* and not only its name: on personal repos, a **required status check** whose *source* is pinned to a dedicated `factory-ci` GitHub App (the ruleset's per-check "source" selector; the check is posted by `ci-gate`'s base-branch workflow with a `factory-ci` installation token, never by `github-actions`, so a PR-added `pull_request` workflow publishing the same name under the `github-actions` app does not satisfy it); on organization repos the ruleset may *additionally* use *Require workflows to pass* bound to `.github/workflows/ci-gate.yml` on `main`, which GitHub offers only at organization and enterprise scope, not on personal repos; **require branches to be up to date before merging**; block force-push and deletion | none |
+| `main-integrity` | require PR (rebase merges only — the method FINISH, `gh stack merge --rebase`, 3b's merge, and `toolbox`'s documented policy all use); **require the `factory/ci-gate` check to pass**, bound to its *source* and not only its name: on personal repos, a **required status check** whose *source* is pinned to a dedicated `factory-ci` GitHub App (the ruleset's per-check "source" selector; the check is posted by `ci-gate`'s base-branch workflow with a `factory-ci` installation token, never by `github-actions`, so a PR-added `pull_request` workflow publishing the same name under the `github-actions` app does not satisfy it); on organization repos the ruleset may *additionally* use *Require workflows to pass* bound to `.github/workflows/ci-gate.yml` on `main`, which GitHub offers only at organization and enterprise scope, not on personal repos; **require branches to be up to date before merging**; block force-push and deletion | none |
 
 **Organization repos.** The same design applies to repos under the user's
 organization (`sprue.works`), with two differences the plan must budget
@@ -507,7 +507,7 @@ environment, or ruleset access) — in this order, per repo:*
         "require_code_owner_review": false,
         "require_last_push_approval": false,
         "required_review_thread_resolution": false,
-        "allowed_merge_methods": ["merge", "squash", "rebase"] } },
+        "allowed_merge_methods": ["rebase"] } },
     { "type": "required_status_checks", "parameters": {
         "strict_required_status_checks_policy": true,
         "do_not_enforce_on_create": false,
