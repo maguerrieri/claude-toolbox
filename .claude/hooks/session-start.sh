@@ -12,13 +12,20 @@
 #
 # Locally this is a no-op (CLAUDE_CODE_REMOTE is unset); interactive local
 # sessions install the same plugins on the trust prompt.
+#
+# Other repos can copy this file, or run it straight from this repo with one
+# hook line and no file to copy:
+#   curl -fsSL https://raw.githubusercontent.com/maguerrieri/claude-toolbox/main/.claude/hooks/session-start.sh | bash
+# (pin a commit SHA in place of `main` for an immutable copy). It reads the
+# settings of whatever repo the hook runs in: Claude Code sets
+# CLAUDE_PROJECT_DIR for hooks, and the working directory is the project too.
 set -uo pipefail
 
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
-settings_file="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}/.claude/settings.json"
+settings_file="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/settings.json"
 for tool in claude jq; do
   if ! command -v "$tool" >/dev/null; then
     echo "session-start: $tool not found; skipping plugin install" >&2

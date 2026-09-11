@@ -90,8 +90,9 @@ verified on Claude Code 2.1.268:
   `jq`, runs `claude plugin marketplace add` for each marketplace and
   `claude plugin install` for each enabled plugin, and exits 0 no matter what.
   The settings file stays the single source of truth; the hook never changes
-  when the plugin set does, and is a no-op locally. Delete it once cloud
-  sessions honor the settings natively. Alternatives that also work, outside
+  when the plugin set does, and is a no-op locally. Other repos run the same
+  file with one hook line (`curl -fsSL <raw URL on main> | bash`; see the
+  README). Delete it once cloud sessions honor the settings natively. Alternatives that also work, outside
   the repo: enable the marketplace on your claude.ai account (Customize ›
   Plugins › Add marketplace › from a repository) so the plugins sync into cloud
   sessions as `<name>@synced` (skills verified; `claude plugin list` shows
