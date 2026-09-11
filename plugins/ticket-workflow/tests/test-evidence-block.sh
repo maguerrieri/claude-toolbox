@@ -83,6 +83,8 @@ count_evidence_fences() {
 }
 # Membership in the git tree at HEAD — the contract's "exists in the PR's head
 # tree" — not the working tree, which also holds untracked and ignored files.
+# HEAD must be the PR head, not a merge preview: the ticket-workflow CI workflow
+# checks out `pull_request.head.sha` explicitly for that reason.
 in_head_tree() { git -C "$repo" cat-file -e "HEAD:$1" 2>/dev/null; }
 
 # Rules every *filled* block must satisfy (session shape is checked separately:
@@ -166,9 +168,15 @@ refute "an invalid first object followed by a valid one is rejected" check "$(pr
 refute "a valid first object followed by an invalid one is rejected" check "$(printf '%s\n{"schema":' "$filled_block")" '.'
 refute "critic outside {ran, not run} is rejected" check "$(printf '%s' "$filled_block" | jq '.critic = "clean"')" "$critic_known"
 
-# A PR body assembled from the template carries exactly one block; two fail.
+# A PR body assembled from the template carries exactly one block; zero or two fail.
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
+printf '## Summary\n- x\n\nCloses #1\n' >"$tmp"
+refute "a body with no '## Evidence' heading fails the one-block rule" test "$(count_evidence_headings "$tmp")" -eq 1
+refute "a body with no '## Evidence' heading has no fence to count" test "$(count_evidence_fences "$tmp")" -eq 1
+refute "a body with no '## Evidence' heading yields no block" test -n "$(extract_json_after "$tmp" '^## Evidence[[:space:]]*$')"
+printf '## Summary\n- x\n\n## Evidence\nno fence here\n\nCloses #1\n' >"$tmp"
+refute "a heading with no json fence fails the one-block rule" test "$(count_evidence_fences "$tmp")" -eq 1
 {
 	printf '## Summary\n- x\n\n## Evidence\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
 } >"$tmp"

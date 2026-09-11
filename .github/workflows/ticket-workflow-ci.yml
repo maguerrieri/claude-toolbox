@@ -20,7 +20,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      # On pull_request the default checkout is the synthetic merge commit; the
+      # evidence test resolves context_reads against HEAD, which must be the PR
+      # head tree (spec 1a), so check that out explicitly. push has no PR, so it
+      # falls back to the pushed commit.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Run shell tests
         run: |
           status=0
