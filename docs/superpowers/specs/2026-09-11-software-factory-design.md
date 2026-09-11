@@ -848,7 +848,14 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   non-secret sentinel (`factory-token-required`) so sessions run in
   pass-through mode; `factory-token` replaces it with the broker's token
   before START Step 7 and runs `gh auth setup-git` so pushes carry the App
-  identity too. Whether pass-through mode stops the proxy's substitution
+  identity too. That token is the **one write-capable credential this
+  design admits into a session**, and it is admitted deliberately: item 4
+  above bounds it to one repo, two permissions, non-protected branches,
+  and one hour, and 8b's isolation test asserts those bounds. 2b's blanket
+  "write-capable API keys never enter a session" needs that carve-out
+  spelled out (a 2b edit, left to the coordinator); the broker *bearer*,
+  which mints tokens without limit, is not admitted anywhere. Whether
+  pass-through mode stops the proxy's substitution
   is M1, and **8b does not start until M1 passes.** If M1 fails, the
   hosted App path is closed and **8b is blocked**: item 14 (self-hosted
   environment, Team repos only) is the one remaining path that meets the
@@ -891,18 +898,25 @@ throwaway).*
 2. Install it on `maguerrieri/claude-toolbox` and on one org repo (for
    example `sprue-works/polyglot-slides`), "Only select repositories" on
    each.
-3. Broker stand-in: mint one installation token per repo from a laptop
-   (App JWT, then `POST /app/installations/{id}/access_tokens` with
-   `repositories: ["<repo>"]` and `permissions: {contents: write,
-   pull_requests: write}`). It expires in an hour, so mint immediately
-   before each launch.
+3. Broker stand-in: mint a fresh installation token **per matrix cell**
+   from a laptop (App JWT, then `POST
+   /app/installations/{id}/access_tokens` with `repositories: ["<repo>"]`
+   and `permissions: {contents: write, pull_requests: write}`). It
+   expires in an hour, so mint it immediately before that cell's launch
+   and set it on the environment right then.
 4. In each Claude account, create one throwaway environment per repo with
-   `GH_TOKEN=<that token>` in its variables (pass-through mode; the token
-   is short-lived and repo-bound, so exposure in the environment is
-   acceptable for the spike only).
+   `GH_TOKEN=<that token>` in its variables (pass-through mode). What sits
+   in the variable is the hour-scoped installation token, the credential
+   the decision above admits, never the broker bearer; the environment is
+   deleted in step 6. This is the spike's stand-in only: the Team
+   account's *production* implementer environments stay gated on M3 or
+   item 14 as the decision says.
 5. From each account, launch a session into each environment
-   (`create_session` with `source_url` and `outcome_branch`, per the
-   `spawn` skill's `backends/cloud.md`) with this briefing: run
+   (`create_session` with `source_url`, `outcome_branch`, and the
+   throwaway environment's `environment_id` passed **explicitly**, since
+   omitting it inherits the parent's environment; one branch per cell,
+   `spike-94-<account>-<owner>`; per the `spawn` skill's
+   `backends/cloud.md`) with this briefing: run
    `[ "$GH_TOKEN" = proxy-injected ] && echo injected || echo passthrough`
    (expect `passthrough`); run
    `curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer
