@@ -99,6 +99,13 @@ verified on Claude Code 2.1.268:
   - or add `claude plugin marketplace add maguerrieri/claude-toolbox && claude
     plugin install defaults@maguerrieri-toolbox` to the cloud environment's
     setup script (that path does resolve dependencies).
+  - Untested third option: preset folder trust. The real gate is
+    `projects["/home/user/<repo>"].hasTrustDialogAccepted` in the container's
+    `~/.claude.json`; in one cloud session where that flag had been set by hand
+    and the marketplace was already registered, a restart of the CLI installed
+    all six plugins from these settings — 9 commands, 6 skills, and
+    ticket-workflow's 2 hooks. A setup script that writes the flag may get the
+    same result on a fresh session; nobody has verified that yet.
 
 ## Shell: zsh special parameters
 
