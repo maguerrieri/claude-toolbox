@@ -79,11 +79,12 @@ spawner's side**. Name it as the child would have named it:
      collapsed, ends trimmed. **Compare descs by this normalized slug, not by the
      raw text** — `fix CI` and `fix-CI` are the same unit name.
   2. `<nonce>` — **fresh per fan-out**, not per spawner: the last 6 characters of
-     your `$CLAUDE_CODE_REMOTE_SESSION_ID` plus 6 random hex characters drawn
-     once per invocation (`head -c 3 /dev/urandom | od -An -tx1 | tr -d ' \n'`).
-     The session tail keeps two spawners apart; the random part keeps a second
-     `/spawn` in the *same* session from reusing the first one's names, and
-     unlike a timestamp it can't collide within a second.
+     your `$CLAUDE_CODE_REMOTE_SESSION_ID` plus 12 random hex characters (48
+     bits) drawn once per invocation
+     (`head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n'`). The session tail
+     keeps two spawners apart; the random part keeps a second `/spawn` in the
+     *same* session from reusing the first one's names, and unlike a timestamp
+     it doesn't depend on the two being a second apart.
   3. `-<n>` — an ordinal `-1`, `-2`, … only when this fan-out has more than one
      unit with the same `<slug>` ("N agents to each do X").
 
@@ -91,10 +92,12 @@ spawner's side**. Name it as the child would have named it:
   push and the session still needs a repo to group under, and **two children
   given the same `outcome_branch` push to one branch and race** instead of
   staying independent. The nonce is what makes the name unique: it is fixed
-  before launch and can't collide with another fan-out's, so no check of
-  `origin` is needed — a `git ls-remote --heads origin` lookup can only catch a
-  stale branch from an earlier run, never a concurrent one, and is not the
-  uniqueness mechanism.
+  before launch, and 48 random bits per fan-out make a repeat within one session
+  or across two spawners negligible rather than impossible. A
+  `git ls-remote --heads origin` lookup is not the uniqueness mechanism — it can
+  only catch a stale branch from an earlier run, never a concurrent spawner —
+  but it is a cheap guard against reusing one, so check it and take a fresh
+  nonce if the name is already on origin.
 
 Other fields:
 
