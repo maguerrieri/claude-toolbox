@@ -69,6 +69,28 @@ discovery differs across harnesses, so verify every supported harness before
 depending on a nested layout. Prefer each harness's scoped mechanism when
 identical cross-harness behavior is not established.
 
+## Plugins declared per repository
+
+Declare the plugins a repository needs in `.claude/settings.json`, not in
+prose: `extraKnownMarketplaces` registers the marketplace and `enabledPlugins`
+turns plugins on. Two rules keep that declaration working everywhere (verified
+on Claude Code 2.1.268):
+
+- **List a meta-plugin's dependencies next to it.** The install that project
+  settings trigger on the trust prompt does not resolve a plugin's
+  `dependencies`, so a bundle plugin enabled alone ends up disabled
+  (`dependency-unsatisfied`) and loads nothing. Enable the bundle *and* each
+  plugin it depends on.
+- **Install from a SessionStart hook for cloud sessions.** Cloud sessions honor
+  repo-declared hooks but skip repo-declared plugins ("enabled only by
+  repo-authored settings"), and headless runs (`claude -p`, the SDK) install
+  nothing from `enabledPlugins`. Commit a hook that, when `CLAUDE_CODE_REMOTE`
+  is `true`, reads the same `settings.json` and runs `claude plugin marketplace
+  add <source>` for each marketplace and `claude plugin install <plugin>` for
+  each enabled plugin. The settings file stays the single source of truth and
+  the hook never changes when the plugin set does. Reference implementation:
+  `.claude/hooks/session-start.sh` in `maguerrieri/claude-toolbox`.
+
 ## First-party references
 
 - [AGENTS.md standard](https://agents.md/)
