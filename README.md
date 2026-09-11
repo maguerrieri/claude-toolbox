@@ -70,11 +70,20 @@ remove `defaults` and enable only the plugins you want. Two surfaces get nothing
 headless sessions (`claude -p`, the SDK) register the marketplace but install
 nothing from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
 repo-authored plugin settings entirely. Cloud sessions do run repo-declared
-hooks, so copy this repo's `.claude/hooks/session-start.sh` and register it as
-a `SessionStart` hook in the same `settings.json`: in cloud sessions it reads
-the settings above and runs `claude plugin marketplace add` / `claude plugin
-install` for everything declared; locally it's a no-op. Details in the repo's
-`AGENTS.md`.
+hooks, so add this `SessionStart` hook to the same `settings.json`; in cloud
+sessions it reads the settings above and runs `claude plugin marketplace add`
+/ `claude plugin install` for everything declared, and locally it's a no-op:
+
+```json
+"hooks": {
+  "SessionStart": [
+    { "hooks": [ { "type": "command", "command": "curl -fsSL https://raw.githubusercontent.com/maguerrieri/claude-toolbox/main/.claude/hooks/session-start.sh | bash" } ] }
+  ]
+}
+```
+
+Or copy `.claude/hooks/session-start.sh` from this repo and point the hook at
+the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the

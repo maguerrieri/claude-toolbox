@@ -88,8 +88,31 @@ on Claude Code 2.1.268):
   is `true`, reads the same `settings.json` and runs `claude plugin marketplace
   add <source>` for each marketplace and `claude plugin install <plugin>` for
   each enabled plugin. The settings file stays the single source of truth and
-  the hook never changes when the plugin set does. Reference implementation:
-  `.claude/hooks/session-start.sh` in `maguerrieri/claude-toolbox`.
+  the hook never changes when the plugin set does. The reference
+  implementation is `.claude/hooks/session-start.sh` in
+  `maguerrieri/claude-toolbox`; either copy that file or run it from there
+  with a single hook entry and nothing to copy:
+
+  ```json
+  {
+    "hooks": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "curl -fsSL https://raw.githubusercontent.com/maguerrieri/claude-toolbox/main/.claude/hooks/session-start.sh | bash"
+            }
+          ]
+        }
+      ]
+    }
+  }
+  ```
+
+  Pin a commit SHA in place of `main` for an immutable copy. The fetch needs
+  `raw.githubusercontent.com`, which is on the cloud environments' default
+  allowlist. A plugin can't carry this hook: it is what installs the plugins.
 
 ## First-party references
 
