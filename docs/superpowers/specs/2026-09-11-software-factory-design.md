@@ -176,7 +176,10 @@ head**, not the body:
    authorization is a protected GitHub artifact the gate reads, and the
    flag is **never** treated as authorization by any implementation.
    `--confirm-high` is only a local acknowledgement that FINISH is about
-   to merge high-risk work. The ticket-workflow launchers additionally
+   to merge high-risk work — but it is a **required** acknowledgement: on
+   a `risk:high` issue the checker fails when the flag is absent, and it
+   *also* fails when the approving review is absent. Both must hold; the
+   flag never substitutes for the review. The ticket-workflow launchers additionally
    refuse to carry it as a convention: `/spawn-epic`, `/start-epic`, and
    `/spawn-tickets` **reject** an argument string containing it with a
    hard error (EPIC's `--finish` intentionally lifts `SPAWN_CAP` for the
@@ -230,7 +233,14 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 
 | Ruleset | Rules | Bypass actors |
 |---|---|---|
-| `main-integrity` | require PR; require the `ci-gate` check; **require branches to be up to date before merging**; block force-push and deletion | none |
+| `main-integrity` | require PR; **require the `ci-gate` workflow to pass** (the ruleset's *Require workflows to pass* rule, bound to `.github/workflows/ci-gate.yml` on `main` in this repository — not a status-check *name*, which a PR-added `pull_request` workflow could publish under the same `github-actions` app); **require branches to be up to date before merging**; block force-push and deletion | none |
+
+A prerequisite the whole trigger model rests on: **`main` is the
+repository's default branch and the protected base**. `workflow_run` and
+`schedule` load YAML from the default branch, `pull_request_target` from
+the base; item 4 asserts both are `main` before any privileged workflow is
+enabled, and `ci-gate` fails if the repository default branch is not
+`main`.
 
 The up-to-date rule is not optional: `plugin-versions.yml` already warns that
 the version check is incomplete without it, since two PRs based on the same
@@ -553,7 +563,32 @@ pushing actor is the user too. Therefore:
    human tagging, that the user can approve while `main-review` is on.
    Record commit-author, PR-author, and pushing-actor for each path in
    the spec.
-4. **Team-account option:** a self-hosted environment with a wrapper script
+4. **Machine-user options, both documented and both usable on the personal
+   account.** (a) *Per tier, recommended:* set `GH_TOKEN` in the
+   `factory-implementer` environment to a **fine-grained PAT of a dedicated
+   machine user**, scoped to these repos with only `contents: write` and
+   `pull_requests: write`. The docs state a token set this way "passes
+   through to the container unchanged, so your scripts and GitHub's `gh`
+   CLI use it directly", so `gh pr create` authors the PR as the machine
+   user while coordinator and interactive sessions keep the user's
+   identity; git pushes still go through the proxy as the user unless the
+   session runs `gh auth setup-git`. The token is an ordinary environment
+   variable readable by any branch's hooks, so it must be the scoped PAT
+   and nothing more — under 2a's credential rule that exposure is
+   acceptable because the machine user can do nothing on `main` the
+   rulesets don't already gate, and it is bounded by what the session can
+   already do through the proxy. (b) *Account-wide:* run `/web-setup` from
+   a terminal whose `gh` is logged in as the machine user; the proxy then
+   substitutes that token for every cloud session. Cleaner (the credential
+   stays outside the VM) but it changes *all* sessions, not just
+   implementers, and replaces the GitHub App connection that Auto-fix
+   depends on. A **self-owned GitHub App** buys nothing over (a) on a
+   hosted environment — its installation token must be minted from a
+   private key that would sit in the same environment variable — and
+   pays off only on self-hosted runners (option 5). The spike (item 8)
+   evaluates (a) alongside the Action backend; (a) needs neither a runner
+   nor an API key and is the leading candidate.
+5. **Team-account option:** a self-hosted environment with a wrapper script
    that mints a short-lived, least-scoped GitHub App installation token per
    session (`--capacity 1`, ephemeral container). This is the cleanest least-
    privilege story and is the one path that gives true per-session tokens.
@@ -765,9 +800,21 @@ key. Its trust model:
   `workflows:` `ci-gate` and `factory-critic`), and a **`schedule`** sweep
   (hourly) that runs the resolver over every open PR carrying `auto-merge:
   requested`. On the sweep the resolver emits a **list** of eligible
-  candidates and the merge job runs as a **matrix**, one instance per
-  candidate, each with its own pinned SHA and last-instant re-read — a
-  single scalar output would merge at most one PR per hour. Thread
+  candidates — a single scalar output would merge at most one PR per hour
+  — and the merge job processes them **serially, not as a parallel
+  matrix**: `main-integrity` requires each branch to be up to date, so the
+  moment one candidate merges every other candidate is stale and its merge
+  call is rejected. The merge job therefore takes candidates one at a
+  time, and for each one calls the update-branch API (`PUT
+  …/pulls/{n}/update-branch`, which pushes a merge of `main` into the
+  head), waits for `ci-gate` and the critic to complete on the new head
+  (via a bounded poll on the check runs), re-runs the full predicate and
+  last-instant re-read against that new SHA, and only then merges. A
+  candidate that goes red after the update is skipped and reconsidered on
+  the next sweep. The liveness promise is adjusted accordingly: a sweep
+  merges its eligible candidates *in sequence*, each after its own
+  refresh, so several PRs can land in one sweep but each pays a CI round.
+  Thread
   resolution is **not** an Actions trigger (`pull_request_review_thread`
   exists only as a webhook for repositories, organizations, and Apps), so a
   PR held only by an unresolved thread is reconsidered by the sweep. The
@@ -851,7 +898,9 @@ key. Its trust model:
   it. The critic's Anthropic key lives in a **separate** `factory-critic`
   environment (3a), so neither job ever holds the other's credential.
   On success, the `merge` job also posts a `factory/merge-record` check run
-  on the merged SHA whose summary carries the validated class, PR, issue,
+  on the **pre-merge PR head SHA** (the same key 3c searches; never the
+  merge commit, which rebase-merge rewrites) whose summary carries the
+  validated class, PR, issue, resulting `merge_commit_sha`,
   critic run id, and `wall_clock_min` — the immutable snapshot 3c aggregates
   from. Creating a check run needs `checks: write`, which the App
   deliberately lacks; the record is posted with the job's own
@@ -925,7 +974,13 @@ check) does: a PR is classified as a revert when any of its commits carries
 git's own `This reverts commit <sha>` body line, when its title starts with
 `Revert`, or when its diff exactly inverts a commit on `main` within the
 window; a PR so classified **fails `ci-gate` unless it carries the
-`Reverts: #<pr>` marker naming a merged PR**. The routine still scans
+`Reverts: #<pr>` marker naming a merged PR** — and, to stop a revert of an
+ordinary human merge (or of the wrong PR) from being counted as an
+attributed factory revert, the named PR must itself carry a
+`factory/merge-record` (live or shadow) on its head; a marker naming a PR
+with no record is validated as a *non-factory* revert, recorded in
+`factory/revert-of` with `factory: false`, and excluded from the class
+metrics rather than counted as a clean attribution. The routine still scans
 `main` for the same signals and reports any marker-less revert that slipped
 through (e.g. merged before `ci-gate` existed) as *unattributed*; while an
 unattributed revert exists in the window the routine reports **detection
@@ -942,9 +997,16 @@ change:
 - A `factory-shadow` workflow runs on `pull_request_target` with `types:
   [closed]`, `branches: [main]`, and `if:
   github.event.pull_request.merged == true` (Actions exposes no top-level
-  `merged`) — base-branch YAML, no checkout, secretless apart from
-  `GITHUB_TOKEN` with `checks: write` (no App key, no Anthropic key; it
-  never merges).
+  `merged`) **and `head.repo.full_name == github.repository`** — the live
+  path rejects fork heads, so the shadow sample must be drawn from the
+  same population or a merged fork PR could make a class look safer than
+  the auto-merge path would ever see; the routine's enumeration applies
+  the same filter. Base-branch YAML, no checkout, no App key and no
+  Anthropic key (it never merges), with an explicit least-privilege
+  `permissions` block: `checks: write` for the record, plus
+  `pull-requests: read`, `issues: read`, and `contents: read`, which the
+  predicate needs for the file list, review threads, closing-issue labels
+  and timeline, and head-tree blob modes.
 - Its configured **shadow class set** (initially `low`) and a **per-class
   candidate predicate** live in the same `inert-paths` policy file as the
   docs allowlist: for `low`, "every changed path matches the test-only or
@@ -1017,14 +1079,14 @@ must cite both numbers and the independent signal the new class relies on
 | 1 | Evidence block (JSON contract) in START PR template | 1a | — |
 | 2 | `check-evidence.sh <pr> <issue>` FINISH gate (all checks, threads, exact closing reference, one known risk label, current-approval state for high risk, block validation with types) + tests; Step 0 refuses non-GitHub trackers. Lands in two PRs: script + tests first, then the FINISH wiring | 1b | 1, 3 |
 | 3 | `--risk` flag (default `normal`), `required_labels` in `CREATE`, provisioning of the four `risk:*` labels **and** `auto-merge: requested`, one-time `risk:normal` backfill of open issues | 1c | — |
-| 4 | `ci-gate` aggregate workflow in both repos; rulesets `main-integrity` (requiring `ci-gate`) and `agent-branches`; record JSON in this spec | 1d | — |
+| 4 | `ci-gate` aggregate workflow in both repos; assert `main` is the default branch; rulesets `main-integrity` (requiring the `ci-gate` **workflow** by file, up-to-date branches) and `agent-branches`; record JSON in this spec | 1d | — |
 | 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed and in use | 1d | 8 |
 | 5 | Repo `permissions` blocks | 2a | — |
 | 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
-| 8 | Spike: which launch paths yield a `claude[bot]`-authored PR on the personal account; exit criterion is a PR opened by the Action from `repository_dispatch` that the user can approve | 2d | — |
-| 8b | `spawn` backend `action`: fire `repository_dispatch` with `{issue, briefing, tier}`; a `factory-implement` workflow running the Claude Code Action in automation mode, leading the prompt with the START skill read | 2d | 8 |
+| 8 | Spike: a distinct PR author on the personal account. Leading candidate: machine-user fine-grained PAT as `GH_TOKEN` on `factory-implementer`; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by the machine user or `claude[bot]`, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on | 2d | — |
+| 8b | Whichever the spike picks: either the `GH_TOKEN` machine-user setup on the implementer environment (plus `gh auth setup-git` in `cloud-setup.sh` if pushes should match), or a `spawn` backend `action` firing `repository_dispatch` with `{issue, briefing, tier}` into a `factory-implement` workflow running the Claude Code Action in automation mode | 2d | 8 |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`, verified by workflow path + `pull_request_target` event) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 3, 4 |
 | 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; resolves `workflow_run` targets from a `factory-target.json` artifact; sweep merges as a matrix); `ci-gate` as a `workflow_run`-driven aggregator with revert-marker validation and `factory/revert-of` snapshot; `inert-paths` composite action pinned by SHA | 3b | 1, 2, 3, 4, 10 |
@@ -1233,7 +1295,10 @@ must cite both numbers and the independent signal the new class relies on
   the next hourly sweep after the thread is resolved, with no other action
   (normally within an hour; best-effort); the same for any eligibility
   change GitHub emits no Actions event for. Three labeled eligible PRs all
-  merge on one sweep, not one per hour.
+  merge on one sweep, in sequence, each refreshed against `main` and
+  re-checked before its merge; a duplicate-context test confirms that a PR
+  adding a `pull_request` workflow whose job is also named `ci-gate` does
+  not satisfy `main-integrity`, which is bound to the workflow file.
 - Rung 3 provenance and paths: a PR that adds `.github/workflows/factory-
   critic.yml` on its branch posting a `factory/critic` success is rejected
   (its run's `event` is `pull_request`); a PR adding `docs/package.json`,
