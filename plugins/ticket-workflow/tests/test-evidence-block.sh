@@ -78,14 +78,16 @@ check() { # <json> <filter>
 # MODE=headings prints the heading count, MODE=fences the count of closed json
 # fences under the heading, MODE=extract the body of the first such fence.
 evidence_parser='
-	function ticks(s) { match(s, /^`+/); return RLENGTH }
-	!infence && /^```/ {
-		infence = 1; width = ticks($0)
+	# A fence opens with 3+ backticks or 3+ tildes (CommonMark); it closes on a
+	# line of the same character at least as long, with nothing else on it.
+	function run(s, c) { match(s, "^[" c "]+"); return RLENGTH }
+	!infence && /^(```|~~~)/ {
+		infence = 1; fchar = substr($0, 1, 1); width = run($0, fchar)
 		info = substr($0, width + 1); sub(/[[:space:]]+$/, "", info)
 		json = (inside && info == "json"); buf = ""
 		next
 	}
-	infence && /^`+[[:space:]]*$/ && ticks($0) >= width {
+	infence && substr($0, 1, 1) == fchar && run($0, fchar) >= width && $0 ~ /^[`~]+[[:space:]]*$/ {
 		infence = 0
 		if (json) { fences++; if (MODE == "extract" && !done) { printf "%s", buf; done = 1 } }
 		json = 0; next
@@ -237,6 +239,21 @@ assert "decoy followed by the real section: the real block is extracted" check "
 	printf '## Summary\n- x\n\n## Evidence\n````md\n```json\n%s\n```\n````\n\nCloses #1\n' "$decoy"
 } >"$tmp.decoy"
 refute "a json fence nested inside a longer fence under the heading does not count" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+{
+	printf '## Summary\n- x\n\n## Test plan\n~~~text\n## Evidence\n```json\n%s\n```\n~~~\n\nCloses #1\n' "$decoy"
+} >"$tmp.decoy"
+refute "a decoy inside a tilde fence does not count as a heading" test "$(count_evidence_headings "$tmp.decoy")" -eq 1
+refute "a decoy inside a tilde fence does not count as a fence" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+refute "a decoy inside a tilde fence yields no block" test -n "$(extract_evidence_block "$tmp.decoy")"
+{
+	printf '## Summary\n- x\n\n## Evidence\n~~~json\n%s\n~~~\n\nCloses #1\n' "$filled_block"
+} >"$tmp.decoy"
+assert "a tilde-fenced json block is a real block" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+assert "a tilde-fenced json block extracts" check "$(extract_evidence_block "$tmp.decoy")" "$has_required"
+{
+	printf '## Summary\n- x\n\n## Evidence\n~~~json\n%s\n```\n\nCloses #1\n' "$filled_block"
+} >"$tmp.decoy"
+refute "a tilde fence is not closed by a backtick line" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
 rm -f "$tmp.decoy"
 cp "$tmp" "$tmp.two-fences"
 printf '\n```json\n%s\n```\n' "$filled_block" >>"$tmp.two-fences"
