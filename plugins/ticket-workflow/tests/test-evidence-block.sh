@@ -35,12 +35,13 @@ refute() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then fail "$desc"; els
 # <anchor> is a dynamic ERE handed over with `awk -v`, which processes backslash
 # escapes before the regex is compiled — so anchors escape metacharacters with
 # bracket expressions (`[*]`, `[.]`), never backslashes.
+# Only a fence that closes counts: an unterminated ```json fence yields nothing.
 extract_json_after() { # <file> <anchor regex>
 	awk -v anchor="$2" '
 		!found && $0 ~ anchor { found = 1; next }
 		found && !infence && /^```json[[:space:]]*$/ { infence = 1; next }
-		infence && /^```[[:space:]]*$/ { exit }
-		infence { print }
+		infence && /^```[[:space:]]*$/ { printf "%s", buf; exit }
+		infence { buf = buf $0 "\n" }
 	' "$1"
 }
 
@@ -77,7 +78,8 @@ count_evidence_fences() {
 	awk '
 		/^## Evidence[[:space:]]*$/ { inside = 1; next }
 		inside && /^## / { inside = 0 }
-		inside && /^```json[[:space:]]*$/ { n++ }
+		inside && !infence && /^```json[[:space:]]*$/ { infence = 1; next }
+		inside && infence && /^```[[:space:]]*$/ { infence = 0; n++ }
 		END { print n + 0 }
 	' "$1"
 }
@@ -111,6 +113,7 @@ done < <(printf '%s' "$spec_block" | jq -r '.context_reads[]')
 
 # --- 2. the SKILL.md template ----------------------------------------------
 assert "SKILL.md: exactly one '## Evidence' heading" test "$(count_evidence_headings "$skill")" -eq 1
+assert "SKILL.md: exactly one closed json fence under it" test "$(count_evidence_fences "$skill")" -eq 1
 template=$(extract_json_after "$skill" '^## Evidence[[:space:]]*$')
 assert "template: extracted a block" test -n "$template"
 assert "template: is strict JSON" check "$template" '.'
@@ -177,6 +180,9 @@ refute "a body with no '## Evidence' heading has no fence to count" test "$(coun
 refute "a body with no '## Evidence' heading yields no block" test -n "$(extract_json_after "$tmp" '^## Evidence[[:space:]]*$')"
 printf '## Summary\n- x\n\n## Evidence\nno fence here\n\nCloses #1\n' >"$tmp"
 refute "a heading with no json fence fails the one-block rule" test "$(count_evidence_fences "$tmp")" -eq 1
+printf '## Summary\n- x\n\n## Evidence\n```json\n%s\n' "$filled_block" >"$tmp"
+refute "an unterminated json fence fails the one-block rule" test "$(count_evidence_fences "$tmp")" -eq 1
+refute "an unterminated json fence yields no block" test -n "$(extract_json_after "$tmp" '^## Evidence[[:space:]]*$')"
 {
 	printf '## Summary\n- x\n\n## Evidence\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
 } >"$tmp"
