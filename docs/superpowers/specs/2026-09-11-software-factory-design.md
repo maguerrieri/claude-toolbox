@@ -115,7 +115,18 @@ rather than silently skipping it.
 **1b. Machine-checked FINISH gate.** FINISH Step 1 gains
 `plugins/ticket-workflow/scripts/check-evidence.sh <pr> <issue>
 [--confirm-high]` (same idiom as `.github/scripts/check-plugin-versions`).
-FINISH passes the issue ID it was invoked with; "the linked issue" is never
+The checker must be a **trusted copy, never the ticket checkout's**: a PR
+could edit the script and then run the altered gate. In product repos the
+plugin is installed from the marketplace at a pinned version, so FINISH
+invokes the installed copy under the plugin root, which no ticket branch
+can touch. In `claude-toolbox` itself, the plugin's own repo, FINISH runs
+`git show origin/main:plugins/ticket-workflow/scripts/check-evidence.sh |
+bash -s -- …` after a fresh `git fetch origin main`, the same idiom as the
+setup stub in 2b, and refuses if the fetch fails. Either way the in-session
+gate is the control for *human-invoked* FINISH; the fully unattended path
+(3b) never runs it and re-implements the same predicates inside a
+base-branch workflow. FINISH passes the issue ID it was invoked with; "the
+linked issue" is never
 inferred from the PR, because a PR can reference several. The
 `--confirm-high` flag is the explicit wrapper-to-checker handoff for rule 5:
 the `/finish-ticket` command forwards it to the script **only** when it
@@ -126,9 +137,13 @@ to pass it. Every API read below is **fully paginated**. It fails (exit
 non-zero) when any of these holds, each checked against the **current
 head**, not the body:
 
-1. the set of check runs on the head SHA is **empty**, or any of them is not
-   `success` — *all* checks, not only required ones, and "all green" is
-   never satisfied vacuously; 3b applies the identical rule;
+1. the set of check contexts on the head SHA is **empty**, or the **latest
+   attempt** of any context is not `success` — *all* contexts, not only
+   required ones, and "all green" is never satisfied vacuously. GitHub
+   retains earlier attempts for a SHA, so a re-run that turns a context
+   green recovers without a new commit; an older red attempt is ignored
+   only when a newer attempt of the *same* context exists. 3b applies the
+   identical rule;
 2. the paginated `reviewThreads` GraphQL query (the one `REVIEW_BOT` already
    uses) returns any unresolved thread;
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
@@ -218,9 +233,13 @@ the later rungs. So `main-integrity` and `agent-branches` land in rung 1,
 but `main-review` is activated only after the identity spike (item 8)
 confirms a launch path whose PRs carry a distinct author (`claude[bot]` or
 otherwise) and that path is the one the factory uses for implementers.
-Fallback if the spike finds none: `main-review` stays off, the user merges
-by hand after review as today, and rung 3's App bypass targets nothing
-(3b's merge then needs only `main-integrity`, which is simpler). A separate
+Fallback if the spike finds none: `main-review` stays off; the user merges
+**non-docs** PRs by hand after review as today; and the `risk:docs` class
+still auto-merges through 3b, which by design never required an approval —
+its protection is the docs-only path check, `ci-gate`, the critic, and the
+opt-in label, not a review. So in the fallback rung 3's App bypass targets
+nothing (3b's merge needs only `main-integrity`, which is simpler), and
+item 11 is gated on item 4 (the integrity ruleset), not on 4b. A separate
 bot account (rejected below) becomes the escalation if a distinct author
 is wanted anyway.
 
@@ -536,17 +555,25 @@ must hold for one captured head SHA:
   work is filed) and never auto-merge; and instruction and workflow files
   are excluded at any depth because agents load the nearest instruction
   file, so a nested one changes behavior for future documentation work. The
-  deny list is a single shared file consumed by both 1b's tests and the
-  workflow, so the two cannot drift;
+  allow and deny lists have **one canonical location**,
+  `plugins/ticket-workflow/policy/inert-paths.txt` in `claude-toolbox`,
+  consumed by 1b's checker and tests from the installed plugin and by
+  product-repo workflows through a pinned composite action
+  (`uses: maguerrieri/claude-toolbox/.github/actions/inert-paths@<tag>`)
+  that reads the same file at that tag — never a copied list, so the two
+  predicates cannot drift, and bumping the tag is a reviewed change;
 - draft: `draft == false` — FINISH treats `isDraft` as a hold and the
   workflow must not be a way around it;
-- CI: the set of check runs on the head SHA, **excluding only this
-  workflow's own run identified by its immutable `run_id`** (never by
-  check name, which a PR-triggered workflow could mimic), is **non-empty and
-  every member is `success`** — the same rule as 1b item 1, not "required
-  checks only" and never vacuous, so a PR FINISH would stop on cannot merge
-  here and a label event that arrives before CI has posted anything cannot
-  merge either;
+- CI: the set of check contexts on the head SHA, **excluding every check
+  run that belongs to this trusted workflow's own runs** (identified by
+  workflow identity through the check suite, never by check name, which a
+  PR-triggered workflow could mimic — earlier `docs-auto-merge` attempts on
+  the same SHA leave skipped or failed runs that must not block a later
+  attempt), is **non-empty and the latest attempt of every remaining context
+  is `success`** — the same rule as 1b item 1, not "required checks only"
+  and never vacuous, so a PR FINISH would stop on cannot merge here and a
+  label event that arrives before CI has posted anything cannot merge
+  either;
 - threads: the same paginated unresolved-thread query as 1b returns none —
   re-run here because the App bypasses `main-review`, so a thread opened
   after FINISH labeled the PR would otherwise not block;
@@ -576,8 +603,10 @@ environment secrets are exposed when a job *starts*, the split is what makes
 PR, a fork head, or a non-`main` base never starts the job that has the
 key. Its trust model:
 
-- **Trigger: `pull_request_target`** (`types: [labeled, synchronize]`,
-  **`branches: [main]`**), **`workflow_run`** (`types: [completed]`,
+- **Trigger: `pull_request_target`** (`types: [labeled, synchronize,
+  ready_for_review, reopened]` — the last two so a labeled draft that is
+  converted, or a closed PR that is reopened, is reconsidered without a
+  push, **`branches: [main]`**), **`workflow_run`** (`types: [completed]`,
   `workflows:` `ci-gate` and `factory-critic`), and a **`schedule`** sweep
   (hourly) that runs the same resolver over every open PR carrying
   `auto-merge: requested`. Thread resolution is **not** an Actions trigger
@@ -621,9 +650,11 @@ key. Its trust model:
   **re-reads every mutable input** in the `merge` job immediately before the
   merge call — `base.ref` and `base.repo`, `head.repo`, `draft`, the PR's
   `closingIssuesReferences` (and from *that* fresh read, the issue's
-  labels), the PR labels, the unresolved-thread query, and the latest
-  check-run conclusions — repeating the full predicate against the fresh
-  values, and passes the SHA as the merge endpoint's `sha`
+  labels), the PR labels, the PR **body** (re-parsing the Evidence block),
+  the **fully re-fetched changed-file list** (re-running the path check),
+  the unresolved-thread query, and the latest check-run conclusions —
+  repeating the full predicate against the fresh values, and passes the
+  SHA as the merge endpoint's `sha`
   parameter. GitHub refuses the merge if the head moved after validation; the
   re-read shrinks the label/check race to the sub-second gap between the
   final read and the merge request. That residual window is **accepted and
@@ -654,10 +685,15 @@ key. Its trust model:
   out of the `docs-auto-merge` workflow, and 3c verifies exactly that origin
   the way 3b verifies the critic's. The merge call and the record write are
   ordered merge-then-record, and a record failure after a successful merge
-  is a hard job failure that pages the user (the metrics routine also
-  reports any merged factory PR with no record as *unrecorded* and treats it
-  like an unattributed revert: detection incomplete, no widening). Item
-  11's test creates the record with exactly the declared grants.
+  is a hard job failure that pages the user. Because that write is not
+  atomic with the merge, 3c **reconciles**: it lists every PR merged into
+  `main` in the window that carried `auto-merge: requested` or closed an
+  issue with a `risk:*` label, and any such PR with no
+  `factory/merge-record` on its merge commit is reported as *unrecorded*,
+  which is treated like an unattributed revert: detection incomplete, no
+  widening. Item 11's test creates the record with exactly the declared
+  grants and verifies that a simulated record failure after merge is
+  surfaced by the reconciliation.
 
 *Ruleset compatibility.* `main-review` (1d) requires one approving review and
 an Actions job cannot supply one. The `factory-auto-merge` App is added as the
@@ -685,14 +721,29 @@ re-read, so a later body edit cannot rewrite history; the value is
 descriptive, never a trust input). Reverts use an **enforced marker**: a
 revert of a factory merge must land through a PR whose body carries
 `Reverts: #<pr>` (what GitHub's Revert button writes) or whose commits
-carry a `Reverts: #<pr>` trailer, and the `main-integrity` ruleset's
-required-PR rule means no revert reaches `main` outside a PR. The routine
-additionally scans `main` for commits whose subject starts with `Revert "`
-and that carry **no** marker; any such commit is reported as
-*unattributed*, and while an unattributed revert exists in the window the
-routine reports **detection incomplete** and rung 4 does not widen any
-class. The routine posts the table as a comment on the epic. This is the
-input for widening classes in rung 4.
+carry a `Reverts: #<pr>` trailer. The `main-integrity` ruleset's
+required-PR rule means no revert reaches `main` outside a PR, but a
+ruleset cannot validate the marker itself, so `ci-gate` (the required
+check) does: a PR is classified as a revert when any of its commits carries
+git's own `This reverts commit <sha>` body line, when its title starts with
+`Revert`, or when its diff exactly inverts a commit on `main` within the
+window; a PR so classified **fails `ci-gate` unless it carries the
+`Reverts: #<pr>` marker naming a merged PR**. The routine still scans
+`main` for the same signals and reports any marker-less revert that slipped
+through (e.g. merged before `ci-gate` existed) as *unattributed*; while an
+unattributed revert exists in the window the routine reports **detection
+incomplete** and rung 4 does not widen any class.
+
+Records exist only for merges that went through 3b, so a class that has
+never auto-merged has an **empty sample**, not a clean one. Rung 4 may
+widen a class only when that class already has records — which for a new
+class means running it first in a *shadow* mode where 3b evaluates the
+predicate and posts a `factory/merge-record` with `mode: shadow` on
+human-merged PRs of that class (the record write is the same job, gated on
+the same predicate, minus the merge call). Shadow records over the minimum
+sample with zero reverts are what justify turning the merge on. The
+routine posts the table as a comment on the epic. This is the input for
+widening classes in rung 4.
 
 ### Rung 4 — Spec-driven planning
 
@@ -716,14 +767,14 @@ must cite both numbers and the independent signal the new class relies on
 | 4 | `ci-gate` aggregate workflow in both repos; rulesets `main-integrity` (requiring `ci-gate`) and `agent-branches`; record JSON in this spec | 1d | — |
 | 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed and in use | 1d | 8 |
 | 5 | Repo `permissions` blocks | 2a | — |
-| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 5 |
+| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
 | 8 | Spike: which launch paths yield `claude[bot]` on the personal account | 2d | — |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
-| 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test | 3a | 2 |
-| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty all-green checks excluding own `run_id`; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/merge-record`) | 3b | 3, 4, 10 |
-| 12 | Metrics routine | 3c | 1 |
+| 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 4 |
+| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/merge-record`; shadow mode for classes without records); `ci-gate` revert-marker validation; `inert-paths` composite action | 3b | 3, 4, 10 |
+| 12 | Metrics routine (keyed by `factory/merge-record`, with unrecorded-merge and unattributed-revert reconciliation) | 3c | 1, 11 |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
 | 14 | *(optional, Team)* self-hosted environment with per-session tokens | 2d | 4 |
 | 15 | *(follow-up)* Jira: `RISK_OF` / `RISK_SET` tracker ops and a merge-workflow contract so rungs 1–3 work on `Tracker: jira` | 1–3 | 2, 11 |
