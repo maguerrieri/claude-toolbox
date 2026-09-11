@@ -198,7 +198,9 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 | `main-integrity` | require PR; require the `ci-gate` check; block force-push and deletion | none |
 
 `ci-gate` is a new workflow in each repo with **no path filter**, so it runs
-and reports on every PR. Existing CI is path-filtered (`gm-ci.yml` runs only
+and reports on every PR. Besides aggregating CI, it carries one repo-policy
+lint: it fails if the PR introduces any `remote.*` key under
+`.claude/settings.json` (see 2c for why). Existing CI is path-filtered (`gm-ci.yml` runs only
 for `plugins/gm/**`), and a path-filtered workflow registered as a required
 check leaves a docs-only PR pending forever. `ci-gate` therefore aggregates:
 its single job `needs:` the repo's path-filtered jobs where they ran (via
@@ -346,12 +348,25 @@ organization-shared environments; nothing else changes.
 **2c. Environment selection in-repo.** Two mechanisms, because two launchers
 exist:
 
-- `claude --cloud` from a terminal reads `remote.defaultEnvironmentId`. It
-  is **not** committed to the repo: project settings come from the checked-
-  out branch, so a PR could redirect a hand-launched session into a
-  different environment. It stays in the user's own settings (set once with
-  `/remote-env`, pointing at `factory-implementer`), which no branch can
-  edit. The repo carries only documentation of which environment to pick.
+- `claude --cloud` from a terminal reads `remote.defaultEnvironmentId`
+  through the normal settings stack, and the platform docs say a project
+  setting **overrides** the user default. So keeping the key out of the repo
+  is necessary but not sufficient: an unreviewed branch can add it back to
+  project settings, and a hand launch from that checkout would land in
+  whatever environment the branch names. The guarantee is therefore
+  **narrowed**: a manual `claude --cloud` from a branch checkout is *not* a
+  trusted launch path for the factory. Trusted paths are (a) the `spawn`
+  cloud backend below, which passes `environment_id` explicitly from
+  `origin/main`, and (b) the web/Desktop environment picker, which is
+  user-owned UI. The user's own `/remote-env` default is set to
+  `factory-implementer` for convenience only. Two controls make drift
+  visible: `ci-gate` (1d) fails any PR that introduces a `remote.*` key
+  under `.claude/settings.json`, so the override cannot reach `main`; and
+  `cloud-setup.sh` logs `PROJECT remote.* OVERRIDE PRESENT` when the
+  checkout carries one. Test: with a user default of `factory-coordinator`
+  and a branch that sets the project key to `factory-implementer`, a manual
+  `claude --cloud` lands in the implementer environment (documenting the
+  gap) and the PR carrying that key fails `ci-gate`.
 - The `spawn` cloud backend today omits `environment_id` (inherits the
   parent's). It gains an explicit `environment_id`, but the value is
   **never taken from a briefing or from the checked-out tree**: briefings are
@@ -441,9 +456,19 @@ budget nor reach the key.
 The diff is untrusted input handed to a model that holds a credential, so
 the review is sandboxed per step: `claude -p` runs with **tools disabled**
 (`--tools ""`, no MCP, `--disallowedTools` for everything) inside a step
-whose network is restricted to `api.anthropic.com` (the API steps that
-fetch the diff and post the check run run separately with `api.github.com`
-allowed; the job as a whole allows only those two hosts). The diff is passed
+whose network is restricted to `api.anthropic.com`. GitHub-hosted runners
+have no YAML-level egress allowlist, so the mechanism is named: the model
+step runs in a Docker container attached to an **internal** Docker network
+(`docker network create --internal`, no default route) whose only other
+member is an allowlisting HTTP `CONNECT` proxy sidecar that permits
+`api.anthropic.com:443` and nothing else; the container receives
+`HTTPS_PROXY` pointing at the sidecar and the Anthropic key as an env var,
+and has no route to reach anything except via the proxy. The API steps that
+fetch the diff and post the check run run outside that container as plain
+runner steps with the token, so `api.github.com` is reachable there and
+unreachable from the model step. Item 10's test: from inside the model
+container, a `curl https://api.github.com` and a direct IP connect both
+fail, while the model call succeeds. The diff is passed
 wrapped in a delimited data block with an instruction that its contents are
 to be reviewed, never followed, and the job posts `success` **only** after
 parsing a structured verdict `{"verdict": "pass" | "fail", "findings":
@@ -499,8 +524,10 @@ must hold for one captured head SHA:
   directory boundaries, a pattern with no `/` matches at any depth, and
   matching is against the repo-relative path. Stage 1, allow: `docs/**`,
   `**/README.md`, `**/CHANGELOG.md`. Stage 2, deny, applied **after** stage 1
-  and winning over it, **at every depth**: `**/AGENTS.md`, `**/CLAUDE.md`,
-  `**/CLAUDE.local.md`, `**/.claude/**`, `**/.cursorrules`,
+  and winning over it, **at every depth**: `**/AGENTS.md`,
+  `**/AGENTS.override.md` (Codex reads the override before `AGENTS.md` in
+  each directory, and this repo's conventions name that file too),
+  `**/CLAUDE.md`, `**/CLAUDE.local.md`, `**/.claude/**`, `**/.cursorrules`,
   `**/.cursor/**`, `**/*.mdc`, `plugins/**`, `.github/**`,
   `docs/superpowers/**`. So `plugins/gm/README.md`, `.github/README.md`,
   `docs/AGENTS.md`, `docs/guide/CLAUDE.md`, and `docs/.claude/rules/x.md`
@@ -550,15 +577,17 @@ PR, a fork head, or a non-`main` base never starts the job that has the
 key. Its trust model:
 
 - **Trigger: `pull_request_target`** (`types: [labeled, synchronize]`,
-  **`branches: [main]`**), **`pull_request_review_thread`** (`types:
-  [resolved]`) so a PR that was held only by an unresolved thread is
-  reconsidered when the thread is resolved (no other listed event fires for
-  that transition), **`workflow_run`** (`types: [completed]`, `workflows:`
-  `ci-gate` and `factory-critic`), and a **`schedule`** sweep (hourly) that
-  runs the same resolver over every open PR carrying `auto-merge:
-  requested` as a liveness backstop for any transition GitHub does not emit
-  an event for. All four run base-branch YAML with the same
-  resolve/merge job split.
+  **`branches: [main]`**), **`workflow_run`** (`types: [completed]`,
+  `workflows:` `ci-gate` and `factory-critic`), and a **`schedule`** sweep
+  (hourly) that runs the same resolver over every open PR carrying
+  `auto-merge: requested`. Thread resolution is **not** an Actions trigger
+  (`pull_request_review_thread` exists only as a webhook for repositories,
+  organizations, and Apps), so a PR held only by an unresolved thread is
+  reconsidered by the sweep, with a stated latency of **up to one hour**.
+  An optional later item can close that gap by having the
+  `factory-auto-merge` App subscribe to the webhook and fire
+  `repository_dispatch`, which *is* a supported trigger. All three run
+  base-branch YAML with the same resolve/merge job split.
   `pull_request_target` runs the workflow YAML from the **base branch** with
   base-branch secrets, so a PR cannot rewrite the job to exfiltrate the App
   key — which a plain `pull_request` trigger would allow on same-repo
@@ -618,7 +647,17 @@ key. Its trust model:
   On success, the `merge` job also posts a `factory/merge-record` check run
   on the merged SHA whose summary carries the validated class, PR, issue,
   critic run id, and `wall_clock_min` — the immutable snapshot 3c aggregates
-  from.
+  from. Creating a check run needs `checks: write`, which the App
+  deliberately lacks; the record is posted with the job's own
+  `GITHUB_TOKEN` under `permissions: { checks: write }` (the merge job's
+  only `GITHUB_TOKEN` grant), so it appears from the `github-actions` app
+  out of the `docs-auto-merge` workflow, and 3c verifies exactly that origin
+  the way 3b verifies the critic's. The merge call and the record write are
+  ordered merge-then-record, and a record failure after a successful merge
+  is a hard job failure that pages the user (the metrics routine also
+  reports any merged factory PR with no record as *unrecorded* and treats it
+  like an unattributed revert: detection incomplete, no widening). Item
+  11's test creates the record with exactly the declared grants.
 
 *Ruleset compatibility.* `main-review` (1d) requires one approving review and
 an Actions job cannot supply one. The `factory-auto-merge` App is added as the
@@ -682,12 +721,13 @@ must cite both numbers and the independent signal the new class relies on
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
 | 8 | Spike: which launch paths yield `claude[bot]` on the personal account | 2d | — |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
-| 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; per-step network sandbox; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test | 3a | 2 |
+| 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test | 3a | 2 |
 | 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty all-green checks excluding own `run_id`; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/merge-record`) | 3b | 3, 4, 10 |
 | 12 | Metrics routine | 3c | 1 |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
 | 14 | *(optional, Team)* self-hosted environment with per-session tokens | 2d | 4 |
 | 15 | *(follow-up)* Jira: `RISK_OF` / `RISK_SET` tracker ops and a merge-workflow contract so rungs 1–3 work on `Tracker: jira` | 1–3 | 2, 11 |
+| 16 | *(optional)* `factory-auto-merge` App subscribes to the `pull_request_review_thread` webhook and fires `repository_dispatch`, closing the one-hour sweep latency | 3b | 11 |
 
 ## Verified mechanisms (code.claude.com docs, 2026-09-11)
 
@@ -832,7 +872,11 @@ must cite both numbers and the independent signal the new class relies on
 - Rung 2 environment selection: a child briefed `Environment: env_deadbeef`
   or `Environment: production` is refused at launch; `Environment:
   coordinator` lands in the ID `origin/main`'s AGENTS.md names even when the
-  checked-out branch's AGENTS.md says otherwise.
+  checked-out branch's AGENTS.md says otherwise. A PR that adds
+  `remote.defaultEnvironmentId` to `.claude/settings.json` fails `ci-gate`;
+  a manual `claude --cloud` from that branch with a conflicting user
+  default lands in the branch's environment (the documented, untrusted
+  path) and `cloud-setup.sh` logs the override.
 - Rung 3: a `risk:docs` PR touching only `docs/guide.md` with the opt-in
   label, green CI, and a `success` critic run merges via the workflow with no
   human approval. Each of these alone prevents the merge: `failure` critic
@@ -876,6 +920,13 @@ must cite both numbers and the independent signal the new class relies on
   `/spawn-tickets 12 --confirm-high` are refused with a hard error before
   launching anything; a child briefed with the flag in free text has it
   stripped and stops too.
-- Rung 3 liveness: a labeled PR held only by an unresolved thread merges
-  after the thread is resolved with no other action; a labeled PR whose
-  eligibility changed with no GitHub event merges on the next hourly sweep.
+- Rung 3 liveness: a labeled PR held only by an unresolved thread merges on
+  the next hourly sweep after the thread is resolved, with no other action
+  and within one hour; the same for any eligibility change GitHub emits no
+  Actions event for.
+- Rung 3 merge record: the record is created with only `checks: write` on
+  `GITHUB_TOKEN`; with that grant removed the merge job fails after the
+  merge and the metrics routine reports the PR as unrecorded and refuses to
+  widen.
+- Rung 3 instruction files: `docs/AGENTS.override.md` as the only file,
+  and a rename of `AGENTS.override.md` into `docs/`, both do not merge.
