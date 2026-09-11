@@ -27,11 +27,11 @@ gh issue list --search "<query>" --state open --json number,title,url -L 50
 ## CREATE(title, body, labels?, required_labels)  — file a new issue (FILE phase)
 ```bash
 # 1. preflight: every required label must already exist in the repo (fully paginated — no -L cap)
-gh api --paginate -R OWNER/REPO repos/OWNER/REPO/labels --jq '.[].name' | grep -Fx -- "<required label>"   # once per required label; any miss → hard error, stop
-# 2. create, with the required label(s) and any best-effort ones — same -R as the preflight
+gh api --paginate repos/OWNER/REPO/labels --jq '.[].name' | grep -Fx -- "<required label>"   # once per required label; any miss → hard error, stop
+# 2. create, with the required label(s) and any best-effort ones — the same OWNER/REPO, via -R
 gh issue create -R OWNER/REPO --title "<title>" --body-file <path> --label "<required label>" [--label "<label>"]
 ```
-`OWNER/REPO` is the repo FILE is filing into (the profile's `REPO_SELECT`), passed explicitly to **both** commands so the preflight and the create can't resolve to different repos from cwd detection.
+`OWNER/REPO` is the repo FILE is filing into (the profile's `REPO_SELECT`), spelled out in **both** commands so the preflight and the create can't resolve to different repos from cwd detection — in the endpoint path for `gh api` (which takes no `-R`/`--repo` flag; passing one is an `unknown shorthand flag` error), and as `-R` for `gh issue create`/`view`.
 - Write the body to a temp file and pass `--body-file` — issue bodies are multi-line, quote- and backtick-heavy markdown, and a file sidesteps the brittle shell escaping an inline `--body "…"` would need.
 - **`required_labels` is a hard requirement** (FILE Step 3 passes the issue's `risk:<class>` label here — exactly one, always). `gh` never creates labels on the fly, so **preflight** each required name against the repo's full label list (`gh api --paginate` walks every page — `gh label list` caps at its `-L`, 30 by default, and a repo with more labels than the cap would report a false miss — and the exact `grep -Fx` on `name` means a partial match on a description can't pass): a required label the repo lacks is a **hard error surfaced to the user** — report the missing name and the fix (`${CLAUDE_PLUGIN_ROOT}/scripts/provision-risk-labels OWNER/REPO`, below), and **do not** create the issue without it, retry without it, or `gh label create` it yourself. If `gh issue create` still fails on a label after the preflight passed, treat it the same way: fail, don't strip. Don't accept a `required_labels` entry that isn't in the repo's known set of risk classes either (`risk:critical` is a hard error, not a new class).
 - `labels` (the optional ones) stay best-effort: `gh issue create` errors if any label doesn't exist — retry with the required labels only, dropping the optional ones, rather than failing the CREATE. Never drop a required label on that retry.
