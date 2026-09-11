@@ -73,8 +73,10 @@ identical cross-harness behavior is not established.
 
 Declare the plugins a repository needs in `.claude/settings.json`, not in
 prose: `extraKnownMarketplaces` registers the marketplace and `enabledPlugins`
-turns plugins on. Two rules keep that declaration working everywhere (verified
-on Claude Code 2.1.268):
+turns plugins on. Two rules keep that declaration working in interactive local
+sessions and in cloud sessions (verified on Claude Code 2.1.268; headless
+`claude -p`/SDK runs install nothing from project settings and are out of
+scope here):
 
 - **List a meta-plugin's dependencies next to it.** The install that project
   settings trigger on the trust prompt does not resolve a plugin's
