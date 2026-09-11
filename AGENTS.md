@@ -90,9 +90,12 @@ verified on Claude Code 2.1.268:
   `/start-ticket` is rejected (`plugins/spawn/skills/spawn/backends/cloud.md`).
   Two sanctioned workarounds, both outside this repo:
   - enable the marketplace on your claude.ai account (Customize › Plugins › Add
-    marketplace › from a repository, `maguerrieri/claude-toolbox`); cloud
-    sessions download account-enabled plugins and load them as `<name>@synced`
-    with no trust dialog (hooks may not run there);
+    marketplace › from a repository, `maguerrieri/claude-toolbox`, then enable
+    `defaults`); cloud sessions download account-enabled plugins and load them
+    as `<name>@synced` with no trust dialog. Verified: a cloud session started
+    from the web UI sees the plugin skills. `claude plugin list` still prints
+    nothing there, which is expected — synced plugins have no marketplace and
+    no install record. Hooks may not run there;
   - or add `claude plugin marketplace add maguerrieri/claude-toolbox && claude
     plugin install defaults@maguerrieri-toolbox` to the cloud environment's
     setup script (that path does resolve dependencies).
