@@ -555,7 +555,7 @@ def test_apply_rulesets_rejects_placeholder_and_bad_ids(app_id):
     import subprocess
     script = os.path.join(REPO, ".github", "scripts", "apply-rulesets")
     env = dict(os.environ, PATH="/nonexistent")  # no gh/jq reachable: validation must fail first
-    proc = subprocess.run(["bash", script, "owner/repo", app_id], capture_output=True, text=True, env=env)
+    proc = subprocess.run(["/bin/bash", script, "owner/repo", app_id], capture_output=True, text=True, env=env)
     assert proc.returncode == 2, proc
     assert "App id" in proc.stderr
 
