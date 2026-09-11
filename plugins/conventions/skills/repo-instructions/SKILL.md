@@ -87,10 +87,13 @@ scope here):
   repo-declared hooks but skip repo-declared plugins ("enabled only by
   repo-authored settings"), and headless runs (`claude -p`, the SDK) install
   nothing from `enabledPlugins`. Commit a hook that, when `CLAUDE_CODE_REMOTE`
-  is `true`, reads the same `settings.json` and runs `claude plugin marketplace
-  add <source>` for each marketplace and `claude plugin install <plugin>` for
-  each enabled plugin. The settings file stays the single source of truth and
-  the hook never changes when the plugin set does. The reference
+  is `true`, reads the same `settings.json` and, for each enabled plugin, runs
+  `claude plugin marketplace add <source>` for its marketplace and `claude
+  plugin install <plugin>`. Keep the marketplaces it may use as an allowlist
+  inside the script: a repo hook already runs arbitrary shell in cloud
+  sessions, but the allowlist stops a settings-only change on a branch from
+  pointing the hook at a new source. The settings file stays the single source
+  of truth and the hook never changes when the plugin set does. The reference
   implementation is `.claude/hooks/session-start.sh` in
   `maguerrieri/claude-toolbox`; either copy that file or run it from there
   with a single hook entry and nothing to copy:

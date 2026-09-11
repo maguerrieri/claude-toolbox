@@ -66,18 +66,21 @@ List the dependencies out, not just `defaults`: the install that project
 settings trigger on trust caches `defaults` but does not resolve its
 `dependencies`, so on its own it ends up disabled (`dependency-unsatisfied`)
 and nothing loads (verified on Claude Code 2.1.268). For an à la carte pick,
-remove `defaults` and enable only the plugins you want. Two surfaces get nothing from these settings on their own:
+remove `defaults` and enable only the plugins you want, together with their
+dependencies (`ticket-workflow` needs `spawn`). Two surfaces get nothing from these settings on their own:
 headless sessions (`claude -p`, the SDK) register the marketplace but install
 nothing from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
 repo-authored plugin settings entirely. Cloud sessions do run repo-declared
 hooks, so add this `SessionStart` hook to the same `settings.json`; in cloud
 sessions it reads the settings above and runs `claude plugin marketplace add`
-/ `claude plugin install` for everything declared, and locally it's a no-op:
+/ `claude plugin install` for every enabled plugin from this marketplace or
+the official one (an allowlist inside the script, so a settings-only change
+can't point it at a new source), and locally it's a no-op:
 
 ```json
 "hooks": {
   "SessionStart": [
-    { "hooks": [ { "type": "command", "command": "curl -fsSL https://raw.githubusercontent.com/maguerrieri/claude-toolbox/main/.claude/hooks/session-start.sh | bash" } ] }
+    { "matcher": "startup|resume", "hooks": [ { "type": "command", "command": "curl -fsSL https://raw.githubusercontent.com/maguerrieri/claude-toolbox/main/.claude/hooks/session-start.sh | bash" } ] }
   ]
 }
 ```
