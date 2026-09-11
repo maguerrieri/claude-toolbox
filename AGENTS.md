@@ -64,6 +64,13 @@ manual `/plugin` step. Two caveats:
   `directory` source with a relative path is stored literally and then fails with
   "not found in marketplace" (anthropics/claude-code#23978), and an absolute path
   isn't portable.
+- **Headless sessions register the marketplace but don't install the plugins.**
+  Verified on Claude Code 2.1.268 with `claude -p`: the settings clone the
+  marketplace, then the loader reports `Plugin "defaults" not cached … run
+  /plugin to refresh` — the same as for the `superpowers` entry, and the same
+  whether `defaults` or the six plugins are listed individually. The install
+  happens on the interactive trust prompt, or by hand:
+  `claude plugin install defaults@maguerrieri-toolbox`.
 
 ## Shell: zsh special parameters
 
