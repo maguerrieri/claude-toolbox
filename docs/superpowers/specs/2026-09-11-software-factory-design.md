@@ -235,6 +235,18 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 |---|---|---|
 | `main-integrity` | require PR; **require the `ci-gate` workflow to pass** (the ruleset's *Require workflows to pass* rule, bound to `.github/workflows/ci-gate.yml` on `main` in this repository — not a status-check *name*, which a PR-added `pull_request` workflow could publish under the same `github-actions` app); **require branches to be up to date before merging**; block force-push and deletion | none |
 
+**Plan prerequisite.** Rulesets and branch protection are free only on
+public repositories; on a private repository they require GitHub Pro (or
+Team for an organization). `claude-toolbox` is public, `toolbox` is
+private, and both are personal-account repos, so item 4 requires the
+account to be on **GitHub Pro** before `main-integrity` can be enforced
+on `toolbox` — without it the rulesets exist but are not applied, and
+every rung that assumes a protected `main` is unenforced there. This is
+the one recurring cost the plan introduces; a machine user (2d option 4)
+adds none: personal repos have no seat billing, one machine user per
+person is allowed by GitHub's terms, and a Free personal account permits
+up to three collaborators on a private repo.
+
 A prerequisite the whole trigger model rests on: **`main` is the
 repository's default branch and the protected base**. `workflow_run` and
 `schedule` load YAML from the default branch, `pull_request_target` from
