@@ -954,15 +954,22 @@ throwaway).*
    `GH_TOKEN=factory-token-required`, launch into it on its own branch
    (`94-spike-personal-personal-sentinel`, so it yields a separate PR
    rather than reusing step 5's), and confirm the sentinel is what the
-   session sees; then hand the session a freshly
-   minted token by follow-up message with the instruction to `export
-   GH_TOKEN` from it without echoing or logging it (a throwaway,
-   hour-scoped, one-repo token; the transcript exposure is accepted for
-   the spike only), and repeat step 5's probes, `gh auth setup-git`,
-   push, and `gh pr create`. M1 passes only if both the preconfigured
-   token (step 5) and the runtime replacement (this step) yield the
-   401 probe result and an App-authored PR. Renewal after expiry is
-   8b's helper test, not part of the spike.
+   session sees; then deliver a freshly minted token **out of band, never
+   in a briefing or follow-up message** (a message persists the value in
+   the transcript, which no instruction not to echo it can undo). The
+   stand-in is a mini-broker, the same shape as 8b's: an HTTPS endpoint
+   the human controls (a one-off Cloud Run service or Cloudflare Worker
+   that returns the token to a bearer), with the endpoint's bearer held
+   as an API credential on the environment so the proxy attaches it after
+   the request leaves the VM. The session runs `curl -fsS <endpoint> -o
+   ~/.factory-token && chmod 600 ~/.factory-token && export
+   GH_TOKEN="$(<~/.factory-token)"`, which prints nothing; only the
+   probes' status codes and the identity results reach the model. Then
+   repeat step 5's probes, `gh auth setup-git`, push, and `gh pr create`.
+   M1 passes only if both the preconfigured token (step 5) and the
+   runtime replacement (this step) yield the 401 probe result and an
+   App-authored PR. Renewal after expiry is 8b's helper test, not part
+   of the spike; tear the endpoint down with the rest of step 6.
 6. On each repo, add a test ruleset `main-review` (1 approval, branch
    pattern = the PRs' base), approve **every** App-authored PR on that
    repo as the user, two per repo plus the sentinel variant on the
