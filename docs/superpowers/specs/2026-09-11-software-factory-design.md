@@ -609,12 +609,13 @@ account):** commit attribution and PR authorship are *separate*. The
 hosted environment's global git config is `user.name Claude`,
 `user.email noreply@anthropic.com`, with SSH commit signing through a
 proxy signer whose key lives outside the sandbox. GitHub maps that
-address to the `claude[bot]` account, so every commit shows as
-`claude[bot]` (overriding `user.name` alone does not change that; the
-email is what GitHub matches). The PR, its comments, review replies, and
-thread resolutions were all created through the API as the user. So an
-ordinary session yields `claude[bot]` **commits** on a **user-authored**
-PR, and GitHub's "author cannot approve" rule keys on PR authorship — this
+address to the `claude` account (a GitHub *user*, id 81847, not the
+`claude[bot]` App, id 41898282; corrected by the spike below), so every
+commit shows as `claude` (overriding `user.name` alone does not change
+that; the email is what GitHub matches). The PR, its comments, review
+replies, and thread resolutions were all created through the API as the
+user. So an ordinary session yields `claude` **commits** on a
+**user-authored** PR, and GitHub's "author cannot approve" rule keys on PR authorship — this
 path does not, by itself, give the user an approvable PR. Pushes go
 through the git proxy with the user's token, so for ruleset purposes the
 pushing actor is the user too. Therefore:
@@ -727,6 +728,182 @@ pushing actor is the user too. Therefore:
    privilege story and is the one path that gives true per-session tokens.
    It's an optional rung-2 upgrade for repos that live under the Team org; it
    cannot serve personal repos, so the personal path above remains primary.
+
+**Spike findings (item 8, 2026-09-11, session
+`session_01RHAHvw5ZtJ9DVr7rdn3PgN`).** The spike could not build the App:
+the session's GitHub access was scoped to `maguerrieri/claude-toolbox`, App
+registration and installation are GitHub GUI actions on `sprue.works`, and
+a session runs under one Claude account. So **no matrix cell was exercised
+with an App identity.** What the spike did do: measure the ordinary-session
+baseline on the one reachable cell, probe the platform mechanisms the App
+path depends on, and evaluate the Action variant from its documentation.
+The decision below rests on those; the four App-authored PRs remain a
+manual step, listed at the end. Two probes were refused by the auto-mode
+classifier as credential materialization (reading the session's own
+`GH_TOKEN` identity, and `list_environments`) and were not retried.
+
+*Launch matrix.* "This account" is the account that launched the epic; the
+session record does not say which (see the note under the table).
+
+| Cell (Claude account → repo owner) | Exercised | Commit author | PR author | Pushing actor | Account field |
+|---|---|---|---|---|---|
+| this account → personal (`maguerrieri/claude-toolbox`) | baseline only, no App | `claude` (GitHub *user* id 81847, via `noreply@anthropic.com`) | `maguerrieri` (every PR from a cloud session so far: #83, #85, #86, #88, #111) | `maguerrieri` (the proxy swaps a scoped credential for the user's token) | none; `environment_id` = `env_0131xVUUed8c2GqNZx1qekbQ` |
+| this account → org (`sprue-works/*`) | no: session scope is the one repo, and no App exists | — | — | — | — |
+| other account → personal | no: one account per session | — | — | — | — |
+| other account → org | no | — | — | — | — |
+
+*The session record carries no account field.* `get_session` returns `id`,
+`title`, `environment_id`, `environment_kind`, `session_context`, `origin`,
+`parent_session_id`, `permission_mode`, `tags`, and `external_metadata`;
+nothing names the account or organization, and `list_sessions(mine: true)`
+filters by account without exposing it. The only account-scoped value is
+`environment_id`: environments are personal to the account that created
+them, so the launcher determines its account by finding which account's
+ID lines in `origin/main`'s AGENTS.md block contain the calling session's
+`environment_id`, and refuses when none does. 2c's "account UUID in the
+same block" becomes a label only; the check is environment-ID membership.
+
+*Platform facts that bear on the App path (verified in this session unless
+marked).*
+
+1. **Two GitHub auth modes, and the proxy substitutes in the default
+   one.** With no `GH_TOKEN` set on the environment, `GH_TOKEN` and
+   `GITHUB_TOKEN` both read the documented placeholder `proxy-injected`
+   (observed), and the proxy substitutes the user's credential on outbound
+   GitHub requests: a request to `api.github.com/user` with **no**
+   `Authorization` header and one with a deliberately invalid bearer both
+   returned 200 as `maguerrieri`, and `git push --dry-run` with a bogus
+   `http.extraheader` authorization succeeded. In this mode a
+   broker-minted token exported as `GH_TOKEN` is **ignored**: `gh pr
+   create` would still author the PR as the user. The docs describe the
+   other mode: a `GH_TOKEN` set in the environment's variables "passes
+   through to the container unchanged, so your scripts and GitHub's `gh`
+   CLI use it directly", and the GraphQL note treats "a `GH_TOKEN` you
+   set" as the credential in use. Whether the proxy stops substituting in
+   that mode is **unverified** (an environment cannot be switched from
+   inside a session) and is the one question that decides the hosted App
+   path: manual step M1 below.
+2. **API credentials are Pro/Max only.** "They aren't available on Team
+   or Enterprise plans yet", and GitHub hosts never receive one in any
+   case ("the GitHub proxy authenticates requests to GitHub instead"). The
+   broker bearer can ride API credentials only in the personal account's
+   environments; in the Team account's it must be an environment
+   variable, readable by every session in that environment.
+3. **Repository scope at the proxy.** "GitHub API and release-asset
+   requests reach only repositories attached to the session" (observed:
+   `/users/claude` returns 403 while `/user` and the attached repo
+   succeed). A repo-B token obtained inside a repo-A session is blocked at
+   the proxy before GitHub sees it: a second layer under 8b's isolation
+   test, not a replacement for it.
+4. **Push protection.** "`git push` works only against the session's
+   current working branch." Implementers push one branch, so this fits,
+   and it stops an implementer from retargeting or deleting other branches
+   whatever token it holds.
+5. **Commit attribution.** `noreply@anthropic.com` maps to the GitHub
+   *user* `claude` (id 81847), not the `claude[bot]` App (id 41898282).
+   After the user's rebase-merge the commit is unsigned with the user as
+   committer. For App-attributed commits the `factory-token` helper sets
+   `user.email` to `<app-id>+<slug>[bot]@users.noreply.github.com`
+   alongside the token.
+6. **Approvability.** GitHub docs: "Pull request authors cannot approve
+   their own pull requests." An App-authored PR is approvable by the user.
+   Caveat for 1d: the optional "require approval of the most recent
+   reviewable push" rule keys on the pusher; if pushes keep going through
+   the proxy as the user while the PR is App-authored, that rule would
+   block the user's approval. Keep it off, or route pushes through the App
+   token (`gh auth setup-git`) so the pusher is the App.
+7. **No hosted launch path yields a distinct PR author on its own.**
+   Routines: "commits and pull requests carry your GitHub user" (docs);
+   ordinary sessions: as observed; Auto-fix and Claude Tag use the
+   *official* App's installation token and would author as `claude[bot]`,
+   but neither is a launcher a coordinator can call. The distinct author
+   has to be brought in by us: our App's token, on cloud or on a runner.
+
+*Action variant against the exit criteria (from the
+`anthropics/claude-code-action` docs; no probe was run).*
+
+| Criterion | Verdict | Evidence |
+|---|---|---|
+| `GITHUB_TOKEN` limited to `contents: write`, `pull-requests: write` | met, with one addition | The workflow's `permissions:` block sets it. Default App auth also needs `id-token: write` for the OIDC exchange; with our own App (`github_token` from `actions/create-github-app-token`) that grant is unnecessary. |
+| Anthropic key in a `main`-only deployment environment | met | `repository_dispatch` runs the default branch's workflow; the job declares `environment: factory-implement` with a `main` branch policy. Workload identity federation (`anthropic_federation_rule_id`) removes the stored key but needs a Console organization, i.e. API billing; `claude_code_oauth_token` runs on the subscription but is a long-lived personal token in Actions secrets. |
+| Model step tool-restricted and network-sandboxed per 3a | **not met for an implementer** | Tool restriction exists (`--allowedTools`; no Bash unless allowed), but an implementer needs Bash for tests and git, so it cannot be restricted the way the critic is. The sandbox on Linux needs `bubblewrap` and `socat` plus an AppArmor change on Ubuntu 24.04; `strictAllowlist` and `mask` are honored only from user, managed, or `--settings` scope, and whether the action's `settings` input reaches that scope is undocumented. Runner egress is otherwise unrestricted; none of 2b's allowlist, setup script, or cache applies. |
+| Issue body and briefing as delimited data | met, on us | `client_payload` is interpolated into the `prompt` input; the action sanitizes GitHub-context content, not the prompt, so the workflow wraps the payload in delimiters itself. Firing `repository_dispatch` needs a write-scoped token, which a cloud session has through the proxy. |
+| Opens the PR itself | met only through our App | "Claude doesn't create PRs by default. Instead, it pushes commits to a branch and provides a link to a pre-filled PR submission page." With `Bash(gh pr create:*)` allowed and `GH_TOKEN` set to a `create-github-app-token` token, `gh` authors the PR as `<slug>[bot]`: the same identity the App path uses, on a different runtime. |
+| Lands in the launching account's implementer environment (2c) | **not applicable** | No Claude account is in the loop; the Action runs on a GitHub runner with a secret. The account dimension of the matrix disappears rather than being satisfied, and with it the session record, `get_session` polling, `send_later` re-wakes, and the coordinator's cloud-backend contract (`phases/epic.md` Steps 5–6). |
+
+*Decision: App + token broker on cloud (8b), with 8b amended by facts 1, 2,
+and 5.* The Action fails the sandbox criterion for an implementer and
+cannot satisfy the environment criterion at all, and the identity it would
+bring is our App's token in either case, so the default rule above ("the
+App-on-cloud path wins") applies. 8b changes in four ways:
+
+- Implementer environments set `GH_TOKEN` in their variables to a
+  non-secret sentinel (`factory-token-required`) so sessions run in
+  pass-through mode; `factory-token` replaces it with the broker's token
+  before START Step 7 and runs `gh auth setup-git` so pushes carry the App
+  identity too. Whether pass-through mode stops the proxy's substitution
+  is M1, and **8b does not start until M1 passes.** If M1 fails, the
+  hosted App path is closed and the fallback order is item 14 (self-hosted
+  environment, Team repos only), then the Action with our App's token,
+  accepting the criterion it fails.
+- Personal-account environments carry the broker bearer as an API
+  credential; Team-account environments carry it as an environment
+  variable, bound at the broker to one repo and rotated from the
+  environment page. Exposure of a Team bearer widens the *duration* of the
+  stated blast radius (until rotation instead of one hour), not its scope.
+  M3 decides this before the Team environments are created.
+- `factory-token` sets `user.email` to the App's noreply address so
+  commits, not only the PR, carry the App identity.
+- 2c derives the launching account from the calling session's
+  `environment_id` (a membership test against the per-account lines),
+  since the session record carries no account field.
+
+*Open questions, scoped to what could not be reached, each closed by one
+step of the runbook:* **M1** pass-through mode honors a caller-supplied
+token (personal account, personal repo); **M2** the pushing actor under
+pass-through with and without `gh auth setup-git`; **M3** Team bearer as an
+environment variable versus item 14; **M4** the four App-authored PRs are
+approvable by the user under a test `main-review`.
+
+*Manual runbook to complete the matrix (about an hour; everything is
+throwaway).*
+
+1. Register a throwaway App under `sprue.works`: public ("Any account");
+   permissions Contents read & write, Pull requests read & write, Metadata
+   read; no webhook; note the App ID and slug; generate a private key.
+2. Install it on `maguerrieri/claude-toolbox` and on one org repo (for
+   example `sprue-works/polyglot-slides`), "Only select repositories" on
+   each.
+3. Broker stand-in: mint one installation token per repo from a laptop
+   (App JWT, then `POST /app/installations/{id}/access_tokens` with
+   `repositories: ["<repo>"]` and `permissions: {contents: write,
+   pull_requests: write}`). It expires in an hour, so mint immediately
+   before each launch.
+4. In each Claude account, create one throwaway environment per repo with
+   `GH_TOKEN=<that token>` in its variables (pass-through mode; the token
+   is short-lived and repo-bound, so exposure in the environment is
+   acceptable for the spike only).
+5. From each account, launch a session into each environment
+   (`create_session` with `source_url` and `outcome_branch`, per the
+   `spawn` skill's `backends/cloud.md`) with this briefing: run
+   `[ "$GH_TOKEN" = proxy-injected ] && echo injected || echo passthrough`
+   (expect `passthrough`); run
+   `curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer
+   bogus' https://api.github.com/user` (**M1: expect 401**; 200 means the
+   proxy still substitutes and the hosted App path is closed); run
+   `gh api /installation/repositories --jq '.repositories[].full_name'`
+   (expect only that repo); set `user.email` to
+   `<app-id>+<slug>[bot]@users.noreply.github.com`, commit a one-line
+   change, push once through the proxy and once after
+   `gh auth setup-git` (**M2**: record the pusher of each from the repo's
+   Activity view); run `gh pr create` (expect author `<slug>[bot]`);
+   record `get_session`'s `environment_id`.
+6. On each repo, add a test ruleset `main-review` (1 approval, branch
+   pattern = that PR's base), approve the PR as the user (**M4**: the
+   approval counts), then delete the ruleset, close the PRs, delete the
+   branches, and uninstall and delete the App.
+7. Fill the table above per cell: commit author, PR author, pushing actor
+   (both pushes), `environment_id`, and M1's status code.
 
 **2e. Budgets.** A `Budget:` briefing directive (wall-clock minutes, max
 review rounds) is appended in `profiles/default.md`'s `SPAWN_CAP`; an
