@@ -235,6 +235,25 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 |---|---|---|
 | `main-integrity` | require PR; **require the `ci-gate` workflow to pass** (the ruleset's *Require workflows to pass* rule, bound to `.github/workflows/ci-gate.yml` on `main` in this repository — not a status-check *name*, which a PR-added `pull_request` workflow could publish under the same `github-actions` app); **require branches to be up to date before merging**; block force-push and deletion | none |
 
+**Organization repos.** The same design applies to repos under the user's
+organization (`sprue.works`), with two differences the plan must budget
+for. Rulesets on an organization's *private* repos require **GitHub
+Team** (public org repos are free); and on Team every member and every
+outside collaborator on a private repo consumes a paid seat, so a
+machine-user account there costs a seat, whereas an **organization-owned
+GitHub App** consumes none — its `[bot]` identity is free. That reverses
+2d's recommendation for org repos: on the org, the distinct PR author
+should be an org-owned App, with its installation token minted from the
+App's private key. On a hosted environment that key sits in the same
+`GH_TOKEN`-style environment variable as a PAT would (same exposure, per
+2a's credential rule), but the tokens it mints are short-lived and scoped
+to the App's installation permissions. Whether the org's private repos
+are on Team is not verifiable from this session (the GitHub proxy is
+repo-scoped) and is item 4's first check for any org repo. Environments
+(2b) are per account, not per repo, so the same two tiers serve org repos
+unchanged; the git proxy's repository scope means each spawned session is
+still attached only to the repo it works on.
+
 **Plan prerequisite.** Rulesets and branch protection are free only on
 public repositories; on a private repository they require GitHub Pro (or
 Team for an organization). `claude-toolbox` is public, `toolbox` is
@@ -597,9 +616,14 @@ pushing actor is the user too. Therefore:
    depends on. A **self-owned GitHub App** buys nothing over (a) on a
    hosted environment — its installation token must be minted from a
    private key that would sit in the same environment variable — and
-   pays off only on self-hosted runners (option 5). The spike (item 8)
-   evaluates (a) alongside the Action backend; (a) needs neither a runner
-   nor an API key and is the leading candidate.
+   pays off only on self-hosted runners (option 5) — **except on
+   organization repos**, where a machine user costs a Team seat and an
+   org-owned App costs nothing (1d, "Organization repos"); there the App
+   is the right identity, minting its installation token in-session from
+   a key held the same way as the PAT. The spike (item 8) evaluates (a)
+   for personal repos and the org-App variant for `sprue.works` repos,
+   alongside the Action backend; neither needs a runner or an Anthropic
+   API key.
 5. **Team-account option:** a self-hosted environment with a wrapper script
    that mints a short-lived, least-scoped GitHub App installation token per
    session (`--capacity 1`, ephemeral container). This is the cleanest least-
@@ -992,7 +1016,17 @@ attributed factory revert, the named PR must itself carry a
 `factory/merge-record` (live or shadow) on its head; a marker naming a PR
 with no record is validated as a *non-factory* revert, recorded in
 `factory/revert-of` with `factory: false`, and excluded from the class
-metrics rather than counted as a clean attribution. The routine still scans
+metrics rather than counted as a clean attribution. The marker must also
+**agree with the evidence**: when git's `This reverts commit <sha>` line
+or an exact diff inversion identifies the reverted commit, `ci-gate`
+resolves that commit to the PR that merged it (via the commit's
+associated-PRs endpoint) and requires the marker to name *that* PR — a
+revert of factory PR A carrying `Reverts: #B` fails `ci-gate` as
+*inconsistent*, and a revert whose target cannot be resolved at all is
+recorded as *unprovable*; both are reported like unattributed reverts and
+block widening rather than yielding a clean sample. Test: a revert of A
+marked as B is rejected; a legitimate revert of a non-factory PR passes
+and stays outside factory metrics. The routine still scans
 `main` for the same signals and reports any marker-less revert that slipped
 through (e.g. merged before `ci-gate` existed) as *unattributed*; while an
 unattributed revert exists in the window the routine reports **detection
