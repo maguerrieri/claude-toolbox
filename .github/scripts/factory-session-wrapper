@@ -14,7 +14,10 @@
 #   credential  git credential helper (`credential get`): answer github.com
 #               requests for the one repository this environment serves with a
 #               fresh token, re-minting when the cached one is near expiry.
-#   token       print a fresh token to stdout (for `export GH_TOKEN=$(...)`).
+#   token       print a fresh token to stdout, for renewing GH_TOKEN inside
+#               the session: `export GH_TOKEN=$("$FACTORY_SESSION_WRAPPER" token)`
+#               (`command` exports this script's absolute path in that
+#               variable; the install location is not on PATH).
 #
 # How the token is minted. The runner gives every session a signed JWT in
 # CLAUDE_CODE_SESSION_ACCESS_TOKEN whose audience is this environment's ID and
@@ -168,7 +171,9 @@ cache_ttl() {
   [ -r "$file" ] || { echo 0; return; }
   exp=$(jq -r '.expires_at // empty' "$file" 2>/dev/null) || { echo 0; return; }
   [ -n "$exp" ] || { echo 0; return; }
-  exp=$(date -u -d "$exp" +%s 2>/dev/null) || { echo 0; return; }
+  # GNU date first; BSD date (macOS runner hosts) second.
+  exp=$(date -u -d "$exp" +%s 2>/dev/null \
+    || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$exp" +%s 2>/dev/null) || { echo 0; return; }
   now=$(date -u +%s)
   echo $(( exp - now ))
 }

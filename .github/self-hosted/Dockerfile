@@ -49,10 +49,15 @@ COPY --chmod=0555 self-hosted/hooks/ /opt/factory/hooks/
 # checkout), so running it against an empty workspace at build time is the
 # intended use. Until item 6 lands the file does not exist; the build says so
 # loudly instead of pretending the image is provisioned.
+# The clone lands in a root-only temp dir (mktemp -d is 0700), so the reviewed
+# script is installed world-readable under /opt/factory first and run from
+# there as the runner user; the installed copy also records which setup the
+# image was provisioned with.
 RUN set -eu; tmp=$(mktemp -d); \
     git clone -q --depth 1 --branch "$FACTORY_SETUP_REF" "$FACTORY_SETUP_REPO" "$tmp/src"; \
     if [ -f "$tmp/src/.claude/cloud-setup.sh" ]; then \
-      su runner -c "cd /tmp && bash -euo pipefail '$tmp/src/.claude/cloud-setup.sh'"; \
+      install -m 0444 "$tmp/src/.claude/cloud-setup.sh" /opt/factory/cloud-setup.sh; \
+      su runner -c "cd /tmp && bash -euo pipefail /opt/factory/cloud-setup.sh"; \
     else \
       echo "WARNING: .claude/cloud-setup.sh absent at $FACTORY_SETUP_REF; image is NOT provisioned (item 6 pending)" >&2; \
     fi; \

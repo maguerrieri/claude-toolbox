@@ -960,8 +960,10 @@ pushing actor is the user too. Therefore:
    re-mints when the cached token has under five minutes left, reading the
    refreshed JWT from the ingress file, so pushes after the first hour keep
    working; `gh` past the first hour re-exports with
-   `GH_TOKEN=$(factory-session-wrapper token)` (the `factory-token` helper
-   of 8b does this on hosted environments too). Every failure — a JWT for
+   `GH_TOKEN=$("$FACTORY_SESSION_WRAPPER" token)` — the wrapper exports its
+   own absolute path in that variable, since `/opt/factory` is not on the
+   session's `PATH` (the `factory-token` helper of 8b does this on hosted
+   environments too). Every failure — a JWT for
    another environment, a broker error, a token minted for another
    repository, no checkout or the wrong one — exits before Claude starts,
    so a session never runs credential-less; the tests in
