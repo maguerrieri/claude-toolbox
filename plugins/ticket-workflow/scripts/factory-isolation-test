@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# factory-isolation-test — the cross-repo isolation test from spec 2d / item 8b.
+#
+# Run it from inside a `factory-implementer-<A>` cloud session (or anywhere the
+# broker is reachable). It tries every path a compromised branch has to obtain a
+# token for a repository B other than the one this environment is bound to (A),
+# and asserts each yields only an A-scoped token or nothing:
+#
+#   1. the broker called directly with `repository: B`      → 403 / no token, or an A token
+#   2. the broker called directly with no repository at all → an A token or nothing
+#   3. the helper replayed with --repo B                     → refuses, exports nothing
+#   4. the environment read for credential material         → no broker bearer, no App key
+#   5. (with GitHub) the A token, minted the normal way:
+#        GET  /installation/repositories  lists only A
+#        GET  /repos/A                    200 (positive control)
+#        GET  /repos/B                    404 or 403 (GitHub hides it; the proxy's
+#                                         repo scope may 403 first — either passes)
+#        POST /repos/B/git/refs           non-2xx (a write to B is rejected)
+#
+# Usage:
+#   factory-isolation-test --bound OWNER/A --foreign OWNER/B [--broker URL] [--skip-github]
+#
+# The foreign repo must be one the App is installed on (otherwise a 404 proves
+# nothing about the token); pick the other factory repo. Output is TAP-like; exit
+# 0 only when every path passes. No token or bearer is ever printed.
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd -P)
+helper="$here/factory-token"
+
+BOUND=""; FOREIGN=""; BROKER="${FACTORY_BROKER_URL:-}"; SKIP_GITHUB=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--bound) BOUND=$2; shift 2 ;;
+	--foreign) FOREIGN=$2; shift 2 ;;
+	--broker) BROKER=$2; shift 2 ;;
+	--skip-github) SKIP_GITHUB=1; shift ;;
+	-h | --help) sed -n '2,/^set -euo pipefail/{/^set -euo pipefail/d;s/^# \{0,1\}//;p;}' "$0" >&2; exit 2 ;;
+	*) echo "unknown argument: $1" >&2; exit 2 ;;
+	esac
+done
+[ -n "$BOUND" ] && [ -n "$FOREIGN" ] || { echo "--bound and --foreign are required" >&2; exit 2; }
+[ -n "$BROKER" ] || { echo "--broker or FACTORY_BROKER_URL is required" >&2; exit 2; }
+BROKER=${BROKER%/}
+for tool in curl jq; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 2; }; done
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+[ "$(lc "$BOUND")" != "$(lc "$FOREIGN")" ] || { echo "--bound and --foreign must differ" >&2; exit 2; }
+
+failures=0
+ok() { printf 'ok   - %s\n' "$1"; }
+fail() { printf 'FAIL - %s\n' "$1"; failures=$((failures + 1)); }
+
+work=$(mktemp -d)
+chmod 700 "$work"
+trap 'rm -rf "$work"' EXIT
+
+# broker_call <body-or-empty> <outfile> → prints HTTP status; body never printed.
+broker_call() {
+	local body=$1 out=$2 args=(-X POST -H 'Accept: application/json')
+	[ -z "$body" ] || args+=(-H 'Content-Type: application/json' --data "$body")
+	curl -sS --max-time 20 -o "$out" -w '%{http_code}' "${args[@]}" "$BROKER/token" 2>/dev/null || printf '000'
+}
+# token_repo <file> → the repository a 200 body names, or empty
+token_repo() { jq -r '.repository // empty' "$1" 2>/dev/null || true; }
+has_token() { jq -e '.token | type == "string" and length > 0' "$1" >/dev/null 2>&1; }
+
+# --- 1. direct call asking for B -------------------------------------------------
+status=$(broker_call "$(jq -cn --arg r "$FOREIGN" '{repository: $r}')" "$work/1.json")
+if [ "$status" = 200 ] && has_token "$work/1.json"; then
+	if [ "$(lc "$(token_repo "$work/1.json")")" = "$(lc "$BOUND")" ]; then
+		ok "direct call for $FOREIGN answered with an $BOUND-scoped token only (HTTP 200)"
+	else
+		fail "direct call for $FOREIGN yielded a token for '$(token_repo "$work/1.json")' — broker leaks across repos"
+	fi
+else
+	ok "direct call for $FOREIGN yielded no token (HTTP $status)"
+fi
+
+# --- 2. direct call with no repository --------------------------------------------
+status=$(broker_call "" "$work/2.json")
+if [ "$status" = 200 ] && has_token "$work/2.json"; then
+	if [ "$(lc "$(token_repo "$work/2.json")")" = "$(lc "$BOUND")" ]; then
+		ok "direct call with no repository mints for $BOUND only"
+	else
+		fail "direct call with no repository minted for '$(token_repo "$work/2.json")'"
+	fi
+else
+	ok "direct call with no repository yielded no token (HTTP $status)"
+fi
+
+# --- 3. helper replay for B -----------------------------------------------------------
+cache="$work/cache"
+rc=0
+out=$(FACTORY_TOKEN_CACHE_DIR="$cache" FACTORY_BROKER_URL="$BROKER" "$helper" --repo "$FOREIGN" env 2>"$work/3.err") || rc=$?
+if [ "$rc" -ne 0 ] && [ -z "$out" ] && ! ls "$cache"/*.json >/dev/null 2>&1; then
+	ok "helper replayed with --repo $FOREIGN refuses (exit $rc), exports and caches nothing"
+else
+	fail "helper replayed with --repo $FOREIGN exited $rc with output/cache present"
+fi
+if grep -q 'proxy-injected' "$work/3.err"; then
+	echo "# note: GH_TOKEN=proxy-injected here — the helper refused for that reason, not the repo; M1 (pass-through mode) is not in effect in this environment"
+fi
+
+# --- 4. environment read ------------------------------------------------------------------
+# Broker bearers are `fb_` + 43 url-safe chars; App keys are PEM blocks. Neither may
+# be in the VM: the API-credentials proxy holds the bearer, Secret Manager the key.
+envdump=$(env)
+if printf '%s' "$envdump" | grep -Eq '(^|=)fb_[A-Za-z0-9_-]{43}($|[^A-Za-z0-9_-])'; then
+	fail "environment holds a broker-bearer-shaped value"
+else
+	ok "environment holds no broker-bearer-shaped value"
+fi
+if printf '%s' "$envdump" | grep -Eq 'BEGIN (RSA )?PRIVATE KEY'; then
+	fail "environment holds a PEM private key"
+else
+	ok "environment holds no PEM private key"
+fi
+if printf '%s' "$envdump" | grep -Eq '^(FACTORY_BROKER_(BEARER|TOKEN|KEY|SECRET)|GITHUB_APP_PRIVATE_KEY|GITHUB_APP_ID)='; then
+	fail "environment names a broker/App credential variable"
+else
+	ok "environment names no broker/App credential variable"
+fi
+case "${GH_TOKEN:-}" in
+factory-token-required) ok "GH_TOKEN is the pass-through sentinel" ;;
+proxy-injected) fail "GH_TOKEN is proxy-injected: the environment is not in pass-through mode (M1)" ;;
+'') echo "# note: GH_TOKEN unset (not a cloud environment)" ;;
+*) echo "# note: GH_TOKEN is set to a real value (pass-through with a preconfigured token)" ;;
+esac
+
+# --- 5. GitHub: an A token is A-only -----------------------------------------------------------
+if [ "$SKIP_GITHUB" = 1 ]; then
+	echo "# skipped: GitHub checks (--skip-github)"
+else
+	rc=0
+	envline=$(FACTORY_TOKEN_CACHE_DIR="$cache" FACTORY_BROKER_URL="$BROKER" "$helper" --repo "$BOUND" env 2>"$work/5.err") || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		fail "could not obtain an $BOUND token through the helper (exit $rc): $(tr -d '\n' <"$work/5.err" | cut -c1-200)"
+	else
+		token=$(jq -r .token "$cache"/*.json)
+		gh_api() { # <method> <path> [data] → prints status; body to $work/gh.json
+			local method=$1 api_path=$2 data=${3:-}
+			local args=(-X "$method" -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28')
+			[ -z "$data" ] || args+=(-H 'Content-Type: application/json' --data "$data")
+			curl -sS --max-time 30 -o "$work/gh.json" -w '%{http_code}' "${args[@]}" "https://api.github.com$api_path" 2>/dev/null || printf '000'
+		}
+		s=$(gh_api GET /installation/repositories)
+		if [ "$s" = 200 ]; then
+			listed=$(jq -r '[.repositories[].full_name | ascii_downcase] | sort | join(",")' "$work/gh.json")
+			if [ "$listed" = "$(lc "$BOUND")" ]; then ok "token lists exactly one repository: $BOUND"; else fail "token lists repositories: $listed"; fi
+		else
+			fail "GET /installation/repositories → HTTP $s"
+		fi
+		s=$(gh_api GET "/repos/$BOUND")
+		[ "$s" = 200 ] && ok "GET /repos/$BOUND → 200 (positive control)" || fail "GET /repos/$BOUND → HTTP $s (positive control failed)"
+		s=$(gh_api GET "/repos/$FOREIGN")
+		case "$s" in
+		404 | 403) ok "GET /repos/$FOREIGN → $s (rejected)" ;;
+		*) fail "GET /repos/$FOREIGN → HTTP $s (an $BOUND token can read $FOREIGN)" ;;
+		esac
+		s=$(gh_api POST "/repos/$FOREIGN/git/refs" '{"ref":"refs/heads/factory-isolation-test-should-fail","sha":"0000000000000000000000000000000000000000"}')
+		case "$s" in
+		2*) fail "POST /repos/$FOREIGN/git/refs → HTTP $s (write accepted!)" ;;
+		*) ok "POST /repos/$FOREIGN/git/refs → $s (write rejected)" ;;
+		esac
+		unset token
+	fi
+fi
+
+if [ "$failures" -eq 0 ]; then
+	printf '\nisolation: PASS (%s is isolated from %s)\n' "$BOUND" "$FOREIGN"
+	exit 0
+fi
+printf '\nisolation: FAIL (%s failing path(s))\n' "$failures"
+exit 1
