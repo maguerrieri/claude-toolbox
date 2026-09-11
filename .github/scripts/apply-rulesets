@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Apply (or update in place) the branch rulesets recorded in .github/rulesets/
+# on a repository. Manual, one-time, run by a human with admin on the repo
+# (spec section 1d, item 4); re-runnable.
+#
+#   .github/scripts/apply-rulesets <owner/repo> <factory-ci App id>
+#
+# The App id is substituted into main-integrity's required status check so the
+# `factory/ci-gate` check is required *from the factory-ci App*, never by name
+# alone. Find it on the App's settings page (the numeric "App ID").
+# Requires gh (authenticated with repo admin) and jq.
+set -euo pipefail
+
+if [ $# -ne 2 ]; then
+  sed -n '2,10p' "$0" >&2
+  exit 2
+fi
+repo=$1
+app_id=$2
+case "$app_id" in
+  ''|*[!0-9]*) echo "App id must be numeric, got '$app_id'" >&2; exit 2 ;;
+esac
+dir=$(cd "$(dirname "$0")/../rulesets" && pwd)
+
+for name in main-integrity agent-branches; do
+  body=$(jq --argjson id "$app_id" '
+    (.rules[]? | select(.type == "required_status_checks")
+      | .parameters.required_status_checks[]
+      | select(.context == "factory/ci-gate") | .integration_id) = $id
+  ' "$dir/$name.json")
+  existing=$(gh api "repos/$repo/rulesets" --paginate --jq ".[] | select(.name == \"$name\") | .id" | head -n1)
+  if [ -n "$existing" ]; then
+    printf '%s' "$body" | gh api -X PUT "repos/$repo/rulesets/$existing" --input - --jq '"updated \(.name) (#\(.id))"'
+  else
+    printf '%s' "$body" | gh api -X POST "repos/$repo/rulesets" --input - --jq '"created \(.name) (#\(.id))"'
+  fi
+done
