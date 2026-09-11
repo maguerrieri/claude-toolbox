@@ -33,7 +33,11 @@ Each evaluation:
    completed without succeeding, and `pending` otherwise. No expected workflow
    (a docs-only PR) is `success`;
 6. fails the PR if `.claude/settings.json` (root, or any changed copy in a
-   subdirectory) carries a `remote.*` key (spec section 2c).
+   subdirectory) carries a `remote.*` key (spec section 2c);
+7. fails the PR if the head tree's `.claude/cloud-setup.sh` (the provisioning
+   script a factory environment runs from `origin/main`) lacks its
+   never-executes-the-checkout header or contains a build-tool, package-manager,
+   sourcing, or relative invocation (spec section 2b).
 
 Stdlib plus PyYAML. The pure functions take plain data and are unit-tested in
 `tests/test_ci_gate.py`; `main()` is the GitHub Actions glue.
@@ -77,6 +81,8 @@ MAX_CHANGED_FILES = 300
 MAX_COMMITS = 1000
 SETTINGS_FILE = ".claude/settings.json"
 API_TIMEOUT_SECONDS = 30
+CLOUD_SETUP_FILE = ".claude/cloud-setup.sh"
+CLOUD_SETUP_HEADER = "NEVER EXECUTES ANYTHING FROM THE CHECKOUT"
 
 
 class GateError(Exception):
@@ -456,6 +462,52 @@ def settings_paths_to_lint(changed_files: list[str]) -> list[str]:
     return sorted(paths)
 
 
+# --- cloud-setup.sh lint ----------------------------------------------------
+
+# A word boundary at the start of a shell command: line start, or a separator.
+_CMD = r"(?:^|[\s;&|(`{])"
+# ... and at its end: whitespace, end of line, or a closing separator.
+_END = r"(?:\s|$|[;&|)`}])"
+# (regex, what it is). Each is applied to a line with its trailing `#` comment
+# removed. A screen for the invocations spec 2b names, not a sandbox: the rule
+# itself is the header line the script must carry.
+CLOUD_SETUP_FORBIDDEN = [
+    (re.compile(_CMD + r"\.{1,2}/"), "a relative path (./ or ../)"),
+    # `. file` in command position; `(. == x)` inside a jq program is not it.
+    (re.compile(_CMD + r"(?:source\s+\S|\.\s+[^\s=!<>|&)])"), "sourcing a file"),
+    (re.compile(_CMD + r"make" + _END), "make"),
+    (re.compile(_CMD + r"(?:npm|npx|pnpm|yarn|bun)" + _END), "a Node package manager"),
+    (re.compile(_CMD + r"pip3?\s+install" + _END), "pip install"),
+    (re.compile(_CMD + r"(?:uv|uvx|poetry|pipenv)" + _END), "a Python project tool"),
+    (re.compile(_CMD + r"(?:cargo|gradle|gradlew|mvn|bundle|composer|mix|swift|go)\s+(?:build|run|install|test|sync|generate|mod|package|exec)" + _END), "a build tool"),
+    (re.compile(_CMD + r"(?:direnv|pre-commit|terraform|docker|docker-compose|xcodegen)" + _END), "a tool that reads project files"),
+    (re.compile(_CMD + r"(?:bash|sh|zsh|python3?|node|ruby|perl)\s+(?!-)[^\s$/\"']"), "an interpreter run on a relative script"),
+]
+
+
+def cloud_setup_lint(text: str) -> list[str]:
+    """Reasons `.claude/cloud-setup.sh` violates spec 2b's provisioning rule.
+
+    The environment runs the origin/main copy of this script, and protecting
+    the text is not enough on its own: the script must also execute nothing
+    from the checkout, since a branch can plant a Makefile, a lockfile, or a
+    postinstall hook. This lint requires the header that states that rule and
+    flags the invocations the spec names. Comments are ignored (a `#` at line
+    start or after whitespace; `#` inside a word, as in a `url#ref`, is not a
+    comment).
+    """
+    reasons = []
+    if CLOUD_SETUP_HEADER not in text:
+        reasons.append(f"missing the header line stating the rule ({CLOUD_SETUP_HEADER!r})")
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = re.sub(r"(?:^|\s)#.*$", "", raw)
+        for pattern, what in CLOUD_SETUP_FORBIDDEN:
+            if pattern.search(line):
+                reasons.append(f"line {lineno}: {what}, which could execute something from the checkout: {raw.strip()}")
+                break
+    return reasons
+
+
 # --- Evaluation over an API-shaped interface --------------------------------
 
 
@@ -604,6 +656,13 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
             continue
         if keys:
             reasons.append(f"{path}: carries {', '.join(keys)}; remote.* settings must not reach {PROTECTED_BASE}")
+
+    # cloud-setup.sh lint (spec 2b): the provisioning script the environment
+    # runs from origin/main, read from the head tree so a violation is caught
+    # before it lands there.
+    setup_text = api.raw(CLOUD_SETUP_FILE, head_sha)
+    if setup_text is not None:
+        reasons += [f"{CLOUD_SETUP_FILE}: {r}" for r in cloud_setup_lint(setup_text)]
 
     if reasons:
         return {"verdict": "failure", "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows, "changed_files": len(changed)}

@@ -24,3 +24,4 @@ workflows:
     pull_request:
       paths:
         - ".github/**"
+        - ".claude/**"

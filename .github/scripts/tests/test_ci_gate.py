@@ -603,3 +603,61 @@ def test_repo_manifest_is_consistent():
     # Every entry evaluates without hitting an unsupported construct.
     for f, e in ci_gate.expected_set(manifest, ["README.md", ".github/workflows/x.yml"], "main"):
         assert f in manifest["workflows"] and e in ci_gate.PR_EVENTS
+
+
+# --- cloud-setup.sh lint (spec 2b) -------------------------------------------
+
+SETUP_HEADER = "#!/bin/bash\n# RULE: THIS SCRIPT NEVER EXECUTES ANYTHING FROM THE CHECKOUT.\n"
+
+
+def test_cloud_setup_lint_requires_header():
+    assert ci_gate.cloud_setup_lint("#!/bin/bash\necho hi\n") == [
+        f"missing the header line stating the rule ({ci_gate.CLOUD_SETUP_HEADER!r})"]
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + "echo hi\n") == []
+
+
+@pytest.mark.parametrize("line", [
+    "make all", "cd x && make", "npm install", "npm ci", "npx foo", "yarn", "pnpm install",
+    "pip install -e .", "pip3 install -r requirements.txt", "uv sync", "uvx pytest", "poetry install",
+    "cargo build", "go build ./...", "./configure", "../bin/setup", "sh ./x.sh", ". ./env", ". env.sh",
+    "source .envrc", "bash setup.sh", "python3 setup.py", "terraform init", "docker build .", "direnv allow",
+    "x=$(make)", "(npm install)", "true; make", "true | npm run x",
+])
+def test_cloud_setup_lint_flags_invocations(line):
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
+    assert len(reasons) == 1 and reasons[0].startswith("line 3:"), (line, reasons)
+
+
+@pytest.mark.parametrize("line", [
+    "# make install is fine in a comment", "echo hi  # npm install",
+    'url="https://github.com/o/r.git#main"', 'market="${plugin##*@}"',
+    "bash -euo pipefail -c \"$script\"", "bash /usr/local/bin/tool", 'bash "$work/x.sh"',
+    "python3 -c 'print(1)'", "git -C \"$repo_dir\" diff -- .claude ':(exclude).claude/worktrees'",
+    "jq -e '(. == \"remote\")' f", "jq '([keys[] | select(. != \"\")])'", "gcloud auth print-access-token",
+    "printf '%s' \"$x\" | sha256sum", "d=$(dirname \"$0\")/../..", "curl -fsS https://x/y",
+])
+def test_cloud_setup_lint_allows_provisioning_shapes(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == []
+
+
+def test_cloud_setup_lint_reports_every_line():
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + "make\nnpm install\n")
+    assert [r.split(":")[0] for r in reasons] == ["line 3", "line 4"]
+
+
+def test_evaluate_cloud_setup_violation_fails():
+    tree = dict(TREE, **{".claude/cloud-setup.sh": SETUP_HEADER + "npm install\n"})
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", None, "1")
+    assert result["verdict"] == "failure" and result["reasons"][0].startswith(".claude/cloud-setup.sh: line 3")
+
+
+def test_evaluate_cloud_setup_clean_passes():
+    tree = dict(TREE, **{".claude/cloud-setup.sh": SETUP_HEADER + "gcloud config list\n"})
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
+    assert ci_gate.evaluate(api, "abc", None, "999")["verdict"] == "success"
+
+
+def test_repo_cloud_setup_passes_lint():
+    with open(os.path.join(REPO, ".claude", "cloud-setup.sh")) as f:
+        assert ci_gate.cloud_setup_lint(f.read()) == []
