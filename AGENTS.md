@@ -134,6 +134,28 @@ Whatever splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0
 and a one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
 completion-criteria checklists move with their phase.
 
+## CI gate (`factory/ci-gate`)
+
+`.github/workflows/ci-gate.yml` aggregates every CI workflow a PR is expected
+to run into one `factory/ci-gate` check, posted by the `factory-ci` GitHub App
+(design: `docs/superpowers/specs/2026-09-11-software-factory-design.md`,
+section 1d). Its expected set comes from `.github/factory-ci.yml`, and the
+evaluator (`.github/scripts/ci_gate.py`) lints that manifest against the
+workflows on the PR's head — so **adding, removing, or re-filtering a workflow
+with a `pull_request` trigger means updating three things in the same PR**:
+the workflow, its entry in `.github/factory-ci.yml` (the `pull_request` block
+copied verbatim; `push` and other triggers are not recorded), and the name in
+`ci-gate.yml`'s `workflow_run.workflows` list. The `factory scripts` workflow
+runs the evaluator's tests plus that same lint on every `.github/**` change
+(`uvx --with pyyaml pytest .github/scripts/tests -q` locally), so drift fails
+before merge. A PR that *adds* a workflow needs one manual re-evaluation once
+that workflow has finished (re-run the last `ci-gate` run, or dispatch
+`ci-gate` with the PR number), because `main`'s copy of `ci-gate.yml` does not
+yet listen for it. The rulesets that require the check live under
+`.github/rulesets/` and are applied by hand with
+`.github/scripts/apply-rulesets` (see the spec for the App and environment
+setup).
+
 ## Releasing (version bumps)
 
 Installs are **version-gated**: `/plugin marketplace update` only pulls a plugin's new

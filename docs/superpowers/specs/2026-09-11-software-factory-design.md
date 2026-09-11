@@ -388,6 +388,149 @@ and push by the actors named in 2d, and nothing else is restricted there.
 The `risk:*` labels (1c) are provisioned in the same manual step. The exact
 ruleset JSON is recorded here once applied so it's reproducible.
 
+**Item 4 as implemented (#92, 2026-09-11) — in-repo parts landed, manual
+parts pending.** Both repos carry the same three files:
+`.github/workflows/ci-gate.yml` (the workflow), `.github/scripts/ci_gate.py`
+(the evaluator, fetched from the base commit with the contents API — the PR
+is never checked out), and `.github/factory-ci.yml` (the manifest), plus the
+evaluator's unit tests under `.github/scripts/tests/` run by a
+`factory-scripts` workflow, the ruleset JSON under `.github/rulesets/`, and
+`.github/scripts/apply-rulesets` to apply it. Refinements the implementation
+settled, all consistent with the paragraphs above:
+
+- **The manifest and workflow files are read from the PR's head tree**,
+  because that is the tree GitHub executes for the PR: computing the expected
+  set from `main`'s manifest would leave a PR that legitimately removes or
+  narrows a CI workflow pending forever (and no two-step landing escapes it,
+  since the workflow file itself matches its own path filter). The
+  aggregation logic, the lint, and the `remote.*` check stay base-branch
+  code. The lint requires the head tree to be self-consistent: every listed
+  workflow's real `pull_request` / `pull_request_target` config equals its
+  manifest entry (non-PR triggers such as `push` are not recorded and not
+  compared), every workflow with such a trigger is listed, `ci-gate.yml` is
+  never listed, and `ci-gate.yml`'s `workflow_run.workflows` names exactly
+  the manifest's workflows — so a PR that weakens CI must say so in a
+  reviewed diff of `.github/**`, which the docs auto-merge class (3b) denies
+  outright. A trigger construct the evaluator cannot mirror (`types` naming
+  `opened` without `synchronize` or vice versa, `branches` together with
+  `branches-ignore`, `paths` together with `paths-ignore`, or any key outside
+  `types` / `branches` / `branches-ignore` / `paths` / `paths-ignore`) fails
+  the gate rather than guessing.
+- **Only PRs whose base is `main` are evaluated** (`pull_request_target` is
+  filtered to `branches: [main]`, and a `workflow_run` completion whose head
+  SHA belongs to no open PR to `main` is a no-op): `main` is the only branch
+  the rulesets protect, and the `factory-ci` environment is restricted to
+  `main` anyway. Two open PRs to `main` sharing one head SHA fail closed.
+- **Filter semantics mirrored:** GitHub's pattern grammar (`*` not crossing
+  `/`, `**`, `?`/`+` quantifiers, character classes, ordered `!` negation),
+  `paths` vs `paths-ignore`, `branches` vs `branches-ignore` against the base
+  ref, and `types` (a workflow whose types include neither `opened` nor
+  `synchronize`, e.g. `closed`, is never expected). Two documented gaps: a
+  rename is matched on its new path only, and a PR with more than 300
+  changed files fails the gate, because GitHub evaluates path filters on at
+  most 300 files in an order the evaluator cannot reproduce.
+- **Verdict:** per expected `(workflow, event)` the newest run on the head
+  SHA (by start time, so a re-run's latest attempt supersedes an older
+  attempt and a reopen's new run supersedes an older run) must be
+  `completed` with conclusion `success`; any other conclusion, `skipped`
+  and `cancelled` included, is `failure`, and a missing or unfinished run
+  is `pending`. Failure wins over pending. No expected workflow is
+  `success`. A crashed evaluator posts `failure` (the `report` job runs on
+  any non-cancelled outcome), and evaluations of one head SHA are serialized
+  by a `concurrency` group so a stale verdict can never land after a fresher
+  one. `workflow_dispatch` with a PR number re-evaluates on demand — needed
+  once per PR that *adds* a CI workflow, since `main`'s copy of `ci-gate.yml`
+  does not yet listen for it.
+- The verdict is posted with `POST /check-runs` as the `factory-ci` App
+  (`in_progress` for pending, `completed` + conclusion otherwise), with the
+  aggregation table in the check's output and `external_id` = the ci-gate
+  run id. The `evaluate` job holds only `actions: read`, `contents: read`,
+  `pull-requests: read`; the `report` job holds no `GITHUB_TOKEN`
+  permissions at all and uses the App token minted from the environment's
+  `FACTORY_CI_APP_ID` variable and `FACTORY_CI_APP_PRIVATE_KEY` secret.
+
+*Manual steps (not done from the implementing session, which had no App,
+environment, or ruleset access) — in this order, per repo:*
+
+1. Register a **`factory-ci`** GitHub App (owner: the personal account, or
+   the org so one App serves both owners per the paragraph above):
+   permissions *Checks: Read and write* only, no webhooks, no other
+   permissions; install it on `claude-toolbox` and `toolbox`; note the
+   numeric App ID and generate a private key.
+2. Create the **`factory-ci` deployment environment** in each repo, with
+   *Deployment branches and tags → Selected branches* = `main` only; add the
+   environment variable `FACTORY_CI_APP_ID` and the environment secret
+   `FACTORY_CI_APP_PRIVATE_KEY`.
+3. Merge the PR that carries the three files; `ci-gate` is live from then
+   on (a `workflow_run` / `pull_request_target` workflow only triggers from
+   `main`).
+4. **Verify before enforcing** (open a scratch PR, then close it): (a) a PR
+   that adds a `pull_request` workflow whose job posts a check named
+   `factory/ci-gate` under `github-actions` does not satisfy the source-pinned
+   requirement; (b) the check the App posts on the `pull_request_target` head
+   SHA is the one the merge box shows as the required check; (c) a PR that
+   rewrites `ci-gate.yml` to always pass still runs the base copy (the
+   scratch PR's evaluation shows the real expected set). If (a) or (b)
+   fails, require the check from the `factory-auto-merge` App of 3b instead
+   — never by name alone.
+5. Apply the rulesets: `.github/scripts/apply-rulesets <owner>/<repo>
+   <factory-ci App ID>` (needs `gh` with admin and `jq`; idempotent — it
+   updates a ruleset that already exists by name). Then paste the applied
+   JSON back here in place of the recorded copies below if it differs.
+6. Confirm the account plan: `toolbox` is private, so `main-integrity` is
+   unenforced there until the account is on GitHub Pro (the rulesets API
+   accepts them either way). Not verifiable from the implementing session;
+   record the plan here once checked.
+
+*Recorded ruleset JSON* (as committed under `.github/rulesets/`; the
+`integration_id` `0` is the placeholder the apply script replaces with the
+`factory-ci` App ID; **status: recorded, not yet applied**):
+
+```json
+{
+  "name": "main-integrity",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    { "type": "pull_request", "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": ["merge", "squash", "rebase"] } },
+    { "type": "required_status_checks", "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [ { "context": "factory/ci-gate", "integration_id": 0 } ] } }
+  ]
+}
+```
+
+```json
+{
+  "name": "agent-branches",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [ { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" } ],
+  "conditions": { "ref_name": {
+      "include": ["refs/heads/claude/**", "refs/heads/issue-*", "refs/heads/[0-9]*-*", "refs/heads/epic-*"],
+      "exclude": [] } },
+  "rules": [ { "type": "creation" }, { "type": "update" } ]
+}
+```
+
+`agent-branches` restricts creation and push on the agent patterns to its
+bypass actors — today the repository admin role (`RepositoryRole` 5), which
+is the user, and therefore every cloud session, since the git proxy pushes
+as the user (2d). When item 8b settles on an App identity, add it as an
+`Integration` bypass actor here; the rules themselves stay as recorded.
+`main-review` is deliberately not recorded: it waits on item 4b.
+
 ### Rung 2 — Identity and boundaries
 
 **2a. Blast radius is credentials + network, not command names.** The
