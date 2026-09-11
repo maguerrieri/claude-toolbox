@@ -1,9 +1,9 @@
 # Software factory — Design
 
 **Date:** 2026-09-11
-**Issue:** none yet — this spec is reviewed via PR first; the epic and child
-issues below are filed once it's approved
-**Status:** proposed
+**Issue:** #89 (epic; children #90–#108, #110; automatic issue triage
+deferred to stub epic #109)
+**Status:** approved (reviewed in #86)
 
 ## Problem
 
