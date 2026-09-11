@@ -73,6 +73,7 @@ CLOSE_TYPES = {"closed"}
 MAX_CHANGED_FILES = 300
 MAX_COMMITS = 1000
 SETTINGS_FILE = ".claude/settings.json"
+API_TIMEOUT_SECONDS = 30
 
 
 class GateError(Exception):
@@ -456,7 +457,9 @@ class Api:
         req.add_header("Authorization", f"Bearer {self.token}")
         req.add_header("Accept", "application/vnd.github.raw+json" if raw else "application/vnd.github+json")
         req.add_header("X-GitHub-Api-Version", "2022-11-28")
-        with urllib.request.urlopen(req) as resp:
+        # A stalled connection must fail (and let the report job post
+        # `failure`) rather than hold the runner until the job timeout.
+        with urllib.request.urlopen(req, timeout=API_TIMEOUT_SECONDS) as resp:
             body = resp.read().decode()
             link = resp.headers.get("Link", "")
         return (body if raw else json.loads(body)), link

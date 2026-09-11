@@ -547,6 +547,19 @@ def test_outputs_validate_scalars():
             ci_gate.output_lines(bad, "t", "s")
 
 
+# --- apply-rulesets ----------------------------------------------------------
+
+@pytest.mark.parametrize("app_id", ["0", "", "abc", "12x"])
+def test_apply_rulesets_rejects_placeholder_and_bad_ids(app_id):
+    """The recorded placeholder 0 must never be applied: it would drop the source pin."""
+    import subprocess
+    script = os.path.join(REPO, ".github", "scripts", "apply-rulesets")
+    env = dict(os.environ, PATH="/nonexistent")  # no gh/jq reachable: validation must fail first
+    proc = subprocess.run(["bash", script, "owner/repo", app_id], capture_output=True, text=True, env=env)
+    assert proc.returncode == 2, proc
+    assert "App id" in proc.stderr
+
+
 # --- this repository's own manifest -----------------------------------------
 
 def test_repo_manifest_is_consistent():

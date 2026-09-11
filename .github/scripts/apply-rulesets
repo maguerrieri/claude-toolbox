@@ -20,6 +20,13 @@ app_id=$2
 case "$app_id" in
   ''|*[!0-9]*) echo "App id must be numeric, got '$app_id'" >&2; exit 2 ;;
 esac
+if [ "$app_id" -eq 0 ]; then
+  # 0 is the placeholder recorded in main-integrity.json; applying it would
+  # require factory/ci-gate by name alone, exactly what the source pin exists
+  # to prevent.
+  echo "App id 0 is the recorded placeholder, not a real factory-ci App id" >&2
+  exit 2
+fi
 dir=$(cd "$(dirname "$0")/../rulesets" && pwd)
 
 for name in main-integrity agent-branches; do
