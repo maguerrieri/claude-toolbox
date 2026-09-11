@@ -157,3 +157,31 @@ def test_no_transport_is_a_hard_error(provision_path, tmp_path, monkeypatch):
     p = subprocess.run([sys.executable, provision_path, "o/r"], capture_output=True, text=True)
     assert p.returncode == 2
     assert "neither `gh` on PATH nor GH_TOKEN/GITHUB_TOKEN" in p.stderr
+
+
+def test_token_transport_wraps_connection_failures(provision_path, tmp_path, monkeypatch):
+    # No gh on PATH + a token selects the HTTPS transport; a URLError (DNS/TLS/refused) must
+    # surface as the script's own ApiError, not a traceback (Copilot review on #113).
+    import importlib.util
+    import urllib.error
+    import urllib.request
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setenv("GH_TOKEN", "dummy")
+    spec = importlib.util.spec_from_loader("provision_risk_labels", loader=None, origin=provision_path)
+    module = importlib.util.module_from_spec(spec)
+    with open(provision_path) as f:
+        exec(compile(f.read(), provision_path, "exec"), module.__dict__)
+
+    def refuse(request):
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    api = module.Api(dry_run=False)
+    assert api.gh is None
+    try:
+        api.call("GET", "repos/o/r/labels")
+    except module.ApiError as exc:
+        assert "connection refused" in str(exc)
+    else:
+        raise AssertionError("URLError was not wrapped in ApiError")

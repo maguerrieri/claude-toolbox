@@ -22,8 +22,9 @@ the flag existed need a one-time backfill. This script does both, idempotently:
 
 Prints the enumerated / remediated / untouched / flagged counts per repo.
 
-Usage (from any directory):
-  provision-risk-labels [--dry-run] [--no-backfill] OWNER/REPO [OWNER/REPO ...]
+Usage (the script is not on PATH; run it by path -- from this repo's root, or
+from the installed plugin as `${CLAUDE_PLUGIN_ROOT}/scripts/provision-risk-labels`):
+  plugins/ticket-workflow/scripts/provision-risk-labels [--dry-run] [--no-backfill] OWNER/REPO [OWNER/REPO ...]
 
   --dry-run       show what would be created/labelled; write nothing. Running
                   it a second time with --dry-run is the verification step:
@@ -116,6 +117,8 @@ class Api:
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode(errors="replace").strip()
             raise ApiError(f"{method} {api_path}: HTTP {exc.code} {detail}") from None
+        except urllib.error.URLError as exc:  # DNS, TLS, connection refused, ...
+            raise ApiError(f"{method} {api_path}: {exc.reason}") from None
         return json.loads(payload) if payload.strip() else None
 
     def paginate(self, api_path):
