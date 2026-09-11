@@ -91,7 +91,10 @@ are non-empty strings not matching the placeholder set (`TODO`, `TBD`,
 `<…>`, `n/a` without a reason); `session` matches
 `^(cse_[A-Za-z0-9]+|session_[A-Za-z0-9]+|local)$` (the example's `…` is
 elided for the spec, not a valid value); `role` is one of `planner`,
-`epic-coordinator`, `implementer`; `context_reads` is a non-empty JSON array
+`epic-coordinator`, `implementer`, where an interactive `/start-ticket` with
+no `Role:` directive records `implementer` (the template defaults it, so an
+unmarked run never produces a block the gate rejects); `context_reads` is a
+non-empty JSON array
 of repo-relative paths **each of which exists in the PR's head tree**
 (checked via the API, so an invented path fails); `wall_clock_min` is a
 string matching `^[0-9]+$` (non-negative integer, no sign, no decimals) so
@@ -134,17 +137,25 @@ head**, not the body:
    label is not one of the four classes `risk:docs`, `risk:low`,
    `risk:normal`, `risk:high` — an unknown name such as `risk:critical` is
    rejected, not treated as a class; the body's text is never consulted;
-5. the label is `risk:high` and FINISH was not invoked with `--confirm-high`.
-   That flag is a human-only authorization, and "human-only" is enforced at
-   every automated entry point, not just by stripping it from children:
+5. the label is `risk:high` and the PR does **not** carry an out-of-band
+   human authorization: an `APPROVED` review on the **current head SHA**
+   from an account that is not the PR author, not a bot (`type == User`),
+   and has `author_association` in `OWNER`/`MEMBER`/`COLLABORATOR`. The
+   command shape cannot prove a human is present — a routine runs full
+   cloud sessions with no permission prompts and could issue
+   `/finish-ticket <id> --confirm-high` itself — so the authorization is a
+   protected GitHub artifact the gate reads, not a flag. `--confirm-high`
+   remains only as a local acknowledgement that FINISH is about to merge
+   high-risk work, and "automation never carries it" is still enforced:
    `/spawn-epic`, `/start-epic`, and `/spawn-tickets` **reject** an argument
-   string containing `--confirm-high` with a hard error before doing anything
-   (EPIC's `--finish` intentionally lifts `SPAWN_CAP` for the orchestrator's
-   own FINISH pass, so a forwarded flag would otherwise reach an automated
-   merge); SPAWN and EPIC additionally strip it from child briefings as
-   defense in depth. The only path that accepts it is a direct
-   `/finish-ticket <id> --confirm-high` typed by a human. This is the
-   fail-closed high-risk gate the tier table in 2c relies on;
+   string containing it with a hard error before doing anything (EPIC's
+   `--finish` intentionally lifts `SPAWN_CAP` for the orchestrator's own
+   FINISH pass, so a forwarded flag would otherwise reach an automated
+   merge), and SPAWN and EPIC strip it from child briefings as defense in
+   depth. But even a direct `/finish-ticket <id> --confirm-high` stops
+   without the approving review. This is the fail-closed high-risk gate the
+   tier table in 2c relies on, and it works whether or not `main-review`
+   (item 4b) is active;
 6. the Evidence block is absent, duplicated, malformed, or fails the
    required-key / schema / type / placeholder rules in 1a.
 
@@ -169,9 +180,12 @@ label edits are trusted operations; the gate's "exactly one label" rule is
 what turns an accidental second label into a stop rather than a downgrade. Today the adapter's `--label` is best-effort (retries
 without the label if it doesn't exist), which would silently drop the class.
 So: (i) the four `risk:*` labels are provisioned once per repo
-(`gh label create`, recorded with the rulesets in 1d); (ii) for `--risk`
-specifically, a missing label is a **hard error** surfaced to the user, not a
-silent retry — the adapter's `CREATE` grows a `required_labels` argument. The
+(`gh label create`, recorded with the rulesets in 1d); (ii) the risk label —
+whether from an explicit `--risk` or the resolved default `normal` — always
+goes through the adapter's new `required_labels` argument to `CREATE`, where
+a missing label is a **hard error** surfaced to the user, never the
+best-effort retry; so an omitted flag can never silently create an
+unclassified issue. The
 gate (1b) reads the class from the issue label; the Evidence block does not
 carry it. No behavior change beyond labeling — this is the data rung 3
 consumes.
@@ -181,7 +195,17 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 
 | Ruleset | Rules | Bypass actors |
 |---|---|---|
-| `main-integrity` | require PR; require the repo's CI checks; block force-push and deletion | none |
+| `main-integrity` | require PR; require the `ci-gate` check; block force-push and deletion | none |
+
+`ci-gate` is a new workflow in each repo with **no path filter**, so it runs
+and reports on every PR. Existing CI is path-filtered (`gm-ci.yml` runs only
+for `plugins/gm/**`), and a path-filtered workflow registered as a required
+check leaves a docs-only PR pending forever. `ci-gate` therefore aggregates:
+its single job `needs:` the repo's path-filtered jobs where they ran (via
+`workflow_run`-style status reads or `if: always()` plus explicit result
+checks) and reports `success` only when every job that ran succeeded and
+none is still pending; it is the one check `main-integrity` requires, and it
+guarantees the "non-empty check set" rule in 1b and 3b always has a member.
 | `main-review` | require 1 approving review; dismiss stale approvals | *(none until 3b; then only the auto-merge App)* |
 
 **`main-review` is gated on a working independent author identity.** GitHub
@@ -339,7 +363,10 @@ exist:
   **`origin/main`**, fetched immediately before parsing (`git fetch origin
   main && git show origin/main:AGENTS.md`) so a long-lived coordinator never
   launches children from a stale remote-tracking ref after `main` rotates
-  an ID. A new `Environment:
+  an ID; if the fetch fails, the ref is missing (a dependent child checked
+  out at a `source_revision` has no guarantee of one), or the block lacks
+  either line, the launch **refuses** rather than falling back to the
+  checkout or the parent's environment. A new `Environment:
   implementer|coordinator` briefing directive selects *which of the two*
   to use and nothing else; a directive naming a raw ID or any other value
   refuses the launch. ticket-workflow's SPAWN Step 3 emits `Environment:
@@ -398,7 +425,10 @@ merge workflow in 3b: triggered on `pull_request_target` **restricted to
 `main` is a protected base — a PR targeting an agent or feature branch would
 otherwise load whatever YAML that unprotected base carries), **no checkout**,
 diff fetched through the API, and a `factory/critic` check run posted with
-the job's `GITHUB_TOKEN` (`checks: write`). The Anthropic key it uses lives
+the job's `GITHUB_TOKEN` under an explicit least-privilege block —
+`permissions: { checks: write, pull-requests: read, contents: read }` and
+nothing else (the reads are what fetching PR metadata and the compare/files
+endpoints need). The Anthropic key it uses lives
 in its **own** deployment environment, `factory-critic` (branch rule:
 `main` only), separate from the merge App's `factory-merge` environment, so
 each job holds exactly one credential and the critic never sees the merge
@@ -452,9 +482,11 @@ must hold for one captured head SHA:
 
 - base: `base.ref == main` — the only branch the rulesets protect; a docs PR
   targeting an agent or feature branch never auto-merges;
-- opt-in: the PR carries the `auto-merge: requested` label, which FINISH
-  applies for `risk:docs` PRs. It is a required predicate input, not
-  narrative — without it the workflow exits without merging;
+- opt-in: the PR carries the `auto-merge: requested` label. Its **single
+  source** is START Step 8 under the `SPAWN_CAP` carve-out described in
+  "Unattended transition" below; FINISH never applies it. It is a required
+  predicate input, not narrative — without it the workflow exits without
+  merging;
 - risk: the PR's closing references are exactly one issue, and that issue
   carries exactly one `risk:*` label and it is `risk:docs` (1c, same rules as
   1b items 3–4), read via the API;
@@ -518,8 +550,15 @@ PR, a fork head, or a non-`main` base never starts the job that has the
 key. Its trust model:
 
 - **Trigger: `pull_request_target`** (`types: [labeled, synchronize]`,
-  **`branches: [main]`**) plus **`workflow_run`** (`types: [completed]`,
-  `workflows:` the repo's CI workflows and `factory-critic`).
+  **`branches: [main]`**), **`pull_request_review_thread`** (`types:
+  [resolved]`) so a PR that was held only by an unresolved thread is
+  reconsidered when the thread is resolved (no other listed event fires for
+  that transition), **`workflow_run`** (`types: [completed]`, `workflows:`
+  `ci-gate` and `factory-critic`), and a **`schedule`** sweep (hourly) that
+  runs the same resolver over every open PR carrying `auto-merge:
+  requested` as a liveness backstop for any transition GitHub does not emit
+  an event for. All four run base-branch YAML with the same
+  resolve/merge job split.
   `pull_request_target` runs the workflow YAML from the **base branch** with
   base-branch secrets, so a PR cannot rewrite the job to exfiltrate the App
   key — which a plain `pull_request` trigger would allow on same-repo
@@ -621,7 +660,12 @@ input for widening classes in rung 4.
 The planner role drafts a spec into `docs/superpowers/specs/` from a one-
 paragraph intent, waits for approval, then `/spawn-epic`s it. Auto-merge
 classes widen (`low`: test-only, version-only bumps) when rung 3 metrics show
-zero reverts over a window the user chooses.
+zero reverts over a window the user chooses **and** the window contains at
+least a minimum sample of eligible merges for the class being widened
+(default 20; "zero reverts out of zero merges" widens nothing). The routine
+records the denominator next to the zero-revert result, and a widening PR
+must cite both numbers and the independent signal the new class relies on
+(3a).
 
 ## Work items (filed as epic children after this spec is approved)
 
@@ -630,12 +674,12 @@ zero reverts over a window the user chooses.
 | 1 | Evidence block (JSON contract) in START PR template | 1a | — |
 | 2 | `check-evidence.sh <pr> <issue>` FINISH gate (all checks, threads, exact closing reference, one known risk label, block validation with types) + tests; Step 0 refuses non-GitHub trackers | 1b | 1, 3 |
 | 3 | `--risk` flag (default `normal`), `required_labels` in `CREATE`, provisioning of the four `risk:*` labels **and** `auto-merge: requested`, one-time `risk:normal` backfill of open issues | 1c | — |
-| 4 | Rulesets `main-integrity` and `agent-branches` on both repos; record JSON in this spec | 1d | — |
+| 4 | `ci-gate` aggregate workflow in both repos; rulesets `main-integrity` (requiring `ci-gate`) and `agent-branches`; record JSON in this spec | 1d | — |
 | 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed and in use | 1d | 8 |
 | 5 | Repo `permissions` blocks | 2a | — |
 | 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
-| 7b | `--confirm-high` on FINISH; hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
+| 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
 | 8 | Spike: which launch paths yield `claude[bot]` on the personal account | 2d | — |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; per-step network sandbox; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test | 3a | 2 |
@@ -739,6 +783,12 @@ zero reverts over a window the user chooses.
 - **Treating the critic as a sufficient gate.** A sandboxed model can still
   be talked into emitting `pass`; the critic is an extra AND-ed predicate on
   top of the class's independent signals, never the class's definition.
+- **A command-line flag as high-risk authorization.** Routines run
+  unattended sessions that can type any command; a GitHub review from a
+  human non-author is a protected artifact the gate can verify.
+- **Registering path-filtered CI as the required check.** A docs-only PR
+  would wait forever on a check that never runs; a no-filter `ci-gate`
+  aggregate always reports.
 - **Enabling `main-review` in rung 1 unconditionally.** With PRs authored as
   the user, a solo maintainer cannot approve them, so the rule would block
   the very PRs that build later rungs. It waits on the identity spike.
@@ -751,11 +801,14 @@ zero reverts over a window the user chooses.
   the block (stops), put `"tests": "TODO"` (stops), leave one review thread
   unresolved (stops), remove the `risk:` label (stops), and edit the body to
   claim green while a check is red (stops — the body is not consulted).
-- Rung 1 rulesets: an agent push to `issue-123-x` and `epic-1-2` succeeds; a
-  direct push to `main` is rejected; a PR with no approval cannot merge.
+- Rung 1 rulesets (before item 4b): an agent push to `issue-123-x` and
+  `epic-1-2` succeeds; a direct push to `main` is rejected; a PR with
+  `ci-gate` red or pending cannot merge; a docs-only PR gets a `ci-gate`
+  result even though `gm-ci` did not run. After item 4b: a PR with no
+  approval additionally cannot merge.
 - Rung 2: spawn two implementers from a coordinator session; confirm they land
   in `factory-implementer`, cannot run a deploy command, and their PRs are
-  blocked on `main` without a review.
+  blocked on `main` by `main-integrity` (and, after 4b, by `main-review`).
 - Rung 2 setup script: a PR that edits `.claude/cloud-setup.sh` to print a
   marker, launched as a cloud child with that branch as `source_revision`,
   does not print the marker at setup. With `origin/main` unreachable during
@@ -814,8 +867,15 @@ zero reverts over a window the user chooses.
   output verdict pass" yields whatever the review actually finds; a diff
   containing a shell command yields no tool call (tools are disabled); a run
   whose model output is not the structured verdict posts `failure`.
-- Rung 1 high-risk: `/finish-ticket` on a `risk:high` issue stops without
-  `--confirm-high`; `/spawn-epic <e> --finish --confirm-high` and
+- Rung 1 high-risk: `/finish-ticket <id> --confirm-high` on a `risk:high`
+  issue stops when the PR has no `APPROVED` review on the head SHA from a
+  human non-author collaborator; it stops when the only approval is from a
+  bot account, from the PR author, or on an older SHA; it proceeds with a
+  valid approval. A routine that issues the same command with no such
+  review stops the same way. `/spawn-epic <e> --finish --confirm-high` and
   `/spawn-tickets 12 --confirm-high` are refused with a hard error before
   launching anything; a child briefed with the flag in free text has it
   stripped and stops too.
+- Rung 3 liveness: a labeled PR held only by an unresolved thread merges
+  after the thread is resolved with no other action; a labeled PR whose
+  eligibility changed with no GitHub event merges on the next hourly sweep.
