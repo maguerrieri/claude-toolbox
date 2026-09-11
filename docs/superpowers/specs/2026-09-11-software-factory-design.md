@@ -240,14 +240,11 @@ organization (`sprue.works`), with two differences the plan must budget
 for. Rulesets on an organization's *private* repos require **GitHub
 Team** (public org repos are free); and on Team every member and every
 outside collaborator on a private repo consumes a paid seat, so a
-machine-user account there costs a seat, whereas an **organization-owned
-GitHub App** consumes none — its `[bot]` identity is free. That reverses
-2d's recommendation for org repos: on the org, the distinct PR author
-should be an org-owned App, with its installation token minted from the
-App's private key. On a hosted environment that key sits in the same
-`GH_TOKEN`-style environment variable as a PAT would (same exposure, per
-2a's credential rule), but the tokens it mints are short-lived and scoped
-to the App's installation permissions. Whether the org's private repos
+machine-user account there would cost a seat, whereas an
+**organization-owned GitHub App** consumes none — its `[bot]` identity is
+free, and because a public App can be installed on any account, the
+*same* App also serves the personal repos (2d option 4), so there is one
+identity everywhere and no machine user. Whether the org's private repos
 are on Team is not verifiable from this session (the GitHub proxy is
 repo-scoped) and is item 4's first check for any org repo. Environments
 (2b) are per account, not per repo, so the same two tiers serve org repos
@@ -594,36 +591,46 @@ pushing actor is the user too. Therefore:
    human tagging, that the user can approve while `main-review` is on.
    Record commit-author, PR-author, and pushing-actor for each path in
    the spec.
-4. **Machine-user options, both documented and both usable on the personal
-   account.** (a) *Per tier, recommended:* set `GH_TOKEN` in the
-   `factory-implementer` environment to a **fine-grained PAT of a dedicated
-   machine user**, scoped to these repos with only `contents: write` and
-   `pull_requests: write`. The docs state a token set this way "passes
-   through to the container unchanged, so your scripts and GitHub's `gh`
-   CLI use it directly", so `gh pr create` authors the PR as the machine
-   user while coordinator and interactive sessions keep the user's
-   identity; git pushes still go through the proxy as the user unless the
-   session runs `gh auth setup-git`. The token is an ordinary environment
-   variable readable by any branch's hooks, so it must be the scoped PAT
-   and nothing more — under 2a's credential rule that exposure is
-   acceptable because the machine user can do nothing on `main` the
-   rulesets don't already gate, and it is bounded by what the session can
-   already do through the proxy. (b) *Account-wide:* run `/web-setup` from
-   a terminal whose `gh` is logged in as the machine user; the proxy then
-   substitutes that token for every cloud session. Cleaner (the credential
-   stays outside the VM) but it changes *all* sessions, not just
-   implementers, and replaces the GitHub App connection that Auto-fix
-   depends on. A **self-owned GitHub App** buys nothing over (a) on a
-   hosted environment — its installation token must be minted from a
-   private key that would sit in the same environment variable — and
-   pays off only on self-hosted runners (option 5) — **except on
-   organization repos**, where a machine user costs a Team seat and an
-   org-owned App costs nothing (1d, "Organization repos"); there the App
-   is the right identity, minting its installation token in-session from
-   a key held the same way as the PAT. The spike (item 8) evaluates (a)
-   for personal repos and the org-App variant for `sprue.works` repos,
-   alongside the Action backend; neither needs a runner or an Anthropic
-   API key.
+4. **One self-owned GitHub App for both the org and the personal
+   account — the recommended identity.** A GitHub App owned by the
+   `sprue.works` organization and set to **public** visibility ("Any
+   account" under *Where can this GitHub App be installed?*) can be
+   installed on the org *and* on the user's personal account; "public"
+   adds an install landing page, not a Marketplace listing, and a private
+   App is installable only on its owner. Every installation shares the
+   one `<slug>[bot]` identity, mints its own installation tokens scoped
+   to that installation's repos and permissions (`contents: write`,
+   `pull_requests: write`, nothing more), and consumes **no seat**
+   anywhere. That removes the machine user from the plan entirely: no
+   second account, no collaborator invite, no per-org seat.
+
+   *Mechanism per tier:* the App ID and private key live in the
+   `factory-implementer` environment as environment variables; the
+   session mints a short-lived installation token for the current repo's
+   installation at start (`cloud-setup.sh` is the wrong place — it is
+   cached — so a small `factory-token` helper runs on demand and caches
+   for the token's lifetime) and exports it as `GH_TOKEN`. The docs state
+   a token set this way "passes through to the container unchanged, so
+   your scripts and GitHub's `gh` CLI use it directly", so `gh pr create`
+   authors the PR as `<slug>[bot]` while coordinator and interactive
+   sessions keep the user's identity; git pushes still go through the
+   proxy as the user unless the session runs `gh auth setup-git` with the
+   minted token. The private key is an ordinary environment variable
+   readable by any branch's hooks, exactly like a PAT would be — under
+   2a's credential rule that exposure is acceptable because the App can
+   do nothing on `main` the rulesets don't already gate, its permissions
+   are the two writes above, and each minted token expires within an
+   hour; the key can also be rotated from the App settings without
+   touching any account.
+
+   *Alternatives kept for the record:* (a) a **machine user** with a
+   fine-grained PAT as `GH_TOKEN` — same mechanics, but a second account
+   to maintain and a paid seat on any Team org; (b) **account-wide**
+   `/web-setup` from a terminal whose `gh` is the machine user — keeps the
+   credential outside the VM but changes *all* sessions and replaces the
+   GitHub App connection Auto-fix depends on. The spike (item 8)
+   evaluates the App on one personal repo and one org repo, alongside the
+   Action backend; none of these needs a runner or an Anthropic API key.
 5. **Team-account option:** a self-hosted environment with a wrapper script
    that mints a short-lived, least-scoped GitHub App installation token per
    session (`--capacity 1`, ephemeral container). This is the cleanest least-
@@ -1131,8 +1138,8 @@ must cite both numbers and the independent signal the new class relies on
 | 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
-| 8 | Spike: a distinct PR author on the personal account. Leading candidate: machine-user fine-grained PAT as `GH_TOKEN` on `factory-implementer`; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by the machine user or `claude[bot]`, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on | 2d | — |
-| 8b | Whichever the spike picks: either the `GH_TOKEN` machine-user setup on the implementer environment (plus `gh auth setup-git` in `cloud-setup.sh` if pushes should match), or a `spawn` backend `action` firing `repository_dispatch` with `{issue, briefing, tier}` into a `factory-implement` workflow running the Claude Code Action in automation mode | 2d | 8 |
+| 8 | Spike: a distinct PR author on both the personal account and the org. Leading candidate: one org-owned public GitHub App installed on both, with a `factory-token` helper minting installation tokens into `GH_TOKEN` on `factory-implementer`; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by `<slug>[bot]` (or `claude[bot]`) on one personal and one org repo, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on | 2d | — |
+| 8b | Whichever the spike picks: either the App setup (App registration, both installations, key in the implementer environment, `factory-token` helper, optional `gh auth setup-git`), or a `spawn` backend `action` firing `repository_dispatch` with `{issue, briefing, tier}` into a `factory-implement` workflow running the Claude Code Action in automation mode | 2d | 8 |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`, verified by workflow path + `pull_request_target` event) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 3, 4 |
 | 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; resolves `workflow_run` targets from a `factory-target.json` artifact; sweep merges as a matrix); `ci-gate` as a `workflow_run`-driven aggregator with revert-marker validation and `factory/revert-of` snapshot; `inert-paths` composite action pinned by SHA | 3b | 1, 2, 3, 4, 10 |
