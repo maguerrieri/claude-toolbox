@@ -620,7 +620,9 @@ path does not, by itself, give the user an approvable PR. Pushes go
 through the git proxy with the user's token, so for ruleset purposes the
 pushing actor is the user too. Therefore:
 
-1. Rulesets bind both actors (the user and the `claude` app) identically —
+1. Rulesets bind the actors identically: the user, and the official
+   `claude[bot]` App (id 41898282; the `claude` *user* that commits map to
+   never pushes, so it is not an actor) —
    still required, since the App path exists for routines/Auto-fix and
    commit signatures already carry the bot identity. The spike below adds
    a third actor, the factory App's `<slug>[bot]`, which 8b registers:
@@ -705,7 +707,11 @@ pushing actor is the user too. Therefore:
    create` authors the PR as `<slug>[bot]` while coordinator and
    interactive sessions keep the user's identity; git pushes still go
    through the proxy as the user unless the session runs `gh auth
-   setup-git` with the minted token. What a compromised branch can now do
+   setup-git` with the minted token. (The spike findings below supersede
+   the mechanics of the last two sentences: `factory-token` is a wrapper
+   that sets the token per process, not an exporter; `gh auth setup-git`
+   is required; pass-through mode is a precondition; and the broker caps
+   issuance per bearer.) What a compromised branch can now do
    is what the token can do: write to non-protected branches and PRs of
    **its own repo** for an hour — nothing on `main` the rulesets don't
    already gate, and nothing in any other repo. Isolation test (item 8b):
@@ -840,8 +846,8 @@ marked).*
 | Criterion | Verdict | Evidence |
 |---|---|---|
 | `GITHUB_TOKEN` limited to `contents: write`, `pull-requests: write` | met, with one addition | The workflow's `permissions:` block sets it. Default App auth also needs `id-token: write` for the OIDC exchange; with our own App (`github_token` from `actions/create-github-app-token`) that grant is unnecessary. |
-| Anthropic key in a `main`-only deployment environment | met | `repository_dispatch` runs the default branch's workflow; the job declares `environment: factory-implement` with a `main` branch policy. Workload identity federation (`anthropic_federation_rule_id`) removes the stored key but needs a Console organization, i.e. API billing; `claude_code_oauth_token` runs on the subscription but is a long-lived personal token in Actions secrets. |
-| Model step tool-restricted and network-sandboxed per 3a | **not met for an implementer** | Tool restriction exists (`--allowedTools`; no Bash unless allowed), but an implementer needs Bash for tests and git, so it cannot be restricted the way the critic is. The sandbox on Linux needs `bubblewrap` and `socat` plus an AppArmor change on Ubuntu 24.04; `strictAllowlist` and `mask` are honored only from user, managed, or `--settings` scope, and whether the action's `settings` input reaches that scope is undocumented. Runner egress is otherwise unrestricted; none of 2b's allowlist, setup script, or cache applies. |
+| Anthropic key in a `main`-only deployment environment | met, only with the App key alongside | `repository_dispatch` runs the default branch's workflow; the job declares `environment: factory-implement` with a `main` branch policy. The factory App's ID and private key, which `actions/create-github-app-token` needs, must sit in that same environment, never as repository secrets, or any workflow could mint the repo-write token. Workload identity federation (`anthropic_federation_rule_id`) removes the stored key but needs a Console organization, i.e. API billing; `claude_code_oauth_token` runs on the subscription but is a long-lived personal token in Actions secrets. |
+| Model step tool-restricted and network-sandboxed per 3a | **not met for an implementer** | Tool restriction is achievable, even granularly (`--allowedTools` accepts `Bash(npm test:*)`-style patterns, so an implementer can be limited to its test and git commands); the network side is what fails. The sandbox on Linux needs `bubblewrap` and `socat` plus an AppArmor change on Ubuntu 24.04; `strictAllowlist` and `mask` are honored only from user, managed, or `--settings` scope, and whether the action's `settings` input reaches that scope is undocumented. Runner egress is otherwise unrestricted; none of 2b's allowlist, setup script, or cache applies. |
 | Issue body and briefing as delimited data | met, on us | `client_payload` is interpolated into the `prompt` input; the action sanitizes GitHub-context content, not the prompt, so the workflow wraps the payload in delimiters itself. Firing `repository_dispatch` needs a write-scoped token, which a cloud session has through the proxy. |
 | Opens the PR itself | met only through our App | "Claude doesn't create PRs by default. Instead, it pushes commits to a branch and provides a link to a pre-filled PR submission page." With `Bash(gh pr create:*)` allowed and `GH_TOKEN` set to a `create-github-app-token` token, `gh` authors the PR as `<slug>[bot]`: the same identity the App path uses, on a different runtime. |
 | Lands in the launching account's implementer environment (2c) | **not applicable** | No Claude account is in the loop; the Action runs on a GitHub runner with a secret. The account dimension of the matrix disappears rather than being satisfied, and with it the session record, `get_session` polling, `send_later` re-wakes, and the coordinator's cloud-backend contract (`phases/epic.md` Steps 5–6). |
@@ -862,8 +868,11 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   auth, so START Step 7 runs its push and `gh pr create` as
   `factory-token exec <command>`, which reads the token from a mode-600
   file (minting or refreshing it through the broker when absent or near
-  expiry) and execs the command with `GH_TOKEN` set for that process
-  only; the git push goes through the same wrapper with `gh auth
+  expiry; the broker caps issuance per bearer, two tokens an hour, one
+  mint and one refresh, which 8b's isolation test asserts, so replaying
+  the helper cannot extend a session's write access and item 4's "for an
+  hour" reads as "until the last issued token expires") and execs the
+  command with `GH_TOKEN` set for that process only; the git push goes through the same wrapper with `gh auth
   setup-git` in effect, which is **required**, not optional as item 8b's
   row still says (on the coordinator's list), so the pushing actor is the
   App. That token is the **one write-capable credential this
@@ -902,7 +911,8 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   by SessionStart: 2b already records that a branch controls the
   SessionStart hook and can delete it, so an early `user.email` write is
   only an optimization. Before pushing, `factory-token exec` re-authors
-  every commit on the branch whose author email is not the App's noreply
+  every commit in `origin/<base>..HEAD` (the PR's own commits, never the
+  base's history) whose author email is not the App's noreply
   address (a pre-review rewrite, which the commit conventions allow) and
   refuses to push if any remains, so commits as well as the PR carry the
   App identity whatever the branch did to the hooks.
@@ -912,7 +922,10 @@ App-on-cloud path wins") applies. 8b changes in four ways:
 
 *Open questions, scoped to what could not be reached, each closed by one
 step of the runbook:* **M1** pass-through mode honors a caller-supplied
-token (personal account, personal repo); **M2** the pushing actor under
+token, evaluated **per account** from each cell's 401 probe: the
+personal-account result unlocks personal-account environments only, and
+Team-account environments need their own cells' result and stay gated on
+M3 regardless; **M2** the pushing actor under
 pass-through with and without `gh auth setup-git`; **M3** how Team-account implementers obtain an hour-scoped installation
 token with no broker bearer in the VM: wait for API credentials on Team
 plans, item 14, or an explicit 2b exception naming the *installation
@@ -948,7 +961,9 @@ throwaway).*
    (`create_session` with `prompt` = the briefing below, `title` =
    `spike #94 <account>-><owner>`, `source_url`, `outcome_branch`, and the
    throwaway environment's `environment_id` passed **explicitly**, since
-   omitting it inherits the parent's environment; one branch per cell,
+   omitting it inherits the parent's environment, and through the spawn
+   backend with `tier: implementer` once item 7 exists rather than a raw
+   call; one branch per cell,
    `94-spike-<account>-<owner>`, a name the 1d `agent-branches` ruleset's
    `[0-9]*-*` pattern admits once that ruleset is on; per the `spawn` skill's
    `backends/cloud.md`) with this briefing: run
@@ -956,12 +971,14 @@ throwaway).*
    (expect `passthrough`; an equality test, which the classifier allowed
    in this session, unlike a probe that sends the token); run
    `curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer
-   bogus' https://api.github.com/user` (**M1: expect 401**; 200 means the
-   proxy still substitutes and the hosted App path is closed: **stop the
-   cell there**, before any push or PR, since those would be authored as
-   the user); run
+   bogus' https://api.github.com/user` (**M1: expect 401**; **any other
+   status stops the cell** before any push or PR: 200 means the proxy
+   still substitutes and the hosted App path is closed, anything else is
+   inconclusive, and a push or PR made anyway could be authored as the
+   user); run
    `gh api /installation/repositories --jq '.repositories[].full_name'`
-   (expect only that repo); set `user.email` to
+   (a gate: stop the cell unless the output is exactly that one
+   repository); set `user.email` to
    `<bot-user-id>+<slug>[bot]@users.noreply.github.com`; commit a one-line
    change and push it through the proxy, then run `gh auth setup-git`,
    commit a second one-line change, and push again (**M2**: two ref
