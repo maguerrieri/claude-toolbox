@@ -76,10 +76,13 @@ POST /token            Authorization: Bearer <bearer>     body (optional): {"rep
 GET  /healthz          200
 ```
 
-The App private key lives in Secret Manager (`factory-broker-app-key`) and is
-read only by the broker's runtime service account. Bearers are never stored:
-the bindings secret (`factory-broker-bindings`) maps **`sha256(bearer)`** to
-`{repository, label}`, so a leaked bindings file mints nothing.
+The App private key lives in Secret Manager (`<service_name>-app-key`,
+`factory-token-broker-app-key` by default; `terraform output -raw
+app_key_secret` names it) and is read only by the broker's runtime service
+account. Bearers are never stored: the bindings secret
+(`<service_name>-bindings`, `terraform output -raw bindings_secret`) maps
+**`sha256(bearer)`** to `{repository, label}`, so a leaked bindings file mints
+nothing.
 
 ## Rotation
 
@@ -101,8 +104,9 @@ deleted, a bearer might have been exposed, or on a schedule):
 
 1. GitHub › the App's settings › *Private keys* › *Generate a private key*
    (GitHub allows two at once).
-2. `gcloud secrets versions add factory-broker-app-key --data-file=<new>.pem`.
-   The broker reads `latest` on each mint, so the next token uses the new key.
+2. `gcloud secrets versions add "$(terraform output -raw app_key_secret)" --data-file=<new>.pem`
+   (from the broker's `terraform/`). The broker reads `latest` on each mint, so
+   the next token uses the new key.
 3. Delete the old key in the App settings. No environment or bearer changes.
 
 **The App itself** is registered once under `sprue.works` (public visibility so
