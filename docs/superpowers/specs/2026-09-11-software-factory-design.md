@@ -186,7 +186,10 @@ non-numeric `wall_clock_min`, `/spawn-epic … --confirm-high` refused.
 new ticket can always reach FINISH; the GitHub tracker adapter applies a
 `risk:<class>` label. Legacy open issues are backfilled once in the same
 manual step that provisions the labels (item 3), so the gate in 1b never
-strands an existing ticket: the backfill adds `risk:normal` **only to open
+strands an existing ticket: the backfill enumerates open issues with
+explicit full pagination (`gh issue list` silently defaults to 30, as the
+adapter already warns) and prints the total enumerated and remediated
+counts; it adds `risk:normal` **only to open
 issues that carry no `risk:*` label at all**, leaves issues with exactly one
 known class untouched, and prints (never edits) any issue that already has
 two risk labels or an unknown `risk:` name for manual remediation. A closed
@@ -210,19 +213,32 @@ Two rulesets on `main`, kept separate so 3b can bypass one without the other:
 
 | Ruleset | Rules | Bypass actors |
 |---|---|---|
-| `main-integrity` | require PR; require the `ci-gate` check; block force-push and deletion | none |
+| `main-integrity` | require PR; require the `ci-gate` check; **require branches to be up to date before merging**; block force-push and deletion | none |
+
+The up-to-date rule is not optional: `plugin-versions.yml` already warns that
+the version check is incomplete without it, since two PRs based on the same
+old base can both pass with the same version and both merge. It also means
+3b's merge always runs against a head that includes current `main`.
 
 `ci-gate` is a new workflow in each repo with **no path filter**, so it runs
-and reports on every PR. Besides aggregating CI, it carries one repo-policy
-lint: it fails if the PR introduces any `remote.*` key under
-`.claude/settings.json` (see 2c for why). Existing CI is path-filtered (`gm-ci.yml` runs only
-for `plugins/gm/**`), and a path-filtered workflow registered as a required
-check leaves a docs-only PR pending forever. `ci-gate` therefore aggregates:
-its single job `needs:` the repo's path-filtered jobs where they ran (via
-`workflow_run`-style status reads or `if: always()` plus explicit result
-checks) and reports `success` only when every job that ran succeeded and
-none is still pending; it is the one check `main-integrity` requires, and it
+and reports on every PR, and it is **base-branch code**: it runs on
+`pull_request_target` with no checkout, so its own logic — the `remote.*`
+settings lint (2c), the revert-marker validation (3c), and the aggregation
+below — cannot be rewritten by the PR it is judging. Existing CI is
+path-filtered (`gm-ci.yml` runs only for `plugins/gm/**`), and a
+path-filtered workflow registered as a required check leaves a docs-only PR
+pending forever. `ci-gate` therefore aggregates by reading, through the
+API, the latest attempt of every other check context on the head SHA and
+reporting `success` only when every one that ran succeeded and none is
+still pending; it is the one check `main-integrity` requires, and it
 guarantees the "non-empty check set" rule in 1b and 3b always has a member.
+What `ci-gate` cannot do is make PR-authored CI trustworthy: build and test
+workflows run from the PR's own YAML, so a PR can weaken its own tests.
+That is the ordinary state of in-repo CI and is covered by human review for
+every class except the unattended docs class — whose safety rests on the
+inert-path check, not on CI, and which already denies `.github/**`, so a PR
+that touches any workflow file can never auto-merge. Test: a PR that
+rewrites `ci-gate.yml` to always pass still runs the base copy.
 | `main-review` | require 1 approving review; dismiss stale approvals | *(none until 3b; then only the auto-merge App)* |
 
 **`main-review` is gated on a working independent author identity.** GitHub
@@ -305,7 +321,17 @@ bash -euo pipefail -c "$script"
 missing file, or a failing script stops provisioning instead of silently
 feeding an empty stream to `bash`. `main` is protected by the rulesets in 1d,
 so only reviewed code reaches the provisioning step regardless of which
-revision the session checked out.
+revision the session checked out. Protecting the script's *text* is not
+enough on its own: `cloud-setup.sh` therefore **never executes anything
+from the checkout** — it `cd`s to a fresh temp directory before doing
+work, invokes tools by absolute path or from `PATH` as shipped in the VM
+image, pins plugin installs to the marketplace at an explicit ref rather
+than a local path, and contains no `make`, `npm install`, `source`, or
+other relative invocation that could pick up a `Makefile`, lockfile, or
+`postinstall` from the branch. The script's header states that rule and
+`ci-gate` lints the script for relative invocations. Test: a branch that
+adds a `Makefile` and a `package.json` with a `postinstall` hook under the
+repo root, launched as a cloud child, provisions without either running.
 
 **What the setup script does and does not guarantee.** The protected copy
 guards *provisioning*: toolchains, plugin installs, and anything else that
@@ -400,14 +426,21 @@ exist:
   an ID; if the fetch fails, the ref is missing (a dependent child checked
   out at a `source_revision` has no guarantee of one), or the block lacks
   either line, the launch **refuses** rather than falling back to the
-  checkout or the parent's environment. A new `Environment:
-  implementer|coordinator` briefing directive selects *which of the two*
-  to use and nothing else; a directive naming a raw ID or any other value
-  refuses the launch. ticket-workflow's SPAWN Step 3 emits `Environment:
-  implementer` on every child, and `/spawn-epic` emits `Environment:
-  coordinator` on the `/start-epic` session it launches — so the
-  coordinator tier is selected by the launcher, not by whatever the parent
-  happened to run in. A session started by hand for coordination picks
+  checkout or the parent's environment. The tier selector is **launcher-
+  owned structured metadata, not a line in the briefing**: the `spawn`
+  skill's cloud backend takes a `tier: implementer|coordinator` argument
+  separate from the prompt text, SPAWN Step 3 and `/spawn-epic` set it
+  programmatically, and any `Environment:` line found in user- or
+  issue-authored briefing text is stripped before the prompt is passed
+  through (a briefing cannot pick a tier, only the launcher can). A factory
+  launch with **no** `tier` argument refuses rather than inheriting the
+  parent's environment — the inherit-by-default behavior of today's generic
+  `/spawn` is explicitly *not* a factory launch path and is documented as
+  untrusted for tier selection. SPAWN passes `tier: implementer` for every
+  child, and `/spawn-epic` passes `tier: coordinator` for the `/start-epic`
+  session it launches — so the coordinator tier is selected by the
+  launcher, not by whatever the parent happened to run in. A session
+  started by hand for coordination picks
   `factory-coordinator` in the environment selector; that is the one manual
   case and it's documented in the role charter.
 
@@ -503,9 +536,15 @@ one risk label, opt-in label), which is the class's baseline protection.
 No class is ever defined as "critic says pass" alone; widening a class in
 rung 4 must name the independent signal that class relies on.
 
-Gates verify the check run's `app.slug == github-actions` *and* that it
-belongs to the `factory-critic` workflow (`check_suite` → workflow name) on
-the exact head SHA, not merely its name and conclusion — and they select the
+Gates verify the check run's provenance by **immutable identity, never by
+name**: `app.slug == github-actions`, and the check run's suite resolves to
+a workflow run whose `path` is `.github/workflows/factory-critic.yml`
+*and* whose `event` is `pull_request_target` — a PR can add a workflow with
+the same `name`, or even the same filename on its branch, but that run's
+`event` is `pull_request` (PR YAML), so it is rejected. (An alternative
+with the same property is posting the check with a dedicated App identity;
+the event+path binding avoids a second App.) The check must be on the
+exact head SHA, not merely match name and conclusion — and gates select the
 **latest** `factory/critic` attempt for that SHA (GitHub keeps earlier runs
 when a workflow is re-run): the newest run must be `success`, and any newer
 non-success run wins over an older success.
@@ -526,11 +565,17 @@ must hold for one captured head SHA:
 
 - base: `base.ref == main` — the only branch the rulesets protect; a docs PR
   targeting an agent or feature branch never auto-merges;
-- opt-in: the PR carries the `auto-merge: requested` label. Its **single
-  source** is START Step 8 under the `SPAWN_CAP` carve-out described in
-  "Unattended transition" below; FINISH never applies it. It is a required
-  predicate input, not narrative — without it the workflow exits without
-  merging;
+- opt-in: the PR carries the `auto-merge: requested` label. It is a
+  required predicate input, not narrative — without it the workflow exits
+  without merging. Its intended source is START Step 8 under the
+  `SPAWN_CAP` carve-out described in "Unattended transition" below, and
+  FINISH never applies it; but the predicate can only see the label, not
+  who applied it, so the **policy is stated explicitly**: anyone who can
+  set labels on the repo (on these personal repos, the owner and any
+  invited collaborator, all trusted per 1c) may request unattended merge
+  of a docs-class PR by applying it, and doing so is a visible, auditable
+  act in the PR timeline. That is the same trust the rest of the design
+  places in collaborators' label edits;
 - risk: the PR's closing references are exactly one issue, and that issue
   carries exactly one `risk:*` label and it is `risk:docs` (1c, same rules as
   1b items 3–4), read via the API;
@@ -541,11 +586,22 @@ must hold for one captured head SHA:
   `previous_filename` must pass, so a workflow or SKILL.md renamed into
   `docs/` is rejected. Glob semantics are gitignore-style: `**` crosses
   directory boundaries, a pattern with no `/` matches at any depth, and
-  matching is against the repo-relative path. Stage 1, allow: `docs/**`,
-  `**/README.md`, `**/CHANGELOG.md`. Stage 2, deny, applied **after** stage 1
+  matching is against the repo-relative path. Stage 0, **blob type**: every
+  entry must be a regular file (git mode `100644`, checked through the tree
+  API for the head SHA); symlinks (`120000`), gitlinks/submodules
+  (`160000`), and executables (`100755`) are rejected, because the files
+  API reports only the path and a symlink under `docs/` can point anywhere.
+  Stage 1, allow by path **and extension**, since "under `docs/`" is not
+  the same as inert — `docs/package.json` or a script would otherwise
+  qualify: `docs/**` and `**/README.md`, `**/CHANGELOG.md`, restricted to
+  the extensions `.md`, `.txt`, `.png`, `.jpg`, `.jpeg`, `.gif` (no `.svg`,
+  which can carry script; no `.json`, `.yml`, `.sh`, `.js`, or anything
+  else). Stage 2, deny, applied **after** stage 1
   and winning over it, **at every depth**: `**/AGENTS.md`,
   `**/AGENTS.override.md` (Codex reads the override before `AGENTS.md` in
   each directory, and this repo's conventions name that file too),
+  `**/GEMINI.md` (the conventions skill lists it as a supported instruction
+  surface with its own nested-discovery rules),
   `**/CLAUDE.md`, `**/CLAUDE.local.md`, `**/.claude/**`, `**/.cursorrules`,
   `**/.cursor/**`, `**/*.mdc`, `plugins/**`, `.github/**`,
   `docs/superpowers/**`. So `plugins/gm/README.md`, `.github/README.md`,
@@ -608,15 +664,20 @@ key. Its trust model:
   converted, or a closed PR that is reopened, is reconsidered without a
   push, **`branches: [main]`**), **`workflow_run`** (`types: [completed]`,
   `workflows:` `ci-gate` and `factory-critic`), and a **`schedule`** sweep
-  (hourly) that runs the same resolver over every open PR carrying
-  `auto-merge: requested`. Thread resolution is **not** an Actions trigger
-  (`pull_request_review_thread` exists only as a webhook for repositories,
-  organizations, and Apps), so a PR held only by an unresolved thread is
-  reconsidered by the sweep, with a stated latency of **up to one hour**.
-  An optional later item can close that gap by having the
-  `factory-auto-merge` App subscribe to the webhook and fire
-  `repository_dispatch`, which *is* a supported trigger. All three run
-  base-branch YAML with the same resolve/merge job split.
+  (hourly) that runs the resolver over every open PR carrying `auto-merge:
+  requested`. On the sweep the resolver emits a **list** of eligible
+  candidates and the merge job runs as a **matrix**, one instance per
+  candidate, each with its own pinned SHA and last-instant re-read — a
+  single scalar output would merge at most one PR per hour. Thread
+  resolution is **not** an Actions trigger (`pull_request_review_thread`
+  exists only as a webhook for repositories, organizations, and Apps), so a
+  PR held only by an unresolved thread is reconsidered by the sweep. The
+  sweep is a **best-effort service objective**, not a bound: Actions can
+  delay or skip scheduled runs, so the design promises "normally within an
+  hour" and no more; anyone who needs bounded liveness takes the optional
+  webhook item, in which the `factory-auto-merge` App subscribes to the
+  webhook and fires `repository_dispatch`, which *is* a supported trigger.
+  All three run base-branch YAML with the same resolve/merge job split.
   `pull_request_target` runs the workflow YAML from the **base branch** with
   base-branch secrets, so a PR cannot rewrite the job to exfiltrate the App
   key — which a plain `pull_request` trigger would allow on same-repo
@@ -806,8 +867,8 @@ must cite both numbers and the independent signal the new class relies on
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
 | 8 | Spike: which launch paths yield `claude[bot]` on the personal account | 2d | — |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
-| 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 4 |
-| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge); `ci-gate` revert-marker validation; `inert-paths` composite action | 3b | 3, 4, 10 |
+| 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`, verified by workflow path + `pull_request_target` event) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 3, 4 |
+| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; sweep merges as a matrix); `ci-gate` revert-marker validation; `inert-paths` composite action | 3b | 1, 2, 3, 4, 10 |
 | 11b | `factory-shadow` workflow (`pull_request_target: closed` on `main`, merged only, `checks: write` only) with per-class candidate predicates in the policy file; posts `mode: shadow` records for every merged PR of a shadow class | 3c | 11 |
 | 12 | Metrics routine (keyed by `factory/merge-record`, reconciling enrolled merges against records, unattributed reverts, and shadow samples per class) | 3c | 1, 11, 11b |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
@@ -877,7 +938,10 @@ must cite both numbers and the independent signal the new class relies on
   self-attested anyway. A base-branch workflow posts it.
 - **Executing the branch copy of `cloud-setup.sh`.** A PR-branch child would
   run unreviewed code with implementer credentials; the environment runs the
-  `origin/main` copy, and withholds credentials if the checkout's `.claude/`
+  `origin/main` copy, executes nothing from the checkout, and (per 2b's
+  narrowed guarantee) relies on the credential rule — only IAM-scoped
+  read-only credentials in the VM — rather than on withholding; the
+  `.claude/` diff is a drift nudge that logs when the checkout's `.claude/`
   differs from `main`.
 - **App key as a repository secret.** Readable by every base-branch workflow,
   so "only the merge job can use the bypass" would be false. A `main`-only
@@ -1008,8 +1072,14 @@ must cite both numbers and the independent signal the new class relies on
   stripped and stops too.
 - Rung 3 liveness: a labeled PR held only by an unresolved thread merges on
   the next hourly sweep after the thread is resolved, with no other action
-  and within one hour; the same for any eligibility change GitHub emits no
-  Actions event for.
+  (normally within an hour; best-effort); the same for any eligibility
+  change GitHub emits no Actions event for. Three labeled eligible PRs all
+  merge on one sweep, not one per hour.
+- Rung 3 provenance and paths: a PR that adds `.github/workflows/factory-
+  critic.yml` on its branch posting a `factory/critic` success is rejected
+  (its run's `event` is `pull_request`); a PR adding `docs/package.json`,
+  `docs/diagram.svg`, a symlink `docs/link.md → ../AGENTS.md`, or a
+  submodule under `docs/` does not merge; `docs/GEMINI.md` does not merge.
 - Rung 3 shadow mode: a human-merged `risk:low` PR touching only `tests/**`
   receives a `mode: shadow`, `eligible: true` record and is never
   auto-merged; with one extra source file it receives `eligible: false`; a
