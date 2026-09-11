@@ -25,12 +25,13 @@ concurrently. Prompts travel as JSON, so none of the local backend's shell-quoti
 hazards apply — pass the prompt verbatim, `$` and backticks and all.
 
 ```
-create_session({"prompt": "<prompt>", "title": "<context> <desc>", "source_url": "<repo clone URL>"})
+create_session({"prompt": "<prompt>", "title": "<context> <desc>", "source_url": "<repo clone URL>", "outcome_branch": "<branch>"})
 ```
 
-Those three are the required core: `prompt` is the caller's instruction **verbatim**;
+Those four are the required core: `prompt` is the caller's instruction **verbatim**;
 `title` follows the same `<context> <desc>` convention as the local backend;
-`source_url` is the repo to check out (**required** — see below).
+`source_url` is the repo to check out (**required** — see below); and
+`outcome_branch` is the branch the child will work on (**required** — see below).
 
 Two optional fields, added only when they apply:
 
@@ -50,14 +51,58 @@ environment and nothing else. Resolve it from the spawner's own remote:
 git remote get-url origin
 ```
 
+(That is the generic rule. Ticket work resolves `source_url` from the repo the
+profile's `REPO_SELECT` chose — which may not be the spawner's `origin` — and the
+ticket layer's SPAWN Step 3 owns that.)
+
+**`outcome_branch` is not optional either.** With `source_url` alone the child gets a
+checkout but no **resolved repo**: its record has `sources` and no `outcomes`, so
+the claude.ai/code sidebar can't attribute it to the repo and files it under
+"Other". Passing `outcome_branch` makes the platform resolve the URL at creation —
+the record gains `outcomes: [{git_info: {repo: "<owner>/<repo>", branches:
+["<branch>"]}}]` and the session lands in the repo's section. Verified with a
+one-field probe (same origin, same URL, `outcome_branch` the only difference), then
+confirmed in the sidebar with a live session.
+
+The child then works on exactly that branch (details under *Other fields* below),
+which is the secondary benefit: the fan-out's branches are **deterministic from the
+spawner's side**. Name it as the child would have named it:
+
+- Ticket work (`/spawn-tickets`): whatever the tracker adapter's `BRANCH(id)`
+  returns for the fetched issue (GitHub slugs the title, Jira lowercases the ID —
+  the adapter decides), passed as both `outcome_branch` and the briefing's
+  `Worktree:` directive, as EPIC already does for its children. The ticket
+  layer's SPAWN Step 3 owns that resolution, including the base branch that
+  becomes `source_revision`.
+- Generic `/spawn`: `spawn/<slug>-<nonce>[-<n>]`, built in this order:
+  1. `<slug>` — the `<desc>` lowercased, non-alphanumerics → `-`, repeats
+     collapsed, ends trimmed. **Compare descs by this normalized slug, not by the
+     raw text** — `fix CI` and `fix-CI` are the same unit name.
+  2. `<nonce>` — **fresh per fan-out**, not per spawner: the last 6 characters of
+     your `$CLAUDE_CODE_REMOTE_SESSION_ID` plus 6 random hex characters drawn
+     once per invocation (`head -c 3 /dev/urandom | od -An -tx1 | tr -d ' \n'`).
+     The session tail keeps two spawners apart; the random part keeps a second
+     `/spawn` in the *same* session from reusing the first one's names, and
+     unlike a timestamp it can't collide within a second.
+  3. `-<n>` — an ordinal `-1`, `-2`, … only when this fan-out has more than one
+     unit with the same `<slug>` ("N agents to each do X").
+
+  There is no ticket to name it after, but the child still needs somewhere to
+  push and the session still needs a repo to group under, and **two children
+  given the same `outcome_branch` push to one branch and race** instead of
+  staying independent. The nonce is what makes the name unique: it is fixed
+  before launch and can't collide with another fan-out's, so no check of
+  `origin` is needed — a `git ls-remote --heads origin` lookup can only catch a
+  stale branch from an earlier run, never a concurrent one, and is not the
+  uniqueness mechanism.
+
 Other fields:
 
 - **`permission_mode`** — omit it to inherit the spawner's mode. **Never pass
   `plan`**: a `plan` session proposes a plan and then blocks for human approval in
   the web UI, so an unattended child stalls there indefinitely.
-- **`outcome_branch`** — pass it when the caller needs a *deterministic* branch name
-  (the ticket layer's stacking does). Otherwise leave it off and let the session
-  derive its own. Verified 2026-09-10 against a real child spawned with
+- **`outcome_branch`** — required, for the reason above; what it does to the
+  child's checkout, verified 2026-09-10 against a real child spawned with
   `source_revision: <base>` + `outcome_branch: <name>`: the container comes up with
   `<name>` **already checked out** — a plain checkout of the clone (no worktree), no
   upstream configured, at the tip of `<base>` — and the child's harness prompt names
