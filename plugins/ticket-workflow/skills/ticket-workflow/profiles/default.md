@@ -145,14 +145,30 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   not treat this launch briefing as merge authorization. This hold is scoped, not standing: it
   applies only until a human explicitly asks this session to finish — if someone attaches and
   invokes /finish-ticket (or asks to merge in their own words), that instruction is the merge
-  authorization and supersedes this cap." Keeps an unattended background session from over-reaching,
-  while making the hold's expiry explicit — so a later /finish-ticket in the same session reads as
-  the sanctioned merge phase, not a violation of this cap. Keep the payload text free of
-  backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
-  argument (`SKILL.md` SPAWN Step 3 / `phases/epic.md` Step 5), where a backtick or `$` triggers shell substitution,
-  an unescaped double quote ends the argument early, and a backslash escapes the next character.
-  (Single quotes and apostrophes inside the text are fine; the quotes wrapping the payload above are
-  just this note's delimiters, not part of it.)
+  authorization and supersedes this cap. Budget: wall_clock_min=180 review_rounds=5" Keeps an
+  unattended background session from over-reaching, while making the hold's expiry explicit — so a
+  later /finish-ticket in the same session reads as the sanctioned merge phase, not a violation of
+  this cap. Keep the payload text free of backticks, double quotes, `$`, and backslash — it gets
+  embedded in the spawn command's double-quoted argument (`SKILL.md` SPAWN Step 3 /
+  `phases/epic.md` Step 5), where a backtick or `$` triggers shell substitution, an unescaped double
+  quote ends the argument early, and a backslash escapes the next character. (Single quotes and
+  apostrophes inside the text are fine; the quotes wrapping the payload above are just this note's
+  delimiters, not part of it.)
+- **`Budget:` directive** (the payload's closing line; software-factory design item 2e). A briefing
+  directive — a sibling of `Base branch:` / `Worktree:` / `Role:` — that gives the child a stop
+  condition other than "until it works": `wall_clock_min` is the most whole minutes START may spend
+  from its Step 1 clock note to hand-back, `review_rounds` the most fix-pushes it may make in the
+  review/CI loop (START Step 8 defines a round and carries the check). Shape:
+  `Budget: wall_clock_min=<N> review_rounds=<M>` — both keys always present, in that order,
+  non-negative integers, nothing else on the line. A child that exceeds either stops at the next
+  safe point, records the overrun in its PR's Evidence block, and hands back with the PR as it
+  stands instead of looping; the spawner decides whether to re-brief with a larger budget.
+  **Override:** a `Budget:` line in the spawn request (shared or per-issue) replaces this default —
+  SPAWN Step 2 merges the two so exactly one line, with both keys, reaches each child; a partial
+  override (`Budget: review_rounds=1`) keeps this default for the other key. A profile that
+  overrides `SPAWN_CAP` carries its own `Budget:` line, or none — no line means no budget, and START
+  runs to completion exactly as before. The directive only ever bounds the *spawned* child: an
+  interactive `/start-ticket` whose briefing has no `Budget:` is unbounded, as with `Role:`.
 
 ## EPIC
 - Reuses `SPAWN_CAP` for every child spawned during the epic fan-out (default: implement + test,
