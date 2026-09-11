@@ -171,7 +171,12 @@ refute "git-credential store is a no-op" test -n "$noop"
 repo="$work/checkout"
 git init -q "$repo" && git -C "$repo" remote add origin "git@github.com:$BOUND.git"
 ( cd "$repo" && run "$c6" setup-git 2>"$work/setup.err" )
-assert "setup-git sets the credential helper to this script" bash -c "git -C $repo config --local credential.helper | grep -q 'factory-token git-credential\$'"
+assert "setup-git sets the credential helper to this script" bash -c "git -C $repo config --local --get-all credential.helper | tail -1 | grep -q \"^!'.*/factory-token' git-credential\$\""
+assert "setup-git resets the helper list first (empty entry precedes it)" test "$(git -C "$repo" config --local --get-all credential.helper | head -1)" = ""
+# The wired helper actually answers git: a credential fill through git itself.
+assert "git credential fill uses the helper" bash -c "cd $repo && printf 'protocol=https\nhost=github.com\n\n' | FACTORY_TOKEN_CACHE_DIR=$c6 GH_TOKEN=factory-token-required FACTORY_BROKER_URL=$good GIT_TERMINAL_PROMPT=0 git credential fill | grep -q '^password=ghs_fake'"
+( cd "$repo" && run "$c6" setup-git 2>/dev/null )
+assert "setup-git is idempotent (one empty entry, one helper)" test "$(git -C "$repo" config --local --get-all credential.helper | wc -l)" -eq 2
 assert "setup-git sets the App noreply author email" test "$(git -C "$repo" config --local user.email)" = "424242+factory-fake[bot]@users.noreply.github.com"
 assert "setup-git sets the bot user.name" test "$(git -C "$repo" config --local user.name)" = "factory-fake[bot]"
 refute "setup-git logs no token" grep -q ghs_fake "$work/setup.err"

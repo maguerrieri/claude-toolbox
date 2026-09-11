@@ -52,6 +52,11 @@ set -euo pipefail
 SENTINEL_INJECTED="proxy-injected"
 SENTINEL_REQUIRED="factory-token-required"
 
+# Temp files (broker responses) are removed on any exit, including `die`.
+TMPFILES=()
+cleanup_tmp() { [ "${#TMPFILES[@]}" -eq 0 ] || rm -f "${TMPFILES[@]}"; }
+trap cleanup_tmp EXIT
+
 die() { printf 'factory-token: %s\n' "$*" >&2; exit "${2:-2}"; }
 usage() {
 	sed -n '2,/^set -euo pipefail/{/^set -euo pipefail/d;s/^# \{0,1\}//;p;}' "$0" >&2
@@ -186,8 +191,7 @@ mint_token() { # writes the cache file; prints nothing
 
 	local body status tmp
 	tmp=$(mktemp)
-	# shellcheck disable=SC2064
-	trap "rm -f '$tmp'" RETURN
+	TMPFILES+=("$tmp")
 	body=$(jq -cn --arg repo "$REPO" '{repository: $repo}')
 	# No Authorization header on purpose: the environment's API-credentials proxy
 	# attaches the bearer outside the VM. The token comes back in the body only.
@@ -290,7 +294,12 @@ cmd_setup_git() {
 	# token, so the pushing actor is the App (the durable equivalent of
 	# `gh auth setup-git`, which would only see the per-command GH_TOKEN).
 	git config --local credential.useHttpPath false
-	git config --local --replace-all credential.helper "!$helper git-credential"
+	# Credential helpers accumulate across config levels and the first one to answer
+	# wins, so reset the list (an empty entry) before adding this one; otherwise a
+	# global helper (the cloud proxy's, or gh's) would keep answering for github.com.
+	git config --local --unset-all credential.helper 2>/dev/null || true
+	git config --local --add credential.helper ''
+	git config --local --add credential.helper "!'$helper' git-credential"
 	# Commits: GitHub matches the author email, so use the App's noreply address
 	# (spec 2d, fact 5): <bot-user-id>+<slug>[bot]@users.noreply.github.com.
 	if [ -n "$slug" ] && [ -n "$bot_id" ]; then
