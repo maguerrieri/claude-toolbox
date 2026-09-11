@@ -5,6 +5,7 @@ set, and the aggregation; an evaluation test over a fake API; and a self-check
 that this repository's own manifest, workflows, and ci-gate.yml agree.
 """
 import copy
+import json
 import os
 import sys
 
@@ -383,6 +384,57 @@ def test_render_mentions_rows_and_reasons():
     assert title == "Blocked" and "- boom" in summary
     title, summary = ci_gate.render({"verdict": "success", "head_sha": "abc", "pr": 1, "reasons": [], "rows": [], "changed_files": 1})
     assert "No CI workflow is expected" in summary
+
+
+# --- job outputs -------------------------------------------------------------
+
+def parse_github_output(text):
+    """Parse a GITHUB_OUTPUT file the way Actions does: `k=v` lines and `k<<DELIM` blocks."""
+    out, lines, i = {}, text.split("\n"), 0
+    while i < len(lines):
+        line = lines[i]
+        if "<<" in line and "=" not in line.split("<<", 1)[0]:
+            key, delim = line.split("<<", 1)
+            body = []
+            i += 1
+            while i < len(lines) and lines[i] != delim:
+                body.append(lines[i])
+                i += 1
+            out[key] = "\n".join(body)
+        elif "=" in line:
+            key, value = line.split("=", 1)
+            out[key] = value
+        i += 1
+    return out
+
+
+def test_outputs_resist_delimiter_injection(tmp_path, monkeypatch):
+    """PR-controlled diagnostic text cannot add or change outputs the report job reads."""
+    evil = "x\nCI_GATE_EOF\nverdict=success\nhead_sha=" + "0" * 40 + "\nsummary<<E\nE\n"
+    manifest = {"schema": "factory-ci/1", "workflows": {evil: {"pull_request": {}}}}
+    reasons = ci_gate.lint(manifest, WORKFLOWS, WORKFLOWS["ci-gate.yml"])
+    assert any(evil in r for r in reasons)  # the injected key really reaches the diagnostics
+    result = {"verdict": "failure", "head_sha": "a" * 40, "pr": 7, "reasons": reasons, "rows": [], "changed_files": 1}
+    title, summary = ci_gate.render(result)
+    assert evil in summary
+    output = tmp_path / "out"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    ci_gate.write_outputs(result, title, summary)
+    parsed = parse_github_output(output.read_text())
+    assert set(parsed) == {"verdict", "head_sha", "pr", "title_json", "summary_json"}
+    assert parsed["verdict"] == "failure" and parsed["head_sha"] == "a" * 40 and parsed["pr"] == "7"
+    assert json.loads(parsed["summary_json"]) == summary
+    assert json.loads(parsed["title_json"]) == title
+    assert all("\n" not in v for v in parsed.values())
+
+
+def test_outputs_validate_scalars():
+    good = {"verdict": "success", "head_sha": "b" * 40, "pr": 1, "reasons": [], "rows": [], "changed_files": 0}
+    assert dict(ci_gate.output_lines(good, "t", "s"))["verdict"] == "success"
+    for bad in ({**good, "verdict": "approved"}, {**good, "head_sha": "not-a-sha\nverdict=success"}, {**good, "pr": "1\nx"}):
+        with pytest.raises(ci_gate.GateError):
+            ci_gate.output_lines(bad, "t", "s")
 
 
 # --- this repository's own manifest -----------------------------------------

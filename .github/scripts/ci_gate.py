@@ -548,15 +548,46 @@ def render(result: dict) -> tuple[str, str]:
     return titles[verdict], "\n".join(lines).strip() + "\n"
 
 
+VERDICTS = ("success", "failure", "pending", "skip")
+
+
+def output_lines(result: dict, title: str, summary: str) -> list[tuple[str, str]]:
+    """The `key=value` pairs handed to the privileged report job, one line each.
+
+    PR-controlled text (manifest keys, workflow names, filter patterns) reaches
+    the summary verbatim, so it never crosses the job boundary as raw lines: a
+    multiline `<<DELIM` block would let content containing the delimiter smuggle
+    in extra outputs such as `verdict=`. The title and summary travel as one
+    JSON-encoded ASCII line each (json.dumps escapes every newline and non-ASCII
+    character), and the report job decodes them; the scalar outputs are
+    validated against fixed grammars before they are written.
+    """
+    verdict = result["verdict"]
+    if verdict not in VERDICTS:
+        raise GateError(f"invalid verdict {verdict!r}")
+    head_sha = result.get("head_sha") or ""
+    if head_sha and not re.fullmatch(r"[0-9a-f]{40}", head_sha):
+        raise GateError(f"invalid head SHA {head_sha!r}")
+    pr = str(result.get("pr") or "")
+    if pr and not pr.isdigit():
+        raise GateError(f"invalid PR number {pr!r}")
+    lines = [
+        ("verdict", verdict),
+        ("head_sha", head_sha),
+        ("pr", pr),
+        ("title_json", json.dumps(title)),
+        ("summary_json", json.dumps(summary)),
+    ]
+    for key, value in lines:
+        assert "\n" not in value and "\r" not in value, key
+    return lines
+
+
 def write_outputs(result: dict, title: str, summary: str) -> None:
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a") as fh:
-            fh.write(f"verdict={result['verdict']}\n")
-            fh.write(f"head_sha={result.get('head_sha') or ''}\n")
-            fh.write(f"pr={result.get('pr') or ''}\n")
-            fh.write(f"title={title}\n")
-            fh.write("summary<<CI_GATE_EOF\n" + summary + "CI_GATE_EOF\n")
+            fh.write("".join(f"{k}={v}\n" for k, v in output_lines(result, title, summary)))
     step = os.environ.get("GITHUB_STEP_SUMMARY")
     if step:
         with open(step, "a") as fh:

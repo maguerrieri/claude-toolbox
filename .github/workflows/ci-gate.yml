@@ -51,8 +51,8 @@ jobs:
       verdict: ${{ steps.gate.outputs.verdict }}
       head_sha: ${{ steps.gate.outputs.head_sha || steps.event.outputs.head_sha }}
       pr: ${{ steps.gate.outputs.pr }}
-      title: ${{ steps.gate.outputs.title }}
-      summary: ${{ steps.gate.outputs.summary }}
+      title_json: ${{ steps.gate.outputs.title_json }}
+      summary_json: ${{ steps.gate.outputs.summary_json }}
     steps:
       - name: Head SHA from the event
         id: event
@@ -95,8 +95,8 @@ jobs:
           EVALUATE_RESULT: ${{ needs.evaluate.result }}
           VERDICT: ${{ needs.evaluate.outputs.verdict }}
           HEAD_SHA: ${{ needs.evaluate.outputs.head_sha }}
-          TITLE: ${{ needs.evaluate.outputs.title }}
-          SUMMARY: ${{ needs.evaluate.outputs.summary }}
+          TITLE_JSON: ${{ needs.evaluate.outputs.title_json }}
+          SUMMARY_JSON: ${{ needs.evaluate.outputs.summary_json }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python3 - <<'PY' > payload.json
@@ -106,7 +106,9 @@ jobs:
               verdict, title = "failure", "ci-gate evaluator did not complete"
               summary = f"The evaluate job ended with `{os.environ['EVALUATE_RESULT']}`; see the run log."
           else:
-              title, summary = os.environ["TITLE"], os.environ["SUMMARY"]
+              # One JSON-encoded line each (see output_lines in ci_gate.py).
+              title = json.loads(os.environ["TITLE_JSON"] or '""')
+              summary = json.loads(os.environ["SUMMARY_JSON"] or '""')
           payload = {
               "name": "factory/ci-gate",
               "head_sha": os.environ["HEAD_SHA"],
