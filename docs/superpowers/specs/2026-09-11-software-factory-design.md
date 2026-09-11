@@ -483,11 +483,17 @@ pushing actor is the user too. Therefore:
 2. The "distinct author" the review ruleset needs is a distinct **PR
    author**; `claude[bot]` commits on a user-opened PR do not count.
 3. The spike (item 8) is now narrower: confirm which launch paths (routine,
-   Auto-fix, Claude Tag, `--cloud` from a bundle) open the *PR* as
-   `claude[bot]`, whether that PR can be approved by the user, and whether
-   routines (`/schedule` + API fire) can be the standard implementer
-   launcher for that reason. Record commit-author, PR-author, and
-   pushing-actor for each path in the spec.
+   Auto-fix, Claude Tag, `--cloud` from a bundle, and the Claude Code
+   GitHub Action) open the *PR* as `claude[bot]`, whether that PR can be
+   approved by the user, and whether one of them can be the standard
+   implementer launcher for that reason. The Action is the best-documented
+   candidate: by default it authenticates with its own App token via OIDC,
+   and its FAQ states that comments — and, with `pull-requests: write`, the
+   PRs it opens — appear as `claude[bot]`, while supplying a `github_token`
+   switches everything to that token's identity. Community reports of
+   "require one approval" workflows with Claude-authored PRs appear to use
+   this path. Record commit-author, PR-author, and pushing-actor for each
+   path in the spec.
 4. **Team-account option:** a self-hosted environment with a wrapper script
    that mints a short-lived, least-scoped GitHub App installation token per
    session (`--capacity 1`, ephemeral container). This is the cleanest least-
