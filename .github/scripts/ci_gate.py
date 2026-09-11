@@ -166,15 +166,16 @@ def normalize_on(on) -> dict:
 
 
 def normalize_event(event: str, cfg) -> dict:
+    if event not in PR_EVENTS:
+        # Non-PR triggers never decide whether a workflow runs on a PR; their
+        # content is irrelevant to the gate and is neither compared nor validated
+        # (`schedule:` is a list, `workflow_dispatch:` may be bare, and
+        # pull_request_target runs base-branch YAML: see PR_EVENTS).
+        return {}
     if cfg is None:
         return {}
     if not isinstance(cfg, dict):
         raise GateError(f"{event}: trigger config must be a mapping, got {cfg!r}")
-    if event not in PR_EVENTS:
-        # Non-PR triggers never decide whether a workflow runs on a PR; their
-        # content is irrelevant to the gate and is neither compared nor validated.
-        # (pull_request_target runs base-branch YAML: see PR_EVENTS.)
-        return {}
     out = {}
     for key, value in cfg.items():
         if key not in SUPPORTED_KEYS:
@@ -748,10 +749,15 @@ def write_outputs(result: dict, title: str, summary: str) -> None:
 
 
 def dispatch_head_sha(event: dict) -> str:
-    """The `head_sha` input of a workflow_dispatch event, validated as a full SHA."""
-    value = str((event.get("inputs") or {}).get("head_sha", "")).strip().lower()
+    """The `head_sha` input of a workflow_dispatch event, validated as a canonical full SHA.
+
+    Canonical (lowercase, no surrounding whitespace) on purpose: the workflow's
+    concurrency group is keyed on the raw input, so a normalized-but-different
+    spelling would evaluate outside the group serializing that head.
+    """
+    value = str((event.get("inputs") or {}).get("head_sha", ""))
     if not re.fullmatch(r"[0-9a-f]{40}", value):
-        raise GateError(f"workflow_dispatch input head_sha must be a 40-hex commit SHA, got {value!r}")
+        raise GateError(f"workflow_dispatch input head_sha must be a lowercase 40-hex commit SHA, got {value!r}")
     return value
 
 

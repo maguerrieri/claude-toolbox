@@ -119,7 +119,9 @@ def test_lint_ignores_non_pr_triggers():
     w = copy.deepcopy(WORKFLOWS)
     w["gm-ci.yml"]["on"]["push"] = {"branches": ["main"], "tags": ["v*"]}
     w["gm-ci.yml"]["on"]["workflow_dispatch"] = None
+    w["gm-ci.yml"]["on"]["schedule"] = [{"cron": "0 3 * * 1"}]  # a list, not a mapping
     assert ci_gate.lint(MANIFEST, w, w["ci-gate.yml"]) == []
+    assert ci_gate.normalize_on({"schedule": [{"cron": "0 3 * * 1"}], "pull_request": None}) == {"schedule": {}, "pull_request": {}}
 
 
 def test_lint_unlisted_pr_workflow():
@@ -479,8 +481,10 @@ def test_evaluate_too_many_files_fails():
 
 
 def test_dispatch_head_sha_input():
-    assert ci_gate.dispatch_head_sha({"inputs": {"head_sha": " " + "A" * 40}}) == "a" * 40
-    for bad in ("", "abc", "42", "z" * 40):
+    assert ci_gate.dispatch_head_sha({"inputs": {"head_sha": "a" * 40}}) == "a" * 40
+    # Non-canonical spellings are rejected, not normalized: the concurrency
+    # group keys on the raw input.
+    for bad in ("", "abc", "42", "z" * 40, "A" * 40, " " + "a" * 40, "a" * 40 + "\n"):
         with pytest.raises(ci_gate.GateError):
             ci_gate.dispatch_head_sha({"inputs": {"head_sha": bad}})
 

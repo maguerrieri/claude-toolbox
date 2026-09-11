@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       head_sha:
-        description: "Head commit SHA (40 hex) of the open PR to re-evaluate"
+        description: "Head commit SHA of the open PR to re-evaluate (40 lowercase hex, exactly as git prints it)"
         required: true
         type: string
 
@@ -66,12 +66,13 @@ jobs:
         # The dispatch input is typed by a person: validate the *whole* value
         # before it touches GITHUB_OUTPUT (a newline in it could otherwise add
         # an output line; a per-line tool such as grep -x would pass a value
-        # with one valid line), and let the evaluator reject a bad value with
-        # a real message.
+        # with one valid line). Canonical form only, never normalized: the
+        # concurrency group above keys on the raw input. The evaluator rejects
+        # a bad value with a real message.
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import os, re
-          value = os.environ["HEAD_SHA"].strip().lower()
+          value = os.environ["HEAD_SHA"]
           print("head_sha=" + (value if re.fullmatch(r"[0-9a-f]{40}", value) else ""))
           PY
       - name: Fetch the evaluator from the base commit (no checkout)
