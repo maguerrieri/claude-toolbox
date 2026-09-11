@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Budget-directive contract test (software-factory design, item 2e).
+#
+# The default profile's SPAWN_CAP payload closes with a `Budget:` briefing
+# directive that gives a spawned implementer a stop condition; START Step 8
+# records an overrun inside the Evidence block's `tests` string. This test
+# pins the pieces a spawner and a checker rely on:
+#
+#   1. the SPAWN_CAP payload carries exactly one Budget line of the documented
+#      shape (`Budget: wall_clock_min=<N> review_rounds=<M>`), as its last
+#      clause, and stays free of the characters the profile forbids in the
+#      payload (backtick, double quote, `$`, backslash);
+#   2. the `budget_exceeded` clause START Step 8 appends to `tests` passes the
+#      evidence checker's placeholder and shape rules (so an overrun record is
+#      never rejected as a placeholder) and is itself parseable for metrics;
+#   3. the surfaces that forward or honor the directive name it: START Steps 1
+#      and 8, SPAWN Step 2, EPIC Step 5, and the two spawn commands.
+#
+# Stdlib only: bash, awk, jq. Run from anywhere: bash plugins/ticket-workflow/tests/test-budget-directive.sh
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/../../.." && pwd)
+skill_dir="$repo/plugins/ticket-workflow/skills/ticket-workflow"
+skill="$skill_dir/SKILL.md"
+profile="$skill_dir/profiles/default.md"
+epic="$skill_dir/phases/epic.md"
+commands="$repo/plugins/ticket-workflow/commands"
+
+command -v jq >/dev/null || { echo "jq is required" >&2; exit 2; }
+
+failures=0
+ok() { printf 'ok   - %s\n' "$1"; }
+fail() { printf 'FAIL - %s\n' "$1"; failures=$((failures + 1)); }
+assert() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then ok "$desc"; else fail "$desc"; fi; }
+refute() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then fail "$desc"; else ok "$desc"; fi; }
+
+# The directive's documented shape: both keys, that order, digits, nothing else.
+budget_re='^Budget: wall_clock_min=[0-9]+ review_rounds=[0-9]+$'
+# The overrun clause START Step 8 appends inside `tests`.
+overrun_re='budget_exceeded: (wall_clock_min|review_rounds) [0-9]+ of [0-9]+'
+
+# --- 1. the SPAWN_CAP payload ------------------------------------------------
+# The payload is the text between the first pair of double quotes in the
+# profile's `## SPAWN_CAP` section (the quotes are the note's delimiters, not
+# part of the payload). Lines are joined with spaces, as the spawn command's
+# single double-quoted argument would carry them.
+section_text() { # <file> <heading regex>: the section body up to the next `## `
+	awk -v heading="$2" '
+		!inside && $0 ~ heading { inside = 1; next }
+		inside && /^## / { exit }
+		inside { print }
+	' "$1"
+}
+payload=$(section_text "$profile" '^## SPAWN_CAP[[:space:]]*$' | tr '\n' ' ' | sed -E 's/^[^"]*"//; s/".*$//; s/  +/ /g; s/ $//')
+assert "SPAWN_CAP: extracted a payload" test -n "$payload"
+refute "SPAWN_CAP payload: no backtick, double quote, \$, or backslash" grep -q '[`"$\\]' <<<"$payload"
+budget_line=$(grep -Eo 'Budget: [^"]*$' <<<"$payload" || true)
+assert "SPAWN_CAP payload: ends with a Budget: directive" test -n "$budget_line"
+assert "SPAWN_CAP payload: the Budget line has the documented shape" grep -Eq "$budget_re" <<<"$budget_line"
+assert "SPAWN_CAP payload: exactly one Budget: directive" test "$(grep -o 'Budget:' <<<"$payload" | wc -l)" -eq 1
+# The shape rule itself: what the spawner's merge must produce, and what it must not.
+for good in 'Budget: wall_clock_min=180 review_rounds=5' 'Budget: wall_clock_min=0 review_rounds=0' 'Budget: wall_clock_min=60 review_rounds=1'; do
+	assert "shape accepts '$good'" grep -Eq "$budget_re" <<<"$good"
+done
+for bad in 'Budget: review_rounds=1' 'Budget: wall_clock_min=60' 'Budget: review_rounds=1 wall_clock_min=60' 'Budget: wall_clock_min=-1 review_rounds=1' 'Budget: wall_clock_min=1.5 review_rounds=1' 'Budget: wall_clock_min=60 review_rounds=1 extra' 'Budget:'; do
+	refute "shape rejects '$bad'" grep -Eq "$budget_re" <<<"$bad"
+done
+
+# --- 2. the overrun record inside the Evidence block --------------------------
+# Same predicates the evidence-block test enforces for `tests`/`docs`, applied
+# to the strings START Step 8 writes on a budget stop.
+placeholder_def='def placeholder: test("^\\s*(TODO|TBD|n/?a)\\s*$"; "i") or test("<[^>]*>");'
+no_placeholders="$placeholder_def ([.tests, .docs] | all(placeholder | not))"
+strings_nonempty='[.tests, .docs] | all(type == "string" and length > 0)'
+wall_clock_digits='.wall_clock_min | test("^[0-9]+$")'
+overrun_block=$(jq -n '{
+	tests: "bash plugins/ticket-workflow/tests/test-evidence-block.sh (passed); budget_exceeded: review_rounds 2 of 1",
+	docs: "no doc impact",
+	wall_clock_min: "47"
+}')
+clock_block=$(jq -n '{
+	tests: "none: budget exceeded before Step 6; budget_exceeded: wall_clock_min 181 of 180",
+	docs: "not checked: budget exceeded before Step 6",
+	wall_clock_min: "181"
+}')
+for label in overrun_block clock_block; do
+	block=${!label}
+	assert "$label: overrun clause is not a placeholder" jq -e "$no_placeholders" <<<"$block"
+	assert "$label: tests/docs stay non-empty strings" jq -e "$strings_nonempty" <<<"$block"
+	assert "$label: wall_clock_min stays a digit string" jq -e "$wall_clock_digits" <<<"$block"
+	assert "$label: the clause is parseable for metrics" grep -Eq "$overrun_re" <<<"$(jq -r .tests <<<"$block")"
+done
+assert "a budget-free tests string carries no overrun clause" test -z "$(grep -Eo "$overrun_re" <<<'bash tests/x.sh (passed)' || true)"
+refute "an overrun clause without counts is rejected" grep -Eq "$overrun_re" <<<'budget_exceeded: review_rounds'
+refute "an overrun clause naming an unknown budget is rejected" grep -Eq "$overrun_re" <<<'budget_exceeded: tokens 2 of 1'
+
+# --- 3. the surfaces that forward or honor the directive -----------------------
+start_text=$(sed -n '/^## START phase/,/^## FINISH phase/p' "$skill")
+spawn_text=$(sed -n '/^## SPAWN phase/,/^## EPIC phase/p' "$skill")
+assert "SKILL.md START Step 1 notes the Budget: directive" grep -q 'Note your budget' <<<"$start_text"
+assert "SKILL.md START Step 8 carries the budget check" grep -q 'Budget check' <<<"$start_text"
+assert "SKILL.md START Step 7 documents the budget_exceeded clause" grep -q 'budget_exceeded' <<<"$start_text"
+assert "SKILL.md START opt-outs list the budget stop" grep -q 'Budget exhausted' <<<"$start_text"
+assert "SKILL.md SPAWN Step 2 merges a Budget: override" grep -q 'Budget:.*overrides' <<<"$spawn_text"
+assert "phases/epic.md Step 5 forwards the Budget: line" grep -q "effective \`Budget:\` line" "$epic"
+assert "spawn-tickets accepts a Budget: override" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$commands/spawn-tickets.md"
+assert "spawn-epic accepts a Budget: override" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$commands/spawn-epic.md"
+# The profile's own prose documents the shape a spawner must reproduce.
+assert "profile documents the directive shape" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$profile"
+
+if [ "$failures" -gt 0 ]; then
+	printf '\n%d failure(s)\n' "$failures"
+	exit 1
+fi
+printf '\nall budget-directive checks passed\n'

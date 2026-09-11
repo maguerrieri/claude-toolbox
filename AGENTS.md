@@ -112,8 +112,8 @@ Use a task-specific name such as `file_path` instead.
 
 ## SKILL.md size — when to split phases into their own files
 
-ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~470
-lines as of #90): the phases cross-reference each other's steps by number (EPIC →
+ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~480
+lines as of #98): the phases cross-reference each other's steps by number (EPIC →
 START Steps 2/3/7, FINISH's gate → START Step 6), and one file keeps full-context
 reads the default — splitting reintroduces the #22 bypass failure in a new form
 (skim the index, skip the phase file). **EPIC is the one phase already split
