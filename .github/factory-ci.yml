@@ -1,0 +1,24 @@
+# Manifest of the CI workflows `factory/ci-gate` aggregates (spec section 1d).
+#
+# `ci-gate.yml` reads this file from the PR's head tree, evaluates each entry's
+# pull_request filters against the PR the way GitHub does, and reports success
+# only when every expected workflow has run and succeeded on the head SHA. Its
+# lint fails the gate when an entry differs from the workflow's real `on:`
+# block, when a workflow with a pull_request trigger is missing here, or when
+# ci-gate.yml's own `workflow_run.workflows` list does not name exactly these
+# workflows -- so a new or changed CI workflow must update all three in the same
+# PR. Only the pull_request / pull_request_target triggers are recorded (`push`
+# and friends never run *on a PR*); `ci-gate.yml` itself must never be listed.
+schema: factory-ci/1
+workflows:
+  gm-ci.yml:
+    pull_request:
+      paths:
+        - "plugins/gm/**"
+        - ".github/workflows/gm-ci.yml"
+  plugin-versions.yml:
+    pull_request: {}
+  factory-scripts.yml:
+    pull_request:
+      paths:
+        - ".github/**"

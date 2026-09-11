@@ -1,0 +1,403 @@
+"""Unit tests for .github/scripts/ci_gate.py (spec section 1d).
+
+Pure-function tests for the filter semantics, the manifest lint, the expected
+set, and the aggregation; an evaluation test over a fake API; and a self-check
+that this repository's own manifest, workflows, and ci-gate.yml agree.
+"""
+import copy
+import os
+import sys
+
+import pytest
+import yaml
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(HERE))
+REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+
+import ci_gate  # noqa: E402
+
+
+def wf(on, name=None):
+    doc = {"jobs": {"x": {"runs-on": "ubuntu-latest", "steps": []}}}
+    if name:
+        doc["name"] = name
+    doc["on"] = on
+    return doc
+
+
+def gate(names):
+    return wf({"pull_request_target": {"branches": ["main"]}, "workflow_run": {"workflows": names, "types": ["completed"]}}, "ci-gate")
+
+
+GM = {"pull_request": {"paths": ["plugins/gm/**", ".github/workflows/gm-ci.yml"]}}
+MANIFEST = {"schema": "factory-ci/1", "workflows": {"gm-ci.yml": GM, "plugin-versions.yml": {"pull_request": {}}}}
+WORKFLOWS = {
+    "gm-ci.yml": wf({"push": {"paths": ["plugins/gm/**"]}, **GM}, "gm CI"),
+    "plugin-versions.yml": wf({"pull_request": None}, "plugin versions"),
+    "ci-gate.yml": gate(["gm CI", "plugin versions"]),
+}
+
+
+# --- filter patterns ---------------------------------------------------------
+
+@pytest.mark.parametrize("pattern,value,expected", [
+    ("plugins/gm/**", "plugins/gm/a/b.py", True),
+    ("plugins/gm/**", "plugins/gmx/a.py", False),
+    ("plugins/*/README.md", "plugins/gm/README.md", True),
+    ("plugins/*/README.md", "plugins/gm/sub/README.md", False),  # * does not cross /
+    ("**.md", "docs/a/b.md", True),
+    ("**.md", "docs/a/b.py", False),
+    ("docs/*", "docs/a.md", True),
+    ("docs/*", "docs/a/b.md", False),
+    ("main", "main", True),
+    ("releases/**", "releases/v1/x", True),
+    ("v[0-9]+", "v12", True),
+    ("v[0-9]+", "vx", False),
+    ("READ?ME", "REAME", True),  # ? = zero or one of the preceding character
+    ("a.b", "axb", False),  # literal dot
+])
+def test_pattern(pattern, value, expected):
+    assert bool(ci_gate.pattern_to_regex(pattern).match(value)) is expected
+
+
+def test_select_last_match_wins():
+    assert ci_gate.select(["docs/**", "!docs/keep.md"], "docs/keep.md") is False
+    assert ci_gate.select(["docs/**", "!docs/keep.md", "docs/keep.md"], "docs/keep.md") is True
+    assert ci_gate.select(["docs/**"], "src/x") is None
+
+
+# --- normalization -----------------------------------------------------------
+
+def test_on_forms_normalize_equally():
+    assert ci_gate.normalize_on("pull_request") == {"pull_request": {}}
+    assert ci_gate.normalize_on(["pull_request", "push"]) == {"pull_request": {}, "push": {}}
+    assert ci_gate.normalize_on({"pull_request": None}) == {"pull_request": {}}
+    assert ci_gate.normalize_on({"pull_request": {"paths": "a/**"}}) == {"pull_request": {"paths": ["a/**"]}}
+
+
+def test_bare_on_key_parses_as_true():
+    doc = yaml.safe_load("on:\n  pull_request:\n    paths: ['a/**']\n")
+    assert ci_gate.workflow_on(doc) == {"pull_request": {"paths": ["a/**"]}}
+
+
+def test_unknown_construct_rejected():
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.normalize_on({"pull_request": {"tags": ["v*"]}})
+
+
+# --- lint --------------------------------------------------------------------
+
+def test_lint_consistent():
+    assert ci_gate.lint(MANIFEST, WORKFLOWS, WORKFLOWS["ci-gate.yml"]) == []
+
+
+def test_lint_rejects_self_entry():
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["ci-gate.yml"] = {"pull_request_target": {}}
+    errors = ci_gate.lint(m, WORKFLOWS, WORKFLOWS["ci-gate.yml"])
+    assert any("must not list itself" in e for e in errors)
+
+
+def test_lint_detects_drift():
+    w = copy.deepcopy(WORKFLOWS)
+    w["gm-ci.yml"]["on"]["pull_request"]["paths"].append("extra/**")
+    errors = ci_gate.lint(MANIFEST, w, w["ci-gate.yml"])
+    assert any("gm-ci.yml: manifest entry differs" in e for e in errors)
+
+
+def test_lint_ignores_non_pr_triggers():
+    w = copy.deepcopy(WORKFLOWS)
+    w["gm-ci.yml"]["on"]["push"] = {"branches": ["main"], "tags": ["v*"]}
+    w["gm-ci.yml"]["on"]["workflow_dispatch"] = None
+    assert ci_gate.lint(MANIFEST, w, w["ci-gate.yml"]) == []
+
+
+def test_lint_unlisted_pr_workflow():
+    w = dict(WORKFLOWS, **{"new.yml": wf({"pull_request": {}}, "new")})
+    errors = ci_gate.lint(MANIFEST, w, w["ci-gate.yml"])
+    assert any("new.yml: has a pull_request trigger but is not listed" in e for e in errors)
+
+
+def test_lint_missing_listed_workflow():
+    w = {k: v for k, v in WORKFLOWS.items() if k != "gm-ci.yml"}
+    w["ci-gate.yml"] = gate(["plugin versions"])
+    errors = ci_gate.lint(MANIFEST, w, w["ci-gate.yml"])
+    assert any("gm-ci.yml is listed but" in e for e in errors)
+
+
+def test_lint_workflow_without_pr_trigger_listed():
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["deploy.yml"] = {"pull_request": {}}
+    w = dict(WORKFLOWS, **{"deploy.yml": wf({"workflow_call": None}, "deploy")})
+    errors = ci_gate.lint(m, w, w["ci-gate.yml"])
+    assert any("deploy.yml: manifest entry differs" in e or "no pull_request trigger" in e for e in errors)
+
+
+def test_lint_workflow_run_list_must_match():
+    w = dict(WORKFLOWS, **{"ci-gate.yml": gate(["gm CI"])})
+    errors = ci_gate.lint(MANIFEST, w, w["ci-gate.yml"])
+    assert any("workflow_run.workflows must list exactly" in e for e in errors)
+
+
+def test_lint_missing_gate_file():
+    errors = ci_gate.lint(MANIFEST, WORKFLOWS, None)
+    assert any("ci-gate.yml is missing" in e for e in errors)
+
+
+def test_lint_wrong_schema():
+    m = dict(MANIFEST, schema="factory-ci/2")
+    assert any("schema must be" in e for e in ci_gate.lint(m, WORKFLOWS, WORKFLOWS["ci-gate.yml"]))
+
+
+def test_lint_unsupported_types_split():
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["plugin-versions.yml"] = {"pull_request": {"types": ["opened"]}}
+    w = copy.deepcopy(WORKFLOWS)
+    w["plugin-versions.yml"]["on"] = {"pull_request": {"types": ["opened"]}}
+    errors = ci_gate.lint(m, w, w["ci-gate.yml"])
+    assert any("must include both opened and synchronize" in e for e in errors)
+
+
+# --- expected set ------------------------------------------------------------
+
+def test_expected_docs_only_pr_expects_only_unfiltered():
+    assert ci_gate.expected_set(MANIFEST, ["docs/guide.md"], "main") == [("plugin-versions.yml", "pull_request")]
+
+
+def test_expected_gm_change_expects_gm_ci():
+    assert ci_gate.expected_set(MANIFEST, ["plugins/gm/bin/roll"], "main") == [
+        ("gm-ci.yml", "pull_request"), ("plugin-versions.yml", "pull_request")]
+
+
+def test_expected_closed_only_types_never_expected():
+    cfg = {"types": ["closed"], "paths": ["**"]}
+    assert ci_gate.is_expected(cfg, ["a"], "main") is False
+
+
+def test_expected_branch_filters():
+    assert ci_gate.is_expected({"branches": ["dev"]}, ["a"], "main") is False
+    assert ci_gate.is_expected({"branches": ["main"]}, ["a"], "main") is True
+    assert ci_gate.is_expected({"branches-ignore": ["main"]}, ["a"], "main") is False
+
+
+def test_expected_paths_ignore():
+    cfg = {"paths-ignore": ["docs/**"]}
+    assert ci_gate.is_expected(cfg, ["docs/a.md"], "main") is False
+    assert ci_gate.is_expected(cfg, ["docs/a.md", "src/x.py"], "main") is True
+
+
+def test_expected_paths_with_negation():
+    cfg = {"paths": ["src/**", "!src/README.md"]}
+    assert ci_gate.is_expected(cfg, ["src/README.md"], "main") is False
+    assert ci_gate.is_expected(cfg, ["src/a.py"], "main") is True
+
+
+def test_expected_empty_diff_skips_filtered_workflows():
+    assert ci_gate.is_expected({"paths": ["**"]}, [], "main") is False
+    assert ci_gate.is_expected({}, [], "main") is True
+
+
+# --- aggregation -------------------------------------------------------------
+
+def run(path, event="pull_request", status="completed", conclusion="success", id=1, started="2026-01-01T00:00:00Z", attempt=1):
+    return {"id": id, "path": f".github/workflows/{path}", "event": event, "status": status,
+            "conclusion": conclusion, "run_started_at": started, "run_attempt": attempt, "html_url": f"https://x/{id}"}
+
+
+EXPECTED = [("gm-ci.yml", "pull_request"), ("plugin-versions.yml", "pull_request")]
+
+
+def test_aggregate_all_green():
+    verdict, rows = ci_gate.aggregate(EXPECTED, [run("gm-ci.yml", id=1), run("plugin-versions.yml", id=2)], "999")
+    assert verdict == "success" and [r["state"] for r in rows] == ["success", "success"]
+
+
+def test_aggregate_missing_run_pending():
+    verdict, rows = ci_gate.aggregate(EXPECTED, [run("plugin-versions.yml")], "999")
+    assert verdict == "pending" and rows[0]["detail"] == "no run yet"
+
+
+def test_aggregate_in_progress_pending():
+    verdict, _ = ci_gate.aggregate(EXPECTED, [run("gm-ci.yml", status="in_progress", conclusion=None), run("plugin-versions.yml", id=2)], "999")
+    assert verdict == "pending"
+
+
+def test_aggregate_failure_beats_pending():
+    verdict, _ = ci_gate.aggregate(EXPECTED, [run("gm-ci.yml", conclusion="failure")], "999")
+    assert verdict == "failure"
+
+
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled", "timed_out", "skipped", "neutral", "action_required"])
+def test_aggregate_only_success_counts(conclusion):
+    verdict, _ = ci_gate.aggregate([("plugin-versions.yml", "pull_request")], [run("plugin-versions.yml", conclusion=conclusion)], "999")
+    assert verdict == "failure"
+
+
+def test_aggregate_latest_attempt_wins():
+    # A re-run of the same run id turns an older red attempt green.
+    runs = [run("plugin-versions.yml", id=5, conclusion="success", started="2026-01-02T00:00:00Z", attempt=2)]
+    verdict, rows = ci_gate.aggregate([("plugin-versions.yml", "pull_request")], runs, "999")
+    assert verdict == "success" and "attempt 2" in rows[0]["detail"]
+    # A newer run (reopen) supersedes an older green one.
+    runs = [run("plugin-versions.yml", id=5, started="2026-01-01T00:00:00Z"),
+            run("plugin-versions.yml", id=7, conclusion="failure", started="2026-01-03T00:00:00Z")]
+    verdict, _ = ci_gate.aggregate([("plugin-versions.yml", "pull_request")], runs, "999")
+    assert verdict == "failure"
+
+
+def test_aggregate_ignores_push_and_own_runs():
+    runs = [run("plugin-versions.yml", event="push", id=1),
+            run("plugin-versions.yml", id=2, status="in_progress", conclusion=None),
+            run("ci-gate.yml", event="pull_request_target", id=3)]
+    verdict, rows = ci_gate.aggregate([("plugin-versions.yml", "pull_request")], runs, "3")
+    assert verdict == "pending"
+    assert ci_gate.latest_run(runs, "ci-gate.yml", "pull_request_target", "3") is None
+    assert ci_gate.latest_run(runs, "ci-gate.yml", "pull_request_target", "999") is None  # never expected, even as another run
+
+
+def test_aggregate_nothing_expected_is_success():
+    assert ci_gate.aggregate([], [], "1") == ("success", [])
+
+
+# --- settings lint -----------------------------------------------------------
+
+def test_remote_keys():
+    assert ci_gate.remote_keys('{"remote": {"defaultEnvironmentId": "env_x"}}') == ["remote"]
+    assert ci_gate.remote_keys('{"remote.defaultEnvironmentId": "env_x"}') == ["remote.defaultEnvironmentId"]
+    assert ci_gate.remote_keys('{"permissions": {}}') == []
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.remote_keys("{not json")
+
+
+def test_settings_paths_to_lint():
+    assert ci_gate.settings_paths_to_lint(["a.md", "svc/x/.claude/settings.json", "docs/settings.json"]) == [
+        ".claude/settings.json", "svc/x/.claude/settings.json"]
+
+
+# --- evaluation over a fake API ---------------------------------------------
+
+class FakeApi:
+    def __init__(self, prs, files, tree, runs, default="main"):
+        self.prs, self.files, self.tree, self._runs, self.default = prs, files, tree, runs, default
+
+    def default_branch(self):
+        return self.default
+
+    def open_prs(self, base):
+        return [p for p in self.prs if p["state"] == "open" and p["base"]["ref"] == base]
+
+    def pull(self, number):
+        return next(p for p in self.prs if p["number"] == number)
+
+    def changed_files(self, number):
+        return [{"filename": f} for f in self.files]
+
+    def raw(self, path, ref):
+        return self.tree.get(path)
+
+    def listing(self, path, ref):
+        return [{"name": p.split("/")[-1], "type": "file"} for p in self.tree if p.startswith(path + "/") and p.count("/") == path.count("/") + 1]
+
+    def runs(self, head_sha):
+        return self._runs
+
+
+def pr(number, sha, base="main", state="open"):
+    return {"number": number, "state": state, "head": {"sha": sha}, "base": {"ref": base}}
+
+
+TREE = {
+    ".github/factory-ci.yml": yaml.safe_dump(MANIFEST),
+    ".github/workflows/gm-ci.yml": yaml.safe_dump(WORKFLOWS["gm-ci.yml"]),
+    ".github/workflows/plugin-versions.yml": yaml.safe_dump(WORKFLOWS["plugin-versions.yml"]),
+    ".github/workflows/ci-gate.yml": yaml.safe_dump(WORKFLOWS["ci-gate.yml"]),
+}
+
+
+def test_evaluate_docs_only_pr_green_without_gm_ci():
+    api = FakeApi([pr(1, "abc")], ["docs/guide.md"], TREE, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", None, "999")
+    assert result["verdict"] == "success"
+    assert [r["workflow"] for r in result["rows"]] == ["plugin-versions.yml"]
+
+
+def test_evaluate_gm_pr_pending_until_gm_ci_completes():
+    api = FakeApi([pr(1, "abc")], ["plugins/gm/bin/roll"], TREE, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", None, "999")
+    assert result["verdict"] == "pending"
+    api._runs.append(run("gm-ci.yml", id=2))
+    assert ci_gate.evaluate(api, "abc", None, "999")["verdict"] == "success"
+
+
+def test_evaluate_skips_sha_without_pr():
+    api = FakeApi([pr(1, "abc")], [], TREE, [])
+    assert ci_gate.evaluate(api, "zzz", None, "1")["verdict"] == "skip"
+
+
+def test_evaluate_skips_pr_not_targeting_main():
+    api = FakeApi([pr(1, "abc", base="epic-89-92")], ["a"], TREE, [])
+    assert ci_gate.evaluate(api, "abc", None, "1")["verdict"] == "skip"
+    assert ci_gate.evaluate(api, None, 1, "1")["verdict"] == "skip"
+
+
+def test_evaluate_two_prs_same_head_fail_closed():
+    api = FakeApi([pr(1, "abc"), pr(2, "abc")], ["a"], TREE, [])
+    result = ci_gate.evaluate(api, "abc", None, "1")
+    assert result["verdict"] == "failure" and "more than one open PR" in result["reasons"][0]
+
+
+def test_evaluate_default_branch_not_main_fails():
+    api = FakeApi([pr(1, "abc")], ["a"], TREE, [run("plugin-versions.yml")], default="master")
+    result = ci_gate.evaluate(api, "abc", None, "1")
+    assert result["verdict"] == "failure" and "default branch" in result["reasons"][0]
+
+
+def test_evaluate_remote_setting_fails():
+    tree = dict(TREE, **{".claude/settings.json": '{"remote": {"defaultEnvironmentId": "env_x"}}'})
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", None, "1")
+    assert result["verdict"] == "failure" and "remote.*" in result["reasons"][0]
+
+
+def test_evaluate_missing_manifest_fails():
+    tree = {k: v for k, v in TREE.items() if k != ".github/factory-ci.yml"}
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", None, "1")
+    assert result["verdict"] == "failure" and "factory-ci.yml is missing" in result["reasons"][0]
+
+
+def test_evaluate_too_many_files_fails():
+    api = FakeApi([pr(1, "abc")], [f"f{i}" for i in range(301)], TREE, [run("plugin-versions.yml")])
+    assert ci_gate.evaluate(api, "abc", None, "1")["verdict"] == "failure"
+
+
+def test_evaluate_dispatch_by_pr_number():
+    api = FakeApi([pr(4, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, None, 4, "999")
+    assert result["verdict"] == "success" and result["pr"] == 4 and result["head_sha"] == "abc"
+
+
+def test_render_mentions_rows_and_reasons():
+    title, summary = ci_gate.render({"verdict": "failure", "head_sha": "abc", "pr": 1, "reasons": ["boom"], "rows": [], "changed_files": 2})
+    assert title == "Blocked" and "- boom" in summary
+    title, summary = ci_gate.render({"verdict": "success", "head_sha": "abc", "pr": 1, "reasons": [], "rows": [], "changed_files": 1})
+    assert "No CI workflow is expected" in summary
+
+
+# --- this repository's own manifest -----------------------------------------
+
+def test_repo_manifest_is_consistent():
+    """The lint ci-gate runs on every PR, against this checkout."""
+    workflows_dir = os.path.join(REPO, ".github", "workflows")
+    workflows = {}
+    for name in sorted(os.listdir(workflows_dir)):
+        if name.endswith((".yml", ".yaml")):
+            with open(os.path.join(workflows_dir, name)) as fh:
+                workflows[name] = yaml.safe_load(fh)
+    with open(os.path.join(REPO, ".github", "factory-ci.yml")) as fh:
+        manifest = yaml.safe_load(fh)
+    assert ci_gate.lint(manifest, workflows, workflows.get("ci-gate.yml")) == []
+    # Every entry evaluates without hitting an unsupported construct.
+    for f, e in ci_gate.expected_set(manifest, ["README.md", ".github/workflows/x.yml"], "main"):
+        assert f in manifest["workflows"] and e in ci_gate.PR_EVENTS

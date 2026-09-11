@@ -1,0 +1,125 @@
+name: ci-gate
+
+# The one required check on `main` (spec section 1d): aggregates every CI
+# workflow a PR is expected to run into one `factory/ci-gate` verdict, so
+# path-filtered CI can be required without leaving docs-only PRs pending.
+#
+# Base-branch code: it runs on pull_request_target / workflow_run, whose YAML
+# and evaluator come from `main`, and it never checks out the PR (the evaluator
+# is fetched from the base commit with the API). The verdict is posted by the
+# `factory-ci` GitHub App from the `main`-only `factory-ci` environment, never
+# with GITHUB_TOKEN, so the `main-integrity` ruleset can require the check from
+# that App and a PR-added workflow publishing the same name cannot satisfy it.
+#
+# Re-evaluated on every PR head change and after every listed workflow
+# completes. `workflow_run.workflows` must name exactly the workflows in
+# `.github/factory-ci.yml` (the evaluator lints this). A PR that adds a new CI
+# workflow is re-evaluated by main's copy of this file, which does not yet
+# listen for the new workflow: re-run the last ci-gate run, or dispatch this
+# workflow with the PR number, once the new workflow has finished.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+    branches: [main]
+  workflow_run:
+    workflows: ["gm CI", "plugin versions", "factory scripts"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Pull request number to re-evaluate"
+        required: true
+        type: string
+
+permissions: {}
+
+# Serialize evaluations per head SHA so a stale verdict can never be posted
+# after a fresher one.
+concurrency:
+  group: "ci-gate-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || inputs.pr }}"
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      verdict: ${{ steps.gate.outputs.verdict }}
+      head_sha: ${{ steps.gate.outputs.head_sha || steps.event.outputs.head_sha }}
+      pr: ${{ steps.gate.outputs.pr }}
+      title: ${{ steps.gate.outputs.title }}
+      summary: ${{ steps.gate.outputs.summary }}
+    steps:
+      - name: Head SHA from the event
+        id: event
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+        run: echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+      - name: Fetch the evaluator from the base commit (no checkout)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/contents/.github/scripts/ci_gate.py?ref=${GITHUB_SHA}" \
+            -H "Accept: application/vnd.github.raw+json" > ci_gate.py
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --user --quiet pyyaml
+      - name: Evaluate
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ci_gate.py
+
+  report:
+    needs: evaluate
+    # Runs even when evaluate failed (the verdict is then `failure`), but not
+    # when it was cancelled by a newer evaluation of the same head, and not
+    # when there is nothing to report.
+    if: ${{ !cancelled() && needs.evaluate.outputs.verdict != 'skip' }}
+    runs-on: ubuntu-latest
+    environment: factory-ci
+    permissions: {}
+    steps:
+      - name: Mint a factory-ci App token
+        id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.FACTORY_CI_APP_ID }}
+          private-key: ${{ secrets.FACTORY_CI_APP_PRIVATE_KEY }}
+          permission-checks: write
+      - name: Post factory/ci-gate
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          EVALUATE_RESULT: ${{ needs.evaluate.result }}
+          VERDICT: ${{ needs.evaluate.outputs.verdict }}
+          HEAD_SHA: ${{ needs.evaluate.outputs.head_sha }}
+          TITLE: ${{ needs.evaluate.outputs.title }}
+          SUMMARY: ${{ needs.evaluate.outputs.summary }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY' > payload.json
+          import json, os
+          verdict = os.environ["VERDICT"]
+          if os.environ["EVALUATE_RESULT"] != "success" or verdict not in ("success", "failure", "pending"):
+              verdict, title = "failure", "ci-gate evaluator did not complete"
+              summary = f"The evaluate job ended with `{os.environ['EVALUATE_RESULT']}`; see the run log."
+          else:
+              title, summary = os.environ["TITLE"], os.environ["SUMMARY"]
+          payload = {
+              "name": "factory/ci-gate",
+              "head_sha": os.environ["HEAD_SHA"],
+              "external_id": os.environ["GITHUB_RUN_ID"],
+              "details_url": os.environ["RUN_URL"],
+              "output": {"title": title, "summary": summary},
+          }
+          if verdict == "pending":
+              payload["status"] = "in_progress"
+          else:
+              payload["status"] = "completed"
+              payload["conclusion"] = verdict
+          print(json.dumps(payload))
+          PY
+          test -n "$HEAD_SHA" || { echo "no head SHA to post on"; exit 1; }
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/check-runs" --input payload.json --jq '.html_url'
