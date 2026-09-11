@@ -1,0 +1,21 @@
+name: ticket-workflow CI
+
+on:
+  push:
+    paths:
+      - "plugins/ticket-workflow/**"
+      - ".github/workflows/ticket-workflow-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/ticket-workflow/**"
+      - ".github/workflows/ticket-workflow-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Run script tests
+        run: uvx pytest plugins/ticket-workflow/tests -q
