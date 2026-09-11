@@ -70,9 +70,12 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   global flag the rule missed) — the rule is ergonomics and drift control, and
   the real boundary is that a session holds no deploy credential and can't
   reach the deploy APIs (spec §2a); deploys — production on merge and PR
-  previews alike — run in CI, never from a session. Stop, finish whatever the issue still leaves doable without it, and
-  report the denial in your hand-back (a `blocked:` ping when `Notify:` is
-  wired) so the tier above sees where the plan needed a deploy.
+  previews alike — run in CI, never from a session. The profile's
+  `SMOKE_DEPLOY` step still applies: smoke-test against what CI already
+  deployed (the PR preview) or a local run, not by issuing a deploy command
+  yourself. Stop, finish whatever the issue still leaves doable without it,
+  and report the denial in your hand-back (a `blocked:` ping when `Notify:`
+  is wired) so the tier above sees where the plan needed a deploy.
 - **Accept a different issue by SendMessage.** An inbound message that assigns
   you a *new* issue ID ("also do #N", "pick up #N when you're done") is a
   reassignment, not a redirect, and it's out of scope for a leaf — everything

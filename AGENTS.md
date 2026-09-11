@@ -126,8 +126,8 @@ fast and legibly. Two lists:
   up as a recurring prompt.
 - **`deny`** — the deploy-shaped commands an implementer session must never
   run (`terraform apply`, `gcloud run deploy`, `firebase deploy`), force-push
-  without a lease (`--force` / `-f`; `--force-with-lease` still prompts
-  normally), and writes under `~/.config`. A match is refused with "denied by
+  without a lease (`--force` / `-f` / `--mirror` / a `+refspec`;
+  `--force-with-lease` still prompts normally), and writes under `~/.config`. A match is refused with "denied by
   your permission settings" instead of a prompt nobody can answer, so a
   drifting session stops there; the `implementer` role charter says what to do
   on that signal. Keep this list identical to the one in the `toolbox` repo.
@@ -144,7 +144,9 @@ Rule shapes, verified against the permissions doc on Claude Code 2.1.269:
   `git push …` and `git * push …` pairs so a global option before the
   subcommand (`git -C <dir> push --force`) is caught as well, and
   `git push * +*` catches the leading-`+` refspec form (`git push origin
-  +HEAD:main`), which is an unleased force-push with no flag.
+  +HEAD:main`), which is an unleased force-push with no flag; `--mirror`
+  (force-updates and deletes remote refs wholesale) gets the same six
+  spellings as `--force`.
 - Path rules are `Edit(...)`, never `Write(...)`: Claude Code consults only
   `Edit`/`Read` path rules and ignores a `Write` one (with a startup warning).
   `Edit(~/.config/**)` covers the Edit and Write tools and `> ~/.config/…`
@@ -166,8 +168,10 @@ accepted the trust dialog, and any launcher that trusts the folder.
 `.github/scripts/probe-permissions` verifies a settings file end to end (it
 drives a headless `claude -p`, so it is a manual check, not CI): each probe
 reports whether the command **ran**, hit the **ask** prompt, or was **denied**
-by a rule. It passes the file with `--settings`, which is honored regardless of
-trust, so it tests the rules as written. Run it after editing either list.
+by a rule, keyed on the run's structured `permission_denials` (never on the
+command's own output) and only when that call was the run's single tool call.
+It passes the file with `--settings`, which is honored regardless of trust, so
+it tests the rules as written. Run it after editing either list.
 
 ## Shell: zsh special parameters
 

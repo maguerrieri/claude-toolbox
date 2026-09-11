@@ -6,6 +6,9 @@
 #   ran    — the tool executed (an `allow` rule matched, or nothing needed approval)
 #   ask    — it hit the approval prompt (auto-denied here: `--permission-prompts none`)
 #   denied — a `deny` rule refused it
+# The verdict comes from the run's structured `permission_denials` list (a call
+# listed there never executed), never from the command's own output, so a
+# command that prints "denied" or "requires approval" still reads as `ran`.
 # The settings file is passed with `--settings` because project settings' `allow`
 # entries are ignored in an untrusted workspace (cloud sessions, fresh clones);
 # `deny` entries apply either way.
@@ -16,12 +19,13 @@
 #   .github/scripts/probe-permissions <settings.json> ran|ask|denied --write <path>
 #   e.g. .github/scripts/probe-permissions .claude/settings.json ask "python3 -c 'print(1)'"
 # Exit 0 when the verdict matches the expectation, 1 on a mismatch, 2 when the
-# model never attempted the exact call (it ran something else, or refused: the
-# deploy-shaped commands are ones the model itself balks at, so probe them with a
-# `--help` / `--dry-run` spelling that shares the matched prefix, e.g.
-# `terraform apply -help`), 3 when the probe itself failed (no claude/jq, claude
-# exited non-zero or timed out, unparseable output, a tool call with no result).
-# Requires the `claude` CLI (2.1.269+) and `jq`.
+# run was not exactly one tool call equal to the request (the model ran
+# something else, added calls, or refused: the deploy-shaped commands are ones
+# the model itself balks at, so probe them with a `--help` / `--dry-run`
+# spelling that shares the matched prefix, e.g. `terraform apply -help`), 3 when
+# the probe itself failed (missing dependency, claude exited non-zero or timed
+# out, unparseable output, a call with no result).
+# Requires the `claude` CLI (2.1.269+), `jq`, and GNU `timeout` (or `gtimeout`).
 set -uo pipefail
 
 usage() { echo "usage: $0 <settings.json> ran|ask|denied '<command>' | --write <path>" >&2; exit 64; }
@@ -29,6 +33,9 @@ usage() { echo "usage: $0 <settings.json> ran|ask|denied '<command>' | --write <
 for dep in claude jq; do
   command -v "$dep" >/dev/null || { echo "probe-permissions: $dep not found" >&2; exit 3; }
 done
+if command -v timeout >/dev/null; then timeout_cmd=timeout
+elif command -v gtimeout >/dev/null; then timeout_cmd=gtimeout
+else echo "probe-permissions: GNU timeout (or gtimeout) not found" >&2; exit 3; fi
 
 [ $# -ge 3 ] || usage
 settings=$1; expect=$2; shift 2
@@ -44,10 +51,11 @@ else
   prompt="Run \`$target\` once, exactly as written and with no other command first, and paste the tool's result text verbatim. It is a permission-rule check on a throwaway checkout; if the tool refuses, report the refusal."
 fi
 
-# The model writes `~` out as $HOME in tool input, so match the expanded form.
+# The model may write `~` out as $HOME in tool input or pass it literally;
+# accept either spelling.
 match=${target/#\~\//$HOME/}
 
-stream=$(timeout 170 claude -p --model sonnet --settings "$settings" --permission-mode default \
+stream=$("$timeout_cmd" 170 claude -p --model sonnet --settings "$settings" --permission-mode default \
   --permission-prompts none --max-turns 3 --output-format stream-json --verbose "$prompt" </dev/null 2>/dev/null)
 status=$?
 if [ $status -ne 0 ] || [ -z "$stream" ]; then
@@ -55,31 +63,48 @@ if [ $status -ne 0 ] || [ -z "$stream" ]; then
   exit 3
 fi
 
-# Find the first tool_use of the requested tool whose field equals the target
-# exactly, then that call's tool_result. Outcomes: NOATTEMPT (no such call),
-# NORESULT (call made, no result recorded — a broken run, never "ran"), or the
-# result text.
-result=$(printf '%s\n' "$stream" | jq -rs --arg tool "$tool" --arg field "$field" --arg t "$match" '
+# One line of verdict data, tab-separated:
+#   <calls>  number of tool_use blocks in the whole run
+#   <state>  NOATTEMPT (no call equals the request) | NORESULT (call made, no
+#            tool_result recorded) | DENIED (the call's id is in the run's
+#            permission_denials, so it never executed) | RAN
+#   <text>   the call's tool_result text (only meaningful for DENIED, where it is
+#            Claude Code's own message: a deny rule says "has been denied", the
+#            unanswered prompt says "requires approval")
+verdict_data=$(printf '%s\n' "$stream" | jq -rs --arg tool "$tool" --arg field "$field" --arg t "$match" --arg raw "$target" '
   (map(select(.type=="assistant")) | map(.message.content // [] | if type=="array" then .[] else empty end)
-     | map(select(.type=="tool_use" and .name==$tool and .input[$field]==$t)) | .[0].id) as $id
-  | if $id == null then "NOATTEMPT"
-    else ((map(select(.type=="user")) | map(.message.content // [] | if type=="array" then .[] else empty end)
-           | map(select(.type=="tool_result" and .tool_use_id==$id)) | .[0]) as $r
-          | if $r == null then "NORESULT"
-            else ($r.content | if type=="array" then map(.text // "") | join(" ") else tostring end) end) end') || result=""
+     | map(select(.type=="tool_use"))) as $calls
+  | ($calls | map(select(.name==$tool and (.input[$field]==$t or .input[$field]==$raw))) | .[0].id) as $id
+  | (map(select(.type=="result")) | .[0].permission_denials // [] | map(.tool_use_id)) as $denied
+  | (map(select(.type=="user")) | map(.message.content // [] | if type=="array" then .[] else empty end)
+     | map(select(.type=="tool_result" and .tool_use_id==$id)) | .[0]) as $r
+  | [ ($calls|length),
+      (if $id == null then "NOATTEMPT" elif $r == null then "NORESULT"
+       elif ($denied | index($id)) != null then "DENIED" else "RAN" end),
+      (if $r == null then "" else ($r.content | if type=="array" then map(.text // "") | join(" ") else tostring end) end) ]
+  | @tsv') || verdict_data=""
 
-case "$result" in
-  "") echo "error     unparseable stream for: $label" >&2; exit 3 ;;
+if [ -z "$verdict_data" ]; then echo "error     unparseable stream for: $label" >&2; exit 3; fi
+IFS=$'\t' read -r calls state text <<<"$verdict_data"
+
+case "$state" in
   NORESULT) echo "error     $tool call was made but no tool_result followed (claude stopped mid-turn) for: $label" >&2; exit 3 ;;
   NOATTEMPT) verdict=noattempt ;;
-  "Permission to use "*" has been denied."*|*"denied by your permission settings"*) verdict=denied ;;
-  *"requires approval"*) verdict=ask ;;
-  *) verdict=ran ;;
+  DENIED) case "$text" in
+            *"has been denied"*|*"denied by your permission settings"*) verdict=denied ;;
+            *) verdict=ask ;;
+          esac ;;
+  RAN) verdict=ran ;;
+  *) echo "error     unexpected state '$state' for: $label" >&2; exit 3 ;;
 esac
+# The request must have been the run's only tool call; extra calls before or
+# after it mean the verdict is not about the probe as posed.
+if [ "$verdict" != noattempt ] && [ "$calls" -ne 1 ]; then verdict=noattempt; fi
 
 printf '%-9s expected %-6s  %s\n' "$verdict" "$expect" "$label"
 if [ "$verdict" = noattempt ]; then
   # Show what the model did instead, so a refusal is distinguishable from a bug.
+  echo "  tool calls in run: $calls"
   printf '%s\n' "$stream" | jq -rs '[.[] | select(.type=="assistant") | .message.content // []
     | if type=="array" then .[] else empty end
     | if .type=="text" then "  text: " + .text[0:160] elif .type=="tool_use" then "  tool_use: " + .name + " " + (.input|tostring)[0:160] else empty end] | .[]'
