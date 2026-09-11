@@ -52,9 +52,10 @@ Pairs with the ticket workflow above.
 
 `.claude/settings.json` registers this repo's own marketplace **over GitHub**
 (`extraKnownMarketplaces.maguerrieri-toolbox` → `maguerrieri/claude-toolbox`) and
-enables `defaults@maguerrieri-toolbox`, so a fresh clone or cloud session that
-trusts the folder gets `/make-ticket`, `/start-ticket`, `/spawn`, etc. with no
-manual `/plugin` step. Two caveats:
+enables `defaults@maguerrieri-toolbox` **plus each of its five dependencies by
+name**, so an interactive session that trusts the folder gets `/make-ticket`,
+`/start-ticket`, `/spawn`, etc. with no manual `/plugin` step. Caveats, all
+verified on Claude Code 2.1.268:
 
 - **Sessions load `main`, not the working tree.** The plugins arrive as last
   pushed to `main` and version-bumped (see Releasing below); edits on a branch or
@@ -64,13 +65,30 @@ manual `/plugin` step. Two caveats:
   `directory` source with a relative path is stored literally and then fails with
   "not found in marketplace" (anthropics/claude-code#23978), and an absolute path
   isn't portable.
-- **Headless sessions register the marketplace but don't install the plugins.**
-  Verified on Claude Code 2.1.268 with `claude -p`: the settings clone the
-  marketplace, then the loader reports `Plugin "defaults" not cached … run
-  /plugin to refresh` — the same as for the `superpowers` entry, and the same
-  whether `defaults` or the six plugins are listed individually. The install
-  happens on the interactive trust prompt, or by hand:
-  `claude plugin install defaults@maguerrieri-toolbox`.
+- **Keep the dependencies listed next to `defaults`.** The install that project
+  settings trigger caches `defaults` but does not resolve its `dependencies`, so
+  `defaults` alone ends up disabled (`dependency-unsatisfied`) and zero commands
+  load. With the five listed explicitly, all six enable and the nine plugin
+  commands load. A new plugin added to `defaults`' dependencies must therefore
+  also be added here (and to the README snippet). `claude plugin install
+  defaults@maguerrieri-toolbox` *does* resolve dependencies; only the
+  settings-triggered path doesn't.
+- **Headless sessions register the marketplace but install nothing.** With
+  `claude -p` (and so the SDK), the settings clone the marketplace, then the
+  loader reports every enabled plugin as `plugin-cache-miss` — `defaults` and
+  the individually listed plugins alike, and the same for the `superpowers`
+  entry. Interactive terminal sessions and `claude --bg` do install them.
+- **Cloud sessions (Claude Code on the web) get nothing from these settings.**
+  Two throwaway cloud sessions on this branch ended with only
+  `claude-plugins-official` in `known_marketplaces.json` and no plugins
+  installed: the container never trusts the folder, so the project-level
+  `extraKnownMarketplaces` isn't registered at all, and the headless install
+  wouldn't install the plugins anyway (previous bullet). Until that changes, a
+  cloud session reads the skill files by hand, and a child launched with a
+  leading `/start-ticket` is rejected (`plugins/spawn/skills/spawn/backends/cloud.md`).
+  The workaround lives in the cloud environment's setup script, not in this repo:
+  `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
+  (that path does resolve dependencies).
 
 ## Shell: zsh special parameters
 

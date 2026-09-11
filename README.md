@@ -49,17 +49,27 @@ Per repo, in `.claude/settings.json`:
     }
   },
   "enabledPlugins": {
-    "defaults@maguerrieri-toolbox": true
+    "defaults@maguerrieri-toolbox": true,
+    "conventions@maguerrieri-toolbox": true,
+    "spawn@maguerrieri-toolbox": true,
+    "generate@maguerrieri-toolbox": true,
+    "ticket-workflow@maguerrieri-toolbox": true,
+    "yaml@maguerrieri-toolbox": true
   }
 }
 ```
 
-Enabling `defaults` auto-installs and enables its dependencies, so the
-settings file stays one line no matter how many plugins land here. To pick
-plugins à la carte instead, enable them individually
-(`"conventions@maguerrieri-toolbox": true`).
+List the dependencies out, not just `defaults`: the install that project
+settings trigger on trust caches `defaults` but does not resolve its
+`dependencies`, so on its own it ends up disabled (`dependency-unsatisfied`)
+and nothing loads (verified on Claude Code 2.1.268). Drop what you don't want
+for an à la carte pick. Headless sessions (`claude -p`, the SDK) register the
+marketplace but install nothing from `enabledPlugins`; see the repo's
+`AGENTS.md` for the details.
 
-Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`.
+Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
+— that path does resolve `defaults`' dependencies, so one install pulls in
+every plugin above.
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these
