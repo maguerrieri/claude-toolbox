@@ -489,10 +489,13 @@ per-class network difference today, so two environments suffice.
 
 **2d. Identity.** Verified against the docs: on Anthropic-hosted sessions the
 git proxy authenticates *ordinary user sessions* as the session creator, and
-*bot and agent sessions* (routines, Auto-fix, Claude Tag) with the GitHub App
-installation token — those are the PRs that appear as `claude[bot]`. The
-identity is not selectable per session on a personal plan, and per-session
-minted tokens exist only in self-hosted environments (Team/Enterprise).
+*bot and agent sessions* (Auto-fix, Claude Tag) with the GitHub App
+installation token. **Routines are not a bot path**: the routines page
+states that "commits and pull requests carry your GitHub user", so a
+routine-launched implementer produces a user-authored PR just like an
+ordinary session. The identity is not selectable per session on a personal
+plan, and per-session minted tokens exist only in self-hosted environments
+(Team/Enterprise).
 
 **Observed on this PR (2026-09-11, ordinary user session on the personal
 account):** commit attribution and PR authorship are *separate*. The
@@ -514,30 +517,42 @@ pushing actor is the user too. Therefore:
    commit signatures already carry the bot identity.
 2. The "distinct author" the review ruleset needs is a distinct **PR
    author**; `claude[bot]` commits on a user-opened PR do not count.
-3. The spike (item 8) is now narrower: confirm which launch paths (routine,
-   Auto-fix, Claude Tag, `--cloud` from a bundle, and the Claude Code
-   GitHub Action) open the *PR* as `claude[bot]`, whether that PR can be
-   approved by the user, and whether one of them can be the standard
-   implementer launcher for that reason. The Action is the best-documented
-   candidate: by default it authenticates with its own App token via OIDC,
-   and its FAQ states that comments — and, with `pull-requests: write`, the
-   PRs it opens — appear as `claude[bot]`, while supplying a `github_token`
-   switches everything to that token's identity. An **unverified**
-   community report (r/ClaudeWorkflows, "Enforcing GitHub PR Approval for
-   Claude Code: Using the Claude GitHub App for Bot-Authored PRs" — a
-   bot-generated post from a workflow database, no discussion, so it
-   counts as a claim rather than evidence) describes the same shape:
-   install the App, require a review on the production branch, trigger
-   work with an `@claude` mention on an issue or PR comment, get a PR
-   authored by `claude[bot]`, approve and merge it as the user. It also
-   names the cost: work moves from an interactive terminal session to
-   GitHub comments, which for unattended implementer launches is
-   acceptable. Nothing here is confirmed until the spike reproduces it on
-   this account: the spike's leading hypothesis is "implementers launch
-   via the App path; the user approves", and its exit criterion is an
-   actual `claude[bot]`-authored PR on one of these repos that the user
-   can approve while `main-review` is on. Record commit-author,
-   PR-author, and pushing-actor for each path in the spec.
+3. The spike (item 8) is now narrower: confirm which launch paths (the
+   Claude Code GitHub Action, Auto-fix, Claude Tag, `--cloud` from a
+   bundle; routines are excluded by the doc statement above) open the
+   *PR* as `claude[bot]`, whether that PR can be approved by the user, and
+   whether one of them can be the standard implementer launcher for that
+   reason. The Action is the only documented candidate: by default it
+   authenticates with its own App token via OIDC, and its docs state that
+   it "operates as `claude[bot]`" — comments and, with `pull-requests:
+   write`, the PRs it opens — while supplying a `github_token` switches
+   everything to that token's identity. It does **not** require a human
+   to tag anything: besides the interactive `@claude` mention it has an
+   automation mode where a `prompt` input runs on `workflow_dispatch`,
+   `repository_dispatch`, `issues: labeled` (`label_trigger`), or
+   `assignee_trigger`. So the existing `spawn` mechanism keeps its
+   interface and gains a third backend, `action`, which fires
+   `repository_dispatch` with `{issue, briefing, tier}` as the client
+   payload and lets the Action open the PR. Two costs to weigh in the
+   spike: the Action runs on a GitHub-hosted runner, not a cloud
+   environment, so 2b's setup script, cache, and environment network
+   policy do not apply (the runner's egress and the `factory-*`
+   deployment environments do), and it authenticates to Anthropic with an
+   API key in Actions secrets rather than the subscription. An
+   **unverified** community report (r/ClaudeWorkflows, "Enforcing GitHub
+   PR Approval for Claude Code: Using the Claude GitHub App for
+   Bot-Authored PRs" — a bot-generated post from a workflow database, no
+   discussion, so it counts as a claim rather than evidence) describes the
+   interactive shape: install the App, require a review on the production
+   branch, trigger work with an `@claude` mention, get a PR authored by
+   `claude[bot]`, approve and merge it as the user. Nothing here is
+   confirmed until the spike reproduces it on this account: the leading
+   hypothesis is "implementers launch via the Action backend; the user
+   approves", and the exit criterion is an actual `claude[bot]`-authored
+   PR on one of these repos, opened from a `repository_dispatch` with no
+   human tagging, that the user can approve while `main-review` is on.
+   Record commit-author, PR-author, and pushing-actor for each path in
+   the spec.
 4. **Team-account option:** a self-hosted environment with a wrapper script
    that mints a short-lived, least-scoped GitHub App installation token per
    session (`--capacity 1`, ephemeral container). This is the cleanest least-
@@ -1008,7 +1023,8 @@ must cite both numbers and the independent signal the new class relies on
 | 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
-| 8 | Spike: which launch paths yield `claude[bot]` on the personal account | 2d | — |
+| 8 | Spike: which launch paths yield a `claude[bot]`-authored PR on the personal account; exit criterion is a PR opened by the Action from `repository_dispatch` that the user can approve | 2d | — |
+| 8b | `spawn` backend `action`: fire `repository_dispatch` with `{issue, briefing, tier}`; a `factory-implement` workflow running the Claude Code Action in automation mode, leading the prompt with the START skill read | 2d | 8 |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`, verified by workflow path + `pull_request_target` event) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 3, 4 |
 | 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; resolves `workflow_run` targets from a `factory-target.json` artifact; sweep merges as a matrix); `ci-gate` as a `workflow_run`-driven aggregator with revert-marker validation and `factory/revert-of` snapshot; `inert-paths` composite action pinned by SHA | 3b | 1, 2, 3, 4, 10 |
