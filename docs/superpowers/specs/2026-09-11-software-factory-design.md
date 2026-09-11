@@ -48,8 +48,11 @@ sessions with a bounded blast radius.
   So: keep them few (one per **execution tier** — implementer vs. coordinator,
   not one per risk class; the risk→tier mapping is in 2c), make each a thin
   pointer, and put everything else in the repo.
-- **First auto-merge class is docs-only** (diff touches only `*.md` and
-  `docs/**`).
+- **First auto-merge class is docs-only**, defined precisely by the
+  two-stage path check in 3b (allow `docs/**`, `**/README.md`,
+  `**/CHANGELOG.md`; then deny instruction, plugin, workflow, and spec
+  paths at any depth). "Docs-only" in this document always means that
+  check, never "any Markdown".
 - **No plugin behavior changes ride in this spec's PR.** Each child issue bumps
   the plugin it touches (the `plugin versions` CI check enforces it).
 
@@ -83,13 +86,19 @@ Required keys: `schema`, `tests`, `docs`, `context_reads`, `session`, `role`,
 `wall_clock_min`. `schema` must equal exactly `ticket-workflow/evidence/1`;
 any other value, including a newer version the checker doesn't know, is
 rejected (the checker carries the list of versions it supports). Types and
-constraints, enforced by the checker: `tests`, `docs`, `session`, `role` are
-non-empty strings; `tests` and `docs` must not match the placeholder set
-(`TODO`, `TBD`, `<…>`, `n/a` without a reason); `role` is one of `planner`,
+constraints, enforced by the checker, are **structural**: `tests` and `docs`
+are non-empty strings not matching the placeholder set (`TODO`, `TBD`,
+`<…>`, `n/a` without a reason); `session` matches
+`^(cse_[A-Za-z0-9]+|session_[A-Za-z0-9]+|local)$` (the example's `…` is
+elided for the spec, not a valid value); `role` is one of `planner`,
 `epic-coordinator`, `implementer`; `context_reads` is a non-empty JSON array
-of non-empty strings; `wall_clock_min` is a string matching `^[0-9]+$`
-(non-negative integer, no sign, no decimals) so 3c can parse it. `critic` is
-added in rung 3 and, when present, is one of `ran`, `not run`. Exactly one
+of repo-relative paths **each of which exists in the PR's head tree**
+(checked via the API, so an invented path fails); `wall_clock_min` is a
+string matching `^[0-9]+$` (non-negative integer, no sign, no decimals) so
+3c can parse it. `critic` is added in rung 3 and, when present, is one of
+`ran`, `not run`. The checker validates shape and format only; it cannot
+tell whether `tests` describes what actually ran, which is exactly why no
+gate trusts the block for state (1b, 3b). Exactly one
 `## Evidence` block per PR; duplicates fail.
 
 **Tracker scope.** Rungs 1–3 are specified for `Tracker: github` only: the
@@ -101,14 +110,22 @@ Step 0 refuses `/finish-ticket` with the new gate on a non-GitHub tracker
 rather than silently skipping it.
 
 **1b. Machine-checked FINISH gate.** FINISH Step 1 gains
-`plugins/ticket-workflow/scripts/check-evidence.sh <pr> <issue>` (same idiom
-as `.github/scripts/check-plugin-versions`). FINISH passes the issue ID it was
-invoked with; "the linked issue" is never inferred from the PR, because a PR
-can reference several. It fails (exit non-zero) when any of these holds, each
-checked against the **current head**, not the body:
+`plugins/ticket-workflow/scripts/check-evidence.sh <pr> <issue>
+[--confirm-high]` (same idiom as `.github/scripts/check-plugin-versions`).
+FINISH passes the issue ID it was invoked with; "the linked issue" is never
+inferred from the PR, because a PR can reference several. The
+`--confirm-high` flag is the explicit wrapper-to-checker handoff for rule 5:
+the `/finish-ticket` command forwards it to the script **only** when it
+appeared literally in the command's own arguments; no environment variable
+or implicit state is consulted, and the automated entry points in rule 5
+refuse the flag before any script runs, so an automated caller has no path
+to pass it. Every API read below is **fully paginated**. It fails (exit
+non-zero) when any of these holds, each checked against the **current
+head**, not the body:
 
-1. `gh pr checks <pr>` reports any non-success check on the head SHA — *all*
-   checks, not only required ones; 3b applies the identical rule;
+1. the set of check runs on the head SHA is **empty**, or any of them is not
+   `success` — *all* checks, not only required ones, and "all green" is
+   never satisfied vacuously; 3b applies the identical rule;
 2. the paginated `reviewThreads` GraphQL query (the one `REVIEW_BOT` already
    uses) returns any unresolved thread;
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
@@ -141,10 +158,13 @@ non-numeric `wall_clock_min`, `/spawn-epic … --confirm-high` refused.
 **1c. Risk label on tickets.** `/make-ticket` accepts
 `--risk docs|low|normal|high`, **defaulting to `normal`** when omitted so a
 new ticket can always reach FINISH; the GitHub tracker adapter applies a
-`risk:<class>` label. Legacy open issues are backfilled once with
-`risk:normal` in the same manual step that provisions the labels (item 3), so
-the gate in 1b never strands an existing ticket; a closed issue is never
-touched. On these personal repos every collaborator is a trusted actor, so
+`risk:<class>` label. Legacy open issues are backfilled once in the same
+manual step that provisions the labels (item 3), so the gate in 1b never
+strands an existing ticket: the backfill adds `risk:normal` **only to open
+issues that carry no `risk:*` label at all**, leaves issues with exactly one
+known class untouched, and prints (never edits) any issue that already has
+two risk labels or an unknown `risk:` name for manual remediation. A closed
+issue is never touched. On these personal repos every collaborator is a trusted actor, so
 label edits are trusted operations; the gate's "exactly one label" rule is
 what turns an accidental second label into a stop rather than a downgrade. Today the adapter's `--label` is best-effort (retries
 without the label if it doesn't exist), which would silently drop the class.
@@ -287,18 +307,27 @@ as the `CLOUDSDK` env unset).
 the GUI-side script or allowlist changes, or after ~7 days; a commit to
 `cloud-setup.sh` on `main` does not invalidate it. Mitigations, all recorded
 in the work item: (i) `cloud-setup.sh` is idempotent and re-runnable; (ii)
-the SessionStart hook's `--verify` mode makes staleness loud (`SETUP STALE`)
-so it is never silent — with the caveat above that a hook cannot block a
-session; (iii) the one manual step after a `cloud-setup.sh` change is
-bumping the `(v1)` comment in the GUI script, which forces a rebuild. If the
+at setup, `cloud-setup.sh` records the SHA-256 of itself and of the
+environment's allowlist declaration (a committed `.claude/cloud-allowlist`
+file that mirrors the GUI setting) into the snapshot; the SessionStart
+hook's `--verify` mode recomputes both from a fresh `origin/main` and
+compares, so a forgotten `(v1)` bump is caught by content, not by the
+operator's memory — it makes staleness loud (`SETUP STALE`) but, per the
+caveat above, a hook cannot block a session; (iii) the one manual step
+after a `cloud-setup.sh` or allowlist change is bumping the `(v1)` comment
+in the GUI script, which forces a rebuild. If the
 Team account is used later, the same two definitions become
 organization-shared environments; nothing else changes.
 
 **2c. Environment selection in-repo.** Two mechanisms, because two launchers
 exist:
 
-- `claude --cloud` from a terminal reads `remote.defaultEnvironmentId`; commit
-  it in each repo's project settings pointing at `factory-implementer`.
+- `claude --cloud` from a terminal reads `remote.defaultEnvironmentId`. It
+  is **not** committed to the repo: project settings come from the checked-
+  out branch, so a PR could redirect a hand-launched session into a
+  different environment. It stays in the user's own settings (set once with
+  `/remote-env`, pointing at `factory-implementer`), which no branch can
+  edit. The repo carries only documentation of which environment to pick.
 - The `spawn` cloud backend today omits `environment_id` (inherits the
   parent's). It gains an explicit `environment_id`, but the value is
   **never taken from a briefing or from the checked-out tree**: briefings are
@@ -307,7 +336,10 @@ exist:
   `AGENTS.md` config block (the same block that carries `Tracker:` /
   `Profile:`) gains two lines, `Implementer environment: env_…` and
   `Coordinator environment: env_…`, and the launcher reads them from
-  **`origin/main`** (`git show origin/main:AGENTS.md`). A new `Environment:
+  **`origin/main`**, fetched immediately before parsing (`git fetch origin
+  main && git show origin/main:AGENTS.md`) so a long-lived coordinator never
+  launches children from a stale remote-tracking ref after `main` rotates
+  an ID. A new `Environment:
   implementer|coordinator` briefing directive selects *which of the two*
   to use and nothing else; a directive naming a raw ID or any other value
   refuses the launch. ticket-workflow's SPAWN Step 3 emits `Environment:
@@ -367,19 +399,35 @@ merge workflow in 3b: triggered on `pull_request_target` **restricted to
 otherwise load whatever YAML that unprotected base carries), **no checkout**,
 diff fetched through the API, and a `factory/critic` check run posted with
 the job's `GITHUB_TOKEN` (`checks: write`). The Anthropic key it uses lives
-in the `factory-merge` deployment environment (3b), not in repository
-secrets, so no other workflow can read it.
+in its **own** deployment environment, `factory-critic` (branch rule:
+`main` only), separate from the merge App's `factory-merge` environment, so
+each job holds exactly one credential and the critic never sees the merge
+key. Like the merge workflow, it is split into a **secretless `resolve`
+job** that rejects fork heads and non-`main` bases before anything else,
+and a `review` job that declares the environment and runs only when
+`resolve` reports eligible — so a fork PR can neither spend the Anthropic
+budget nor reach the key.
 
-The diff is untrusted input handed to a model that holds credentials, so the
-review step is sandboxed: `claude -p` runs with **tools and network
-disabled** (`--tools ""`, no MCP, `--disallowedTools` for everything, and the
-job's egress limited to `api.anthropic.com`), the diff is passed wrapped in a
-delimited data block with an instruction that its contents are to be
-reviewed, never followed, and the job posts `success` **only** after parsing
-a structured verdict (`{"verdict": "pass" | "fail", "findings": [...]}`)
-that the model must emit as its entire output; unparseable or absent output
-posts `failure`. A prompt-injection string in the diff therefore has no
-tools to reach for and cannot forge a pass by free text.
+The diff is untrusted input handed to a model that holds a credential, so
+the review is sandboxed per step: `claude -p` runs with **tools disabled**
+(`--tools ""`, no MCP, `--disallowedTools` for everything) inside a step
+whose network is restricted to `api.anthropic.com` (the API steps that
+fetch the diff and post the check run run separately with `api.github.com`
+allowed; the job as a whole allows only those two hosts). The diff is passed
+wrapped in a delimited data block with an instruction that its contents are
+to be reviewed, never followed, and the job posts `success` **only** after
+parsing a structured verdict `{"verdict": "pass" | "fail", "findings":
+[...]}` that the model must emit as its entire output and that satisfies the
+consistency rule: `pass` requires `findings` to be empty; a `pass` with any
+finding, a `fail`, unparseable output, or no output all post `failure`.
+
+The sandbox removes the model's ability to *act*; it cannot make the model
+immune to being talked into a `pass`. So the critic is **defense in depth,
+never the sole gate** for any auto-merge class: a forged pass reduces 3b to
+its other predicates (docs-only paths, all CI green, no unresolved threads,
+one risk label, opt-in label), which is the class's baseline protection.
+No class is ever defined as "critic says pass" alone; widening a class in
+rung 4 must name the independent signal that class relies on.
 
 Gates verify the check run's `app.slug == github-actions` *and* that it
 belongs to the `factory-critic` workflow (`check_suite` → workflow name) on
@@ -431,9 +479,15 @@ must hold for one captured head SHA:
   file, so a nested one changes behavior for future documentation work. The
   deny list is a single shared file consumed by both 1b's tests and the
   workflow, so the two cannot drift;
-- CI: **all** checks on the head SHA are `success` — the same rule as 1b
-  item 1, not "required checks only", so a PR FINISH would stop on cannot
-  merge here;
+- draft: `draft == false` — FINISH treats `isDraft` as a hold and the
+  workflow must not be a way around it;
+- CI: the set of check runs on the head SHA, **excluding only this
+  workflow's own run identified by its immutable `run_id`** (never by
+  check name, which a PR-triggered workflow could mimic), is **non-empty and
+  every member is `success`** — the same rule as 1b item 1, not "required
+  checks only" and never vacuous, so a PR FINISH would stop on cannot merge
+  here and a label event that arrives before CI has posted anything cannot
+  merge either;
 - threads: the same paginated unresolved-thread query as 1b returns none —
   re-run here because the App bypasses `main-review`, so a thread opened
   after FINISH labeled the PR would otherwise not block;
@@ -452,7 +506,16 @@ through the existing EPIC Step 7 / routine paths, which already handle
 cloud-child branches. The label is provisioned with the `risk:*` labels
 (item 3) and a failed label operation is a hard error, never a silent skip.
 
-*Merge path.* A `docs-auto-merge` GitHub Actions workflow. Its trust model:
+*Merge path.* A `docs-auto-merge` GitHub Actions workflow with **two jobs**:
+`resolve`, which holds no secrets and declares no environment, identifies
+the candidate PR and evaluates every predicate above, and emits
+`eligible`, `pr`, and `sha` outputs; and `merge`, which declares
+`environment: factory-merge`, runs only `if: needs.resolve.outputs.eligible
+== 'true'`, and performs the last-instant re-read and the merge call. Since
+environment secrets are exposed when a job *starts*, the split is what makes
+"no secret before the candidate is verified" literally true: an ineligible
+PR, a fork head, or a non-`main` base never starts the job that has the
+key. Its trust model:
 
 - **Trigger: `pull_request_target`** (`types: [labeled, synchronize]`,
   **`branches: [main]`**) plus **`workflow_run`** (`types: [completed]`,
@@ -480,14 +543,19 @@ cloud-child branches. The label is provisioned with the `risk:*` labels
   is present: require `head.repo.full_name == github.repository`. On
   `workflow_run`, the PR is not in the event; resolve it by querying open
   PRs whose `head.sha` equals `workflow_run.head_sha` (and
-  `workflow_run.head_repository.full_name == github.repository`), and apply
-  the same check to what the API returns. The factory never pushes from
-  forks, so this excludes nothing legitimate.
+  `workflow_run.head_repository.full_name == github.repository`), and
+  require **exactly one** open same-repo candidate — zero or several (the
+  same branch opened against two bases, say) fail closed rather than
+  picking one and merging another. The factory never pushes from forks, so
+  this excludes nothing legitimate.
 - **Pinned SHA, then re-validate at the last instant.** The job captures
   `head.sha` once, evaluates every predicate input against that SHA, then
-  **re-reads the mutable inputs** (labels on the PR and issue, the
-  unresolved-thread query, the latest check-run conclusions) immediately
-  before the merge call, and passes the SHA as the merge endpoint's `sha`
+  **re-reads every mutable input** in the `merge` job immediately before the
+  merge call — `base.ref` and `base.repo`, `head.repo`, `draft`, the PR's
+  `closingIssuesReferences` (and from *that* fresh read, the issue's
+  labels), the PR labels, the unresolved-thread query, and the latest
+  check-run conclusions — repeating the full predicate against the fresh
+  values, and passes the SHA as the merge endpoint's `sha`
   parameter. GitHub refuses the merge if the head moved after validation; the
   re-read shrinks the label/check race to the sub-second gap between the
   final read and the merge request. That residual window is **accepted and
@@ -506,7 +574,12 @@ cloud-child branches. The label is provisioned with the `risk:*` labels
   rule allows only `main`, and the merge job declares
   `environment: factory-merge`. A workflow running from any other branch, or
   any other job on `main` that doesn't declare the environment, cannot read
-  it. The critic's Anthropic key lives in the same environment.
+  it. The critic's Anthropic key lives in a **separate** `factory-critic`
+  environment (3a), so neither job ever holds the other's credential.
+  On success, the `merge` job also posts a `factory/merge-record` check run
+  on the merged SHA whose summary carries the validated class, PR, issue,
+  critic run id, and `wall_clock_min` — the immutable snapshot 3c aggregates
+  from.
 
 *Ruleset compatibility.* `main-review` (1d) requires one approving review and
 an Actions job cannot supply one. The `factory-auto-merge` App is added as the
@@ -524,14 +597,24 @@ narrowly scoped App bypass whose predicate is enforced server-side.
 label after a green Step 8 and stops; the workflow decides.
 
 **3c. Metrics.** A weekly routine derives per-risk-class metrics from
-**immutable sources only**: review rounds from the PR's review and commit
-timeline, critic outcomes from `factory/critic` check-run history, reverts
-from `main`'s commit log (a commit whose subject or trailer references a
-merged PR as reverted), and cost from the Evidence block's `wall_clock_min`
-(the one field that is descriptive rather than a trust input). The Evidence
-block is never the source for anything that widens a class. The routine posts
-the table as a comment on the epic. This is the input for widening classes in
-rung 4.
+**immutable sources only**, keyed by the `factory/merge-record` check run
+the merge job posts (3b) — so the class a PR is counted under is the class
+that was validated at merge, and relabeling the issue afterwards cannot move
+it. Review rounds come from the PR's review and commit timeline; critic
+outcomes from `factory/critic` check-run history; cost from the
+`wall_clock_min` value snapshotted into the merge record (the PR body is not
+re-read, so a later body edit cannot rewrite history; the value is
+descriptive, never a trust input). Reverts use an **enforced marker**: a
+revert of a factory merge must land through a PR whose body carries
+`Reverts: #<pr>` (what GitHub's Revert button writes) or whose commits
+carry a `Reverts: #<pr>` trailer, and the `main-integrity` ruleset's
+required-PR rule means no revert reaches `main` outside a PR. The routine
+additionally scans `main` for commits whose subject starts with `Revert "`
+and that carry **no** marker; any such commit is reported as
+*unattributed*, and while an unattributed revert exists in the window the
+routine reports **detection incomplete** and rung 4 does not widen any
+class. The routine posts the table as a comment on the epic. This is the
+input for widening classes in rung 4.
 
 ### Rung 4 — Spec-driven planning
 
@@ -550,13 +633,13 @@ zero reverts over a window the user chooses.
 | 4 | Rulesets `main-integrity` and `agent-branches` on both repos; record JSON in this spec | 1d | — |
 | 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed and in use | 1d | 8 |
 | 5 | Repo `permissions` blocks | 2a | — |
-| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + `--verify` as drift nudges); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; `remote.defaultEnvironmentId` | 2b, 2c | 5 |
+| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; two environments; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | `--confirm-high` on FINISH; hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
 | 8 | Spike: which launch paths yield `claude[bot]` on the personal account | 2d | — |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
-| 10 | `factory-critic` workflow (`pull_request_target` on `main` only, no checkout, sandboxed `claude -p` with structured verdict, posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test | 3a | 2 |
-| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (`pull_request_target` on `main` + `workflow_run` completion, no checkout, same-repo, pinned SHA with last-instant re-read, paginated two-stage path check incl. renames and depth-agnostic instruction-file denies, all checks green, no unresolved threads, `base == main`, opt-in label) | 3b | 3, 4, 10 |
+| 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; per-step network sandbox; structured verdict with pass⇒no findings; posts `factory/critic`) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test | 3a | 2 |
+| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty all-green checks excluding own `run_id`; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/merge-record`) | 3b | 3, 4, 10 |
 | 12 | Metrics routine | 3c | 1 |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
 | 14 | *(optional, Team)* self-hosted environment with per-session tokens | 2d | 4 |
@@ -647,6 +730,15 @@ zero reverts over a window the user chooses.
   so a labeled PR that turned green after a push would never re-trigger the
   merge. `workflow_run` on the CI and critic workflows is the supported
   completion mechanism.
+- **Committing `remote.defaultEnvironmentId` to the repo.** Project settings
+  are read from the checked-out branch, so a PR could redirect hand-launched
+  sessions; it lives in user settings via `/remote-env` instead.
+- **One deployment environment for both keys.** Environment protection
+  scopes access to all secrets in the environment, so the critic would hold
+  the merge key; each privileged job gets its own environment.
+- **Treating the critic as a sufficient gate.** A sandboxed model can still
+  be talked into emitting `pass`; the critic is an extra AND-ed predicate on
+  top of the class's independent signals, never the class's definition.
 - **Enabling `main-review` in rung 1 unconditionally.** With PRs authored as
   the user, a solo maintainer cannot approve them, so the rule would block
   the very PRs that build later rungs. It waits on the identity spike.
@@ -704,9 +796,16 @@ zero reverts over a window the user chooses.
   mismatch); a fork head; editing the PR body to add `"critic": "clean"`. A
   PR that rewrites `.github/workflows/docs-auto-merge.yml` runs the *base*
   copy, not its own; a PR targeting `feature-x` with a rewritten workflow on
-  `feature-x` does not trigger it at all (`branches: [main]`). A job on
-  `main` that does not declare `environment: factory-merge` cannot read the
-  App key.
+  `feature-x` does not trigger the `pull_request_target` path (`branches:
+  [main]`), and when its CI completion arrives via `workflow_run` the
+  secretless `resolve` job rejects the non-`main` base and the `merge` job
+  never starts. Two open PRs sharing one head SHA fail closed on
+  `workflow_run`. A draft PR with every other predicate satisfied does not
+  merge. A labeled PR with zero check runs does not merge. A `pass` verdict
+  with one finding posts `failure`. A job on `main` that does not declare
+  `environment: factory-merge` cannot read the App key, and the critic's
+  `review` job cannot read it either. Changing `base.ref` or editing the
+  closing reference between `resolve` and `merge` aborts the merge.
 - Rung 3 completion: a PR that already carries `auto-merge: requested`
   receives a push; the `synchronize` run stops on pending checks; when CI
   and the critic finish, the `workflow_run` invocation merges it with no
