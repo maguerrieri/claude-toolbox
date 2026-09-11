@@ -28,7 +28,15 @@ done
 [ -f "$settings_file" ] || exit 0
 
 # Marketplaces first: github sources carry `repo`, git sources carry `url`.
-jq -r '.extraKnownMarketplaces // {} | to_entries[] | .value.source | (.repo // .url // empty)' "$settings_file" |
+# The official marketplace isn't in extraKnownMarketplaces — Claude Code adds
+# it itself, but asynchronously after this hook has run — so register it here
+# too whenever an enabled plugin comes from it.
+{
+  jq -r '.extraKnownMarketplaces // {} | to_entries[] | .value.source | (.repo // .url // empty)' "$settings_file"
+  if jq -e '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key | endswith("@claude-plugins-official")' "$settings_file" >/dev/null; then
+    echo anthropics/claude-plugins-official
+  fi
+} |
   while read -r source; do
     [ -n "$source" ] || continue
     claude plugin marketplace add "$source" >/dev/null 2>&1 ||
