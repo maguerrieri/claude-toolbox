@@ -48,6 +48,23 @@ marketplace, pinned for this repo in `.claude/settings.json`): brainstorm → de
 spec in `docs/superpowers/specs/` → `writing-plans` → test-driven implementation.
 Pairs with the ticket workflow above.
 
+## Dogfooding our own plugins
+
+`.claude/settings.json` registers this repo's own marketplace **over GitHub**
+(`extraKnownMarketplaces.maguerrieri-toolbox` → `maguerrieri/claude-toolbox`) and
+enables `defaults@maguerrieri-toolbox`, so a fresh clone or cloud session that
+trusts the folder gets `/make-ticket`, `/start-ticket`, `/spawn`, etc. with no
+manual `/plugin` step. Two caveats:
+
+- **Sessions load `main`, not the working tree.** The plugins arrive as last
+  pushed to `main` and version-bumped (see Releasing below); edits on a branch or
+  in an uncommitted working tree are invisible to the session.
+- **Testing unmerged plugin changes still needs `/plugin marketplace add ./` by
+  hand** (or `claude --plugin-dir plugins/<name>`). This can't be checked in: a
+  `directory` source with a relative path is stored literally and then fails with
+  "not found in marketplace" (anthropics/claude-code#23978), and an absolute path
+  isn't portable.
+
 ## Shell: zsh special parameters
 
 Tool commands run under zsh. Do not use `path` as a loop or script variable:
