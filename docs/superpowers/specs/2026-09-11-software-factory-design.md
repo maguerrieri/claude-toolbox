@@ -522,20 +522,22 @@ pushing actor is the user too. Therefore:
    candidate: by default it authenticates with its own App token via OIDC,
    and its FAQ states that comments — and, with `pull-requests: write`, the
    PRs it opens — appear as `claude[bot]`, while supplying a `github_token`
-   switches everything to that token's identity. A community workflow
-   (r/ClaudeWorkflows, "Enforcing GitHub PR Approval for Claude Code:
-   Using the Claude GitHub App for Bot-Authored PRs") confirms this in
-   practice: install the App, require a review on the production branch,
-   trigger work with an `@claude` mention on an issue or PR comment, and
-   the resulting PR is authored by `claude[bot]`, which the user then
-   approves and merges. Its author reports having ruled out plain rulesets
-   and environment required reviewers on Pro/Team for the solo case — the
-   same self-approval problem 1d describes — and names the cost: work
-   moves from an interactive terminal session to GitHub comments. For the
-   factory that trade-off is acceptable for implementer launches (which
-   are unattended anyway), so the spike's leading hypothesis is
-   "implementers launch via the App path; the user approves". Record
-   commit-author, PR-author, and pushing-actor for each path in the spec.
+   switches everything to that token's identity. An **unverified**
+   community report (r/ClaudeWorkflows, "Enforcing GitHub PR Approval for
+   Claude Code: Using the Claude GitHub App for Bot-Authored PRs" — a
+   bot-generated post from a workflow database, no discussion, so it
+   counts as a claim rather than evidence) describes the same shape:
+   install the App, require a review on the production branch, trigger
+   work with an `@claude` mention on an issue or PR comment, get a PR
+   authored by `claude[bot]`, approve and merge it as the user. It also
+   names the cost: work moves from an interactive terminal session to
+   GitHub comments, which for unattended implementer launches is
+   acceptable. Nothing here is confirmed until the spike reproduces it on
+   this account: the spike's leading hypothesis is "implementers launch
+   via the App path; the user approves", and its exit criterion is an
+   actual `claude[bot]`-authored PR on one of these repos that the user
+   can approve while `main-review` is on. Record commit-author,
+   PR-author, and pushing-actor for each path in the spec.
 4. **Team-account option:** a self-hosted environment with a wrapper script
    that mints a short-lived, least-scoped GitHub App installation token per
    session (`--capacity 1`, ephemeral container). This is the cleanest least-
