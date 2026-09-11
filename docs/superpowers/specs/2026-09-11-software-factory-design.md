@@ -760,7 +760,10 @@ filters by account without exposing it. The only account-scoped value is
 `environment_id`: environments are personal to the account that created
 them, so the launcher determines its account by finding which account's
 ID lines in `origin/main`'s AGENTS.md block contain the calling session's
-`environment_id`, and refuses when none does. This supersedes 2c's
+`environment_id`, and refuses unless **exactly one** account matches (zero
+matches, or an ID listed under more than one label, both refuse; the
+negative cases are item 7's tests, since the launcher does not exist
+yet). This supersedes 2c's
 sentence "the calling session's own record names its account" and the
 account-UUID mapping in the AGENTS.md block (the UUID becomes a label; the
 check is environment-ID membership), and item 7's acceptance gains the
@@ -888,8 +891,10 @@ App-on-cloud path wins") applies. 8b changes in four ways:
 *Open questions, scoped to what could not be reached, each closed by one
 step of the runbook:* **M1** pass-through mode honors a caller-supplied
 token (personal account, personal repo); **M2** the pushing actor under
-pass-through with and without `gh auth setup-git`; **M3** whether 2b is revised to allow a Team bearer in an environment
-variable, or Team implementers wait on item 14; **M4** the four App-authored PRs are
+pass-through with and without `gh auth setup-git`; **M3** how Team-account implementers obtain an hour-scoped installation
+token with no broker bearer in the VM: wait for API credentials on Team
+plans, item 14, or an explicit 2b exception naming the *installation
+token* (the broker bearer stays excluded under every option); **M4** the four App-authored PRs are
 approvable by the user under a test `main-review`.
 
 *Manual runbook to complete the matrix (about an hour; everything is
@@ -923,10 +928,13 @@ throwaway).*
    `spike-94-<account>-<owner>`; per the `spawn` skill's
    `backends/cloud.md`) with this briefing: run
    `[ "$GH_TOKEN" = proxy-injected ] && echo injected || echo passthrough`
-   (expect `passthrough`); run
+   (expect `passthrough`; an equality test, which the classifier allowed
+   in this session, unlike a probe that sends the token); run
    `curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer
    bogus' https://api.github.com/user` (**M1: expect 401**; 200 means the
-   proxy still substitutes and the hosted App path is closed); run
+   proxy still substitutes and the hosted App path is closed: **stop the
+   cell there**, before any push or PR, since those would be authored as
+   the user); run
    `gh api /installation/repositories --jq '.repositories[].full_name'`
    (expect only that repo); set `user.email` to
    `<bot-user-id>+<slug>[bot]@users.noreply.github.com`; commit a one-line
@@ -952,7 +960,9 @@ throwaway).*
 6. On each repo, add a test ruleset `main-review` (1 approval, branch
    pattern = that PR's base), approve the PR as the user (**M4**: the
    approval counts), then delete the ruleset, close the PRs, delete the
-   branches, and uninstall and delete the App.
+   branches, **delete every throwaway environment in both accounts** (the
+   stored `GH_TOKEN` stays usable until expiry otherwise), and uninstall
+   and delete the App.
 7. Fill the table above per cell: commit author, PR author, pushing actor
    (both pushes), `environment_id`, and M1's status code.
 
