@@ -24,13 +24,24 @@ gh issue list --search "<query>" --state open --json number,title,url -L 50
 - Returns `(number, title, url)` per hit. The *judgment* — is a hit the same work? — belongs to FILE Step 2, not this op.
 - Errors (network, auth) are **non-fatal** for FILE: report the failure and let Step 2's degrade-to-filing path handle it.
 
-## CREATE(title, body, labels?)  — file a new issue (FILE phase)
+## CREATE(title, body, labels?, required_labels)  — file a new issue (FILE phase)
 ```bash
-gh issue create --title "<title>" --body-file <path>  [--label "<label>"]
+# 1. preflight: every required label must already exist in the repo
+gh label list -R OWNER/REPO --json name -L 200 --jq '.[].name' | grep -Fx -- "<required label>"   # once per required label; any miss → hard error, stop
+# 2. create, with the required label(s) and any best-effort ones
+gh issue create --title "<title>" --body-file <path> --label "<required label>" [--label "<label>"]
 ```
 - Write the body to a temp file and pass `--body-file` — issue bodies are multi-line, quote- and backtick-heavy markdown, and a file sidesteps the brittle shell escaping an inline `--body "…"` would need.
-- `--label` is best-effort: it errors if the label doesn't exist in the repo (`gh` doesn't create labels on the fly) — retry without it rather than failing the CREATE.
-- On success `gh issue create` prints the new issue's URL; the trailing path segment is the number (`…/issues/57` → `57`). Return that number — it's the `<n>` every other op consumes.
+- **`required_labels` is a hard requirement** (FILE Step 3 passes the issue's `risk:<class>` label here — exactly one, always). `gh` never creates labels on the fly, so **preflight** each required name against `gh label list` (`-L` explicit — it defaults to 30 — and `--json name` so a partial match on description can't pass): a required label the repo lacks is a **hard error surfaced to the user** — report the missing name and the fix (`plugins/ticket-workflow/scripts/provision-risk-labels OWNER/REPO`, below), and **do not** create the issue without it, retry without it, or `gh label create` it yourself. If `gh issue create` still fails on a label after the preflight passed, treat it the same way: fail, don't strip. Don't accept a `required_labels` entry that isn't in the repo's known set of risk classes either (`risk:critical` is a hard error, not a new class).
+- `labels` (the optional ones) stay best-effort: `gh issue create` errors if any label doesn't exist — retry with the required labels only, dropping the optional ones, rather than failing the CREATE. Never drop a required label on that retry.
+- On success `gh issue create` prints the new issue's URL; the trailing path segment is the number (`…/issues/57` → `57`). Return that number — it's the `<n>` every other op consumes. Verify the result carries exactly one `risk:*` label (`gh issue view <n> --json labels --jq '[.labels[].name | select(startswith("risk:"))]'`) and report if it doesn't.
+
+## Labels  — repo provisioning the CREATE preflight depends on
+Five labels are expected in every repo the workflow files into: the four risk classes `risk:docs`, `risk:low`, `risk:normal`, `risk:high` (FILE Step 1) and `auto-merge: requested` (the opt-in a `risk:docs` PR carries for unattended merge). Provision them once per repo — and backfill `risk:normal` onto open issues filed before the flag existed — with the plugin's script (idempotent; `--dry-run` to preview, and a second `--dry-run` afterwards is the verification: `remediated 0, flagged 0`):
+```bash
+plugins/ticket-workflow/scripts/provision-risk-labels [--dry-run] OWNER/REPO [OWNER/REPO ...]
+```
+It uses `gh api` when `gh` is on PATH and falls back to `GH_TOKEN`/`GITHUB_TOKEN` over HTTPS (cloud sessions without `gh`). The backfill enumerates open issues with explicit full pagination, adds `risk:normal` **only** to issues with no `risk:*` label at all, leaves exactly-one-known-class issues untouched, never touches closed issues, and *prints* (never edits) any issue with two risk labels or an unknown `risk:` name for manual remediation (exit 1 while any remain). "Exactly one known `risk:*` label per issue" is the invariant the FINISH gate and the merge workflows enforce — an accidental second label is a *stop* there, never a downgrade — so keep label edits to that shape. Without `gh`, the equivalent by hand is `gh label create "<name>"` for each of the five and `gh issue edit <n> --add-label risk:normal` per unlabelled open issue.
 
 ## START(id)  — mark in-progress (optional, light)
 ```bash

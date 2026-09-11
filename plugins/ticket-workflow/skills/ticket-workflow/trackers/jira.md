@@ -26,8 +26,8 @@ own work config, not here.
 - Return `(key, summary, url)` per hit. The *judgment* — is a hit the same work? — belongs to FILE Step 2, not this op.
 - Failures are **non-fatal** for FILE: report and let Step 2's degrade-to-filing path handle it.
 
-## CREATE(title, body, labels?)  — file a new ticket (FILE phase)
-- Preferred: the Jira MCP create-issue tool (e.g. `createJiraIssue`) with the project key, an issue type (default the project's standard task type), summary `<title>`, description `<body>`, and any labels. The **project key** comes from the request, project memory, canonical repo `AGENTS.md`, or compatibility root `CLAUDE.md` / `.claude/CLAUDE.md` fallbacks — if none names one, ask; don't guess a key.
+## CREATE(title, body, labels?, required_labels)  — file a new ticket (FILE phase)
+- Preferred: the Jira MCP create-issue tool (e.g. `createJiraIssue`) with the project key, an issue type (default the project's standard task type), summary `<title>`, description `<body>`, and the labels — `required_labels` (FILE Step 3's `risk:<class>`, always exactly one) plus any optional `labels`. Jira labels are free-form and created on the fly, so a required label can't be "missing" here; the hard-error rule from the GitHub adapter reduces to: never file without the risk label, and fail rather than drop it if the create call rejects labels. Only the GitHub gates read the class today (Jira gate support is a follow-up — `RISK_OF`/`RISK_SET` ops). The **project key** comes from the request, project memory, canonical repo `AGENTS.md`, or compatibility root `CLAUDE.md` / `.claude/CLAUDE.md` fallbacks — if none names one, ask; don't guess a key.
 - If MCP isn't available, use a configured Jira CLI; failing that, ask the user to create the ticket and paste the new key back.
 - Return the new issue **key** (`ABC-57`) — it's the ID every other op consumes.
 
