@@ -30,7 +30,10 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   takes it from open to a reviewed PR and on to merged, with a pluggable
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
   parallel fan-out. Its `scripts/provision-risk-labels` sets up the `risk:*`
-  labels a repo needs and backfills existing open issues.
+  labels a repo needs and backfills existing open issues, and its
+  `scripts/check-evidence.sh <pr> <issue>` is the machine-checked FINISH gate
+  (checks, review threads, closing reference, risk label, high-risk approval,
+  Evidence block — all re-derived from GitHub, never from the PR body).
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
