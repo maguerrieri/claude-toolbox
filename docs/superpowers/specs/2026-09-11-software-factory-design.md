@@ -411,8 +411,8 @@ settled, all consistent with the paragraphs above:
   never listed, and `ci-gate.yml`'s `workflow_run.workflows` names exactly
   the manifest's workflows — so a PR that weakens CI must say so in a
   reviewed diff of `.github/**`, which the docs auto-merge class (3b) denies
-  outright. A trigger construct the evaluator cannot mirror (`types` naming
-  `opened` without `synchronize` or vice versa, `branches` together with
+  outright. A trigger construct the evaluator cannot mirror (`types` neither
+  covering both `opened` and `synchronize` nor limited to `closed`, `branches` together with
   `branches-ignore`, `paths` together with `paths-ignore`, or any key outside
   `types` / `branches` / `branches-ignore` / `paths` / `paths-ignore`) fails
   the gate rather than guessing.
@@ -438,9 +438,14 @@ settled, all consistent with the paragraphs above:
   `success`. A crashed evaluator posts `failure` (the `report` job runs on
   any non-cancelled outcome), and evaluations of one head SHA are serialized
   by a `concurrency` group so a stale verdict can never land after a fresher
-  one. `workflow_dispatch` with a PR number re-evaluates on demand — needed
-  once per PR that *adds* a CI workflow, since `main`'s copy of `ci-gate.yml`
-  does not yet listen for it.
+  one. `workflow_dispatch` with the PR's head SHA re-evaluates on demand —
+  every trigger keys the concurrency group on the same SHA — and is needed
+  once per PR that *adds or renames* a CI workflow, since `workflow_run`
+  matches by name and `main`'s copy of `ci-gate.yml` does not yet listen for
+  the new one; the evaluator flags such a pending row in its summary. Every
+  listed workflow must carry a `name:`, and a `types:` list that is neither a
+  superset of `opened`+`synchronize` nor a subset of `closed` (e.g.
+  `labeled`, `reopened` alone) is rejected by the lint rather than ignored.
 - The verdict is posted with `POST /check-runs` as the `factory-ci` App
   (`in_progress` for pending, `completed` + conclusion otherwise), with the
   aggregation table in the check's output and `external_id` = the ci-gate
