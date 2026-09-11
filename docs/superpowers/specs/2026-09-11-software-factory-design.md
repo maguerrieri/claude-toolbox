@@ -910,12 +910,16 @@ App-on-cloud path wins") applies. 8b changes in four ways:
 - Commit identity is enforced **at Step 7, fail closed**, not promised
   by SessionStart: 2b already records that a branch controls the
   SessionStart hook and can delete it, so an early `user.email` write is
-  only an optimization. Before pushing, `factory-token exec` re-authors
-  every commit in `origin/<base>..HEAD` (the PR's own commits, never the
-  base's history) whose author email is not the App's noreply
-  address (a pre-review rewrite, which the commit conventions allow) and
-  refuses to push if any remains, so commits as well as the PR carry the
-  App identity whatever the branch did to the hooks.
+  only an optimization. Before pushing, `factory-token exec` inspects
+  `origin/<base>..HEAD` (the PR's own commits, never the base's or a
+  stacked parent's history) and re-authors exactly the commits this
+  session produced, identified by the platform's default author
+  `noreply@anthropic.com` (fact 5), to the App's noreply address (a
+  pre-review rewrite, which the commit conventions allow). Any other
+  non-App author in that range (a human's commit, or a foreign
+  identity) is never reassigned: the wrapper stops and hands back for
+  review. So commits as well as the PR carry the App identity whatever
+  the branch did to the hooks, and nobody's work is relabelled.
 - 2c derives the launching account from the calling session's
   `environment_id` (a membership test against the per-account lines),
   since the session record carries no account field.
