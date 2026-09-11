@@ -27,8 +27,12 @@ def wf(on, name=None):
     return doc
 
 
-def gate(names):
-    return wf({"pull_request_target": {"branches": ["main"]}, "workflow_run": {"workflows": names, "types": ["completed"]}}, "ci-gate")
+def gate(names, **overrides):
+    on = {"pull_request_target": {"types": ["opened", "synchronize", "reopened", "ready_for_review", "edited"], "branches": ["main"]},
+          "workflow_run": {"workflows": names, "types": ["completed"]},
+          "workflow_dispatch": {"inputs": {"head_sha": {"required": True, "type": "string"}}}}
+    on.update(overrides)
+    return wf(on, "ci-gate")
 
 
 GM = {"pull_request": {"paths": ["plugins/gm/**", ".github/workflows/gm-ci.yml"]}}
@@ -143,6 +147,39 @@ def test_lint_workflow_run_list_must_match():
     w = dict(WORKFLOWS, **{"ci-gate.yml": gate(["gm CI"])})
     errors = ci_gate.lint(MANIFEST, w, w["ci-gate.yml"])
     assert any("workflow_run.workflows must list exactly" in e for e in errors)
+
+
+def test_lint_gate_trigger_shape():
+    cases = {
+        "drop target": gate(["gm CI", "plugin versions"], pull_request_target=None),
+        "narrow types": gate(["gm CI", "plugin versions"], pull_request_target={"types": ["opened"], "branches": ["main"]}),
+        "wrong branch": gate(["gm CI", "plugin versions"], pull_request_target={"types": ["opened", "synchronize", "reopened"], "branches": ["dev"]}),
+        "run types": gate(["gm CI", "plugin versions"], workflow_run={"workflows": ["gm CI", "plugin versions"], "types": ["requested"]}),
+        "no dispatch": gate(["gm CI", "plugin versions"], workflow_dispatch=None),
+    }
+    for label, doc in cases.items():
+        if label == "no dispatch":
+            del doc["on"]["workflow_dispatch"]
+        errors = ci_gate.lint(MANIFEST, dict(WORKFLOWS, **{"ci-gate.yml": doc}), doc)
+        assert errors and all(e.startswith("ci-gate.yml: on.") for e in errors), (label, errors)
+    assert ci_gate.lint(MANIFEST, WORKFLOWS, WORKFLOWS["ci-gate.yml"]) == []
+
+
+def test_lint_rejects_pull_request_target_entries():
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["critic.yml"] = {"pull_request_target": {"branches": ["main"]}}
+    w = dict(WORKFLOWS, **{"critic.yml": wf({"pull_request_target": {"branches": ["main"]}}, "critic")})
+    errors = ci_gate.lint(m, w, w["ci-gate.yml"])
+    assert any("critic.yml: manifest entries may only declare pull_request" in e for e in errors)
+    # Unlisted, it is simply not aggregated -- never an "unlisted" error.
+    assert ci_gate.lint(MANIFEST, w, w["ci-gate.yml"]) == []
+
+
+def test_evaluate_empty_manifest_fails_deterministically():
+    tree = dict(TREE, **{".github/factory-ci.yml": ""})
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", "999")
+    assert result["verdict"] == "failure" and any("not a mapping" in r for r in result["reasons"])
 
 
 def test_lint_missing_gate_file():

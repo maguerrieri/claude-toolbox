@@ -17,10 +17,11 @@ Each evaluation:
 3. reads the PR's head tree: `.github/factory-ci.yml` (the manifest of CI
    workflows and the `pull_request` triggers they are expected under) and every
    file in `.github/workflows/`; lints the manifest against the workflows (an
-   entry for ci-gate itself, a listed workflow whose actual `on:` differs, an
-   unlisted PR-triggered workflow, a trigger construct this evaluator does not
-   implement, or a `workflow_run.workflows` list in ci-gate.yml that does not
-   match the manifest all fail the gate). The head tree is used because it is
+   entry for ci-gate itself or for a `pull_request_target` workflow, a listed
+   workflow whose actual `on:` differs, an unlisted `pull_request` workflow, a
+   trigger construct this evaluator does not implement, or a ci-gate.yml whose
+   own triggers or `workflow_run.workflows` list do not match all fail the
+   gate). The head tree is used because it is
    the tree GitHub actually executes for the PR: expecting a workflow the PR
    removed would pend forever, and the manifest change is visible in the diff;
 4. computes the expected set by evaluating each manifest entry's `types`,
@@ -55,7 +56,13 @@ WORKFLOWS_DIR = ".github/workflows"
 SELF_WORKFLOW = "ci-gate.yml"
 CHECK_NAME = "factory/ci-gate"
 PROTECTED_BASE = "main"
-PR_EVENTS = ("pull_request", "pull_request_target")
+# Only `pull_request` workflows are aggregated: a `pull_request_target`
+# workflow executes the *base* branch's YAML, so its head-tree trigger config
+# says nothing about whether GitHub ran it, and such workflows (ci-gate itself,
+# the critic and merge workflows of 3a/3b) post their own checks anyway.
+PR_EVENTS = ("pull_request",)
+GATE_EVENT = "pull_request_target"
+GATE_TYPES = {"opened", "synchronize", "reopened"}
 SUPPORTED_KEYS = {"types", "branches", "branches-ignore", "paths", "paths-ignore"}
 DEFAULT_TYPES = ["opened", "synchronize", "reopened"]
 HEAD_TYPES = {"opened", "synchronize"}
@@ -159,6 +166,7 @@ def normalize_event(event: str, cfg) -> dict:
     if event not in PR_EVENTS:
         # Non-PR triggers never decide whether a workflow runs on a PR; their
         # content is irrelevant to the gate and is neither compared nor validated.
+        # (pull_request_target runs base-branch YAML: see PR_EVENTS.)
         return {}
     out = {}
     for key, value in cfg.items():
@@ -216,7 +224,8 @@ def lint(manifest, workflows: dict[str, object], gate_doc) -> list[str]:
                 raise GateError("workflow has no `name:`; ci-gate subscribes to workflow_run by name, so every listed workflow needs one")
             declared_norm = normalize_on(declared if declared is not None else {})
             if set(declared_norm) - set(PR_EVENTS):
-                raise GateError("manifest entries may only declare pull_request / pull_request_target")
+                raise GateError("manifest entries may only declare pull_request (pull_request_target workflows run "
+                                "base-branch YAML and post their own checks; they are never aggregated)")
             if not declared_norm:
                 raise GateError("manifest entry declares no pull_request trigger")
             actual = pr_triggers(workflow_on(doc))
@@ -245,21 +254,56 @@ def lint(manifest, workflows: dict[str, object], gate_doc) -> list[str]:
     if gate_doc is None:
         errors.append(f"{WORKFLOWS_DIR}/{SELF_WORKFLOW} is missing from the head tree")
     else:
-        try:
-            workflow_on(gate_doc)  # parse errors surface here
-            raw_gate = gate_doc.get("on", gate_doc.get(True)) or {}
-            names = (raw_gate.get("workflow_run") or {}).get("workflows") if isinstance(raw_gate, dict) else None
-            names = [names] if isinstance(names, str) else list(names or [])
-            expected_names = sorted(workflow_name(f, workflows[f]) for f in entries if f in workflows)
-            if sorted(names) != expected_names:
-                errors.append(
-                    f"{SELF_WORKFLOW}: on.workflow_run.workflows must list exactly the manifest's workflows\n"
-                    f"      ci-gate:  {sorted(names)}\n"
-                    f"      manifest: {expected_names}"
-                )
-        except GateError as exc:
-            errors.append(f"{SELF_WORKFLOW}: {exc}")
+        expected_names = sorted(workflow_name(f, workflows[f]) for f in entries if f in workflows)
+        errors += [f"{SELF_WORKFLOW}: {e}" for e in lint_gate(gate_doc, expected_names)]
     return errors
+
+
+def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
+    """ci-gate.yml's own trigger shape: the head copy becomes main's after merge.
+
+    Names alone are not enough -- a PR that drops the `pull_request_target`
+    trigger, narrows its types, or changes `workflow_run.types` would stop the
+    gate from evaluating new PRs or from refreshing pending ones after merge.
+    """
+    errors: list[str] = []
+    try:
+        workflow_on(gate_doc)  # parse errors surface here
+    except GateError as exc:
+        return [str(exc)]
+    raw = gate_doc.get("on", gate_doc.get(True))
+    raw = raw if isinstance(raw, dict) else {}
+    target = raw.get(GATE_EVENT)
+    if not isinstance(target, dict):
+        errors.append(f"on.{GATE_EVENT} must be present as a mapping")
+    else:
+        types = set(_as_list(target.get("types")))
+        if not GATE_TYPES <= types:
+            errors.append(f"on.{GATE_EVENT}.types must include {sorted(GATE_TYPES)}, got {sorted(types)}")
+        if _as_list(target.get("branches")) != [PROTECTED_BASE]:
+            errors.append(f"on.{GATE_EVENT}.branches must be exactly [{PROTECTED_BASE!r}]")
+    run = raw.get("workflow_run")
+    if not isinstance(run, dict):
+        errors.append("on.workflow_run must be present as a mapping")
+    else:
+        if _as_list(run.get("types")) != ["completed"]:
+            errors.append("on.workflow_run.types must be exactly ['completed']")
+        names = sorted(_as_list(run.get("workflows")))
+        if names != expected_names:
+            errors.append(
+                "on.workflow_run.workflows must list exactly the manifest's workflows\n"
+                f"      ci-gate:  {names}\n"
+                f"      manifest: {expected_names}"
+            )
+    if "workflow_dispatch" not in raw:
+        errors.append("on.workflow_dispatch must be present (manual re-evaluation by head SHA)")
+    return errors
+
+
+def _as_list(value) -> list:
+    if value is None:
+        return []
+    return [value] if isinstance(value, str) else list(value)
 
 
 def validate_constructs(event: str, cfg: dict) -> None:
@@ -500,8 +544,10 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
             manifest = yaml.safe_load(manifest_text)
         except yaml.YAMLError as exc:
             reasons.append(f"{MANIFEST_PATH}: not valid YAML: {exc}")
-    if manifest is not None:
-        reasons += lint(manifest, workflows, workflows.get(SELF_WORKFLOW))
+        else:
+            # An empty or `null` file parses to None; lint reports it as not a
+            # mapping rather than letting expected_set crash on it later.
+            reasons += lint(manifest, workflows, workflows.get(SELF_WORKFLOW))
 
     # remote.* settings lint (spec 2c).
     for path in settings_paths_to_lint(changed):
