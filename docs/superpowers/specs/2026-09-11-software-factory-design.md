@@ -170,8 +170,14 @@ head**, not the body:
 5. the label is `risk:high` and the PR does **not** carry an out-of-band
    human authorization: the PR's **current review state** for the head SHA
    must be approved — at least one `APPROVED` review on that SHA from an
-   account that is not the PR author, not a bot (`type == User`), with
-   `author_association` in `OWNER`/`MEMBER`/`COLLABORATOR`, **and no
+   account that is not the PR author and whose login is in the
+   **human-reviewer allowlist** (`policy/human-reviewers.txt`, read from
+   `origin/main` like the inert-path file; the repository owner by
+   default). `type == User` and `author_association` are *not* the test:
+   a machine user with a PAT is also `type == User` and can be a
+   collaborator, so only an explicit list of accounts a person controls
+   can stand for a person, and adding a machine user to that list is the
+   reviewed policy change it should be; **and no
    reviewer's latest review on that SHA is `CHANGES_REQUESTED`** (an older
    approval object survives a later change request, so "any approval
    exists" is not "currently approved"; the gate evaluates each reviewer's
@@ -302,7 +308,10 @@ every relevant workflow completes**: it triggers on `pull_request_target`
 for every other workflow in the repo, and on each evaluation it (i)
 computes the **expected set** of workflows for this PR from a committed
 manifest, `.github/factory-ci.yml`, that lists each CI workflow with the
-trigger it is expected under (`pull_request` types, `branches`, `paths`,
+trigger it is expected under — never `ci-gate` itself (the lint rejects a
+manifest entry for it, and the aggregator excludes its own `factory/ci-gate`
+context and its own runs by `run_id` from every read, otherwise its first
+`pending` post would keep it pending forever) (`pull_request` types, `branches`, `paths`,
 `paths-ignore`); `ci-gate` evaluates the manifest's filters against the
 PR's changed files, base branch, and event type with the same semantics
 GitHub applies, and a lint in `ci-gate` fails if any listed workflow's
@@ -912,7 +921,13 @@ key. Its trust model:
   push, **`branches: [main]`**), **`workflow_run`** (`types: [completed]`,
   `workflows:` `ci-gate` and `factory-critic`), and a **`schedule`** sweep
   (hourly) that runs the resolver over every open PR carrying `auto-merge:
-  requested`. On the sweep the resolver emits a **list** of eligible
+  requested`. The whole workflow declares a **`concurrency` group**
+  (`docs-auto-merge`, `cancel-in-progress: false`), so a sweep that runs
+  long — a CI refresh per candidate can push one past an hour — is never
+  overlapped by the next sweep or by an event-triggered run competing on
+  `update-branch` calls and redundant CI; queued runs wait. Test: two
+  overlapping sweeps result in one running and one queued. On the sweep the
+  resolver emits a **list** of eligible
   candidates — a single scalar output would merge at most one PR per hour
   — and the merge job processes them **serially, not as a parallel
   matrix**: `main-integrity` requires each branch to be up to date, so the
@@ -1234,12 +1249,12 @@ must cite both numbers and the independent signal the new class relies on
 | 5 | Repo `permissions` blocks | 2a | — |
 | 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; one coordinator environment plus one implementer environment **per factory repo** (each carrying only its own broker API credential); user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
-| 7b | High-risk gate: human `APPROVED` review on head SHA required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
+| 7b | High-risk gate: `APPROVED` review on head SHA from a login in the `policy/human-reviewers.txt` allowlist (not the author) required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
 | 8 | Spike: a distinct PR author on both the personal account and the org. Leading candidate: one org-owned public GitHub App installed on both, tokens minted by a token broker outside the VM (key never in a session) and exported as `GH_TOKEN` by a `factory-token` helper; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by `<slug>[bot]` (or `claude[bot]`) on one personal and one org repo, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on. **Security exit criteria for the Action variant**, since a GitHub-hosted runner has none of 2b's boundaries: workflow `GITHUB_TOKEN` permissions limited to `contents: write`, `pull-requests: write`; the Anthropic key in a `main`-only deployment environment; the model step tool-restricted and network-sandboxed per 3a's container pattern; the issue body and briefing passed as delimited data; egress and tool tests as in item 10 — otherwise the App-on-cloud path (which keeps 2b) wins by default | 2d | — |
 | 8b | Whichever the spike picks: either the App setup (App registration, both installations, Terraform-managed Cloud Run token broker holding the key in Secret Manager and minting `repositories: [repo]`-scoped tokens, one bearer per implementer environment mapped to exactly one repo, `factory-token` helper, optional `gh auth setup-git`, and the cross-repo isolation test: a repo-A session cannot obtain a repo-B token even bypassing the helper), or a `spawn` backend `action` firing `repository_dispatch` with `{issue, briefing, tier}` into a `factory-implement` workflow running the Claude Code Action in automation mode | 2d | 8 |
 | 9 | `Budget:` directive in `SPAWN_CAP` | 2e | 1 |
 | 10 | `factory-critic` workflow (secretless `resolve` → `review` job with its own `factory-critic` environment; `pull_request_target` on `main` only; no checkout; model step in an internal-network container behind an allowlisting proxy sidecar, with egress test; structured verdict with pass⇒no findings; posts `factory/critic`, verified by workflow path + `pull_request_target` event) + `REVIEW_CRITIC` op wired into the op list, Step 0, and START Step 8, with fail-closed test. **Not enabled until `main-integrity` (item 4) is active**, since the workflow's base-branch YAML reads the Anthropic key | 3a | 2, 3, 4 |
-| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment (same App-posts-check pattern as item 4's `factory-ci`) + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; resolves `workflow_run` targets from a `factory-target.json` artifact; sweep merges as a matrix); `ci-gate` as a `workflow_run`-driven aggregator with revert-marker validation and `factory/revert-of` snapshot; `inert-paths` composite action pinned by SHA | 3b | 1, 2, 3, 4, 10 |
+| 11 | `factory-auto-merge` GitHub App + `factory-merge` deployment environment (same App-posts-check pattern as item 4's `factory-ci`) + `main-review` bypass (if 4b is active) + `docs-auto-merge` workflow (secretless `resolve` job → environment-bearing `merge` job; `pull_request_target` on `main` + `workflow_run` completion; no checkout; exactly one same-repo candidate; pinned SHA with full last-instant re-read; paginated two-stage path check incl. renames and depth-agnostic instruction-file denies; non-empty latest-attempt-green checks excluding this workflow's own runs; no unresolved threads; not draft; `base == main`; opt-in label; posts `factory/enrolled` on first evaluation and `factory/merge-record` after merge; resolves `workflow_run` targets from a `factory-target.json` artifact; sweep processes candidates serially under a workflow `concurrency` group, refreshing each against `main`); `ci-gate` as a `workflow_run`-driven aggregator with revert-marker validation and `factory/revert-of` snapshot; `inert-paths` composite action pinned by SHA | 3b | 1, 2, 3, 4, 10 |
 | 11b | `factory-shadow` workflow (`pull_request_target: closed` on `main`, merged only, `checks: write` only) with per-class candidate predicates in the policy file; posts `mode: shadow` records for every merged PR of a shadow class | 3c | 11 |
 | 12 | Metrics routine (keyed by `factory/merge-record`, reconciling enrolled merges against records, unattributed reverts, and shadow samples per class) | 3c | 1, 11, 11b |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
