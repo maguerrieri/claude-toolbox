@@ -11,7 +11,11 @@
 # Delete it once cloud sessions honor enabledPlugins/extraKnownMarketplaces.
 #
 # Locally this is a no-op (CLAUDE_CODE_REMOTE is unset); interactive local
-# sessions install the same plugins on the trust prompt.
+# sessions install the same plugins on the trust prompt. In this repo's factory
+# implementer environment the plugins are already provisioned into the cached
+# snapshot by origin/main's .claude/cloud-setup.sh (spec 2b), so the install
+# loop below finds them installed and skips; it stays for sessions in any
+# other environment and for the repos that run this file from the URL below.
 #
 # Other repos can copy this file, or run it straight from this repo with one
 # hook line and no file to copy:
@@ -23,6 +27,22 @@ set -uo pipefail
 
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
+fi
+
+# Drift nudge (spec 2b): in a factory environment the VM was provisioned by
+# origin/main's .claude/cloud-setup.sh via the GUI stub, and this per-session
+# hook runs that same origin/main copy in --verify mode so a stale snapshot
+# (SETUP STALE), a checkout whose .claude/ differs from main (UNTRUSTED
+# .claude/), or a committed remote.* override lands in the session's context.
+# It is the origin/main copy, not the checkout's, so a branch that edits the
+# script cannot silence its own nudge -- though a branch can delete this hook,
+# which is why it is a nudge and not a boundary. Never blocks; outside a
+# factory environment it reports SETUP ABSENT and the install below proceeds.
+if git fetch -q --depth=1 origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null; then
+  setup_script=$(git show origin/main:.claude/cloud-setup.sh 2>/dev/null || true)
+  if [ -n "$setup_script" ]; then
+    bash -c "$setup_script" cloud-setup --verify || true
+  fi
 fi
 
 # Allowlist. Only these marketplaces are ever registered or installed from,

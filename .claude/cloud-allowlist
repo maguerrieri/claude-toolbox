@@ -1,0 +1,14 @@
+# .claude/cloud-allowlist -- committed mirror of the network allowlist on this
+# repo's factory-implementer cloud environment (spec 2b; settings live in the
+# GUI, this file is the reviewable copy). cloud-setup.sh hashes origin/main's
+# copy into the snapshot manifest and its --verify mode prints SETUP STALE when
+# the two drift, so an allowlist change here is a reminder to change the GUI
+# and bump the (v1) comment in the stub, in each Claude account.
+#
+# Format: `level: <network level>` then one `host: <hostname>` per extra host.
+# Blank lines and # comments are ignored; nothing parses this file at runtime.
+level: trusted
+# The plugin marketplaces cloud-setup.sh pins (GitHub is already in Trusted;
+# listed so the dependency is explicit).
+host: github.com
+host: raw.githubusercontent.com
