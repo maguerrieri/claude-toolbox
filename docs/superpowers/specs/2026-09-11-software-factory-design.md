@@ -37,12 +37,19 @@ sessions with a bounded blast radius.
   (the marketplace); product code lives in the `toolbox` monorepo with per-
   project instruction files. New repos only when a permissions or ownership
   boundary needs one.
-- **Personal-first, Team-optional.** The user has both a Pro/Max personal
-  account and a Team account. Everything below works on the personal account
-  (Anthropic-hosted environments, `claude[bot]`/user identity through the git
-  proxy). Team-only capabilities — self-hosted environments with per-session
-  minted git tokens, organization-shared environments — are noted as optional
-  upgrades, never as prerequisites.
+- **Both Claude accounts and both GitHub owners are first-class.** The
+  user has a Pro/Max personal Claude account and a Team Claude account, and
+  repos under both their personal GitHub account and the `sprue.works`
+  organization. Every mechanism below must work from a session launched
+  under *either* Claude account against a repo under *either* owner, with
+  nothing that only one combination can do on the critical path. Concretely:
+  environments are per Claude account, so each account carries the same
+  environment set (2b) and the launcher picks the IDs for the account it is
+  running under (2c); identity comes from one org-owned App installed on
+  both owners (2d); rulesets bind the same way on both owners (1d). Team-only
+  capabilities — self-hosted environments with per-session minted git tokens,
+  organization-shared environments — remain optional upgrades, never
+  prerequisites, because the personal account cannot use them.
 - **Environments are GUI-only.** There is no API, CLI, or config-as-code path
   for Anthropic-hosted cloud environments (verified against the docs, below).
   So: keep them few (one per **execution tier** — implementer vs. coordinator,
@@ -408,7 +415,10 @@ security control", `hooks/role-guard.sh`) and stays that way. Add the block
 to `toolbox/.claude/settings.json` (currently absent) and extend
 `claude-toolbox/.claude/settings.json`.
 
-**2b. Two cloud environment tiers** (manual, one-time, personal account;
+**2b. Two cloud environment tiers** (manual, one-time, created identically
+in **each** Claude account that launches factory sessions — the personal
+account and the Team account — since environments are account-scoped and
+not shareable across accounts;
 the implementer tier is one environment per factory repo once 2d's token
 broker lands, because each carries a broker credential bound to exactly one
 repo — until then a single `factory-implementer` serves all repos):
@@ -539,15 +549,22 @@ exist:
   user- or issue-authored text, and the checkout may be an unreviewed
   branch, so either could inject an environment. Instead the repo's
   `AGENTS.md` config block (the same block that carries `Tracker:` /
-  `Profile:`) gains two lines, `Implementer environment: env_…` and
-  `Coordinator environment: env_…`, and the launcher reads them from
+  `Profile:`) gains, **per Claude account**, two lines — `Implementer
+  environment (<account>): env_…` and `Coordinator environment
+  (<account>): env_…`, where `<account>` is a short label (`personal`,
+  `team`) mapped to the account UUID in the same block — and the launcher
+  reads them from
   **`origin/main`**, fetched immediately before parsing (`git fetch origin
   main && git show origin/main:AGENTS.md`) so a long-lived coordinator never
   launches children from a stale remote-tracking ref after `main` rotates
   an ID; if the fetch fails, the ref is missing (a dependent child checked
   out at a `source_revision` has no guarantee of one), or the block lacks
-  either line, the launch **refuses** rather than falling back to the
-  checkout or the parent's environment. The tier selector is **launcher-
+  either line **for the launching account**, the launch **refuses** rather
+  than falling back to the checkout or the parent's environment. The
+  launching account is determined from the session API (the calling
+  session's own record names its account), never from a briefing, so a
+  child always lands in an environment of the account that owns the
+  parent — cross-account launches are not a factory path. The tier selector is **launcher-
   owned structured metadata, not a line in the briefing**: the `spawn`
   skill's cloud backend takes a `tier: implementer|coordinator` argument
   separate from the prompt text, SPAWN Step 3 and `/spawn-epic` set it
@@ -1247,7 +1264,7 @@ must cite both numbers and the independent signal the new class relies on
 | 4 | `ci-gate` aggregate workflow in both repos, posting `factory/ci-gate` as the `factory-ci` App from a `main`-only `factory-ci` deployment environment; assert `main` is the default branch; rulesets `main-integrity` (required status check `factory/ci-gate` **pinned to the `factory-ci` source**; *Require workflows to pass* layered on org repos only; up-to-date branches) and `agent-branches`; verify the same-name-second-source and `pull_request_target`-head-SHA behaviours before rollout; record JSON in this spec | 1d | — |
 | 4b | Ruleset `main-review` (1 approval), activated only once a distinct-author launch path is confirmed **and is the factory's standard implementer launcher** (8b landed and in use), so ordinary factory PRs are not blocked | 1d | 8, 8b |
 | 5 | Repo `permissions` blocks | 2a | — |
-| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; one coordinator environment plus one implementer environment **per factory repo** (each carrying only its own broker API credential); user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
+| 6 | `cloud-setup.sh` (provisioning only; `.claude/` diff + content-hash `--verify` as drift nudges; `.claude/cloud-allowlist` mirror); fail-fast GUI stub running the `origin/main` copy; IAM assertion test that the logs key grants nothing beyond `logging.viewer`; one coordinator environment plus one implementer environment **per factory repo**, created in **both** Claude accounts (each implementer environment carrying only its own broker API credential; the broker maps bearer→repo, so both accounts' environments for a repo get distinct bearers bound to that repo); per-account ID lines in the AGENTS.md block; user-settings `remote.defaultEnvironmentId` via `/remote-env` (not committed) | 2b, 2c | 4, 5 |
 | 7 | `Environment: implementer\|coordinator` directive through spawn, SPAWN, and `/spawn-epic`, resolving IDs from `origin/main`'s AGENTS.md block and refusing anything else | 2c | 6 |
 | 7b | High-risk gate: `APPROVED` review on head SHA from a login in the `policy/human-reviewers.txt` allowlist (not the author) required by `check-evidence`; `--confirm-high` acknowledgement flag hard-rejected at `/spawn-epic`, `/start-epic`, `/spawn-tickets` entry and stripped from child briefings | 1b | 2, 3 |
 | 8 | Spike: a distinct PR author on both the personal account and the org. Leading candidate: one org-owned public GitHub App installed on both, tokens minted by a token broker outside the VM (key never in a session) and exported as `GH_TOKEN` by a `factory-token` helper; alternative: the Action from `repository_dispatch`. Exit criterion is a PR authored by `<slug>[bot]` (or `claude[bot]`) on one personal and one org repo, opened by a spawned implementer with no human tagging, that the user can approve with `main-review` on. **Security exit criteria for the Action variant**, since a GitHub-hosted runner has none of 2b's boundaries: workflow `GITHUB_TOKEN` permissions limited to `contents: write`, `pull-requests: write`; the Anthropic key in a `main`-only deployment environment; the model step tool-restricted and network-sandboxed per 3a's container pattern; the issue body and briefing passed as delimited data; egress and tool tests as in item 10 — otherwise the App-on-cloud path (which keeps 2b) wins by default | 2d | — |
