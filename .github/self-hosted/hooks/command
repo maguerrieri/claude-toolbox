@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Runner `command` lifecycle hook: mint the session's token, then exec Claude.
+exec /opt/factory/factory-session-wrapper command "$@"

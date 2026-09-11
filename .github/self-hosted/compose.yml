@@ -1,0 +1,29 @@
+# Evaluation-only recipe for one factory runner (spec 2d option 5, item 14).
+# Production runs one container per session under the orchestrator's
+# spawn-runner hook so the environment secret never sits on a session host;
+# this file is for standing the environment up the first time and for the
+# acceptance tests. `restart: "no"` on purpose: a runner exits after its one
+# session, and a reused container would violate the one-session-per-container
+# posture, so re-run `docker compose up` per session.
+services:
+  factory-runner:
+    image: ${FACTORY_RUNNER_IMAGE:?set to the image built from Dockerfile}
+    build:
+      context: ..
+      dockerfile: self-hosted/Dockerfile
+      args:
+        CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-2.1.268}
+        FACTORY_SETUP_REF: ${FACTORY_SETUP_REF:-main}
+    environment:
+      FACTORY_TOKEN_BROKER_URL: ${FACTORY_TOKEN_BROKER_URL:?broker base URL}
+      FACTORY_POOL_ID: ${FACTORY_POOL_ID:?this environment's ccpool_ id}
+      FACTORY_REPO: ${FACTORY_REPO:?owner/repo this environment serves}
+      FACTORY_APP_BOT_EMAIL: ${FACTORY_APP_BOT_EMAIL:-}
+    secrets:
+      - environment-secret
+    restart: "no"
+    stop_grace_period: 90s
+
+secrets:
+  environment-secret:
+    file: ./environment-secret
