@@ -382,8 +382,10 @@ def observed_unexpected(manifest: dict, runs: list[dict], expected: list[tuple[s
     aggregated rather than ignored, and its failure blocks like any other.
     """
     out = []
-    for filename in (manifest.get("workflows") or {}):
-        for event in PR_EVENTS:
+    for filename, declared in (manifest.get("workflows") or {}).items():
+        for event, cfg in normalize_on(declared if declared is not None else {}).items():
+            if set(cfg.get("types", DEFAULT_TYPES)) <= CLOSE_TYPES:
+                continue  # a closed-only workflow's stale run on a reopened head is never evidence
             if (filename, event) not in expected and latest_run(runs, filename, event, own_run_id) is not None:
                 out.append((filename, event))
     return out

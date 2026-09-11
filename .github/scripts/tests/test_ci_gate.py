@@ -450,6 +450,23 @@ def test_evaluate_unexpected_run_still_counts():
     assert ci_gate.evaluate(api, "abc", "999")["verdict"] == "success"
 
 
+def test_evaluate_closed_only_run_never_counts():
+    """A closed-only workflow's failed run left on a reopened head must not block the PR."""
+    manifest = copy.deepcopy(MANIFEST)
+    manifest["workflows"]["cleanup.yml"] = {"pull_request": {"types": ["closed"]}}
+    workflows = dict(WORKFLOWS, **{"cleanup.yml": wf({"pull_request": {"types": ["closed"]}}, "cleanup")})
+    workflows["ci-gate.yml"] = gate(["gm CI", "plugin versions", "cleanup"])
+    tree = dict(TREE, **{
+        ".github/factory-ci.yml": yaml.safe_dump(manifest),
+        ".github/workflows/cleanup.yml": yaml.safe_dump(workflows["cleanup.yml"]),
+        ".github/workflows/ci-gate.yml": yaml.safe_dump(workflows["ci-gate.yml"]),
+    })
+    runs = [run("plugin-versions.yml", id=1), run("cleanup.yml", id=2, conclusion="failure")]
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, runs)
+    result = ci_gate.evaluate(api, "abc", "999")
+    assert result["verdict"] == "success" and [r["workflow"] for r in result["rows"]] == ["plugin-versions.yml"]
+
+
 def test_evaluate_too_many_commits_fails():
     api = FakeApi([pr(1, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")], commits=1001)
     result = ci_gate.evaluate(api, "abc", "999")

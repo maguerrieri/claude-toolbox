@@ -404,12 +404,19 @@ settled, all consistent with the paragraphs above:
   narrows a CI workflow pending forever (and no two-step landing escapes it,
   since the workflow file itself matches its own path filter). The
   aggregation logic, the lint, and the `remote.*` check stay base-branch
-  code. The lint requires the head tree to be self-consistent: every listed
-  workflow's real `pull_request` / `pull_request_target` config equals its
-  manifest entry (non-PR triggers such as `push` are not recorded and not
-  compared), every workflow with such a trigger is listed, `ci-gate.yml` is
-  never listed, and `ci-gate.yml`'s `workflow_run.workflows` names exactly
-  the manifest's workflows — so a PR that weakens CI must say so in a
+  code. Only `pull_request` workflows are aggregated: a
+  `pull_request_target` workflow executes base-branch YAML, so its head-tree
+  config says nothing about whether it ran, and such workflows (ci-gate
+  itself, 3a's critic, 3b's merge) post their own checks. The lint requires
+  the head tree to be self-consistent: every listed workflow's real
+  `pull_request` config equals its manifest entry (non-PR triggers such as
+  `push`, and `pull_request_target`, are not recorded and not compared),
+  every workflow with a `pull_request` trigger is listed and named,
+  `ci-gate.yml` is never listed, `ci-gate.yml`'s own triggers keep their
+  required shape (`pull_request_target` on `main` with the head-changing
+  types and no path filter, `workflow_run` on `completed` with no branch
+  filter, a required `head_sha` dispatch input), and its
+  `workflow_run.workflows` names exactly the manifest's workflows — so a PR that weakens CI must say so in a
   reviewed diff of `.github/**`, which the docs auto-merge class (3b) denies
   outright. A trigger construct the evaluator cannot mirror (`types` neither
   covering both `opened` and `synchronize` nor limited to `closed`, `branches` together with
