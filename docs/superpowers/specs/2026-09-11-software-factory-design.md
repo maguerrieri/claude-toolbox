@@ -854,7 +854,9 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   non-secret sentinel (`factory-token-required`) so sessions run in
   pass-through mode; `factory-token` replaces it with the broker's token
   before START Step 7 and runs `gh auth setup-git` so pushes carry the App
-  identity too. That token is the **one write-capable credential this
+  identity too. Its `user.email` step runs earlier, at SessionStart,
+  because commits are made in START Step 5 and a later config change
+  cannot re-author them. That token is the **one write-capable credential this
   design admits into a session**, and it is admitted deliberately: item 4
   above bounds it to one repo, two permissions, non-protected branches,
   and one hour, and 8b's isolation test asserts those bounds. 2b's blanket
@@ -882,8 +884,9 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   an exception to 2b, not a fallback: it needs an explicit revision of 2b
   and its credential-boundary test, decided by the user (M3), before any
   Team implementer environment is created.
-- `factory-token` sets `user.email` to the App's noreply address so
-  commits, not only the PR, carry the App identity.
+- `factory-token` sets `user.email` to the App's noreply address at
+  SessionStart, before any commit, so commits, not only the PR, carry the
+  App identity; the token itself is minted only when Step 7 needs it.
 - 2c derives the launching account from the calling session's
   `environment_id` (a membership test against the per-account lines),
   since the session record carries no account field.
@@ -925,7 +928,8 @@ throwaway).*
    (`create_session` with `source_url`, `outcome_branch`, and the
    throwaway environment's `environment_id` passed **explicitly**, since
    omitting it inherits the parent's environment; one branch per cell,
-   `spike-94-<account>-<owner>`; per the `spawn` skill's
+   `94-spike-<account>-<owner>`, a name the 1d `agent-branches` ruleset's
+   `[0-9]*-*` pattern admits once that ruleset is on; per the `spawn` skill's
    `backends/cloud.md`) with this briefing: run
    `[ "$GH_TOKEN" = proxy-injected ] && echo injected || echo passthrough`
    (expect `passthrough`; an equality test, which the classifier allowed
@@ -947,8 +951,10 @@ throwaway).*
    path starts the environment with the non-secret sentinel and replaces
    it at runtime, which step 5 does not exercise. So for the
    personal-account, personal-repo cell also create an environment with
-   `GH_TOKEN=factory-token-required`, launch into it, and confirm the
-   sentinel is what the session sees; then hand the session a freshly
+   `GH_TOKEN=factory-token-required`, launch into it on its own branch
+   (`94-spike-personal-personal-sentinel`, so it yields a separate PR
+   rather than reusing step 5's), and confirm the sentinel is what the
+   session sees; then hand the session a freshly
    minted token by follow-up message with the instruction to `export
    GH_TOKEN` from it without echoing or logging it (a throwaway,
    hour-scoped, one-repo token; the transcript exposure is accepted for
@@ -958,8 +964,10 @@ throwaway).*
    401 probe result and an App-authored PR. Renewal after expiry is
    8b's helper test, not part of the spike.
 6. On each repo, add a test ruleset `main-review` (1 approval, branch
-   pattern = that PR's base), approve the PR as the user (**M4**: the
-   approval counts), then delete the ruleset, close the PRs, delete the
+   pattern = the PRs' base), approve **every** App-authored PR on that
+   repo as the user, two per repo plus the sentinel variant on the
+   personal one, recording each (**M4** is all of them approvable), then
+   delete the ruleset, close the PRs, delete the
    branches, **delete every throwaway environment in both accounts** (the
    stored `GH_TOKEN` stays usable until expiry otherwise), and uninstall
    and delete the App.
