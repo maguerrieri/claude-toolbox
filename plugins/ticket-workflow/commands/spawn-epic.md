@@ -21,13 +21,14 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 ( cd "$launch_dir" && claude --bg --name "<repo> <epic-id>: epic — <quick description>" "$p" )
 ```
 
-   **Cloud** — one `create_session` call; the prompt travels as JSON, so no shell quoting applies (`$ARGUMENTS` below is this command's argument placeholder, substituted into the text before you see it — the same token the local heredoc carries — not a shell variable; what you pass is the user's actual arguments). No `outcome_branch` (the orchestrator pushes no branch of its own — its children get theirs from the EPIC phase's Step 5) and no `Notify:` (no cross-session channel on cloud). `source_revision` only when the briefing pins a base branch (the directive also travels in the prompt, and EPIC Step 4 gives a briefing `Base branch:` first precedence, so the orchestrator's checkout and its roots' bases agree); `source_url` always — the clone URL of the repo the work targets (`git remote get-url origin` when that's the current checkout; the named repo's URL when the briefing names another):
+   **Cloud** — one `create_session` call; the prompt travels as JSON, so no shell quoting applies (`$ARGUMENTS` below is this command's argument placeholder, substituted into the text before you see it — the same token the local heredoc carries — not a shell variable; what you pass is the user's actual arguments). `outcome_branch: epic-<epic-id-lower>-orchestrator` — the orchestrator pushes no branch of its own (its children get theirs from the EPIC phase's Step 5), but without `outcome_branch` the session has no resolved repo and files under "Other" in the sidebar (`backends/cloud.md`); the name is for attribution and never reaches origin unless the orchestrator pushes, which it doesn't. No `Notify:` (no cross-session channel on cloud). `source_revision` only when the briefing pins a base branch (the directive also travels in the prompt, and EPIC Step 4 gives a briefing `Base branch:` first precedence, so the orchestrator's checkout and its roots' bases agree); `source_url` always — the clone URL of the repo the work targets (`git remote get-url origin` when that's the current checkout; the named repo's URL when the briefing names another):
 
 ```
 create_session({
   "prompt": "/start-epic $ARGUMENTS\nRole: epic-coordinator",
   "title": "<repo> <epic-id>: epic — <quick description>",
   "source_url": "<repo clone URL>",
+  "outcome_branch": "epic-<epic-id-lower>-orchestrator",
   "source_revision": "<base branch — include this line only when the briefing pins one; omit it otherwise>"
 })
 ```
