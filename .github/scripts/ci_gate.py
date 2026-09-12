@@ -121,7 +121,10 @@ def pattern_to_regex(pattern: str) -> re.Pattern:
                 out.append(re.escape(c))
                 i += 1
             else:
-                out.append(pattern[i : j + 1])
+                body = pattern[i + 1 : j]
+                if body.startswith("!"):
+                    body = "^" + body[1:]  # glob negation inside a class
+                out.append("[" + body + "]")
                 i = j + 1
         else:
             out.append(re.escape(c))
@@ -344,6 +347,8 @@ def _as_list(value) -> list:
 def validate_constructs(event: str, cfg: dict) -> None:
     """Reject trigger configs whose GitHub behaviour this evaluator cannot mirror."""
     types = set(cfg.get("types", DEFAULT_TYPES))
+    if "types" in cfg and not types:
+        raise GateError(f"{event}.types: must not be empty")
     if not HEAD_TYPES <= types and not types <= CLOSE_TYPES:
         # A workflow that runs only on e.g. `labeled` or `reopened` may or may
         # not have run for this head; ci-gate cannot know, so it refuses rather
@@ -612,18 +617,25 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     if commits > MAX_COMMITS:
         reasons.append(f"{commits} commits: GitHub skips path filtering (runs everything) above {MAX_COMMITS}, which ci-gate cannot mirror")
 
-    # Head-tree manifest + workflows.
+    # Head-tree manifest + workflows, read by SHA: the head commit of any PR,
+    # fork PRs included, is present in the base repository's object store. If
+    # that read comes back empty anyway, fall back to the PR's own pull ref.
+    head_ref = head_sha
+    listing = api.listing(WORKFLOWS_DIR, head_ref)
+    if not listing and api.raw(MANIFEST_PATH, head_ref) is None:
+        head_ref = f"refs/pull/{number}/head"
+        listing = api.listing(WORKFLOWS_DIR, head_ref)
     workflows: dict[str, object] = {}
-    for entry in api.listing(WORKFLOWS_DIR, head_sha):
+    for entry in listing:
         name = entry.get("name", "")
         if entry.get("type") == "file" and name.endswith((".yml", ".yaml")):
-            text = api.raw(f"{WORKFLOWS_DIR}/{name}", head_sha) or ""
+            text = api.raw(f"{WORKFLOWS_DIR}/{name}", head_ref) or ""
             try:
                 workflows[name] = yaml.safe_load(text)
             except yaml.YAMLError as exc:
                 reasons.append(f"{WORKFLOWS_DIR}/{name}: not valid YAML: {exc}")
                 workflows[name] = {}
-    manifest_text = api.raw(MANIFEST_PATH, head_sha)
+    manifest_text = api.raw(MANIFEST_PATH, head_ref)
     manifest = None
     if manifest_text is None:
         reasons.append(f"{MANIFEST_PATH} is missing from the head tree")
@@ -639,7 +651,7 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
 
     # remote.* settings lint (spec 2c).
     for path in settings_paths_to_lint(changed):
-        text = api.raw(path, head_sha)
+        text = api.raw(path, head_ref)
         if text is None:
             continue
         try:

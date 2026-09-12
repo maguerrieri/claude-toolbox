@@ -69,6 +69,8 @@ WORKFLOWS = {
     ("docs/\\*", "docs/*", True),
     ("docs/\\*", "docs/a", False),
     ("a\\[b]", "a[b]", True),
+    ("v[!0-9]", "vx", True),  # [!...] is a negated class
+    ("v[!0-9]", "v1", False),
 ])
 def test_pattern(pattern, value, expected):
     assert bool(ci_gate.pattern_to_regex(pattern).match(value)) is expected
@@ -236,6 +238,11 @@ def test_lint_requires_workflow_name():
     w["ci-gate.yml"] = gate(["gm CI", ".github/workflows/plugin-versions.yml"])
     errors = ci_gate.lint(MANIFEST, w, w["ci-gate.yml"])
     assert any("plugin-versions.yml: workflow has no `name:`" in e for e in errors)
+
+
+def test_empty_types_rejected():
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.is_expected({"types": []}, ["a"], "main")
 
 
 def test_lint_rejects_event_only_types():
@@ -413,10 +420,18 @@ class FakeApi:
         return [{"filename": f} for f in self.files]
 
     def raw(self, path, ref):
-        return (self.base_tree if ref == "base" else self.tree).get(path)
+        return self._tree_for(ref).get(path)
+
+    def _tree_for(self, ref):
+        if ref == "base":
+            return self.base_tree
+        if getattr(self, "pull_ref_only", False):
+            return self.tree if ref.startswith("refs/pull/") else {}
+        return self.tree
 
     def listing(self, path, ref):
-        return [{"name": p.split("/")[-1], "type": "file"} for p in self.tree if p.startswith(path + "/") and p.count("/") == path.count("/") + 1]
+        tree = self._tree_for(ref)
+        return [{"name": p.split("/")[-1], "type": "file"} for p in tree if p.startswith(path + "/") and p.count("/") == path.count("/") + 1]
 
     def runs(self, head_sha):
         return self._runs
@@ -470,6 +485,14 @@ def test_contents_endpoint_encodes_segments():
     assert ci_gate.contents_endpoint(".claude/settings.json") == "contents/.claude/settings.json"
     assert ci_gate.contents_endpoint("dir?x/.claude/settings.json") == "contents/dir%3Fx/.claude/settings.json"
     assert ci_gate.contents_endpoint("a#b/c d.yml") == "contents/a%23b/c%20d.yml"
+
+
+def test_evaluate_fork_head_falls_back_to_pull_ref():
+    """A head tree unreadable by SHA is read through refs/pull/<n>/head instead."""
+    api = FakeApi([pr(7, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")])
+    api.pull_ref_only = True
+    result = ci_gate.evaluate(api, "abc", "999")
+    assert result["verdict"] == "success" and result["pr"] == 7
 
 
 def test_evaluate_two_prs_same_head_fail_closed():
