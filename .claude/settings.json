@@ -28,6 +28,48 @@
     ]
   },
   "permissions": {
-    "allow": ["Bash(roll:*)", "Bash(campaign:*)"]
+    "allow": [
+      "Bash(roll:*)",
+      "Bash(campaign:*)",
+      "Bash(python3 .github/scripts/check-plugin-versions *)",
+      "Bash(uvx pytest *)",
+      "Bash(python3 plugins/gm/bin/validate-adapter *)",
+      "Bash(python3 -m pytest *)",
+      "Bash(pytest *)",
+      "Bash(bash -n *)",
+      "Bash(claude plugin validate *)"
+    ],
+    "deny": [
+      "Bash(terraform apply *)",
+      "Bash(terraform * apply *)",
+      "Bash(terraform * apply)",
+      "Bash(gcloud run deploy *)",
+      "Bash(gcloud * run deploy *)",
+      "Bash(gcloud * run deploy)",
+      "Bash(firebase deploy *)",
+      "Bash(firebase * deploy *)",
+      "Bash(firebase * deploy)",
+      "Bash(git push --force *)",
+      "Bash(git push * --force)",
+      "Bash(git push * --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git * push --force *)",
+      "Bash(git * push * --force)",
+      "Bash(git * push * --force *)",
+      "Bash(git * push -f *)",
+      "Bash(git * push * -f)",
+      "Bash(git * push * -f *)",
+      "Bash(git push * +*)",
+      "Bash(git * push * +*)",
+      "Bash(git push --mirror *)",
+      "Bash(git push * --mirror)",
+      "Bash(git push * --mirror *)",
+      "Bash(git * push --mirror *)",
+      "Bash(git * push * --mirror)",
+      "Bash(git * push * --mirror *)",
+      "Edit(~/.config/**)"
+    ]
   }
 }

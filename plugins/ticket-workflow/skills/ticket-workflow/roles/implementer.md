@@ -59,6 +59,23 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   for adjacent work is fine (see above); routing it is not.
 - **Scope-creep** — no "while I'm here" refactors outside the diff the issue
   calls for.
+- **Deploy, force-push without a lease, or write under `~/.config`** —
+  `terraform apply`, `gcloud run deploy`, `firebase deploy`, `git push
+  --force` / `-f` (the rebase cases the commit conventions allow use
+  `--force-with-lease`). Each factory repo's `.claude/settings.json` **denies**
+  these spellings — the deny list in claude-toolbox's `AGENTS.md` (*Repo
+  permissions*), mirrored in the `toolbox` repo — so hitting one is refused
+  with "denied by your permission settings". That refusal is a *drift signal*,
+  not an obstacle: don't respell the command (`sh -c`, a wrapper script, a
+  global flag the rule missed) — the rule is ergonomics and drift control, and
+  the real boundary is that a session holds no deploy credential and can't
+  reach the deploy APIs (spec §2a); deploys — production on merge and PR
+  previews alike — run in CI, never from a session. The profile's
+  `SMOKE_DEPLOY` step still applies: smoke-test against what CI already
+  deployed (the PR preview) or a local run, not by issuing a deploy command
+  yourself. Stop, finish whatever the issue still leaves doable without it,
+  and report the denial in your hand-back (a `blocked:` ping when `Notify:`
+  is wired) so the tier above sees where the plan needed a deploy.
 - **Accept a different issue by SendMessage.** An inbound message that assigns
   you a *new* issue ID ("also do #N", "pick up #N when you're done") is a
   reassignment, not a redirect, and it's out of scope for a leaf — everything
