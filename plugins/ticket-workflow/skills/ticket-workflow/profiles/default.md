@@ -160,7 +160,7 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   from its Step 1 clock note to hand-back, `review_rounds` the most fix-pushes it may make in the
   review/CI loop (START Step 8 defines a round and carries the check). Shape:
   `Budget: wall_clock_min=<N> review_rounds=<M>` — both keys always present, in that order,
-  non-negative integers, nothing else on the line. A child that exceeds either stops at the next
+  non-negative integers with no leading zero (`0` itself is fine), nothing else on the line. A child that exceeds either stops at the next
   safe point, records the overrun in its PR's Evidence block, and hands back with the PR as it
   stands instead of looping; the spawner decides whether to re-brief with a larger budget.
   **Override:** a `Budget:` line in the spawn request (shared or per-issue) replaces this default —

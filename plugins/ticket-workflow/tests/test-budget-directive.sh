@@ -36,7 +36,7 @@ assert() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then ok "$desc"; else 
 refute() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then fail "$desc"; else ok "$desc"; fi; }
 
 # The directive's documented shape: both keys, that order, digits, nothing else.
-budget_re='^Budget: wall_clock_min=[0-9]+ review_rounds=[0-9]+$'
+budget_re='^Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)$'
 # The overrun clause START Step 8 appends inside `tests` — trailing (Step 7
 # says so), hence anchored to the end, and at most one per string.
 overrun_re='budget_exceeded: (wall_clock_min|review_rounds) [0-9]+ of [0-9]+$'
@@ -69,7 +69,7 @@ assert "SPAWN_CAP payload: exactly one Budget: directive" test "$(grep -o 'Budge
 for good in 'Budget: wall_clock_min=180 review_rounds=5' 'Budget: wall_clock_min=0 review_rounds=0' 'Budget: wall_clock_min=60 review_rounds=1'; do
 	assert "shape accepts '$good'" grep -Eq "$budget_re" <<<"$good"
 done
-for bad in 'Budget: review_rounds=1' 'Budget: wall_clock_min=60' 'Budget: review_rounds=1 wall_clock_min=60' 'Budget: wall_clock_min=-1 review_rounds=1' 'Budget: wall_clock_min=1.5 review_rounds=1' 'Budget: wall_clock_min=60 review_rounds=1 extra' 'Budget:'; do
+for bad in 'Budget: review_rounds=1' 'Budget: wall_clock_min=60' 'Budget: review_rounds=1 wall_clock_min=60' 'Budget: wall_clock_min=-1 review_rounds=1' 'Budget: wall_clock_min=1.5 review_rounds=1' 'Budget: wall_clock_min=60 review_rounds=1 extra' 'Budget: wall_clock_min=08 review_rounds=1' 'Budget: wall_clock_min=abc review_rounds=1' 'Budget:'; do
 	refute "shape rejects '$bad'" grep -Eq "$budget_re" <<<"$bad"
 done
 
@@ -112,6 +112,17 @@ assert "SKILL.md START Step 8 carries the budget check" grep -q 'Budget check' <
 assert "SKILL.md START Step 1 persists the budget beside the role marker" grep -q 'CLAUDE_SESSION_ID.budget' <<<"$start_text"
 assert "SKILL.md START Step 8 records a no-PR stop on the ticket" grep -q 'durably on the ticket itself' <<<"$start_text"
 assert "SKILL.md SPAWN Step 2 rejects a partial override over a cap with no budget" grep -q 'no.*`Budget:` line.*partial' <<<"$spawn_text"
+assert "SKILL.md SPAWN Step 2 merges key-wise cap -> shared -> per-issue" grep -q 'cap → shared → per-issue' <<<"$spawn_text"
+assert "SKILL.md SPAWN Step 2 validates overrides before launching" grep -q 'Validate before launching' <<<"$spawn_text"
+assert "SKILL.md START Step 1 rejects a malformed Budget: line" grep -q 'briefing error' <<<"$start_text"
+assert "SKILL.md START Step 8 uses a portable deadline poll, not timeout" grep -q 'deadline poll' <<<"$start_text"
+refute "SKILL.md START Step 8 no longer relies on GNU timeout" grep -q 'timeout "\$((' <<<"$start_text"
+assert "SKILL.md START Step 8 records the no-PR stop through the tracker COMMENT op" grep -q 'COMMENT(id, body)' <<<"$start_text"
+assert "SKILL.md START recovery never infers a budget from the role marker" grep -q 'never infer one from the role marker' <<<"$start_text"
+for tracker in github jira; do
+	assert "trackers/$tracker.md defines COMMENT(id, body)" grep -q '^## COMMENT(id, body)' "$skill_dir/trackers/$tracker.md"
+done
+assert "phases/epic.md Step 1 persists the children's budget override" grep -q 'CLAUDE_SESSION_ID.budget' "$epic"
 assert "SKILL.md START Step 7 documents the budget_exceeded clause" grep -q 'budget_exceeded' <<<"$start_text"
 assert "SKILL.md START opt-outs list the budget stop" grep -q 'Budget exhausted' <<<"$start_text"
 assert "SKILL.md SPAWN Step 2 merges a Budget: override" grep -q 'Budget:.*overrides' <<<"$spawn_text"
