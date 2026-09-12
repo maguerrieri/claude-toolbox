@@ -73,7 +73,11 @@ check() { # <json> <filter>
 
 # The one-block rule, read from a PR body the way a Markdown renderer would: a
 # `## Evidence` heading and, under it (until the next level-1 or level-2
-# heading; a `###` subheading stays inside), exactly one closed ```json fence. Fenced
+# heading; a `###` subheading stays inside), exactly one closed ```json fence.
+# The contract is the column-0 form: the template emits the heading and both
+# fence lines unindented, and an indented heading or fence (CommonMark allows
+# up to three leading spaces) is deliberately not recognised, so an indented
+# copy is neither a block nor a duplicate — the regressions below pin that. Fenced
 # regions are tracked throughout, so a `## Evidence` line or a ```json snippet
 # quoted inside some other fence (a test-plan example, say) never counts.
 # MODE=headings prints the heading count, MODE=fences the count of closed json
@@ -278,6 +282,11 @@ refute "a level-1 heading ends the Evidence section" test "$(count_evidence_fenc
 	printf '## Summary\n- x\n\n## Evidence\n### Details\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
 } >"$tmp.decoy"
 assert "a level-3 subheading stays inside the Evidence section" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+{
+	printf '## Summary\n- x\n\n   ## Evidence\n   ```json\n%s\n   ```\n\nCloses #1\n' "$filled_block"
+} >"$tmp.decoy"
+refute "an indented heading is outside the contract (column-0 form only)" test "$(count_evidence_headings "$tmp.decoy")" -eq 1
+refute "an indented fence is outside the contract (column-0 form only)" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
 rm -f "$tmp.decoy"
 cp "$tmp" "$tmp.two-fences"
 printf '\n```json\n%s\n```\n' "$filled_block" >>"$tmp.two-fences"
