@@ -152,8 +152,11 @@ Rule shapes, verified against the permissions doc on Claude Code 2.1.269:
   unleased force-push with no flag.
 - Path rules are `Edit(...)`, never `Write(...)`: Claude Code consults only
   `Edit`/`Read` path rules and ignores a `Write` one (with a startup warning).
-  `Edit(~/.config/**)` covers the Edit and Write tools and `> ~/.config/…`
-  redirections.
+  `Edit(~/.config/**)` covers the Edit and Write tools and Bash output
+  redirections whose target it can resolve (probed: `> ~/.config/…` and
+  `> /root/.config/…` are denied); a target the checker can't resolve
+  (`> $HOME/.config/…`) falls back to the approval prompt instead, which an
+  unattended session can't answer, so nothing is written either way.
 - Deny beats allow, so nothing in `allow` can carve an exception; and a rule
   matches the command *text*, not the program — `sh -c "terraform apply"` or a
   wrapper script isn't caught. Hence "drift control".
