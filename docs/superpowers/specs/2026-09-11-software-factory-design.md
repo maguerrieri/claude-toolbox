@@ -848,9 +848,9 @@ marked).*
 | `GITHUB_TOKEN` limited to `contents: write`, `pull-requests: write` | met, with one addition | The workflow's `permissions:` block sets it. Default App auth also needs `id-token: write` for the OIDC exchange; with our own App (`github_token` from `actions/create-github-app-token`) that grant is unnecessary. |
 | Anthropic key in a `main`-only deployment environment | met, only with the App key alongside | `repository_dispatch` runs the default branch's workflow; the job declares `environment: factory-implement` with a `main` branch policy. The factory App's ID and private key, which `actions/create-github-app-token` needs, must sit in that same environment, never as repository secrets, or any workflow could mint the repo-write token. Workload identity federation (`anthropic_federation_rule_id`) removes the stored key but needs a Console organization, i.e. API billing; `claude_code_oauth_token` runs on the subscription but is a long-lived personal token in Actions secrets. |
 | Model step tool-restricted and network-sandboxed per 3a | **not met for an implementer** | Tool restriction is achievable, even granularly (`--allowedTools` accepts `Bash(npm test:*)`-style patterns, so an implementer can be limited to its test and git commands); the network side is what fails. The sandbox on Linux needs `bubblewrap` and `socat` plus an AppArmor change on Ubuntu 24.04; `strictAllowlist` and `mask` are honored only from user, managed, or `--settings` scope, and whether the action's `settings` input reaches that scope is undocumented. Runner egress is otherwise unrestricted; none of 2b's allowlist, setup script, or cache applies. |
-| Issue body and briefing as delimited data | met, on us | `client_payload` is interpolated into the `prompt` input; the action sanitizes GitHub-context content, not the prompt, so the workflow wraps the payload in delimiters itself. Firing `repository_dispatch` needs a write-scoped token, which a cloud session has through the proxy. |
+| Issue body and briefing as delimited data | unverified; met only with 3a's contract | `client_payload` is interpolated into the `prompt` input; the action sanitizes GitHub-context content, not the prompt. Delimiters alone are not enough (a payload can contain the delimiter or instructions), so the workflow would need 3a's contract: the payload JSON-encoded rather than fenced, an explicit never-follow instruction, and 3a's injection tests, none of which this spike ran. Firing `repository_dispatch` needs a write-scoped token, which a cloud session has through the proxy. |
 | Opens the PR itself | met only through our App | "Claude doesn't create PRs by default. Instead, it pushes commits to a branch and provides a link to a pre-filled PR submission page." With `Bash(gh pr create:*)` allowed and `GH_TOKEN` set to a `create-github-app-token` token, `gh` authors the PR as `<slug>[bot]`: the same identity the App path uses, on a different runtime. |
-| Lands in the launching account's implementer environment (2c) | **not applicable** | No Claude account is in the loop; the Action runs on a GitHub runner with a secret. The account dimension of the matrix disappears rather than being satisfied, and with it the session record, `get_session` polling, `send_later` re-wakes, and the coordinator's cloud-backend contract (`phases/epic.md` Steps 5–6). |
+| Lands in the launching account's implementer environment (2c) | **not met** | No Claude account is in the loop; the Action runs on a GitHub runner with a secret. The account dimension of the matrix disappears rather than being satisfied, and with it the session record, `get_session` polling, `send_later` re-wakes, and the coordinator's cloud-backend contract (`phases/epic.md` Steps 5–6). |
 
 *Decision, provisional until M1 passes: App + token broker on cloud (8b),
 with 8b amended by facts 1, 2, and 5.* (The work-items table still reads
@@ -862,23 +862,49 @@ App-on-cloud path wins") applies. 8b changes in four ways:
 
 - Implementer environments set `GH_TOKEN` in their variables to a
   non-secret sentinel (`factory-token-required`) so sessions run in
-  pass-through mode. `factory-token` is a **wrapper, not an exporter**:
-  an `export` in one Bash call does not reach the next, and `gh auth
+  pass-through mode. In that mode **every** `gh` call reads the sentinel,
+  not only Step 7's: START's `FETCH`, `DEPENDENCY_PR`, `gh pr checks`,
+  the review-thread queries, and the epic's `COORD` markers all need a
+  real token. So `factory-token` is a **wrapper, not an exporter** (an
+  `export` in one Bash call does not reach the next, and `gh auth
   setup-git` configures git's credential helper rather than `gh`'s own
-  auth, so START Step 7 runs its push and `gh pr create` as
-  `factory-token exec <command>`, which reads the token from a mode-600
-  file (minting or refreshing it through the broker when absent or near
-  expiry; the broker caps issuance per bearer, two tokens an hour, one
-  mint and one refresh, which 8b's isolation test asserts, so replaying
-  the helper cannot extend a session's write access and item 4's "for an
-  hour" reads as "until the last issued token expires") and execs the
-  command with `GH_TOKEN` set for that process only; the git push goes through the same wrapper with `gh auth
-  setup-git` in effect, which is **required**, not optional as item 8b's
-  row still says (on the coordinator's list), so the pushing actor is the
-  App. That token is the **one write-capable credential this
+  auth), in two forms: `factory-token exec <command>` runs a command
+  with `GH_TOKEN` set for that process only from a mode-600 token file
+  (minting or refreshing through the broker when the file is absent or
+  near expiry), and `factory-token shim`, run by the SessionStart hook,
+  puts a `gh` shim earlier on `PATH` that does the same for every other
+  `gh` invocation. START Step 7 calls `exec` explicitly for the push and
+  `gh pr create`, so identity enforcement never depends on the hook; if
+  a branch removes the hook, the unwrapped `gh` calls fail on the
+  sentinel and the session stops, which is the fail-closed outcome. The
+  git push goes through `exec` with `gh auth setup-git` in effect, which
+  is **required**, not optional as item 8b's row still says (on the
+  coordinator's list), so the pushing actor is the App; **M2 is a
+  precondition** for any pusher-keyed rule, so 1d's "most recent
+  reviewable push" option stays off until M2 passes. Because the App
+  token now serves the whole START loop, the least-privilege contract is
+  five permissions, not item 4's two: Contents and Pull requests
+  read & write, Issues read & write (`FETCH` and the `COORD` markers),
+  Checks read (`gh pr checks`), Metadata read; the broker mints exactly
+  that set. That token is the **one write-capable credential this
   design admits into a session**, and it is admitted deliberately: item 4
-  above bounds it to one repo, two permissions, non-protected branches,
-  and one hour, and 8b's isolation test asserts those bounds. 2b's blanket
+  above bounds it to one repo, that permission set, and non-protected
+  branches, and 8b's isolation test asserts those bounds. **What the
+  hour bounds, honestly:** each token expires an hour after issuance,
+  but a compromised branch that can reach the broker through the
+  environment's credential can mint again for as long as the bearer is
+  valid, and one bearer serves every concurrent implementer in that
+  environment, so no per-session lifetime can be claimed on a hosted
+  environment (per-session credentials exist only in item 14's
+  self-hosted path). The broker therefore enforces a per-bearer **daily
+  issuance budget** sized for concurrency (for instance 48 tokens a day,
+  well above two implementers' mint-and-refresh each) and alerts on
+  exhaustion: rate limiting and abuse detection, not a lifetime bound.
+  The blast radius is "one repo, that permission set, non-protected
+  branches, until the bearer is rotated, throttled by the budget"; item
+  4's "for an hour" is superseded by this sentence, and 8b's isolation
+  test asserts token expiry, repo scoping, the permission set,
+  cross-repo rejection, and the budget. 2b's blanket
   "write-capable API keys never enter a session" needs that carve-out
   spelled out, and the Testing section's Rung 2 credential-boundary test
   ("no write-capable API key is reachable") needs the same carve-out for
@@ -907,19 +933,23 @@ App-on-cloud path wins") applies. 8b changes in four ways:
   an exception to 2b, not a fallback: it needs an explicit revision of 2b
   and its credential-boundary test, decided by the user (M3), before any
   Team implementer environment is created.
-- Commit identity is enforced **at Step 7, fail closed**, not promised
-  by SessionStart: 2b already records that a branch controls the
-  SessionStart hook and can delete it, so an early `user.email` write is
-  only an optimization. Before pushing, `factory-token exec` inspects
-  `origin/<base>..HEAD` (the PR's own commits, never the base's or a
-  stacked parent's history) and re-authors exactly the commits this
-  session produced, identified by the platform's default author
-  `noreply@anthropic.com` (fact 5), to the App's noreply address (a
-  pre-review rewrite, which the commit conventions allow). Any other
-  non-App author in that range (a human's commit, or a foreign
-  identity) is never reassigned: the wrapper stops and hands back for
-  review. So commits as well as the PR carry the App identity whatever
-  the branch did to the hooks, and nobody's work is relabelled.
+- Commit identity is **normalized at Step 7, and it is not provenance.**
+  The identities the factory relies on are the PR author and the pusher,
+  both set by the token; commit authorship is cosmetic, because any
+  process in the VM can write any `user.email`, so a matching address
+  proves nothing about who made a commit. With that scope: 2b records
+  that a branch controls the SessionStart hook, so an early `user.email`
+  write is only an optimization, and before pushing `factory-token exec`
+  inspects `origin/<base>..HEAD` (the PR's own commits, never the base's
+  or a stacked parent's history), rewrites author **and committer** of
+  the commits carrying the platform's default identity
+  `noreply@anthropic.com` (fact 5) to the App's noreply address (a
+  pre-review rewrite, which the commit conventions allow), and stops for
+  review on any other non-App author or committer in that range rather
+  than reassigning it. That keeps the normal case tidy and never
+  relabels a human's work; it does not claim to detect a commit that
+  already spoofs the App address, which the PR and push identities do
+  not depend on.
 - 2c derives the launching account from the calling session's
   `environment_id` (a membership test against the per-account lines),
   since the session record carries no account field.
@@ -941,8 +971,9 @@ sentinel variant of step 5b) are approvable by the user under a test
 throwaway).*
 
 1. Register a throwaway App under `sprue.works`: public ("Any account");
-   permissions Contents read & write, Pull requests read & write, Metadata
-   read; no webhook; note the App ID, the slug, and, separately, the
+   permissions Contents read & write, Pull requests read & write, Issues
+   read & write, Checks read, Metadata read (the production contract
+   above); no webhook; note the App ID, the slug, and, separately, the
    numeric `id` returned by `GET /users/<slug>%5Bbot%5D` (the bot user
    ID, used in the commit email below); generate a private key.
 2. Install it on `maguerrieri/claude-toolbox` and on one org repo (for
@@ -965,9 +996,11 @@ throwaway).*
    (`create_session` with `prompt` = the briefing below, `title` =
    `spike #94 <account>-><owner>`, `source_url`, `outcome_branch`, and the
    throwaway environment's `environment_id` passed **explicitly**, since
-   omitting it inherits the parent's environment, and through the spawn
-   backend with `tier: implementer` once item 7 exists rather than a raw
-   call; one branch per cell,
+   omitting it inherits the parent's environment; a **direct call,
+   deliberately**: item 7's launcher resolves IDs from `origin/main`'s
+   AGENTS.md and refuses unlisted ones, so throwaway environments can
+   never be reached through it, and the human records which account each
+   launch was made from as the account check; one branch per cell,
    `94-spike-<account>-<owner>`, a name the 1d `agent-branches` ruleset's
    `[0-9]*-*` pattern admits once that ruleset is on; per the `spawn` skill's
    `backends/cloud.md`) with this briefing: run
