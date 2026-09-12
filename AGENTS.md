@@ -104,6 +104,81 @@ verified on Claude Code 2.1.268:
   nothing for them, which is expected), or run the same install from the cloud
   environment's setup script.
 
+## Repo permissions (`.claude/settings.json`)
+
+The `permissions` block in `.claude/settings.json` is **ergonomics and drift
+control, not a security boundary** (design spec
+`docs/superpowers/specs/2026-09-11-software-factory-design.md`, §2a): the
+boundary for an unattended implementer is what its session can *reach* —
+credentials, the environment's network allowlist, branch rulesets. A session
+that holds no deploy credential and can't reach the Cloud Run API can't deploy
+by any spelling of the command; these rules only make the common spellings fail
+fast and legibly. Two lists:
+
+- **`allow`** — this repo's own test/lint commands, so implementers don't stall
+  on prompts: what the two workflows run (`python3
+  .github/scripts/check-plugin-versions`, `uvx pytest`, `python3
+  plugins/gm/bin/validate-adapter`), the local spellings of the same
+  (`python3 -m pytest`, `pytest`), `bash -n` (hook syntax), `claude plugin
+  validate`, plus gm's `roll`/`campaign` binaries. Seeded from what CI and
+  contributors actually run (no transcripts existed to feed
+  `/fewer-permission-prompts`); extend it when a new test/lint command shows
+  up as a recurring prompt.
+- **`deny`** — the deploy-shaped commands an implementer session must never
+  run (`terraform apply`, `gcloud run deploy`, `firebase deploy`), force-push
+  without a lease (`--force` / `-f` / `--mirror` / a `+refspec`;
+  `--force-with-lease` still prompts normally), and writes under `~/.config`. A match is refused with "denied by
+  your permission settings" instead of a prompt nobody can answer, so a
+  drifting session stops there; the `implementer` role charter says what to do
+  on that signal. Keep this list identical to the one in the `toolbox` repo.
+
+Rule shapes, verified against the permissions doc on Claude Code 2.1.269:
+
+- Each Bash deny is spelled three ways — `cmd sub *`, `cmd * sub *`,
+  `cmd * sub` — because `*` matches any text and only a rule whose single
+  trailing ` *` is its only wildcard also matches the bare command; the
+  middle-wildcard forms catch a global option before the subcommand
+  (`terraform -chdir=… apply`, `gcloud --project=… run deploy`).
+- The space in `git push --force *` is part of the rule; that is what keeps
+  `git push --force-with-lease …` out of it. The force-push rules come in
+  `git push …` and `git * push …` pairs so a global option before the
+  subcommand (`git -C <dir> push --force`) is caught as well; because the
+  bare-command special case applies only to a rule whose single wildcard is
+  trailing, the `git * push` set also spells out the exact no-argument form
+  (`git * push --force`). `--mirror` (force-updates and deletes remote refs
+  wholesale) gets the same spellings as `--force`, and `git push +*` /
+  `git push * +*` (with their `git * push` pair) catch the leading-`+`
+  refspec form (`git push +HEAD:main`, `git push origin +HEAD:main`), an
+  unleased force-push with no flag.
+- Path rules are `Edit(...)`, never `Write(...)`: Claude Code consults only
+  `Edit`/`Read` path rules and ignores a `Write` one (with a startup warning).
+  `Edit(~/.config/**)` covers the Edit and Write tools and Bash output
+  redirections whose target it can resolve (probed: `> ~/.config/…` and
+  `> /root/.config/…` are denied); a target the checker can't resolve
+  (`> $HOME/.config/…`) falls back to the approval prompt instead, which an
+  unattended session can't answer, so nothing is written either way.
+- Deny beats allow, so nothing in `allow` can carve an exception; and a rule
+  matches the command *text*, not the program — `sh -c "terraform apply"` or a
+  wrapper script isn't caught. Hence "drift control".
+
+**Where `allow` applies.** Claude Code honors a project's `permissions.allow`
+only in a *trusted* workspace; in an untrusted one it logs `Ignoring N
+permissions.allow entries … this workspace has not been trusted` and applies
+`deny` alone. Cloud sessions are untrusted by policy (the same consent rule that
+keeps repo-declared plugins from installing, see Dogfooding above), so there the
+allowlist changes nothing and the deny list is the whole effect; auto mode's
+classifier handles the routine test commands instead. The no-prompt guarantee
+for the allowlist holds in trusted checkouts: interactive local sessions that
+accepted the trust dialog, and any launcher that trusts the folder.
+
+`.github/scripts/probe-permissions` verifies a settings file end to end (it
+drives a headless `claude -p`, so it is a manual check, not CI): each probe
+reports whether the command **ran**, hit the **ask** prompt, or was **denied**
+by a rule, keyed on the run's structured `permission_denials` (never on the
+command's own output) and only when that call was the run's single tool call.
+It passes the file with `--settings`, which is honored regardless of trust, so
+it tests the rules as written. Run it after editing either list.
+
 ## Shell: zsh special parameters
 
 Tool commands run under zsh. Do not use `path` as a loop or script variable:
