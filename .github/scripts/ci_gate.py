@@ -91,8 +91,9 @@ def pattern_to_regex(pattern: str) -> re.Pattern:
     """Translate a GitHub filter pattern (the `paths:`/`branches:` cheat sheet) to a regex.
 
     `*` matches any run of characters except `/`; `**` matches anything; `?` and
-    `+` quantify the preceding character; `[...]` is a character class; `\`
-    escapes the next character. Anything else is literal. Anchored at both ends.
+    `+` quantify the preceding character; `[...]` is a character class; a
+    backslash escapes the next character. Anything else is literal. Anchored at
+    both ends.
     """
     out = []
     i, n = 0, len(pattern)
