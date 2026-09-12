@@ -257,7 +257,7 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 git push -u origin <branch>
 ```
 
-Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
+Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. **Fill every `<…>` placeholder in the template below — the `## Evidence` block's included (see the fill guide after the command) — before running it**: the command posts the body as-is, and a body still carrying placeholders fails the completion criterion and the checker. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
 
 ````bash
 gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'EOF'

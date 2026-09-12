@@ -99,7 +99,7 @@ evidence_parser='
 	}
 	infence { if (json) buf = buf $0 "\n"; next }
 	/^## Evidence[[:space:]]*$/ { headings++; inside = 1; next }
-	/^##? / { inside = 0 }
+	/^##?([ \t]|$)/ { inside = 0 }
 	# A json fence still open at EOF is malformed, whatever came before it:
 	# report -1 so an "exactly one" comparison fails rather than counting the
 	# earlier closed block as the whole story.
@@ -278,6 +278,14 @@ refute "a closed block followed by an unterminated json fence fails the one-bloc
 	printf '## Summary\n- x\n\n## Evidence\n# Other\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
 } >"$tmp.decoy"
 refute "a level-1 heading ends the Evidence section" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+{
+	printf '## Summary\n- x\n\n## Evidence\n##\tOther\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
+} >"$tmp.decoy"
+refute "a tab-separated level-2 heading ends the Evidence section" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
+{
+	printf '## Summary\n- x\n\n## Evidence\n##\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
+} >"$tmp.decoy"
+refute "an empty level-2 heading ends the Evidence section" test "$(count_evidence_fences "$tmp.decoy")" -eq 1
 {
 	printf '## Summary\n- x\n\n## Evidence\n### Details\n```json\n%s\n```\n\nCloses #1\n' "$filled_block"
 } >"$tmp.decoy"
