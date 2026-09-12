@@ -65,6 +65,10 @@ WORKFLOWS = {
     ("**/package.json", "apackage.json", False),
     ("src/**/x.py", "src/x.py", True),
     ("a.b", "axb", False),  # literal dot
+    ("src/\\!important.js", "src/!important.js", True),  # backslash escapes the next character
+    ("docs/\\*", "docs/*", True),
+    ("docs/\\*", "docs/a", False),
+    ("a\\[b]", "a[b]", True),
 ])
 def test_pattern(pattern, value, expected):
     assert bool(ci_gate.pattern_to_regex(pattern).match(value)) is expected
@@ -167,6 +171,7 @@ def test_lint_gate_trigger_shape():
         "extra pull_request event": gate(["gm CI", "plugin versions"], pull_request={"branches": ["main"]}),
         "extra push event": gate(["gm CI", "plugin versions"], push=None),
         "boolean head_sha": gate(["gm CI", "plugin versions"], workflow_dispatch={"inputs": {"head_sha": {"required": True, "type": "boolean"}}}),
+        "no subscription list": gate(["gm CI", "plugin versions"], workflow_run={"types": ["completed"]}),
     }
     for label, doc in cases.items():
         if label == "no dispatch":
@@ -184,6 +189,28 @@ def test_lint_rejects_pull_request_target_entries():
     assert any("critic.yml: manifest entries may only declare pull_request" in e for e in errors)
     # Unlisted, it is simply not aggregated -- never an "unlisted" error.
     assert ci_gate.lint(MANIFEST, w, w["ci-gate.yml"]) == []
+
+
+def test_lint_rejects_empty_manifest():
+    """An empty manifest would leave workflow_run without a real subscription list."""
+    w = dict(WORKFLOWS, **{"ci-gate.yml": gate([])})
+    w = {k: v for k, v in w.items() if k == "ci-gate.yml"}
+    errors = ci_gate.lint({"schema": "factory-ci/1", "workflows": {}}, w, w["ci-gate.yml"])
+    assert any("must list at least one" in e for e in errors)
+
+
+def test_escaped_negation_is_literal():
+    assert ci_gate.select(["src/\\!important.js"], "src/!important.js") is True
+    assert ci_gate.is_expected({"paths": ["src/\\!x"]}, ["src/!x"], "main") is True
+
+
+def test_failure_path_keeps_ci_change_note():
+    tree = {k: v for k, v in TREE.items() if k != ".github/factory-ci.yml"}
+    api = FakeApi([pr(1, "abc")], [".github/factory-ci.yml"], tree, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", "999")
+    assert result["verdict"] == "failure" and result["notes"]
+    _, summary = ci_gate.render(result)
+    assert "⚠ This PR changes CI configuration" in summary
 
 
 def test_evaluate_empty_manifest_fails_deterministically():

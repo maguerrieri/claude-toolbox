@@ -91,14 +91,17 @@ def pattern_to_regex(pattern: str) -> re.Pattern:
     """Translate a GitHub filter pattern (the `paths:`/`branches:` cheat sheet) to a regex.
 
     `*` matches any run of characters except `/`; `**` matches anything; `?` and
-    `+` quantify the preceding character; `[...]` is a character class. Anything
-    else is literal. Anchored at both ends.
+    `+` quantify the preceding character; `[...]` is a character class; `\`
+    escapes the next character. Anything else is literal. Anchored at both ends.
     """
     out = []
     i, n = 0, len(pattern)
     while i < n:
         c = pattern[i]
-        if c == "*":
+        if c == "\\" and i + 1 < n:
+            out.append(re.escape(pattern[i + 1]))
+            i += 2
+        elif c == "*":
             if pattern.startswith("**/", i):
                 out.append("(?:.*/)?")  # zero or more directories: **/x matches x at the root
                 i += 3
@@ -218,6 +221,11 @@ def lint(manifest, workflows: dict[str, object], gate_doc) -> list[str]:
         entries = {}
     if not isinstance(entries, dict):
         return errors + [f"{MANIFEST_PATH}: `workflows` must be a mapping of file name -> triggers"]
+    if not entries:
+        # ci-gate.yml's workflow_run needs a real subscription list: an omitted
+        # or empty `workflows:` means *every* workflow to GitHub, ci-gate's own
+        # runs included, and the gate would retrigger on itself.
+        errors.append(f"{MANIFEST_PATH}: `workflows` must list at least one pull_request workflow")
 
     for filename, declared in entries.items():
         if filename == SELF_WORKFLOW:
@@ -309,6 +317,8 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
             errors.append(f"on.workflow_run may only set {sorted(GATE_RUN_KEYS)}, got {sorted(set(run) - GATE_RUN_KEYS)}")
         if _as_list(run.get("types")) != ["completed"]:
             errors.append("on.workflow_run.types must be exactly ['completed']")
+        if not _as_list(run.get("workflows")):
+            errors.append("on.workflow_run.workflows must be a non-empty list (omitted means every workflow, ci-gate's own included)")
         names = sorted(_as_list(run.get("workflows")))
         if names != expected_names:
             errors.append(
@@ -640,7 +650,8 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
             reasons.append(f"{path}: carries {', '.join(keys)}; remote.* settings must not reach {PROTECTED_BASE}")
 
     if reasons:
-        return {"verdict": "failure", "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows, "changed_files": len(changed)}
+        return {"verdict": "failure", "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows,
+                "changed_files": len(changed), "notes": ci_change_notes(changed)}
 
     runs = api.runs(head_sha)
     expected = expected_set(manifest, changed, pr["base"]["ref"])
