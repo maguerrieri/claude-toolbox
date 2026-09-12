@@ -59,8 +59,9 @@ reads_relative='.context_reads | all(test("^/") | not) and all(test("(^|/)[.][.]
 strings_nonempty='[.tests, .docs] | all(length > 0)'
 role_known='.role | IN("planner", "epic-coordinator", "implementer")'
 critic_known='(has("critic") | not) or (.critic | IN("ran", "not run"))'
-# Placeholder set from 1a: TODO, TBD, <…>, n/a without a reason.
-placeholder_def='def placeholder: test("^\\s*(TODO|TBD|n/?a)\\s*$"; "i") or test("<[^>]*>");'
+# Placeholder set from 1a: TODO, TBD, <…>, n/a without a reason (`n/a` literally;
+# a bare `na` is not in the contract's set and is not rejected).
+placeholder_def='def placeholder: test("^\\s*(TODO|TBD|n/a)\\s*$"; "i") or test("<[^>]*>");'
 no_placeholders="$placeholder_def ([.tests, .docs] + .context_reads | all(placeholder | not))"
 session_shape='.session | test("^(cse_[A-Za-z0-9]+|session_[A-Za-z0-9]+|local)$")'
 wall_clock_digits='.wall_clock_min | test("^[0-9]+$")'
@@ -128,6 +129,13 @@ extract_template_body() { # <SKILL.md>
 # HEAD must be the PR head, not a merge preview: the ticket-workflow CI workflow
 # checks out `pull_request.head.sha` explicitly for that reason.
 in_head_tree() { git -C "$repo" cat-file -e "HEAD:$1" 2>/dev/null; }
+# The combined path rule on a block: every context_reads entry is in the head tree.
+reads_in_head_tree() { # <json>
+	local read_path
+	while IFS= read -r read_path; do
+		in_head_tree "$read_path" || return 1
+	done < <(printf '%s' "$1" | jq -r '.context_reads[]')
+}
 
 # Rules every *filled* block must satisfy (session shape is checked separately:
 # the spec's example elides its session id with `…`).
@@ -188,6 +196,9 @@ for bad in '/etc/passwd' '../AGENTS.md' 'plugins/../AGENTS.md' './AGENTS.md' 'do
 done
 refute "a path outside the head tree is rejected" in_head_tree ".git/HEAD"
 refute "an invented path is rejected" in_head_tree "plugins/ticket-workflow/tests/no-such-file.md"
+assert "filled template: every context_reads path is in the head tree" reads_in_head_tree "$filled_block"
+refute "a block with an invented context_reads path fails the head-tree rule" reads_in_head_tree "$(printf '%s' "$filled_block" | jq '.context_reads += ["plugins/ticket-workflow/tests/no-such-file.md"]')"
+refute "a block with a path outside the head tree fails the head-tree rule" reads_in_head_tree "$(printf '%s' "$filled_block" | jq '.context_reads += [".git/HEAD"]')"
 assert "context_reads accepts a dotfile path" check "$(printf '%s' "$filled_block" | jq '.context_reads = [".github/workflows/plugin-versions.yml"]')" "$reads_relative"
 for key in tests docs; do
 	refute "empty $key is rejected" check "$(printf '%s' "$filled_block" | jq ".$key = \"\"")" "$strings_nonempty"
@@ -210,6 +221,7 @@ refute "empty context_reads is rejected" check "$(printf '%s' "$filled_block" | 
 for bad in TODO tbd 'n/a' 'N/A' '<fill me>'; do
 	refute "placeholder tests value '$bad' is rejected" check "$(printf '%s' "$filled_block" | jq --arg t "$bad" '.tests = $t')" "$no_placeholders"
 done
+assert "a bare 'na' is not in the placeholder set" check "$(printf '%s' "$filled_block" | jq '.tests = "na"')" "$no_placeholders"
 assert "'n/a' with a reason is accepted" check "$(printf '%s' "$filled_block" | jq '.tests = "n/a: docs-only change, no test surface"')" "$no_placeholders"
 refute "a fence holding two JSON objects is rejected" check "$(printf '%s\n%s' "$filled_block" "$filled_block")" '.'
 refute "an invalid first object followed by a valid one is rejected" check "$(printf '{"schema": 1,\n%s' "$filled_block")" '.'
