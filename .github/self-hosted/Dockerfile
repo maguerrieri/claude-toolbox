@@ -17,11 +17,11 @@
 #
 #   docker build -f .github/self-hosted/Dockerfile \
 #     --build-arg CLAUDE_CODE_VERSION=2.1.268 \
-#     --build-arg FACTORY_SETUP_REF=main \
+#     --build-arg FACTORY_SETUP_REF=<full commit SHA of the reviewed setup> \
 #     -t <registry>/factory-runner:<tag> .github
 FROM debian:bookworm-slim
 ARG CLAUDE_CODE_VERSION
-ARG FACTORY_SETUP_REF=main
+ARG FACTORY_SETUP_REF
 ARG FACTORY_SETUP_REPO=https://github.com/maguerrieri/claude-toolbox
 
 RUN apt-get update \
@@ -49,12 +49,21 @@ COPY --chmod=0555 self-hosted/hooks/ /opt/factory/hooks/
 # checkout), so running it against an empty workspace at build time is the
 # intended use. Until item 6 lands the file does not exist; the build says so
 # loudly instead of pretending the image is provisioned.
-# The clone lands in a root-only temp dir (mktemp -d is 0700), so the reviewed
-# script is installed world-readable under /opt/factory first and run from
-# there as the runner user; the installed copy also records which setup the
-# image was provisioned with.
-RUN set -eu; tmp=$(mktemp -d); \
-    git clone -q --depth 1 --branch "$FACTORY_SETUP_REF" "$FACTORY_SETUP_REPO" "$tmp/src"; \
+# FACTORY_SETUP_REF must be a full commit SHA, not a branch or tag: a branch
+# would let a rebuild run setup code nobody re-reviewed. The fetch lands in a
+# root-only temp dir (mktemp -d is 0700), so the reviewed script is installed
+# world-readable under /opt/factory first and run from there as the runner
+# user; the installed copy and /opt/factory/cloud-setup.ref record which setup
+# the image was provisioned with.
+RUN set -eu; \
+    case "${FACTORY_SETUP_REF:-}" in \
+      *[!0-9a-f]*|"") echo "FACTORY_SETUP_REF must be a full 40-hex commit SHA" >&2; exit 1 ;; \
+    esac; \
+    [ "${#FACTORY_SETUP_REF}" -eq 40 ] || { echo "FACTORY_SETUP_REF must be a full 40-hex commit SHA" >&2; exit 1; }; \
+    tmp=$(mktemp -d); git init -q "$tmp/src"; \
+    git -C "$tmp/src" fetch -q --depth 1 "$FACTORY_SETUP_REPO" "$FACTORY_SETUP_REF"; \
+    git -C "$tmp/src" checkout -q FETCH_HEAD; \
+    printf '%s\n' "$FACTORY_SETUP_REF" >/opt/factory/cloud-setup.ref; chmod 0444 /opt/factory/cloud-setup.ref; \
     if [ -f "$tmp/src/.claude/cloud-setup.sh" ]; then \
       install -m 0444 "$tmp/src/.claude/cloud-setup.sh" /opt/factory/cloud-setup.sh; \
       su runner -c "cd /tmp && bash -euo pipefail /opt/factory/cloud-setup.sh"; \

@@ -9,6 +9,7 @@ records its arguments and the credential-bearing environment it received.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -24,7 +25,21 @@ WRAPPER = Path(__file__).resolve().parents[1] / "factory-session-wrapper"
 
 POOL = "ccpool_01TESTPOOL"
 REPO = "sprue-works/widgets"
-JWT = "sk-ant-cc-eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJjY3IifQ.sig"
+
+
+def b64url(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def make_jwt(claims_json: str) -> str:
+    """A session-token-shaped string whose payload really carries `claims_json`.
+
+    The signature is fake: the wrapper decodes the payload offline as a gate and
+    leaves the cryptographic check to the runner binary / the broker.
+    """
+    header = b64url(json.dumps({"alg": "ES256", "kid": "test"}).encode())
+    return f"sk-ant-cc-{header}.{b64url(claims_json.encode())}.c2ln"
+
 
 CLAUDE_STUB = r"""#!/usr/bin/env bash
 # `decode-token`: print the claims the test supplied, or fail on request.
@@ -86,6 +101,9 @@ def good_claims(**overrides) -> str:
     }
     claims.update(overrides)
     return json.dumps(claims)
+
+
+JWT = make_jwt(good_claims())
 
 
 def broker_body(token="ghs_testtoken", repository=REPO, minutes=60) -> str:
@@ -220,10 +238,11 @@ def test_command_appends_to_existing_git_config_env(h: Harness):
 
 def test_command_prefers_fresh_jwt_from_ingress_file(h: Harness, tmp_path: Path):
     fresh = tmp_path / "ingress-token"
-    fresh.write_text("sk-ant-cc-refreshed.token.sig\n")
+    refreshed = make_jwt(good_claims(jti="refreshed"))
+    fresh.write_text(refreshed + "\n")
     result = h.run("command", CLAUDE_SESSION_INGRESS_TOKEN_FILE=str(fresh))
     assert result.returncode == 0, result.stderr
-    assert h.broker_calls()[0]["auth"] == "Authorization: Bearer sk-ant-cc-refreshed.token.sig"
+    assert h.broker_calls()[0]["auth"] == f"Authorization: Bearer {refreshed}"
 
 
 @pytest.mark.parametrize(
@@ -283,9 +302,25 @@ def test_command_refuses_token_for_another_repo(h: Harness):
     assert_refused(result, h, "not a token for sprue-works/widgets")
 
 
-def test_command_refuses_broker_error(h: Harness):
-    result = h.run("command", FAKE_BROKER_STATUS="403", FAKE_BROKER_BODY='{"error":"pool not bound"}')
-    assert_refused(result, h, "HTTP 403", "pool not bound")
+def test_command_refuses_broker_error_without_echoing_the_body(h: Harness):
+    result = h.run("command", FAKE_BROKER_STATUS="403", FAKE_BROKER_BODY='{"error":"pool not bound","token":"ghs_leaked"}')
+    assert_refused(result, h, "HTTP 403")
+    assert "pool not bound" not in result.stderr, "an error body may carry a secret; only the status is reported"
+
+
+def test_command_offline_gate_refuses_jwt_for_another_pool_even_if_decode_passes(h: Harness):
+    # decode-token (stubbed) says the claims are fine, but the JWT the wrapper
+    # would hand the broker names another environment: refuse before the call.
+    other = make_jwt(good_claims(aud=["anthropic-api", "ccpool_OTHER"], **{"ccr:pool_id": "ccpool_OTHER"}))
+    result = h.run("command", CLAUDE_CODE_SESSION_ACCESS_TOKEN=other)
+    assert_refused(result, h, "not contacting the broker")
+    assert h.broker_calls() == []
+
+
+def test_command_refuses_plain_http_github_url(h: Harness):
+    result = h.run("command", FACTORY_GITHUB_URL="http://github.example")
+    assert_refused(result, h, "FACTORY_GITHUB_URL must be https")
+    assert h.broker_calls() == []
 
 
 def test_command_refuses_broker_unreachable(h: Harness):
@@ -334,12 +369,29 @@ def test_credential_get_accepts_case_and_no_git_suffix(h: Harness):
         credential_request(path="sprue-works/other.git"),
         credential_request(host="gitlab.com"),
         credential_request(protocol="http"),
+        credential_request(path=None),  # host-only request: no wildcard for the host
+        credential_request(path=""),
     ],
 )
 def test_credential_get_stays_silent_for_anything_else(h: Harness, request_text: str):
     result = h.run("credential", "get", stdin=request_text)
     assert result.returncode == 0
     assert result.stdout == ""
+    assert h.broker_calls() == []
+
+
+def test_credential_refuses_agent_session_before_the_broker(h: Harness):
+    agent = make_jwt(good_claims(act={"sub": "agent:agent_01TEST"}))
+    result = h.run("credential", "get", stdin=credential_request(), CLAUDE_CODE_SESSION_ACCESS_TOKEN=agent)
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert "not contacting the broker" in result.stderr
+    assert h.broker_calls() == []
+
+
+def test_credential_refuses_plain_http_github_url(h: Harness):
+    result = h.run("credential", "get", stdin=credential_request(), FACTORY_GITHUB_URL="http://github.example")
+    assert result.returncode == 1 and result.stdout == ""
     assert h.broker_calls() == []
 
 
@@ -460,6 +512,39 @@ def test_checkout_refuses_another_repo(h: Harness, tmp_path: Path):
     assert result.returncode == 1
     assert "this environment serves sprue-works/widgets" in result.stderr
     assert "sprue-works/other" in result.stderr
+    assert not target.exists()
+
+
+@pytest.mark.parametrize(
+    "jwt, reason",
+    [
+        (make_jwt(good_claims(act={"sub": "agent:agent_01TEST"})), "agent-created session"),
+        (make_jwt(good_claims(aud=["anthropic-api", "ccpool_OTHER"], **{"ccr:pool_id": "ccpool_OTHER"})), "another environment"),
+        (make_jwt(good_claims(**{"ccr:role": "runner"})), "not a session_worker token"),
+        ("sk-ant-cc-not-a-jwt", "undecodable payload"),
+    ],
+)
+def test_checkout_gates_claims_before_the_first_exchange(h: Harness, tmp_path: Path, jwt: str, reason: str):
+    """The checkout hook runs without the runner binary, so it decodes the JWT
+    payload itself and refuses before any broker call or clone."""
+    remotes, _, _ = make_remote(tmp_path)
+    target = tmp_path / "ws" / "checkout"
+    result = h.run(
+        "checkout",
+        cwd=tmp_path,
+        FACTORY_GITHUB_URL=f"https://github.example",
+        CLAUDE_RUNNER_REPO_URL=f"https://github.com/{REPO}.git",
+        CLAUDE_RUNNER_CHECKOUT_PATH=str(target),
+        CLAUDE_CODE_SESSION_ACCESS_TOKEN=jwt,
+        CLAUDE_RUNNER_SESSION_UUID=str(uuid.uuid4()),
+        CLAUDE_CODE_REMOTE_SESSION_UUID=None,
+        CLAUDE_RUNNER_CLAUDE_BIN=None,
+        GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="credential.helper", GIT_CONFIG_VALUE_0="",
+    )
+    assert result.returncode == 1, reason
+    assert "session token" in result.stderr and "clone" not in result.stderr, result.stderr
+    assert "ghs_" not in result.stdout + result.stderr
+    assert h.broker_calls() == [], f"{reason}: the broker must not be asked"
     assert not target.exists()
 
 

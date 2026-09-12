@@ -46,15 +46,25 @@
 #   FACTORY_APP_BOT_EMAIL     optional; the App's `<id>+<slug>[bot]@users.
 #                             noreply.github.com` address, set as user.email
 #                             so commits carry the App identity (2d fact 5)
-#   FACTORY_GITHUB_URL        optional; default https://github.com (GHES, tests)
+#   FACTORY_GITHUB_URL        optional; default https://github.com. Must be
+#                             https:// (GHES); file:// is accepted only so the
+#                             tests can clone a local bare repo, and never
+#                             yields a credential
 #   FACTORY_TOKEN_CACHE_DIR   optional; default ${XDG_RUNTIME_DIR:-/tmp}
 #
 # Never prints a token to stdout or stderr except from `credential get` (to git,
 # on stdout, as the protocol requires) and `token` (its whole purpose).
 set -euo pipefail
+# errexit does not reach into $(...) by default; every helper below is called
+# through one, so make a failing helper abort the caller too.
+shopt -s inherit_errexit
 
 self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
 github_url=${FACTORY_GITHUB_URL:-https://github.com}
+case "$github_url" in
+  https://*|file://*) ;;
+  *) echo "factory-session-wrapper: FACTORY_GITHUB_URL must be https:// (got ${github_url%%://*}://)" >&2; exit 1 ;;
+esac
 
 die() {
   echo "factory-session-wrapper: $*" >&2
@@ -122,18 +132,63 @@ session_jwt() {
   fi
 }
 
-# Exchange the session JWT for a repository token at the broker. Writes the
-# response to the cache file (mode 0600) and prints nothing.
-mint_token() {
-  require_env FACTORY_TOKEN_BROKER_URL FACTORY_REPO
-  require_tools curl jq
-  local jwt file tmp status body
+# The claim predicate every path enforces before a token is minted: issued by
+# ccr for this environment, a session_worker token, created by a human user.
+CLAIM_FILTER='
+  .iss == "ccr"
+  and (.aud | type == "array" and index($pool) != null)
+  and ."ccr:pool_id" == $pool
+  and ."ccr:role" == "session_worker"
+  and (.act.sub | type == "string" and startswith("user:"))
+'
+
+check_claims() {
+  require_env FACTORY_POOL_ID
+  printf '%s' "$1" | jq -e --arg pool "$FACTORY_POOL_ID" "$CLAIM_FILTER" >/dev/null 2>&1
+}
+
+# Decode the JWT payload without verifying the signature. The broker does the
+# cryptographic check; this gate keeps a token for another environment or an
+# agent-created session from ever reaching the broker (the checkout hook runs
+# without the runner binary, so decode-token is not available there).
+jwt_payload() {
+  local body=${1#sk-ant-cc-} payload
+  payload=${body#*.}
+  payload=${payload%%.*}
+  [ -n "$payload" ] && [ "$payload" != "$body" ] || return 1
+  payload=$(printf '%s' "$payload" | tr '_-' '/+')
+  case $(( ${#payload} % 4 )) in
+    2) payload="$payload==" ;;
+    3) payload="$payload=" ;;
+    1) return 1 ;;
+  esac
+  printf '%s' "$payload" | base64 -d 2>/dev/null || printf '%s' "$payload" | base64 -D 2>/dev/null
+}
+
+# Print the current session JWT after gating it on shape and claims; every
+# entry point calls this before it touches the network.
+gated_session_jwt() {
+  require_tools jq
+  local jwt claims
   jwt=$(session_jwt)
   [ -n "$jwt" ] || die "no session token (CLAUDE_CODE_SESSION_ACCESS_TOKEN)"
   case "$jwt" in
     sk-ant-cc-*) ;;
     *) die "session token is not a self-hosted session token (expected sk-ant-cc- prefix)" ;;
   esac
+  claims=$(jwt_payload "$jwt") || die "session token payload does not decode"
+  check_claims "$claims" \
+    || die "session token is not a session_worker token for $FACTORY_POOL_ID created by a user; not contacting the broker"
+  printf '%s' "$jwt"
+}
+
+# Exchange the session JWT for a repository token at the broker. Writes the
+# response to the cache file (mode 0600) and prints nothing.
+mint_token() {
+  require_env FACTORY_TOKEN_BROKER_URL FACTORY_POOL_ID FACTORY_REPO
+  require_tools curl jq
+  local jwt file tmp status
+  jwt=$(gated_session_jwt) || exit 1
   case "$FACTORY_TOKEN_BROKER_URL" in
     https://*) ;;
     *) die "FACTORY_TOKEN_BROKER_URL must be https" ;;
@@ -152,9 +207,9 @@ mint_token() {
     "$FACTORY_TOKEN_BROKER_URL/v1/session-token") || { rm -f "$hdr" "$tmp"; die "token broker unreachable"; }
   rm -f "$hdr"
   if [ "$status" != 200 ]; then
-    body=$(head -c 300 "$tmp" | tr -d '\r' | tr '\n' ' ')
+    # Status only: an error body is never echoed, in case it carries a secret.
     rm -f "$tmp"
-    die "token broker refused (HTTP $status): $body"
+    die "token broker refused (HTTP $status)"
   fi
   jq -e --arg repo "$FACTORY_REPO" '
     (.token | type == "string" and length > 0)
@@ -195,13 +250,8 @@ verify_session_claims() {
   local claims
   claims=$("$CLAUDE_RUNNER_CLAUDE_BIN" self-hosted-runner decode-token) \
     || die "decode-token failed: session token did not verify"
-  printf '%s' "$claims" | jq -e --arg pool "$FACTORY_POOL_ID" '
-    .iss == "ccr"
-    and (.aud | type == "array" and index($pool) != null)
-    and ."ccr:pool_id" == $pool
-    and ."ccr:role" == "session_worker"
-    and (.act.sub | type == "string" and startswith("user:"))
-  ' >/dev/null 2>&1 || die "session token is not a session_worker token for $FACTORY_POOL_ID created by a user"
+  check_claims "$claims" \
+    || die "session token is not a session_worker token for $FACTORY_POOL_ID created by a user"
 }
 
 # Append git config to the GIT_CONFIG_{COUNT,KEY_n,VALUE_n} environment (git
@@ -214,13 +264,16 @@ add_git_config() {
 }
 
 cmd_checkout() {
-  require_env CLAUDE_RUNNER_REPO_URL CLAUDE_RUNNER_CHECKOUT_PATH FACTORY_REPO
-  require_tools git
+  require_env CLAUDE_RUNNER_REPO_URL CLAUDE_RUNNER_CHECKOUT_PATH FACTORY_POOL_ID FACTORY_REPO
+  require_tools git jq
   local requested depth
   requested=$(repo_from_url "$CLAUDE_RUNNER_REPO_URL")
   [ -n "$requested" ] || die "cannot parse repository from $CLAUDE_RUNNER_REPO_URL"
   same_repo "$requested" "$FACTORY_REPO" \
     || die "this environment serves $FACTORY_REPO; refusing to check out $requested"
+  # Gate the session token here, before the clone: the helper gates again
+  # before every exchange, but a refused session should not reach the network.
+  gated_session_jwt >/dev/null || exit 1
   export GIT_TERMINAL_PROMPT=0
   depth=()
   case "${CLAUDE_RUNNER_FETCH_DEPTH:-50}" in
@@ -278,14 +331,16 @@ cmd_credential() {
       path) path=$value ;;
     esac
   done
+  # Answer only https requests for the bound repository. A request with no
+  # path (credential.useHttpPath off) is refused rather than treated as a
+  # wildcard for the host.
   local want_host
   want_host=${github_url#*://}; want_host=${want_host%%/*}
-  [ "$protocol" = https ] || [ "$protocol" = "${github_url%%://*}" ] || exit 0
+  [ "$protocol" = https ] || exit 0
   [ "$host" = "$want_host" ] || exit 0
-  if [ -n "$path" ]; then
-    path=${path%/}; path=${path%.git}
-    same_repo "$path" "$FACTORY_REPO" || exit 0
-  fi
+  [ -n "$path" ] || exit 0
+  path=${path%/}; path=${path%.git}
+  same_repo "$path" "$FACTORY_REPO" || exit 0
   local token
   token=$(fresh_token) || exit 1
   printf 'username=x-access-token\npassword=%s\n' "$token"

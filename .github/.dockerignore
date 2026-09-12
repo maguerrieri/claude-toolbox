@@ -1,0 +1,4 @@
+# The environment secret must never enter the build context; compose.yml
+# points at a file outside the repository, and this excludes the name in case
+# one is ever dropped here.
+**/environment-secret

@@ -19,6 +19,14 @@ Build with `.github` as the context, so the image sees the wrapper and the
 hooks and nothing else:
 
 ```bash
-docker build -f .github/self-hosted/Dockerfile --build-arg CLAUDE_CODE_VERSION=2.1.268 \
+docker build -f .github/self-hosted/Dockerfile \
+  --build-arg CLAUDE_CODE_VERSION=2.1.268 \
+  --build-arg FACTORY_SETUP_REF=$(git rev-parse origin/main) \
   -t <registry>/factory-runner:<tag> .github
 ```
+
+`FACTORY_SETUP_REF` must be a full commit SHA (the build refuses a branch or
+tag), so a rebuild can only run setup code that was reviewed at that commit.
+Keep the environment secret outside the repository and point
+`FACTORY_ENVIRONMENT_SECRET_FILE` at it; nothing under `.github` should ever
+hold it, since that directory is the image's build context.

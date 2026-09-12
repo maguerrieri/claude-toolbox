@@ -1012,8 +1012,9 @@ pushing actor is the user too. Therefore:
    (`.github/self-hosted/Dockerfile`, context `.github`) pins the `claude`
    binary, bakes the wrapper and hooks in root-owned and read-only, runs as
    an unprivileged `runner` user, and runs `.claude/cloud-setup.sh` from a
-   pinned ref of this repository **at image build**, never from a session's
-   checkout — the self-hosted analogue of 2b's protected-copy stub, and the
+   pinned **commit SHA** of this repository **at image build** (the build
+   refuses a branch or tag name and records the SHA in the image), never
+   from a session's checkout — the self-hosted analogue of 2b's protected-copy stub, and the
    cache-staleness gap of 2b does not exist here because every session gets
    a freshly built image's filesystem. Until item 6 lands the build warns
    that the file is absent rather than pretending the image is provisioned.
