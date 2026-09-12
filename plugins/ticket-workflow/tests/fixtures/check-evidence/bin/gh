@@ -4,7 +4,8 @@
 # case without the network. Only the read surface the gate uses exists:
 #
 #   gh api repos/O/R                                   -> repo.json
-#   gh api repos/O/R/pulls/N                           -> pull.json
+#   gh api repos/O/R/pulls/N                           -> pull.json (pull.later.json from
+#                                                         the 2nd read on, when present)
 #   gh api --paginate repos/O/R/commits/SHA/check-runs?filter=all&per_page=100 --jq F
 #                                                      -> check-runs.json [+ .page2.json …]
 #   gh api --paginate repos/O/R/commits/SHA/statuses?per_page=100 --jq F
@@ -71,7 +72,15 @@ graphql)
 	[ -n "$op" ] || bad "GraphQL query has no operation name"
 	serve "graphql/$op"
 	;;
-repos/*/*/pulls/*) serve pull ;;
+repos/*/*/pulls/*)
+	# A pull.later.json fixture stands in for a push during the gate: the first
+	# read returns pull.json, every later read the moved PR.
+	if [ -e "$fixtures/pull.later.json" ] && [ "$(grep -cE -- " repos/[^ /]+/[^ /]+/pulls/[0-9]+( |$)" "${FAKE_GH_LOG:-/dev/null}" 2>/dev/null || echo 0)" -gt 1 ]; then
+		serve pull.later
+	else
+		serve pull
+	fi
+	;;
 repos/*/*/commits/*/check-runs*)
 	require_head "$(sha_of "$target")"
 	[[ $target == *filter=all* ]] || bad "check-runs must be read with filter=all (every attempt), got $target"

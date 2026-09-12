@@ -148,6 +148,11 @@ head_has_path() {
 
 # --- reads ------------------------------------------------------------------------
 repo_json=$(api "repos/$repo")
+# Owner and name are case-insensitive for lookup; use GitHub's canonical
+# spelling from here on so identity comparisons (rule 3) never trip on casing.
+repo=$(printf '%s' "$repo_json" | jq -r '.full_name')
+owner=${repo%/*}
+name=${repo#*/}
 default_branch=$(printf '%s' "$repo_json" | jq -r '.default_branch')
 repo_owner=$(printf '%s' "$repo_json" | jq -r '.owner.login')
 
@@ -356,22 +361,24 @@ extract_json_after() { # <file> <anchor regex>
 	' "$1"
 }
 count_evidence_headings() { grep -c '^## Evidence[[:space:]]*$' "$1" || true; }
-count_evidence_fences() { # completed ```json … ``` pairs under the Evidence heading, before the next `## `
+count_evidence_fences() { # "<completed ```json … ``` pairs> <unterminated fences>" under the Evidence heading, before the next `## `
 	awk '
-		/^## Evidence[[:space:]]*$/ { inside = 1; open = 0; next }
-		inside && /^## / { inside = 0 }
+		/^## Evidence[[:space:]]*$/ { inside = 1; next }
+		inside && /^## / { inside = 0; if (open) { open = 0; dangling++ } }
 		inside && !open && /^```json[[:space:]]*$/ { open = 1; next }
 		inside && open && /^```[[:space:]]*$/ { open = 0; n++ }
-		END { print n + 0 }
+		END { print n + 0, dangling + open }
 	' "$1"
 }
 headings=$(count_evidence_headings "$tmpdir/body")
-fences=$(count_evidence_fences "$tmpdir/body")
+read -r fences dangling < <(count_evidence_fences "$tmpdir/body")
 block='' have_block=0
 if [ "$headings" -eq 0 ]; then
 	fail "6 evidence: no '## Evidence' section in the PR body"
 elif [ "$headings" -gt 1 ]; then
 	fail "6 evidence: $headings '## Evidence' sections; exactly one block per PR"
+elif [ "$dangling" -ne 0 ]; then
+	fail "6 evidence: an unterminated \`\`\`json fence under '## Evidence' ($fences completed, $dangling never closed)"
 elif [ "$fences" -ne 1 ]; then
 	fail "6 evidence: expected one \`\`\`json fence under '## Evidence', found $fences"
 else
@@ -418,6 +425,11 @@ if [ "$have_block" -eq 1 ]; then
 		while IFS= read -r problem; do fail "6 evidence block: $problem"; done <<<"$problems"
 	fi
 fi
+
+# --- head consistency: every read above was against $head; a push during the gate
+# would leave a green old commit judged while the PR now points elsewhere.
+final_head=$(api "repos/$repo/pulls/$pr" --jq '.head.sha')
+[ "$final_head" = "$head" ] || die 2 "PR #$pr's head moved during the gate ($head -> $final_head); re-run"
 
 # --- verdict -------------------------------------------------------------------------------
 if [ "$failures" -gt 0 ]; then

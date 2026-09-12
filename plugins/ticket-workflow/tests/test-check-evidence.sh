@@ -120,6 +120,9 @@ git -C "$case_dir" init -q && git -C "$case_dir" remote add origin git@github.co
 if (cd "$case_dir" && FAKE_GH_FIXTURES="$case_dir" bash "$script" 7 42 >/dev/null 2>&1); then ok "repo derived from an ssh origin remote"; else fail "repo derived from an ssh origin remote"; fi
 git -C "$case_dir" remote set-url origin https://github.com/o/r.git
 if (cd "$case_dir" && FAKE_GH_FIXTURES="$case_dir" bash "$script" '#7' '#42' >/dev/null 2>&1); then ok "repo derived from an https origin remote; # prefixes stripped"; else fail "repo derived from an https origin remote; # prefixes stripped"; fi
+new_case repo-casing
+expect_pass "--repo in a different case than GitHub's canonical spelling passes" 7 42 --repo O/R
+expect_output "repo-casing: the canonical spelling is used" "check-evidence: o/r PR #7"
 # CRLF bodies (edited in the GitHub web UI) parse the same
 new_case crlf
 patch pull.json '.body |= gsub("\n"; "\r\n")'
@@ -337,7 +340,19 @@ set_body "$(printf '## Evidence\n```json\n```\n\nCloses #42\n')"
 expect_refuse "an empty json fence refuses (validation keys off the selected fence, not its content)" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r
 new_case unterminated-fence
 set_body "$(printf '## Evidence\n```json\n%s\n' "$EVIDENCE_BLOCK")"
-expect_refuse "an unterminated json fence refuses" "found 0" 7 42 --repo o/r
+expect_refuse "an unterminated json fence refuses" "an unterminated \`\`\`json fence under '## Evidence' (0 completed, 1 never closed)" 7 42 --repo o/r
+new_case valid-plus-unterminated
+set_body "$(printf '## Evidence\n```json\n%s\n```\n\n```json\n%s\n' "$EVIDENCE_BLOCK" "$EVIDENCE_BLOCK")"
+expect_refuse "a valid fence followed by an unterminated one refuses" "(1 completed, 1 never closed)" 7 42 --repo o/r
+new_case unterminated-before-next-heading
+set_body "$(printf '## Evidence\n```json\n%s\n\n## Notes\nx\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
+expect_refuse "a fence left open when the next section starts refuses" "(0 completed, 1 never closed)" 7 42 --repo o/r
+for bad in '.tests = true' '.docs = {}' '.context_reads = 7' '.context_reads = [1, "AGENTS.md"]' '.context_reads = [true]' '.session = null' '.role = 3' '.wall_clock_min = false' '.critic = []' '.schema = ["ticket-workflow/evidence/1"]'; do
+	new_case "type-$(printf '%s' "$bad" | tr -c 'a-z' '-')"
+	set_body "$(body_with "$bad")"
+	expect_refuse "a non-string value ($bad) is a rule-6 FAIL, never a jq error" "6 evidence block:" 7 42 --repo o/r
+	if [[ $out == *"jq: error"* ]]; then fail "type case $bad: jq errored"; fi
+done
 new_case malformed
 set_body "$(printf '## Evidence\n```json\n{"schema": "ticket-workflow/evidence/1",\n```\n\nCloses #42\n')"
 expect_refuse "malformed JSON refuses" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r
@@ -416,6 +431,9 @@ expect_error "a closed PR is not gateable" "PR #7 is closed, not open" 7 42 --re
 new_case head-moved
 patch graphql/PrGate.json --arg s "$OLD" '.data.repository.pullRequest.headRefOid = $s'
 expect_error "a head that moved between reads is an error, not a verdict" "head moved between reads" 7 42 --repo o/r
+new_case head-moved-late
+jq --arg s "$OLD" '.head.sha = $s' "$green/pull.json" >"$case_dir/pull.later.json"
+expect_error "a push during the gate is an error, not a verdict" "head moved during the gate" 7 42 --repo o/r
 new_case api-down
 rm "$case_dir/pull.json"
 expect_error "an API failure is an error, not a verdict" "gh api repos/o/r/pulls/7 failed" 7 42 --repo o/r
