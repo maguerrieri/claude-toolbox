@@ -100,7 +100,8 @@ jobs:
     steps:
       - name: Mint a factory-ci App token
         id: app
-        uses: actions/create-github-app-token@v2
+        # Pinned by commit: this step holds the App's private key.
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         with:
           app-id: ${{ vars.FACTORY_CI_APP_ID }}
           private-key: ${{ secrets.FACTORY_CI_APP_PRIVATE_KEY }}

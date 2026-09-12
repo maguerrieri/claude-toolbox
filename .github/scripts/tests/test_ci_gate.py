@@ -164,6 +164,9 @@ def test_lint_gate_trigger_shape():
         "target paths": gate(["gm CI", "plugin versions"], pull_request_target={"types": ["opened", "synchronize", "reopened"], "branches": ["main"], "paths": ["docs/**"]}),
         "target paths-ignore": gate(["gm CI", "plugin versions"], pull_request_target={"types": ["opened", "synchronize", "reopened"], "branches": ["main"], "paths-ignore": ["docs/**"]}),
         "run branches": gate(["gm CI", "plugin versions"], workflow_run={"workflows": ["gm CI", "plugin versions"], "types": ["completed"], "branches": ["main"]}),
+        "extra pull_request event": gate(["gm CI", "plugin versions"], pull_request={"branches": ["main"]}),
+        "extra push event": gate(["gm CI", "plugin versions"], push=None),
+        "boolean head_sha": gate(["gm CI", "plugin versions"], workflow_dispatch={"inputs": {"head_sha": {"required": True, "type": "boolean"}}}),
     }
     for label, doc in cases.items():
         if label == "no dispatch":
@@ -262,6 +265,13 @@ def test_expected_paths_with_negation():
     assert ci_gate.is_expected(cfg, ["src/a.py"], "main") is True
 
 
+def test_negative_only_filters_rejected():
+    for cfg in ({"paths": ["!docs/**"]}, {"paths-ignore": ["!docs/**"]}, {"branches": ["!dev"]}):
+        with pytest.raises(ci_gate.GateError):
+            ci_gate.is_expected(cfg, ["a"], "main")
+    assert ci_gate.is_expected({"paths": ["src/**", "!src/README.md"]}, ["src/a.py"], "main") is True
+
+
 def test_expected_empty_diff_skips_filtered_workflows():
     assert ci_gate.is_expected({"paths": ["**"]}, [], "main") is False
     assert ci_gate.is_expected({}, [], "main") is True
@@ -323,6 +333,17 @@ def test_aggregate_ignores_push_and_own_runs():
     assert verdict == "pending"
     assert ci_gate.latest_run(runs, "ci-gate.yml", "pull_request_target", "3") is None
     assert ci_gate.latest_run(runs, "ci-gate.yml", "pull_request_target", "999") is None  # never expected, even as another run
+
+
+def test_aggregate_run_must_belong_to_this_pr():
+    """A closed PR's run on the same head does not satisfy (or block) a new PR."""
+    old = dict(run("plugin-versions.yml", id=1), pull_requests=[{"number": 1}])
+    assert ci_gate.latest_run([old], "plugin-versions.yml", "pull_request", "999", pr_number=2) is None
+    assert ci_gate.latest_run([old], "plugin-versions.yml", "pull_request", "999", pr_number=1) is old
+    fork = dict(run("plugin-versions.yml", id=3), pull_requests=[])  # fork runs list no PR
+    assert ci_gate.latest_run([fork], "plugin-versions.yml", "pull_request", "999", pr_number=2) is fork
+    verdict, rows = ci_gate.aggregate([("plugin-versions.yml", "pull_request")], [old], "999", pr_number=2)
+    assert verdict == "pending" and rows[0]["detail"] == "no run yet"
 
 
 def test_aggregate_nothing_expected_is_success():
@@ -409,6 +430,19 @@ def test_evaluate_skips_sha_without_pr():
 def test_evaluate_skips_pr_not_targeting_main():
     api = FakeApi([pr(1, "abc", base="epic-89-92")], ["a"], TREE, [])
     assert ci_gate.evaluate(api, "abc", "1")["verdict"] == "skip"
+
+
+def test_evaluate_accepts_merge_commit_sha_and_uses_head():
+    prs = [dict(pr(1, "abc"), merge_commit_sha="m" * 40)]
+    api = FakeApi(prs, ["docs/a.md"], TREE, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "m" * 40, "999")
+    assert result["verdict"] == "success" and result["head_sha"] == "abc"
+
+
+def test_contents_endpoint_encodes_segments():
+    assert ci_gate.contents_endpoint(".claude/settings.json") == "contents/.claude/settings.json"
+    assert ci_gate.contents_endpoint("dir?x/.claude/settings.json") == "contents/dir%3Fx/.claude/settings.json"
+    assert ci_gate.contents_endpoint("a#b/c d.yml") == "contents/a%23b/c%20d.yml"
 
 
 def test_evaluate_two_prs_same_head_fail_closed():

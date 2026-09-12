@@ -66,6 +66,7 @@ GATE_TYPES = {"opened", "synchronize", "reopened"}
 GATE_TARGET_KEYS = {"types", "branches"}
 GATE_RUN_KEYS = {"workflows", "types"}
 GATE_DISPATCH_INPUT = "head_sha"
+GATE_EVENTS = {GATE_EVENT, "workflow_run", "workflow_dispatch"}
 SUPPORTED_KEYS = {"types", "branches", "branches-ignore", "paths", "paths-ignore"}
 DEFAULT_TYPES = ["opened", "synchronize", "reopened"]
 HEAD_TYPES = {"opened", "synchronize"}
@@ -281,6 +282,10 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
         return [str(exc)]
     raw = gate_doc.get("on", gate_doc.get(True))
     raw = raw if isinstance(raw, dict) else {}
+    if set(raw) - GATE_EVENTS:
+        # Any other event (a `pull_request` above all) would run this workflow
+        # from the PR's own YAML with a PR-controlled GITHUB_SHA.
+        errors.append(f"on may only declare {sorted(GATE_EVENTS)}, got {sorted(set(raw) - GATE_EVENTS)}")
     target = raw.get(GATE_EVENT)
     if not isinstance(target, dict):
         errors.append(f"on.{GATE_EVENT} must be present as a mapping")
@@ -313,8 +318,9 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
             )
     dispatch = raw.get("workflow_dispatch") if "workflow_dispatch" in raw else None
     head_input = (dispatch.get("inputs") or {}).get(GATE_DISPATCH_INPUT) if isinstance(dispatch, dict) else None
-    if not isinstance(head_input, dict) or head_input.get("required") is not True:
-        errors.append(f"on.workflow_dispatch must declare a required `{GATE_DISPATCH_INPUT}` input (manual re-evaluation by head SHA)")
+    if (not isinstance(head_input, dict) or head_input.get("required") is not True
+            or head_input.get("type", "string") != "string"):
+        errors.append(f"on.workflow_dispatch must declare a required string `{GATE_DISPATCH_INPUT}` input (manual re-evaluation by head SHA)")
     return errors
 
 
@@ -341,7 +347,12 @@ def validate_constructs(event: str, cfg: dict) -> None:
     if "paths" in cfg and "paths-ignore" in cfg:
         raise GateError(f"{event}: paths and paths-ignore cannot both be set")
     for key in ("branches", "branches-ignore", "paths", "paths-ignore"):
-        for pattern in cfg.get(key, []):
+        patterns = cfg.get(key, [])
+        if patterns and all(p.startswith("!") for p in patterns):
+            # GitHub requires a positive pattern before any negation; a
+            # negative-only list is not a runnable trigger.
+            raise GateError(f"{event}.{key}: needs at least one positive pattern before a `!` pattern")
+        for pattern in patterns:
             pattern_to_regex(pattern[1:] if pattern.startswith("!") else pattern)
 
 
@@ -375,7 +386,7 @@ def expected_set(manifest: dict, changed_files: list[str], base_ref: str) -> lis
     return out
 
 
-def observed_unexpected(manifest: dict, runs: list[dict], expected: list[tuple[str, str]], own_run_id) -> list[tuple[str, str]]:
+def observed_unexpected(manifest: dict, runs: list[dict], expected: list[tuple[str, str]], own_run_id, pr_number=None) -> list[tuple[str, str]]:
     """Manifest workflows that have a PR run on this head although their filters did not select it.
 
     GitHub runs every path-filtered workflow when it cannot compute the diff,
@@ -387,7 +398,7 @@ def observed_unexpected(manifest: dict, runs: list[dict], expected: list[tuple[s
         for event, cfg in normalize_on(declared if declared is not None else {}).items():
             if set(cfg.get("types", DEFAULT_TYPES)) <= CLOSE_TYPES:
                 continue  # a closed-only workflow's stale run on a reopened head is never evidence
-            if (filename, event) not in expected and latest_run(runs, filename, event, own_run_id) is not None:
+            if (filename, event) not in expected and latest_run(runs, filename, event, own_run_id, pr_number) is not None:
                 out.append((filename, event))
     return out
 
@@ -395,8 +406,20 @@ def observed_unexpected(manifest: dict, runs: list[dict], expected: list[tuple[s
 # --- Aggregation ------------------------------------------------------------
 
 
-def latest_run(runs: list[dict], filename: str, event: str, own_run_id) -> dict | None:
-    """The newest run of `<file>` under `<event>` on the head SHA, never ci-gate's own."""
+def run_belongs_to(run: dict, pr_number) -> bool:
+    """A run associated with other PRs only (a closed PR that shared this head) is not this PR's.
+
+    GitHub lists the same-repository PRs a run belongs to; a fork PR's run
+    lists none and is accepted on the head SHA alone.
+    """
+    if pr_number is None:
+        return True
+    linked = [p.get("number") for p in (run.get("pull_requests") or []) if isinstance(p, dict)]
+    return not linked or pr_number in linked
+
+
+def latest_run(runs: list[dict], filename: str, event: str, own_run_id, pr_number=None) -> dict | None:
+    """The newest run of `<file>` under `<event>` on the head SHA for this PR, never ci-gate's own."""
     path = f"{WORKFLOWS_DIR}/{filename}"
     candidates = [
         r for r in runs
@@ -404,6 +427,7 @@ def latest_run(runs: list[dict], filename: str, event: str, own_run_id) -> dict 
         and r.get("event") == event
         and str(r.get("id")) != str(own_run_id)
         and r.get("path") != f"{WORKFLOWS_DIR}/{SELF_WORKFLOW}"
+        and run_belongs_to(r, pr_number)
     ]
     if not candidates:
         return None
@@ -412,12 +436,12 @@ def latest_run(runs: list[dict], filename: str, event: str, own_run_id) -> dict 
     return max(candidates, key=lambda r: (r.get("run_started_at") or r.get("created_at") or "", int(r.get("id", 0))))
 
 
-def aggregate(expected: list[tuple[str, str]], runs: list[dict], own_run_id) -> tuple[str, list[dict]]:
+def aggregate(expected: list[tuple[str, str]], runs: list[dict], own_run_id, pr_number=None) -> tuple[str, list[dict]]:
     """Return (`success`|`failure`|`pending`, rows) for the expected set."""
     rows = []
     verdict = "success"
     for filename, event in expected:
-        run = latest_run(runs, filename, event, own_run_id)
+        run = latest_run(runs, filename, event, own_run_id, pr_number)
         if run is None:
             state, detail = "pending", "no run yet"
         elif run.get("status") != "completed":
@@ -459,6 +483,13 @@ def settings_paths_to_lint(changed_files: list[str]) -> list[str]:
 # --- Evaluation over an API-shaped interface --------------------------------
 
 
+def contents_endpoint(path: str) -> str:
+    """`contents/<path>` with every segment percent-encoded: a PR-controlled file
+    name containing `?` or `#` must not truncate the request into a query or
+    fragment (which would fetch a directory or 404 and silently skip a lint)."""
+    return "contents/" + "/".join(urllib.parse.quote(seg, safe="") for seg in path.split("/"))
+
+
 class Api:
     """The GitHub REST calls the evaluator needs. Tests substitute a fake."""
 
@@ -495,7 +526,7 @@ class Api:
 
     def raw(self, path: str, ref: str) -> str | None:
         try:
-            return self._request(f"contents/{path}", {"ref": ref}, raw=True)[0]
+            return self._request(contents_endpoint(path), {"ref": ref}, raw=True)[0]
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return None
@@ -503,7 +534,7 @@ class Api:
 
     def listing(self, path: str, ref: str) -> list[dict]:
         try:
-            return self.get(f"contents/{path}", {"ref": ref})
+            return self.get(contents_endpoint(path), {"ref": ref})
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return []
@@ -530,7 +561,10 @@ def resolve_pr(api: Api, head_sha: str) -> tuple[str, dict | None, list[str]]:
 
     Returns (`ok`|`skip`|`failure`, pr, reasons). `skip` means nothing to report.
     """
-    candidates = [pr for pr in api.open_prs(PROTECTED_BASE) if pr["head"]["sha"] == head_sha]
+    # workflow_run.head_sha is the PR branch head for pull_request-triggered
+    # runs; the merge commit is accepted too, defensively, and the PR's own
+    # head SHA is what every later read and the posted check use.
+    candidates = [pr for pr in api.open_prs(PROTECTED_BASE) if head_sha in (pr["head"]["sha"], pr.get("merge_commit_sha"))]
     if not candidates:
         return "skip", None, [f"no open PR to {PROTECTED_BASE} has head {head_sha}"]
     if len(candidates) > 1:
@@ -610,8 +644,8 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
 
     runs = api.runs(head_sha)
     expected = expected_set(manifest, changed, pr["base"]["ref"])
-    observed = observed_unexpected(manifest, runs, expected, own_run_id)
-    verdict, rows = aggregate(expected + observed, runs, own_run_id)
+    observed = observed_unexpected(manifest, runs, expected, own_run_id, number)
+    verdict, rows = aggregate(expected + observed, runs, own_run_id, number)
     for row in rows:
         if (row["workflow"], row["event"]) in observed:
             row["detail"] += "; ran although its filters did not select this PR (GitHub diff fallback?), so it counts"
