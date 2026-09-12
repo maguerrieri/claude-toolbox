@@ -1,7 +1,25 @@
-{"data": {"repository": {"pullRequest": {
-  "headRefOid": "0123456789abcdef0123456789abcdef01234567",
-  "author": {"login": "author"},
-  "reviewDecision": null,
-  "closingIssuesReferences": {"totalCount": 1, "nodes": [{"number": 42, "repository": {"nameWithOwner": "o/r"}}]},
-  "commits": {"nodes": [{"commit": {"oid": "0123456789abcdef0123456789abcdef01234567", "statusCheckRollup": {"state": "SUCCESS"}}}]}
-}}}}
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "headRefOid": "0123456789abcdef0123456789abcdef01234567",
+        "author": {
+          "login": "author"
+        },
+        "reviewDecision": null,
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "oid": "0123456789abcdef0123456789abcdef01234567",
+                "statusCheckRollup": {
+                  "state": "SUCCESS"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

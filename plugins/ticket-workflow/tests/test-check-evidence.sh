@@ -89,7 +89,13 @@ run() { # <id> <name> <suite> <status> <conclusion>
 	jq -nc --argjson id "$1" --arg n "$2" --argjson s "$3" --arg st "$4" --arg c "$5" \
 		'{id: $id, name: $n, status: $st, conclusion: (if $c == "null" then null else $c end), app: {slug: "github-actions"}, check_suite: {id: $s}}'
 }
-rollup_run() { jq -nc --arg n "$1" '{__typename: "CheckRun", name: $n}'; }
+rollup_run() { # <name> <suite> <databaseId> [<status> <conclusion>]
+	jq -nc --arg n "$1" --argjson s "$2" --argjson id "$3" --arg st "${4:-COMPLETED}" --arg c "${5:-SUCCESS}" \
+		'{__typename: "CheckRun", name: $n, status: $st, conclusion: (if $c == "null" then null else $c end), databaseId: $id, checkSuite: {databaseId: $s}}'
+}
+ROLLUP='.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup'
+CLOSING='.data.repository.pullRequest.closingIssuesReferences'
+
 review() { # <login> <state> <sha> <submittedAt>
 	jq -nc --arg l "$1" --arg s "$2" --arg c "$3" --arg t "$4" '{state: $s, author: {login: $l}, commit: {oid: $c}, submittedAt: $t}'
 }
@@ -107,7 +113,7 @@ done
 if [[ $out != *"- 5 "* ]]; then ok "green: rule 5 is not evaluated on risk:normal"; else fail "green: rule 5 is not evaluated on risk:normal"; fi
 if grep -q '^api -X\|^api --method' "$case_dir/gh.log"; then fail "gate never writes"; else ok "gate never writes (no -X/--method in the gh log)"; fi
 if grep -q 'check-runs?filter=all' "$case_dir/gh.log"; then ok "check runs are read with filter=all"; else fail "check runs are read with filter=all"; fi
-if grep -q -- "--paginate repos/o/r/commits/$HEAD/check-runs" "$case_dir/gh.log" && grep -q -- '--paginate graphql.*ReviewThreads' "$case_dir/gh.log"; then ok "list reads are paginated"; else fail "list reads are paginated"; fi
+if grep -q -- "--paginate repos/o/r/commits/$HEAD/check-runs" "$case_dir/gh.log" && grep -q -- '--paginate graphql.*ReviewThreads' "$case_dir/gh.log" && grep -q -- '--paginate graphql.*ClosingRefs' "$case_dir/gh.log" && grep -q -- '--paginate graphql.*RollupContexts' "$case_dir/gh.log"; then ok "list reads are paginated"; else fail "list reads are paginated"; fi
 # gh with a --repo derived from the git remote
 new_case remote
 git -C "$case_dir" init -q && git -C "$case_dir" remote add origin git@github.com:o/r.git
@@ -140,28 +146,44 @@ patch check-runs.json '(.check_runs[] | select(.id == 3003) | .conclusion) = "sk
 expect_refuse "a skipped conclusion is not success" "[suite 93]: skipped" 7 42 --repo o/r
 new_case empty
 patch check-runs.json '.check_runs = [] | .total_count = 0'
-patch graphql/RollupContexts.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup = null'
+patch graphql/RollupContexts.json "$ROLLUP = null"
 patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup = null'
 expect_refuse "an empty check set refuses (never vacuously green)" "1 checks: no check runs or statuses on head" 7 42 --repo o/r
 new_case status-red
 patch statuses.json --arg h "$HEAD" '. + [{id: 501, context: "ci/legacy", state: "failure"}]'
-patch graphql/RollupContexts.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes += [{__typename: "StatusContext", context: "ci/legacy", state: "FAILURE"}]'
+patch graphql/RollupContexts.json "$ROLLUP.contexts.nodes += [{__typename: \"StatusContext\", context: \"ci/legacy\", state: \"FAILURE\"}]"
 patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
 expect_refuse "a red commit status (legacy Status API) refuses" "1 status ci/legacy: failure" 7 42 --repo o/r
 new_case status-rerun-green
 patch statuses.json '. + [{id: 501, context: "ci/legacy", state: "failure"}, {id: 502, context: "ci/legacy", state: "success"}]'
-patch graphql/RollupContexts.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes += [{__typename: "StatusContext", context: "ci/legacy", state: "SUCCESS"}]'
+patch graphql/RollupContexts.json "$ROLLUP.contexts.nodes += [{__typename: \"StatusContext\", context: \"ci/legacy\", state: \"SUCCESS\"}]"
 expect_pass "a commit status whose newest state is success passes" 7 42 --repo o/r
 new_case rollup-state
 patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
 expect_refuse "a non-SUCCESS statusCheckRollup refuses even when the direct read is green" "1 statusCheckRollup on head: FAILURE" 7 42 --repo o/r
 new_case rollup-mismatch
-patch graphql/RollupContexts.json --argjson r "$(rollup_run extra-workflow)" '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.contexts.nodes += [$r]'
-expect_refuse "a rollup context the head-SHA read did not see refuses" "1 statusCheckRollup lists context(s) the head-SHA read did not see: extra-workflow" 7 42 --repo o/r
+patch graphql/RollupContexts.json --argjson r "$(rollup_run extra-workflow 99 3009)" "$ROLLUP.contexts.nodes += [\$r]"
+expect_refuse "a rollup context the head-SHA read did not see refuses" "1 statusCheckRollup lists context(s) the head-SHA read did not see: check:99/extra-workflow" 7 42 --repo o/r
+new_case rollup-duplicate-name
+patch graphql/RollupContexts.json --argjson r "$(rollup_run test 99 3009)" "$ROLLUP.contexts.nodes += [\$r]"
+expect_refuse "a rollup context sharing a name with a read one but in another suite refuses (identity is suite + name, not name)" "did not see: check:99/test" 7 42 --repo o/r
+new_case rollup-later-red
+patch graphql/RollupContexts.json "($ROLLUP.contexts.nodes[] | select(.databaseId == 3002) | .conclusion) = \"FAILURE\""
+expect_refuse "a rollup context that turned red after the direct read refuses" "1 statusCheckRollup check test [suite 92]: FAILURE" 7 42 --repo o/r
+new_case rollup-later-pending
+patch graphql/RollupContexts.json "($ROLLUP.contexts.nodes[] | select(.databaseId == 3002)) |= (.status = \"IN_PROGRESS\" | .conclusion = null)"
+expect_refuse "a rollup context re-running after the direct read refuses" "1 statusCheckRollup check test [suite 92]: IN_PROGRESS" 7 42 --repo o/r
+new_case rollup-rerun-green
+patch graphql/RollupContexts.json --argjson r "$(rollup_run test 92 2999 COMPLETED FAILURE)" "$ROLLUP.contexts.nodes += [\$r]"
+expect_pass "an older red attempt listed in the rollup beside its newer green attempt passes" 7 42 --repo o/r
+new_case rollup-status-red
+patch statuses.json '. + [{id: 501, context: "ci/legacy", state: "success"}]'
+patch graphql/RollupContexts.json "$ROLLUP.contexts.nodes += [{__typename: \"StatusContext\", context: \"ci/legacy\", state: \"FAILURE\"}]"
+expect_refuse "a rollup status context that is not SUCCESS refuses" "1 statusCheckRollup status ci/legacy: FAILURE" 7 42 --repo o/r
 new_case read-extra
 patch check-runs.json --argjson r "$(run 3004 copilot-pull-request-reviewer 94 completed success)" '.check_runs += [$r]'
 expect_pass "a green context the rollup does not list passes (the read is the superset)" 7 42 --repo o/r
-expect_output "read-extra: the extra context is noted" "note - 1 head-SHA read saw context(s) the rollup does not list (each still held to success): copilot-pull-request-reviewer"
+expect_output "read-extra: the extra context is noted" "note - 1 head-SHA read saw context(s) the rollup does not list (each still held to success): check:94/copilot-pull-request-reviewer"
 new_case read-extra-red
 patch check-runs.json --argjson r "$(run 3004 copilot-pull-request-reviewer 94 in_progress null)" '.check_runs += [$r]'
 expect_refuse "a non-green context the rollup does not list still refuses" "1 check github-actions/copilot-pull-request-reviewer [suite 94]: in_progress" 7 42 --repo o/r
@@ -186,17 +208,21 @@ expect_refuse "an unresolved thread on page 2 refuses" "2 unresolved review thre
 
 # --- rule 3: closing references -------------------------------------------------------------
 new_case closes-two
-patch graphql/PrGate.json '.data.repository.pullRequest.closingIssuesReferences = {totalCount: 2, nodes: [{number: 42, repository: {nameWithOwner: "o/r"}}, {number: 43, repository: {nameWithOwner: "o/r"}}]}'
+patch graphql/ClosingRefs.json "$CLOSING.nodes += [{number: 43, repository: {nameWithOwner: \"o/r\"}}]"
 expect_refuse "a PR closing two issues refuses" "3 closing references: expected exactly o/r#42, got 2: o/r#42, o/r#43" 7 42 --repo o/r
 new_case closes-other
-patch graphql/PrGate.json '.data.repository.pullRequest.closingIssuesReferences.nodes[0].number = 43'
+patch graphql/ClosingRefs.json "$CLOSING.nodes[0].number = 43"
 expect_refuse "a PR closing a different issue refuses" "3 closing references: expected exactly o/r#42, got 1: o/r#43" 7 42 --repo o/r
 new_case closes-none
-patch graphql/PrGate.json '.data.repository.pullRequest.closingIssuesReferences = {totalCount: 0, nodes: []}'
+patch graphql/ClosingRefs.json "$CLOSING.nodes = []"
 expect_refuse "a PR closing nothing refuses" "3 closing references: none" 7 42 --repo o/r
 new_case closes-cross-repo
-patch graphql/PrGate.json '.data.repository.pullRequest.closingIssuesReferences.nodes[0].repository.nameWithOwner = "o/other"'
+patch graphql/ClosingRefs.json "$CLOSING.nodes[0].repository.nameWithOwner = \"o/other\""
 expect_refuse "a closing reference to #42 in another repo refuses" "3 closing references: expected exactly o/r#42, got 1: o/other#42" 7 42 --repo o/r
+new_case closes-page2
+patch graphql/ClosingRefs.json "$CLOSING.pageInfo = {hasNextPage: true, endCursor: \"c1\"}"
+jq -n '{data: {repository: {pullRequest: {closingIssuesReferences: {pageInfo: {hasNextPage: false, endCursor: null}, nodes: [{number: 43, repository: {nameWithOwner: "o/r"}}]}}}}}' >"$case_dir/graphql/ClosingRefs.page2.json"
+expect_refuse "a second closing reference on page 2 refuses" "got 2: o/r#42, o/r#43" 7 42 --repo o/r
 
 # --- rule 4: risk label ---------------------------------------------------------------------
 new_case no-label
@@ -285,6 +311,10 @@ new_case high-default-allowlist-other
 rm "$case_dir/human-reviewers.txt"
 high human "$HEAD" APPROVED
 expect_refuse "with no allowlist file, a non-owner approval refuses" "APPROVED on head only by human" 7 42 --confirm-high --repo o/r
+new_case high-empty-allowlist
+printf '# nobody listed yet\n\n' >"$case_dir/human-reviewers.txt"
+high human "$HEAD" APPROVED
+expect_refuse "a comment-only allowlist is an empty list, not a crash" "APPROVED on head only by human (the author, or not in the allowlist)" 7 42 --confirm-high --repo o/r
 new_case flag-on-normal
 expect_pass "--confirm-high on a non-high issue is ignored" 7 42 --confirm-high --repo o/r
 expect_output "flag-on-normal: the ignored flag is noted" "note - 5 --confirm-high given but the issue is risk:normal; the flag is ignored"
@@ -302,6 +332,12 @@ expect_refuse "two json fences under one heading refuse" "found 2" 7 42 --repo o
 new_case no-fence
 set_body "$(printf '## Evidence\nprose only\n\nCloses #42\n')"
 expect_refuse "an Evidence heading with no fence refuses" "found 0" 7 42 --repo o/r
+new_case empty-fence
+set_body "$(printf '## Evidence\n```json\n```\n\nCloses #42\n')"
+expect_refuse "an empty json fence refuses (validation keys off the selected fence, not its content)" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r
+new_case unterminated-fence
+set_body "$(printf '## Evidence\n```json\n%s\n' "$EVIDENCE_BLOCK")"
+expect_refuse "an unterminated json fence refuses" "found 0" 7 42 --repo o/r
 new_case malformed
 set_body "$(printf '## Evidence\n```json\n{"schema": "ticket-workflow/evidence/1",\n```\n\nCloses #42\n')"
 expect_refuse "malformed JSON refuses" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r
@@ -357,7 +393,7 @@ new_case all-wrong
 patch check-runs.json '(.check_runs[] | select(.id == 3003) | .conclusion) = "failure"'
 patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
 patch graphql/ReviewThreads.json '.data.repository.pullRequest.reviewThreads.nodes[0].isResolved = false'
-patch graphql/PrGate.json '.data.repository.pullRequest.closingIssuesReferences.totalCount = 0 | .data.repository.pullRequest.closingIssuesReferences.nodes = []'
+patch graphql/ClosingRefs.json "$CLOSING.nodes = []"
 patch issue-labels.json '[]'
 set_body "$(body_with '.tests = "TBD"')"
 run_gate 7 42 --repo o/r
@@ -373,6 +409,7 @@ expect_error "a non-numeric PR refuses with usage" "need a numeric <pr> and <iss
 expect_error "a missing issue refuses with usage" "need a numeric <pr> and <issue>" 7 --repo o/r
 expect_error "an unknown flag refuses with usage" "unknown flag: --force" 7 42 --force --repo o/r
 expect_error "a bad --repo refuses" "cannot derive OWNER/REPO" 7 42 --repo not-a-repo
+expect_error "--repo without a value is a usage error (exit 2), not a bare shift failure" "--repo needs a value" 7 42 --repo
 new_case closed-pr
 patch pull.json '.state = "closed"'
 expect_error "a closed PR is not gateable" "PR #7 is closed, not open" 7 42 --repo o/r

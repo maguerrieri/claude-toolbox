@@ -1,8 +1,8 @@
 {"data": {"repository": {"pullRequest": {"commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {
   "pageInfo": {"hasNextPage": false, "endCursor": null},
   "nodes": [
-    {"__typename": "CheckRun", "name": "check", "status": "COMPLETED", "conclusion": "SUCCESS"},
-    {"__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"},
-    {"__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "SUCCESS"}
+    {"__typename": "CheckRun", "name": "check", "status": "COMPLETED", "conclusion": "SUCCESS", "databaseId": 3003, "checkSuite": {"databaseId": 93}},
+    {"__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "SUCCESS", "databaseId": 3002, "checkSuite": {"databaseId": 92}},
+    {"__typename": "CheckRun", "name": "test", "status": "COMPLETED", "conclusion": "SUCCESS", "databaseId": 3001, "checkSuite": {"databaseId": 91}}
   ]
 }}}}]}}}}}

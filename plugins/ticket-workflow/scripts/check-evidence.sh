@@ -70,8 +70,9 @@ while [ $# -gt 0 ]; do
 	case $1 in
 	--confirm-high) confirm_high=1 ;;
 	--repo)
+		[ $# -ge 2 ] || die 2 "--repo needs a value (OWNER/REPO)"
 		shift
-		repo=${1-}
+		repo=$1
 		;;
 	--repo=*) repo=${1#--repo=} ;;
 	-h | --help)
@@ -157,13 +158,10 @@ head=$(printf '%s' "$pull_json" | jq -r '.head.sha')
 pr_author=$(printf '%s' "$pull_json" | jq -r '.user.login')
 printf '%s' "$pull_json" | jq -r '.body // ""' | tr -d '\r' >"$tmpdir/body"
 
-# One un-paginated GraphQL read for the scalar facts. closingIssuesReferences
-# is read with first:100 but decided on totalCount — rule 3 needs the nodes
-# only when there is exactly one, so no page can hide a second reference.
+# One un-paginated GraphQL read for the scalar facts.
 pr_gate_query='query PrGate($owner:String!,$name:String!,$pr:Int!){
   repository(owner:$owner,name:$name){ pullRequest(number:$pr){
     headRefOid author{login} reviewDecision
-    closingIssuesReferences(first:100){ totalCount nodes{ number repository{nameWithOwner} } }
     commits(last:1){ nodes{ commit{ oid statusCheckRollup{ state } } } } } } }'
 gate_json=$(api graphql -f owner="$owner" -f name="$name" -F pr="$pr" -f query="$pr_gate_query" --jq '.data.repository.pullRequest')
 [ "$(printf '%s' "$gate_json" | jq -r '.headRefOid')" = "$head" ] ||
@@ -179,10 +177,10 @@ printf 'check-evidence: %s PR #%s (head %s) against issue #%s\n' "$repo" "$pr" "
 runs_json=$(api_list "repos/$repo/commits/$head/check-runs?filter=all&per_page=100" --jq '.check_runs[]')
 statuses_json=$(api_list "repos/$repo/commits/$head/statuses?per_page=100" --jq '.[]')
 contexts_json=$(jq -n --argjson runs "$runs_json" --argjson statuses "$statuses_json" '
-	def run_ctx: {kind: "check", key: "\(.app.slug // "unknown-app")/\(.name) [suite \(.check_suite.id // "?")]", name: .name,
+	def run_ctx: {kind: "check", key: "check:\(.check_suite.id // "?")/\(.name)", label: "\(.app.slug // "unknown-app")/\(.name) [suite \(.check_suite.id // "?")]", name: .name,
 		state: (if .status == "completed" then (.conclusion // "no conclusion") else .status end),
 		green: (.status == "completed" and .conclusion == "success")};
-	def status_ctx: {kind: "status", key: .context, name: .context, state: .state, green: (.state == "success")};
+	def status_ctx: {kind: "status", key: "status:\(.context)", label: .context, name: .context, state: .state, green: (.state == "success")};
 	($runs | group_by([.check_suite.id, .name]) | map(max_by(.id) | run_ctx))
 	+ ($statuses | group_by(.context) | map(max_by(.id) | status_ctx))')
 superseded=$(jq -n --argjson runs "$runs_json" --argjson statuses "$statuses_json" --argjson ctx "$contexts_json" \
@@ -191,20 +189,26 @@ if [ "$(printf '%s' "$contexts_json" | jq 'length')" -eq 0 ]; then
 	fail "1 checks: no check runs or statuses on head $head (\"all green\" is never vacuous)"
 else
 	[ "$superseded" -gt 0 ] && note "1 checks: $superseded older attempt(s) superseded by a newer attempt of the same context"
-	while IFS=$'\t' read -r kind key state green; do
-		if [ "$green" = true ]; then ok "1 $kind $key: $state"; else fail "1 $kind $key: $state (latest attempt is not success)"; fi
-	done < <(printf '%s' "$contexts_json" | jq -r '.[] | [.kind, .key, .state, .green] | @tsv')
+	while IFS=$'\t' read -r kind label state green; do
+		if [ "$green" = true ]; then ok "1 $kind $label: $state"; else fail "1 $kind $label: $state (latest attempt is not success)"; fi
+	done < <(printf '%s' "$contexts_json" | jq -r '.[] | [.kind, .label, .state, .green] | @tsv')
 fi
-# Cross-check: the platform's own rollup for the head commit must agree — SUCCESS
-# overall, and every context the rollup lists must be one the direct read saw
-# (the read is a superset by construction: filter=all, every suite, plus commit
-# statuses, and each extra it sees is still held to "success" above — so only
-# a rollup context the read missed can weaken the gate).
+# Cross-check: the platform's own rollup for the head commit must agree —
+# SUCCESS overall, every rollup context green by the same latest-attempt rule
+# (this read comes after the direct one, so a rerun or failure in between
+# shows up here), and every context the rollup lists present in the direct
+# read under the same identity: (check suite, name) for check runs, the
+# context string for statuses. The direct read is a superset by construction
+# (filter=all, every suite, plus commit statuses) and each extra it sees is
+# still held to success above, so only a context the read missed could weaken
+# the gate.
 rollup_state=$(printf '%s' "$gate_json" | jq -r '.commits.nodes[0].commit.statusCheckRollup.state // "none"')
 rollup_query='query RollupContexts($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
   repository(owner:$owner,name:$name){ pullRequest(number:$pr){ commits(last:1){ nodes{ commit{ statusCheckRollup{
     contexts(first:100, after:$endCursor){ pageInfo{ hasNextPage endCursor }
-      nodes{ __typename ... on CheckRun{ name status conclusion } ... on StatusContext{ context state } } } } } } } } } }'
+      nodes{ __typename
+        ... on CheckRun{ name status conclusion databaseId checkSuite{ databaseId } }
+        ... on StatusContext{ context state } } } } } } } } } }'
 rollup_json=$(graphql_list RollupContexts "$rollup_query" \
 	'(.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup // {contexts: {nodes: []}}).contexts.nodes[]')
 if [ "$rollup_state" = SUCCESS ]; then
@@ -212,17 +216,27 @@ if [ "$rollup_state" = SUCCESS ]; then
 else
 	fail "1 statusCheckRollup on head: $rollup_state (cross-check; expected SUCCESS)"
 fi
-name_diff=$(jq -n --argjson ctx "$contexts_json" --argjson rollup "$rollup_json" '
-	([$ctx[].name] | unique) as $ours
-	| ([$rollup[] | (.name // .context)] | unique) as $theirs
+rollup_ctx_json=$(printf '%s' "$rollup_json" | jq '
+	def check_ctx: {key: "check:\(.checkSuite.databaseId // "?")/\(.name)", label: "check \(.name) [suite \(.checkSuite.databaseId // "?")]",
+		state: (if .status == "COMPLETED" then (.conclusion // "no conclusion") else .status end),
+		green: (.status == "COMPLETED" and .conclusion == "SUCCESS")};
+	def status_ctx: {key: "status:\(.context)", label: "status \(.context)", state: .state, green: (.state == "SUCCESS")};
+	(map(select(.__typename == "CheckRun")) | group_by([.checkSuite.databaseId, .name]) | map(max_by(.databaseId) | check_ctx))
+	+ (map(select(.__typename == "StatusContext")) | group_by(.context) | map(last | status_ctx))')
+while IFS=$'\t' read -r label state; do
+	fail "1 statusCheckRollup $label: $state (latest attempt is not success)"
+done < <(printf '%s' "$rollup_ctx_json" | jq -r '.[] | select(.green | not) | [.label, .state] | @tsv')
+key_diff=$(jq -n --argjson ctx "$contexts_json" --argjson rollup "$rollup_ctx_json" '
+	([$ctx[].key] | unique) as $ours
+	| ([$rollup[].key] | unique) as $theirs
 	| {missing_from_read: ($theirs - $ours), extra_in_read: ($ours - $theirs)}')
-if [ "$(printf '%s' "$name_diff" | jq '.missing_from_read | length')" -eq 0 ]; then
-	ok "1 statusCheckRollup contexts are all in the head-SHA read ($(printf '%s' "$contexts_json" | jq 'length') context(s) read)"
+if [ "$(printf '%s' "$key_diff" | jq '.missing_from_read | length')" -eq 0 ]; then
+	ok "1 statusCheckRollup contexts are all in the head-SHA read ($(printf '%s' "$rollup_ctx_json" | jq 'length') listed, $(printf '%s' "$contexts_json" | jq 'length') read)"
 else
-	fail "1 statusCheckRollup lists context(s) the head-SHA read did not see: $(printf '%s' "$name_diff" | jq -r '.missing_from_read | join(", ")')"
+	fail "1 statusCheckRollup lists context(s) the head-SHA read did not see: $(printf '%s' "$key_diff" | jq -r '.missing_from_read | join(", ")')"
 fi
-[ "$(printf '%s' "$name_diff" | jq '.extra_in_read | length')" -eq 0 ] ||
-	note "1 head-SHA read saw context(s) the rollup does not list (each still held to success): $(printf '%s' "$name_diff" | jq -r '.extra_in_read | join(", ")')"
+[ "$(printf '%s' "$key_diff" | jq '.extra_in_read | length')" -eq 0 ] ||
+	note "1 head-SHA read saw context(s) the rollup does not list (each still held to success): $(printf '%s' "$key_diff" | jq -r '.extra_in_read | join(", ")')"
 
 # --- rule 2: no unresolved review threads ------------------------------------------
 threads_query='query ReviewThreads($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
@@ -240,8 +254,13 @@ else
 fi
 
 # --- rule 3: closing references are exactly [<issue>] -----------------------------------
-closing_count=$(printf '%s' "$gate_json" | jq -r '.closingIssuesReferences.totalCount')
-closing_list=$(printf '%s' "$gate_json" | jq -r '[.closingIssuesReferences.nodes[] | "\(.repository.nameWithOwner)#\(.number)"] | join(", ")')
+closing_query='query ClosingRefs($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+  repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+    closingIssuesReferences(first:100, after:$endCursor){ pageInfo{ hasNextPage endCursor }
+      nodes{ number repository{nameWithOwner} } } } } }'
+closing_json=$(graphql_list ClosingRefs "$closing_query" '.data.repository.pullRequest.closingIssuesReferences.nodes[]')
+closing_count=$(printf '%s' "$closing_json" | jq 'length')
+closing_list=$(printf '%s' "$closing_json" | jq -r '[.[] | "\(.repository.nameWithOwner)#\(.number)"] | join(", ")')
 if [ "$closing_count" -eq 1 ] && [ "$closing_list" = "$repo#$issue" ]; then
 	ok "3 closing references: exactly #$issue"
 elif [ "$closing_count" -eq 0 ]; then
@@ -276,7 +295,8 @@ if [ "$risk_class" = "risk:high" ]; then
 	# The allowlist comes from the default branch through the API, so the ticket
 	# checkout cannot allowlist its own reviewer. Absent → the repository owner.
 	if allowlist_raw=$(gh api -H 'Accept: application/vnd.github.raw+json' "repos/$repo/contents/$ALLOWLIST_PATH?ref=$default_branch" 2>"$errfile"); then
-		allowlist=$(printf '%s\n' "$allowlist_raw" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | jq -R . | jq -sc '.')
+		# `grep -v` exits 1 on no output (a comment-only file) — that is an empty list, not an error.
+		allowlist=$(printf '%s\n' "$allowlist_raw" | sed 's/#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' | { grep -v '^$' || true; } | jq -R . | jq -sc '.')
 		note "5 human-reviewer allowlist from $default_branch:$ALLOWLIST_PATH: $(printf '%s' "$allowlist" | jq -r 'join(", ")')"
 	elif grep -q 'HTTP 404' "$errfile"; then
 		allowlist=$(jq -nc --arg o "$repo_owner" '[$o]')
@@ -336,17 +356,18 @@ extract_json_after() { # <file> <anchor regex>
 	' "$1"
 }
 count_evidence_headings() { grep -c '^## Evidence[[:space:]]*$' "$1" || true; }
-count_evidence_fences() { # json fences under the Evidence heading, before the next `## `
+count_evidence_fences() { # completed ```json … ``` pairs under the Evidence heading, before the next `## `
 	awk '
-		/^## Evidence[[:space:]]*$/ { inside = 1; next }
+		/^## Evidence[[:space:]]*$/ { inside = 1; open = 0; next }
 		inside && /^## / { inside = 0 }
-		inside && /^```json[[:space:]]*$/ { n++ }
+		inside && !open && /^```json[[:space:]]*$/ { open = 1; next }
+		inside && open && /^```[[:space:]]*$/ { open = 0; n++ }
 		END { print n + 0 }
 	' "$1"
 }
 headings=$(count_evidence_headings "$tmpdir/body")
 fences=$(count_evidence_fences "$tmpdir/body")
-block=''
+block='' have_block=0
 if [ "$headings" -eq 0 ]; then
 	fail "6 evidence: no '## Evidence' section in the PR body"
 elif [ "$headings" -gt 1 ]; then
@@ -355,15 +376,17 @@ elif [ "$fences" -ne 1 ]; then
 	fail "6 evidence: expected one \`\`\`json fence under '## Evidence', found $fences"
 else
 	block=$(extract_json_after "$tmpdir/body" '^## Evidence[[:space:]]*$')
+	have_block=1
 fi
-if [ -n "$block" ]; then
-	# One object per fence: `jq -e` would otherwise report only the last value.
+if [ "$have_block" -eq 1 ]; then
+	# Exactly one object in the fence — an empty fence yields zero values, and
+	# `jq -e` alone would report only the last of several.
 	if ! printf '%s' "$block" | jq -es 'length == 1 and (.[0] | type == "object")' >/dev/null 2>&1; then
 		fail "6 evidence: the block is not exactly one strict JSON object"
-		block=''
+		have_block=0
 	fi
 fi
-if [ -n "$block" ]; then
+if [ "$have_block" -eq 1 ]; then
 	# The item 1a contract, as named jq predicates; each failing name is reported.
 	problems=$(printf '%s' "$block" | jq -r --argjson schemas "$EVIDENCE_SCHEMAS" '
 		def placeholder: test("^\\s*(TODO|TBD|n/?a)\\s*$"; "i") or test("<[^>]*>");

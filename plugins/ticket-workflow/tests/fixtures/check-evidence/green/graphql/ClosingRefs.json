@@ -1,0 +1,4 @@
+{"data": {"repository": {"pullRequest": {"closingIssuesReferences": {
+  "pageInfo": {"hasNextPage": false, "endCursor": null},
+  "nodes": [{"number": 42, "repository": {"nameWithOwner": "o/r"}}]
+}}}}}
