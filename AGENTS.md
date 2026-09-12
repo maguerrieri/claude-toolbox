@@ -142,11 +142,14 @@ Rule shapes, verified against the permissions doc on Claude Code 2.1.269:
 - The space in `git push --force *` is part of the rule; that is what keeps
   `git push --force-with-lease …` out of it. The force-push rules come in
   `git push …` and `git * push …` pairs so a global option before the
-  subcommand (`git -C <dir> push --force`) is caught as well, and
-  `git push * +*` catches the leading-`+` refspec form (`git push origin
-  +HEAD:main`), which is an unleased force-push with no flag; `--mirror`
-  (force-updates and deletes remote refs wholesale) gets the same six
-  spellings as `--force`.
+  subcommand (`git -C <dir> push --force`) is caught as well; because the
+  bare-command special case applies only to a rule whose single wildcard is
+  trailing, the `git * push` set also spells out the exact no-argument form
+  (`git * push --force`). `--mirror` (force-updates and deletes remote refs
+  wholesale) gets the same spellings as `--force`, and `git push +*` /
+  `git push * +*` (with their `git * push` pair) catch the leading-`+`
+  refspec form (`git push +HEAD:main`, `git push origin +HEAD:main`), an
+  unleased force-push with no flag.
 - Path rules are `Edit(...)`, never `Write(...)`: Claude Code consults only
   `Edit`/`Read` path rules and ignores a `Write` one (with a startup warning).
   `Edit(~/.config/**)` covers the Edit and Write tools and `> ~/.config/…`
