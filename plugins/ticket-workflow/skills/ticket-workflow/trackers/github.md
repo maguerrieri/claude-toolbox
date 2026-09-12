@@ -95,7 +95,7 @@ The shared, durable channel sibling sessions use for file **claims** and **"bran
 gh issue comment <epic_id> --body "claim: <session> -> <files>"   # post a marker
 gh issue view <epic_id> --json comments -q '.comments[].body'      # read existing markers
 ```
-Markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6) so siblings can grep them. Keeps coordination tracker-native and inspectable; no live agent team required.
+Markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `restacked: <branch> onto <base>` — the orchestrator rewrote a child's branch to linearize a chain, EPIC Step 4/6, so a session holding that branch must fetch before it pushes, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6) so siblings can grep them. Keeps coordination tracker-native and inspectable; no live agent team required.
 
 ## Review bot
 - The review bot is a **profile** concern, not tracker-specific — see the selected profile's `REVIEW_BOT` (the `default` profile drives Copilot via `gh`).
