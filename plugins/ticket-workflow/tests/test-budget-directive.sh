@@ -37,8 +37,9 @@ refute() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then fail "$desc"; els
 
 # The directive's documented shape: both keys, that order, digits, nothing else.
 budget_re='^Budget: wall_clock_min=[0-9]+ review_rounds=[0-9]+$'
-# The overrun clause START Step 8 appends inside `tests`.
-overrun_re='budget_exceeded: (wall_clock_min|review_rounds) [0-9]+ of [0-9]+'
+# The overrun clause START Step 8 appends inside `tests` — trailing (Step 7
+# says so), hence anchored to the end, and at most one per string.
+overrun_re='budget_exceeded: (wall_clock_min|review_rounds) [0-9]+ of [0-9]+$'
 
 # --- 1. the SPAWN_CAP payload ------------------------------------------------
 # The payload is the text between the pair of double quotes in the first
@@ -95,7 +96,10 @@ for label in overrun_block clock_block; do
 	assert "$label: tests/docs stay non-empty strings" jq -e "$strings_nonempty" <<<"$block"
 	assert "$label: wall_clock_min stays a digit string" jq -e "$wall_clock_digits" <<<"$block"
 	assert "$label: the clause is parseable for metrics" grep -Eq "$overrun_re" <<<"$(jq -r .tests <<<"$block")"
+	assert "$label: exactly one overrun clause" test "$(grep -o 'budget_exceeded:' <<<"$(jq -r .tests <<<"$block")" | wc -l)" -eq 1
 done
+refute "an overrun clause that is not trailing is rejected" grep -Eq "$overrun_re" <<<'x (passed); budget_exceeded: review_rounds 2 of 1 stale'
+refute "two overrun clauses are rejected" test "$(grep -o 'budget_exceeded:' <<<'budget_exceeded: review_rounds 2 of 1; budget_exceeded: review_rounds 2 of 1' | wc -l)" -eq 1
 assert "a budget-free tests string carries no overrun clause" test -z "$(grep -Eo "$overrun_re" <<<'bash tests/x.sh (passed)' || true)"
 refute "an overrun clause without counts is rejected" grep -Eq "$overrun_re" <<<'budget_exceeded: review_rounds'
 refute "an overrun clause naming an unknown budget is rejected" grep -Eq "$overrun_re" <<<'budget_exceeded: tokens 2 of 1'
@@ -105,6 +109,9 @@ start_text=$(sed -n '/^## START phase/,/^## FINISH phase/p' "$skill")
 spawn_text=$(sed -n '/^## SPAWN phase/,/^## EPIC phase/p' "$skill")
 assert "SKILL.md START Step 1 notes the Budget: directive" grep -q 'Note your budget' <<<"$start_text"
 assert "SKILL.md START Step 8 carries the budget check" grep -q 'Budget check' <<<"$start_text"
+assert "SKILL.md START Step 1 persists the budget beside the role marker" grep -q 'CLAUDE_SESSION_ID.budget' <<<"$start_text"
+assert "SKILL.md START Step 8 records a no-PR stop on the ticket" grep -q 'durably on the ticket itself' <<<"$start_text"
+assert "SKILL.md SPAWN Step 2 rejects a partial override over a cap with no budget" grep -q 'no.*`Budget:` line.*partial' <<<"$spawn_text"
 assert "SKILL.md START Step 7 documents the budget_exceeded clause" grep -q 'budget_exceeded' <<<"$start_text"
 assert "SKILL.md START opt-outs list the budget stop" grep -q 'Budget exhausted' <<<"$start_text"
 assert "SKILL.md SPAWN Step 2 merges a Budget: override" grep -q 'Budget:.*overrides' <<<"$spawn_text"
