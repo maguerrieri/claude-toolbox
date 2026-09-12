@@ -282,10 +282,10 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
         return [str(exc)]
     raw = gate_doc.get("on", gate_doc.get(True))
     raw = raw if isinstance(raw, dict) else {}
-    if set(raw) - GATE_EVENTS:
+    for extra in sorted(set(raw) - GATE_EVENTS):
         # Any other event (a `pull_request` above all) would run this workflow
         # from the PR's own YAML with a PR-controlled GITHUB_SHA.
-        errors.append(f"on may only declare {sorted(GATE_EVENTS)}, got {sorted(set(raw) - GATE_EVENTS)}")
+        errors.append(f"on.{extra}: not a trigger this gate may declare (only {sorted(GATE_EVENTS)})")
     target = raw.get(GATE_EVENT)
     if not isinstance(target, dict):
         errors.append(f"on.{GATE_EVENT} must be present as a mapping")
