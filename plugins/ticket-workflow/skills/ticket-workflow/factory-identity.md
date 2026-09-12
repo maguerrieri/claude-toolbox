@@ -41,20 +41,26 @@ eval "$("$ft" env)" && gh pr view  # same, for a whole shell line
 ```
 
 Each Bash tool call is a fresh shell, so `GH_TOKEN` cannot be exported once for
-the session; `exec --` / `eval "$(… env)"` is the per-command form. **Pushes**
-don't need it: `setup-git` installs the helper as the checkout's git credential
-helper (`credential.helper = !… git-credential`), so `git push` asks the helper
-for github.com credentials and gets the broker's token — the durable equivalent
-of `gh auth setup-git`, which would only ever see one command's `GH_TOKEN`. It
-also sets `user.name` / `user.email` to `<slug>[bot]` /
-`<bot-user-id>+<slug>[bot]@users.noreply.github.com` so commits, not only the
-PR, carry the App identity (spec 2d, fact 5). Run it after Step 3 and before
-any commit you want attributed to the App; commits made earlier keep whatever
-identity they had.
+the session; `exec --` / `eval "$(… env)"` is the per-command form, and START
+Steps 7–8 prefix every `gh` call with it. **Pushes** don't need it: `setup-git`
+installs the helper as the checkout's git credential helper (after resetting
+the inherited helper list, so a global helper cannot answer first), answering
+only for exactly `https://github.com`, and sets `remote.origin.pushurl` to
+`https://github.com/<owner>/<repo>.git` so an SSH origin cannot bypass it. So
+`git push` asks the helper for github.com credentials and gets the broker's
+token — the durable equivalent of `gh auth setup-git`, which would only ever
+see one command's `GH_TOKEN`. It also sets `user.name` / `user.email` to
+`<slug>[bot]` / `<bot-user-id>+<slug>[bot]@users.noreply.github.com` so
+commits, not only the PR, carry the App identity (spec 2d, fact 5), and refuses
+(exit 4) if the broker names no slug / bot user id rather than leave a
+half-configured identity. START Step 5 runs it **before the first commit**;
+commits made earlier keep whatever identity they had.
 
 The helper resolves the repository from the checkout's `origin` remote (or
 `--repo` / `FACTORY_REPO`), asks the broker for exactly that repository, and
-refuses (exit 4, nothing cached or exported) if the answer names any other one.
+refuses (exit 4, nothing cached or exported) if the answer names any other
+repository or carries any permission set other than `contents: write` +
+`pull_requests: write` (GitHub's implicit `metadata: read` allowed).
 Exit 3 means the environment is in proxy-injected mode: the token would be
 silently ignored and the PR authored as the user, so stop and report rather than
 push (that is M1 failing, not a helper bug).
@@ -126,9 +132,14 @@ From a session in `factory-implementer-<A>`:
 
 It tries the broker directly with `repository: B` and with no repository,
 replays the helper for B, scans the environment for bearer-shaped or PEM
-values, then with a normally minted A token checks `/installation/repositories`
-lists only A, `/repos/B` is hidden, and a write to B is rejected. Every path
-must yield an A-scoped token or nothing; the script exits non-zero otherwise.
+values, then with a normally minted A token (passed to curl through a 0600
+config file, never on a command line) checks `/installation/repositories`
+lists only A and that a blob write to B is rejected (a public B's metadata is
+readable by anyone, so `GET /repos/B` is reported but not judged). Only an
+expected refusal passes a negative path: a broker that is down or answers 5xx
+is reported as inconclusive and fails, and so does a helper that stops on
+proxy-injected mode (exit 3) instead of refusing the repository (exit 4).
+The script exits non-zero unless every path passes.
 `--skip-github` runs the broker/helper/environment paths only (what CI runs
 against the fake broker in `tests/`). Record the output in the PR that enables
 item 4b.

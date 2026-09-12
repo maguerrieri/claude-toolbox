@@ -16,6 +16,8 @@ Configuration (environment):
   FAKE_BROKER_LENIENT=1   misbehave: ignore the repository parameter and always mint
                           for the bound repo (the helper must refuse the mismatch)
   FAKE_BROKER_EXPIRES_IN  seconds until expiry (default 3600)
+  FAKE_BROKER_PERMS       JSON object to return as `permissions` (misbehaving broker)
+  FAKE_BROKER_NO_APP=1    omit the `app` object (misbehaving broker)
   FAKE_BROKER_OMIT_EXPIRES_IN=1  respond with expires_at only
   FAKE_BROKER_REQUIRE_BEARER  when set, requests must carry `Authorization: Bearer <this>`
                           (401 otherwise) — the real broker always requires one; the
@@ -39,6 +41,8 @@ OMIT_EXPIRES_IN = os.environ.get("FAKE_BROKER_OMIT_EXPIRES_IN") == "1"
 REQUIRE_BEARER = os.environ.get("FAKE_BROKER_REQUIRE_BEARER", "")
 COUNT_FILE = os.environ.get("FAKE_BROKER_COUNT_FILE", "")
 FORCE_STATUS = os.environ.get("FAKE_BROKER_STATUS", "")
+PERMS = os.environ.get("FAKE_BROKER_PERMS", "")
+NO_APP = os.environ.get("FAKE_BROKER_NO_APP") == "1"
 COUNTER = {"n": 0}
 
 
@@ -99,6 +103,10 @@ class Handler(BaseHTTPRequestHandler):
         }
         if not OMIT_EXPIRES_IN:
             body["expires_in"] = EXPIRES_IN
+        if PERMS:
+            body["permissions"] = json.loads(PERMS)
+        if NO_APP:
+            del body["app"]
         self._json(200, body)
 
 

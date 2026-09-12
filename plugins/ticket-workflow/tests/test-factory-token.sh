@@ -14,9 +14,12 @@
 #      isolation test's to catch, not the helper's;
 #      a 403 from the broker (exit 4); a 5xx (exit 5); a malformed body (exit 4);
 #      a non-loopback http:// broker URL (exit 2).
-#   4. `exec -- cmd` sees GH_TOKEN; `git-credential get` answers only for
-#      https://github.com; `setup-git` wires the credential helper and sets the
-#      App's noreply author email; `clear` drops the cache; `status` prints no token.
+#   4. `exec -- cmd` sees GH_TOKEN; `git-credential get` answers only for exactly
+#      https://github.com (no subdomains); `setup-git` wires the credential helper,
+#      rewrites an SSH origin's push URL to HTTPS, sets the App's noreply author,
+#      and refuses without App metadata; a broker response with any permission set
+#      other than contents+pull_requests write (+ metadata read) is refused;
+#      `clear` drops the cache; `status` prints no token.
 #   5. The repository is resolved from the origin remote when --repo is absent.
 #
 # Stdlib only: bash, jq, curl, python3, git. Run: bash plugins/ticket-workflow/tests/test-factory-token.sh
@@ -163,6 +166,8 @@ assert "git-credential get answers with x-access-token" bash -c "printf '%s' \"\
 assert "git-credential get carries the cached token" bash -c "printf '%s' \"\$1\" | grep -q \"^password=\$(jq -r .token $c6/*.json)\$\"" _ "$cred"
 other=$(printf 'protocol=https\nhost=gitlab.com\n\n' | run "$c6" --repo "$BOUND" git-credential get)
 refute "git-credential get is silent for other hosts" test -n "$other"
+sub=$(printf 'protocol=https\nhost=evil.github.com\n\n' | run "$c6" --repo "$BOUND" git-credential get)
+refute "git-credential get is silent for github.com subdomains" test -n "$sub"
 plain=$(printf 'protocol=http\nhost=github.com\n\n' | run "$c6" --repo "$BOUND" git-credential get)
 refute "git-credential get is silent for plain http" test -n "$plain"
 noop=$(printf 'protocol=https\nhost=github.com\n\n' | run "$c6" --repo "$BOUND" git-credential store)
@@ -179,7 +184,26 @@ assert "git credential fill uses the helper" bash -c "cd $repo && printf 'protoc
 assert "setup-git is idempotent (one empty entry, one helper)" test "$(git -C "$repo" config --local --get-all credential.helper | wc -l)" -eq 2
 assert "setup-git sets the App noreply author email" test "$(git -C "$repo" config --local user.email)" = "424242+factory-fake[bot]@users.noreply.github.com"
 assert "setup-git sets the bot user.name" test "$(git -C "$repo" config --local user.name)" = "factory-fake[bot]"
+# Raw config keys, not `git remote get-url`: an environment-level insteadOf rewrite
+# (the cloud git proxy has one) would mask what setup-git actually wrote.
+assert "setup-git sets an HTTPS push URL for the SSH origin" test "$(git -C "$repo" config --local remote.origin.pushurl)" = "https://github.com/$BOUND.git"
+assert "setup-git leaves the fetch URL alone" test "$(git -C "$repo" config --local remote.origin.url)" = "git@github.com:$BOUND.git"
+assert "git resolves the push transport to HTTPS" bash -c "cd $repo && git remote -v | grep -q '^origin.https://github.com/$BOUND.git (push)\$'"
 refute "setup-git logs no token" grep -q ghs_fake "$work/setup.err"
+# Broker responses without App metadata or with the wrong permissions are refused.
+noapp=$(start_broker noapp FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_NO_APP=1)
+repo2="$work/checkout2"; c7="$work/c7"
+git init -q "$repo2" && git -C "$repo2" remote add origin "https://github.com/$BOUND"
+expect_exit "setup-git refuses when the broker names no app slug/bot id (exit 4)" 4 bash -c "cd $repo2 && FACTORY_TOKEN_CACHE_DIR=$c7 GH_TOKEN=factory-token-required FACTORY_BROKER_URL=$noapp $helper setup-git"
+refute "setup-git without app metadata leaves user.email unset" git -C "$repo2" config --local user.email
+for perms in '{"contents":"write"}' '{"contents":"read","pull_requests":"write"}' '{"contents":"write","pull_requests":"write","administration":"write"}' '{"contents":"write","pull_requests":"write","metadata":"write"}'; do
+	b=$(start_broker "perms$RANDOM" FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_PERMS="$perms")
+	c8="$work/c8-$RANDOM"
+	expect_exit "permissions $perms are refused (exit 4)" 4 env FACTORY_TOKEN_CACHE_DIR="$c8" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$b" "$helper" --repo "$BOUND" env
+	refute "permissions $perms: nothing cached" ls "$c8"
+done
+b=$(start_broker permsok FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_PERMS='{"contents":"write","pull_requests":"write","metadata":"read"}')
+assert "permissions with metadata: read are accepted" env FACTORY_TOKEN_CACHE_DIR="$work/c9" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$b" "$helper" --repo "$BOUND" env
 # 5. repository resolved from origin (no --repo)
 assert "repo resolved from origin remote (ssh form)" bash -c "cd $repo && $helper --broker $good status | grep -q '^repository: $BOUND\$'" 
 git -C "$repo" remote set-url origin "https://github.com/$BOUND"

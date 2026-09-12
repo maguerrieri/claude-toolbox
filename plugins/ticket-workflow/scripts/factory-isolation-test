@@ -6,16 +6,24 @@
 # token for a repository B other than the one this environment is bound to (A),
 # and asserts each yields only an A-scoped token or nothing:
 #
-#   1. the broker called directly with `repository: B`      → 403 / no token, or an A token
-#   2. the broker called directly with no repository at all → an A token or nothing
-#   3. the helper replayed with --repo B                     → refuses, exports nothing
+#   1. the broker called directly with `repository: B`      → a refusal (401/403), or an A token
+#   2. the broker called directly with no repository at all → an A token, or a refusal
+#   3. the helper replayed with --repo B                     → refuses with exit 4, exports nothing
 #   4. the environment read for credential material         → no broker bearer, no App key
 #   5. (with GitHub) the A token, minted the normal way:
 #        GET  /installation/repositories  lists only A
 #        GET  /repos/A                    200 (positive control)
-#        GET  /repos/B                    404 or 403 (GitHub hides it; the proxy's
-#                                         repo scope may 403 first — either passes)
-#        POST /repos/B/git/refs           non-2xx (a write to B is rejected)
+#        GET  /repos/B                    informational only: a public B is readable by
+#                                         anyone, so this proves nothing either way
+#        POST /repos/B/git/blobs          401/403/404 (a write to B is rejected). A blob
+#                                         create needs only contents: write and has no
+#                                         input that can fail validation, so a 422 or a
+#                                         2xx is a real answer, not a false negative; a
+#                                         2xx would leave one dangling, unreferenced blob.
+#
+# Only an expected refusal passes a negative path. A transport failure, a 5xx, or a
+# 4xx other than the refusal codes is reported as inconclusive and FAILS: a broker
+# that is down or misconfigured must not read as isolated.
 #
 # Usage:
 #   factory-isolation-test --bound OWNER/A --foreign OWNER/B [--broker URL] [--skip-github]
@@ -64,41 +72,54 @@ broker_call() {
 token_repo() { jq -r '.repository // empty' "$1" 2>/dev/null || true; }
 has_token() { jq -e '.token | type == "string" and length > 0' "$1" >/dev/null 2>&1; }
 
+# classify <status> <file> → prints: refused | token:<repo> | error
+classify() {
+	local status=$1 file=$2
+	case "$status" in
+	200) if has_token "$file"; then printf 'token:%s' "$(token_repo "$file")"; else printf 'error'; fi ;;
+	401 | 403) printf 'refused' ;;
+	*) printf 'error' ;;
+	esac
+}
+
 # --- 1. direct call asking for B -------------------------------------------------
 status=$(broker_call "$(jq -cn --arg r "$FOREIGN" '{repository: $r}')" "$work/1.json")
-if [ "$status" = 200 ] && has_token "$work/1.json"; then
+case "$(classify "$status" "$work/1.json")" in
+refused) ok "direct call for $FOREIGN refused (HTTP $status)" ;;
+"token:"*)
 	if [ "$(lc "$(token_repo "$work/1.json")")" = "$(lc "$BOUND")" ]; then
 		ok "direct call for $FOREIGN answered with an $BOUND-scoped token only (HTTP 200)"
 	else
 		fail "direct call for $FOREIGN yielded a token for '$(token_repo "$work/1.json")' — broker leaks across repos"
-	fi
-else
-	ok "direct call for $FOREIGN yielded no token (HTTP $status)"
-fi
+	fi ;;
+*) fail "direct call for $FOREIGN: HTTP $status is neither a refusal nor a token (broker down or misconfigured — inconclusive)" ;;
+esac
 
 # --- 2. direct call with no repository --------------------------------------------
 status=$(broker_call "" "$work/2.json")
-if [ "$status" = 200 ] && has_token "$work/2.json"; then
+case "$(classify "$status" "$work/2.json")" in
+refused) ok "direct call with no repository refused (HTTP $status)" ;;
+"token:"*)
 	if [ "$(lc "$(token_repo "$work/2.json")")" = "$(lc "$BOUND")" ]; then
 		ok "direct call with no repository mints for $BOUND only"
 	else
 		fail "direct call with no repository minted for '$(token_repo "$work/2.json")'"
-	fi
-else
-	ok "direct call with no repository yielded no token (HTTP $status)"
-fi
+	fi ;;
+*) fail "direct call with no repository: HTTP $status is neither a refusal nor a token (inconclusive)" ;;
+esac
 
 # --- 3. helper replay for B -----------------------------------------------------------
 cache="$work/cache"
 rc=0
 out=$(FACTORY_TOKEN_CACHE_DIR="$cache" FACTORY_BROKER_URL="$BROKER" "$helper" --repo "$FOREIGN" env 2>"$work/3.err") || rc=$?
-if [ "$rc" -ne 0 ] && [ -z "$out" ] && ! ls "$cache"/*.json >/dev/null 2>&1; then
-	ok "helper replayed with --repo $FOREIGN refuses (exit $rc), exports and caches nothing"
+if [ "$rc" -eq 4 ] && [ -z "$out" ] && ! ls "$cache"/*.json >/dev/null 2>&1; then
+	ok "helper replayed with --repo $FOREIGN refuses (exit 4: repository not bound), exports and caches nothing"
+elif [ "$rc" -eq 3 ]; then
+	fail "helper replayed with --repo $FOREIGN stopped on proxy-injected mode (exit 3): M1 is not in effect here, so the replay path was not exercised"
+elif [ "$rc" -eq 0 ]; then
+	fail "helper replayed with --repo $FOREIGN obtained a token"
 else
-	fail "helper replayed with --repo $FOREIGN exited $rc with output/cache present"
-fi
-if grep -q 'proxy-injected' "$work/3.err"; then
-	echo "# note: GH_TOKEN=proxy-injected here — the helper refused for that reason, not the repo; M1 (pass-through mode) is not in effect in this environment"
+	fail "helper replayed with --repo $FOREIGN exited $rc ($(tr -d '\n' <"$work/3.err" | cut -c1-160)) — not the fail-closed refusal, inconclusive"
 fi
 
 # --- 4. environment read ------------------------------------------------------------------
@@ -136,10 +157,13 @@ else
 	if [ "$rc" -ne 0 ]; then
 		fail "could not obtain an $BOUND token through the helper (exit $rc): $(tr -d '\n' <"$work/5.err" | cut -c1-200)"
 	else
-		token=$(jq -r .token "$cache"/*.json)
+		# The token goes into a 0600 curl config file, never onto a command line
+		# (other processes in the VM can read argv).
+		cfg="$work/curl.cfg"
+		(umask 077 && jq -r '"header = \"Authorization: Bearer \(.token)\""' "$cache"/*.json >"$cfg")
 		gh_api() { # <method> <path> [data] → prints status; body to $work/gh.json
 			local method=$1 api_path=$2 data=${3:-}
-			local args=(-X "$method" -H "Authorization: Bearer $token" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28')
+			local args=(-X "$method" -K "$cfg" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28')
 			[ -z "$data" ] || args+=(-H 'Content-Type: application/json' --data "$data")
 			curl -sS --max-time 30 -o "$work/gh.json" -w '%{http_code}' "${args[@]}" "https://api.github.com$api_path" 2>/dev/null || printf '000'
 		}
@@ -153,16 +177,16 @@ else
 		s=$(gh_api GET "/repos/$BOUND")
 		[ "$s" = 200 ] && ok "GET /repos/$BOUND → 200 (positive control)" || fail "GET /repos/$BOUND → HTTP $s (positive control failed)"
 		s=$(gh_api GET "/repos/$FOREIGN")
+		echo "# note: GET /repos/$FOREIGN → HTTP $s (informational: 200 is expected when $FOREIGN is public; not an isolation signal)"
+		# Authorization-sensitive write: a blob create needs contents: write on B and
+		# has no input that can fail validation before the permission check.
+		s=$(gh_api POST "/repos/$FOREIGN/git/blobs" '{"content":"factory-isolation-test probe","encoding":"utf-8"}')
 		case "$s" in
-		404 | 403) ok "GET /repos/$FOREIGN → $s (rejected)" ;;
-		*) fail "GET /repos/$FOREIGN → HTTP $s (an $BOUND token can read $FOREIGN)" ;;
+		401 | 403 | 404) ok "POST /repos/$FOREIGN/git/blobs → $s (write rejected)" ;;
+		2*) fail "POST /repos/$FOREIGN/git/blobs → HTTP $s (write ACCEPTED: an $BOUND token can write to $FOREIGN; one dangling blob was created there)" ;;
+		*) fail "POST /repos/$FOREIGN/git/blobs → HTTP $s (neither rejected nor accepted — inconclusive)" ;;
 		esac
-		s=$(gh_api POST "/repos/$FOREIGN/git/refs" '{"ref":"refs/heads/factory-isolation-test-should-fail","sha":"0000000000000000000000000000000000000000"}')
-		case "$s" in
-		2*) fail "POST /repos/$FOREIGN/git/refs → HTTP $s (write accepted!)" ;;
-		*) ok "POST /repos/$FOREIGN/git/refs → $s (write rejected)" ;;
-		esac
-		unset token
+		rm -f "$cfg"
 	fi
 fi
 

@@ -13,7 +13,7 @@
 # Usage:
 #   eval "$(factory-token env)"                 # export GH_TOKEN for this shell
 #   factory-token exec -- gh pr create ...      # run one command with GH_TOKEN set
-#   factory-token setup-git                     # git pushes + commits carry the App identity
+#   factory-token setup-git                     # git pushes + commits carry the App identity (run before the first commit)
 #   factory-token status                        # bound repo, expiry, auth mode (no secrets)
 #   factory-token clear                         # drop the cached token
 #   factory-token git-credential get            # git credential-helper protocol (set up by setup-git)
@@ -37,9 +37,13 @@
 #     be silently ignored. The helper refuses (exit 3) rather than let a PR be
 #     authored as the user. Implementer environments set GH_TOKEN to the sentinel
 #     "factory-token-required" so they run in pass-through mode.
-#   * The broker's response must name exactly the repository this session asked for.
-#     Any other repository, or a malformed response, is refused (exit 4) and never
-#     cached or exported.
+#   * The broker's response must name exactly the repository this session asked for
+#     and carry exactly contents: write + pull_requests: write (metadata: read
+#     allowed). Any other repository or permission set, or a malformed response, is
+#     refused (exit 4) and never cached or exported.
+#   * setup-git answers git's credential request only for https://github.com (exact
+#     host) and rewrites an SSH origin's push URL to HTTPS so the push goes through
+#     the helper; it refuses (exit 4) if the broker names no App slug / bot user id.
 #   * The token is written only to the 0600 cache file and to stdout/env for the
 #     caller; it is never logged, echoed to stderr, or passed on a command line.
 #
@@ -214,6 +218,13 @@ mint_token() { # writes the cache file; prints nothing
 	if [ "$(normalize_repo "$got_repo")" != "$(normalize_repo "$REPO")" ]; then
 		die "broker returned a token for '$got_repo' but this session asked for '$REPO'; refusing (not cached, not exported)" 4
 	fi
+	# Permissions: exactly contents=write and pull_requests=write, optionally
+	# metadata=read, nothing else (spec 2d item 4). A broker that hands out more
+	# is misconfigured; refuse rather than cache a wider token.
+	jq -e '.permissions | type == "object"
+		and .contents == "write" and .pull_requests == "write"
+		and ([to_entries[] | select(.key != "contents" and .key != "pull_requests" and (.key != "metadata" or .value != "read"))] | length == 0)' "$tmp" >/dev/null 2>&1 ||
+		die "broker returned a token whose permissions are not exactly contents: write + pull_requests: write; refusing (not cached, not exported)" 4
 	expires_in=$(jq -r '.expires_in // empty' "$tmp")
 	expires_at=$(jq -r '.expires_at // empty' "$tmp")
 	if [ -n "$expires_in" ] && [ "$expires_in" -eq "$expires_in" ] 2>/dev/null; then
@@ -274,10 +285,8 @@ cmd_git_credential() {
 		esac
 	done
 	[ "$action" = get ] || exit 0
-	case "$host" in
-	github.com | *.github.com) ;;
-	*) exit 0 ;;
-	esac
+	# Exactly https://github.com — no subdomains, no other hosts, no plain http.
+	[ "$host" = github.com ] || exit 0
 	[ "$protocol" = https ] || exit 0
 	ensure_token
 	printf 'username=x-access-token\npassword=%s\n' "$(read_field '.token')"
@@ -289,7 +298,17 @@ cmd_setup_git() {
 	local slug bot_id helper
 	slug=$(read_field '.app.slug')
 	bot_id=$(read_field '.app.bot_user_id')
+	# Fail closed: without the App's slug and bot user id the commits would keep
+	# the user's author while the push carries the App token — a half identity.
+	{ [ -n "$slug" ] && [ -n "$bot_id" ] && [ "$bot_id" -eq "$bot_id" ] 2>/dev/null; } ||
+		die "broker response carries no usable app.slug / app.bot_user_id; cannot set the App's commit identity — refusing to configure git" 4
 	helper=$(self_path)
+	# A credential helper only serves HTTPS. An SSH origin (git@github.com:… or
+	# ssh://) would bypass it and push with whatever SSH identity the VM has, so
+	# point the *push* URL at the bound repo over HTTPS (fetch URL untouched).
+	local push_url
+	push_url="https://github.com/${REPO}.git"
+	git config --local remote.origin.pushurl "$push_url"
 	# Pushes: git asks this helper for github.com credentials and gets the broker's
 	# token, so the pushing actor is the App (the durable equivalent of
 	# `gh auth setup-git`, which would only see the per-command GH_TOKEN).
@@ -302,14 +321,10 @@ cmd_setup_git() {
 	git config --local --add credential.helper "!'$helper' git-credential"
 	# Commits: GitHub matches the author email, so use the App's noreply address
 	# (spec 2d, fact 5): <bot-user-id>+<slug>[bot]@users.noreply.github.com.
-	if [ -n "$slug" ] && [ -n "$bot_id" ]; then
-		git config --local user.name "${slug}[bot]"
-		git config --local user.email "${bot_id}+${slug}[bot]@users.noreply.github.com"
-	else
-		printf 'factory-token: broker response carries no app.slug/app.bot_user_id; commit identity left unchanged\n' >&2
-	fi
-	printf 'factory-token: git configured for %s (helper: %s, author: %s)\n' \
-		"$REPO" "$helper" "$(git config --local user.email || echo unchanged)" >&2
+	git config --local user.name "${slug}[bot]"
+	git config --local user.email "${bot_id}+${slug}[bot]@users.noreply.github.com"
+	printf 'factory-token: git configured for %s (push URL: %s, helper: %s, author: %s)\n' \
+		"$REPO" "$push_url" "$helper" "$(git config --local user.email)" >&2
 }
 
 cmd_status() {

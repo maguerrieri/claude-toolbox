@@ -236,6 +236,8 @@ Tell the user the worktree path. Optionally run the adapter's `START` to mark th
 
 Re-read the issue, plan, and implement inside the worktree. Commit incrementally (never batch). Message format: the tracker's `COMMIT_REF`, unless the profile's `COMMIT_STYLE` overrides it (e.g. an org's flagged format).
 
+**Factory identity — before the first commit.** In a cloud implementer environment (`FACTORY_BROKER_URL` is set; spec 2d item 8b), run `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" setup-git` in the checkout now, before committing anything: it sets the App's commit author and wires the push to carry the App token, and commits made before it keep the user's author. Exit 3 means the environment is still in proxy-injected mode — stop and report rather than commit as the user. Details in `factory-identity.md` (read on demand). No `FACTORY_BROKER_URL` → skip.
+
 ### Step 6 — Verify tests + docs
 
 Look at the diff (`git diff origin/<base_branch>...HEAD` — compare against `origin/<base_branch>`, which always exists after the fetch in Step 3; a local `<base_branch>` ref may not). The same diff drives two checks:
@@ -251,7 +253,7 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 - Each commit subject matches the tracker's `COMMIT_REF` (via `COMMIT_STYLE`) and accurately describes its diff — reword stale/placeholder subjects with `git rebase` now, while nothing's reviewed yet.
 - No hold / placeholder / leftover-debug markers — the same commit/diff markers FINISH Step 1's gate blocks on (`DO NOT MERGE`, `WIP`, qualified `FIXME`/`XXX`/`HACK`, stray debug) — remain in the commit messages or the diff (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`).
 
-**Factory identity (cloud implementer sessions only).** If the environment carries `FACTORY_BROKER_URL` (a `factory-implementer-<repo>` environment; spec 2d item 8b), the push and the PR must carry the factory's App identity, not the user's: read `factory-identity.md` now, run `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" setup-git` in the checkout before the push (it installs the git credential helper and the App's commit author; ideally already done before the first commit), and prefix every `gh` call below with `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" exec --`. A helper exit of 3 means the environment is still in proxy-injected mode — stop and report; a PR opened anyway would be authored as the user. No `FACTORY_BROKER_URL` → an ordinary session; skip this.
+**Factory identity (cloud implementer sessions only).** If the environment carries `FACTORY_BROKER_URL` (spec 2d item 8b), the push and the PR must carry the factory's App identity, not the user's. Step 5 already ran `setup-git` (if it did not, run it now; commits made before it keep the user's author — the identity the rulesets key on is the PR author and the pusher). Each Bash call is a fresh shell, so prefix **every `gh` call in this step and Step 8** — `gh pr create`, `gh pr checks`, and the profile's `REVIEW_BOT` commands — with `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" exec --`; `git push` needs no prefix (the credential helper `setup-git` installed answers it). A helper exit of 3 means proxy-injected mode — stop and report; a PR opened anyway would be authored as the user. No `FACTORY_BROKER_URL` → an ordinary session; skip this.
 
 ```bash
 git push -u origin <branch>
