@@ -346,6 +346,11 @@ provision() {
   # hashes as empty input, so --verify would answer SETUP OK for a snapshot
   # whose reviewable network-allowlist mirror is not tracked at all.
   [ -n "$(main_blob .claude/cloud-allowlist)" ] || die "origin/main has no .claude/cloud-allowlist; refusing to provision"
+  # Invalidate the previous snapshot's claim before touching anything. From
+  # here the VM is mid-change, so the old manifest is no longer true; leaving
+  # it would let --verify answer SETUP OK after a run that failed partway (or
+  # deactivated the credential), and the hook would never retry.
+  rm -f "$manifest"
   provision_plugins || rc=1
   drift=$(claude_dir_drift)
   if [ -n "$drift" ]; then

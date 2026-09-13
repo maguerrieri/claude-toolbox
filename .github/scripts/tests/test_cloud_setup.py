@@ -56,6 +56,9 @@ exit 0
     # exercised; the credential "holds" the role's set, plus two foreign ones
     # under STUB_IAM_EXCESS. STUB_IAM_FAIL makes every call fail.
     "curl": r"""#!/bin/bash
+# Records whether a key file still exists at IAM-check time -- i.e. after the
+# key step, which must delete it immediately rather than at script exit.
+find "${TMPDIR:-/tmp}" -name 'logs-viewer-key.json' 2>/dev/null >> "$STUB_STATE/key-files-at-iam-time"
 url="${@: -1}"; body=""
 while [ $# -gt 0 ]; do case "$1" in -d) body="$2"; shift ;; esac; shift; done
 echo "curl $url" >> "$STUB_LOG"
@@ -100,6 +103,8 @@ def env(tmp_path):
     home.mkdir()
     state = tmp_path / "stub-state"
     state.mkdir()
+    tmpdir = tmp_path / "script-tmp"       # where the script's mktemp -d lands
+    tmpdir.mkdir()
     log = tmp_path / "stub.log"
     log.touch()
 
@@ -135,6 +140,7 @@ def env(tmp_path):
     class Env:
         def __init__(self):
             self.seed, self.checkout, self.home, self.log, self.state = seed, checkout, home, log, state
+            self.tmpdir = tmpdir
             self.vars = {
                 **os.environ,
                 "PATH": f"{bin_dir}:{os.environ['PATH']}",
@@ -142,6 +148,7 @@ def env(tmp_path):
                 "STUB_LOG": str(log),
                 "STUB_STATE": str(state),
                 "CLAUDE_PROJECT_DIR": str(checkout),
+                "TMPDIR": str(tmpdir),
                 "FACTORY_LOGS_VIEWER_KEY": '{"type": "service_account", "client_email": "logs-viewer@proj"}',
             }
             for k in ("OP_SERVICE_ACCOUNT_TOKEN", "STUB_IAM_EXCESS", "STUB_IAM_FAIL",
@@ -222,6 +229,23 @@ def test_a_plugin_installed_before_its_marketplace_was_pinned_is_reinstalled(env
     assert "plugin update" not in env.calls()
 
 
+def test_a_failed_rerun_invalidates_the_earlier_manifest(env):
+    """The dangerous case: a good snapshot, then a failed re-provision.
+
+    origin/main is unchanged, so --verify would compare the old manifest's
+    three hashes, find them equal, and report SETUP OK for a VM the failed run
+    may have left without plugins or the credential.
+    """
+    assert env.run().returncode == 0
+    manifest = env.home / ".factory-setup" / "manifest"
+    assert manifest.exists()
+    r = env.run(STUB_CLAUDE_FAIL="plugin update")        # nothing deleted by the test
+    assert r.returncode == 1
+    assert not manifest.exists(), "the earlier manifest survived a failed re-provision"
+    verify = env.run("--verify")
+    assert "SETUP ABSENT" in verify.stdout and "SETUP OK" not in verify.stdout
+
+
 def test_a_failed_plugin_update_withholds_the_manifest(env):
     assert env.run().returncode == 0
     (env.home / ".factory-setup" / "manifest").unlink()   # the first run's, not under test
@@ -258,8 +282,19 @@ def test_materializes_logs_key_and_asserts_iam(env):
     assert "curl https://cloudresourcemanager.googleapis.com/v1/projects/proj:testIamPermissions" in calls
     assert (env.state / "materialized-key").read_text().startswith('{"type": "service_account"')
     assert "IAM OK: of 256 testable permissions on proj the credential holds 3, all within roles/logging.viewer" in r.stdout
-    # The key file never survives the run.
-    assert not [p for p in env.checkout.rglob("logs-viewer-key.json")]
+
+
+def test_the_key_file_is_deleted_as_soon_as_it_is_activated(env):
+    """Not merely at exit: the IAM check runs later and must find it already gone.
+
+    The script writes it under its own `mktemp -d`, so the fixture points
+    TMPDIR at a directory it owns and the curl stub looks there mid-run.
+    """
+    assert env.run().returncode == 0
+    probed = (env.state / "key-files-at-iam-time").read_text()
+    assert probed.strip() == "", f"key file still present during the IAM check: {probed}"
+    assert list(env.tmpdir.rglob("logs-viewer-key.json")) == []      # nor afterwards
+    assert list(env.tmpdir.iterdir()) == []                          # the temp dir is cleaned up
 
 
 def test_key_from_base64_variable(env):
@@ -492,6 +527,29 @@ def test_a_missing_allowlist_on_main_refuses_to_provision(env):
     assert r.returncode == 1
     assert "no .claude/cloud-allowlist; refusing to provision" in r.stderr
     assert not (env.home / ".factory-setup" / "manifest").exists()
+
+
+def test_the_hook_treats_a_provisioned_marketplace_as_a_no_op(env):
+    """The warm-snapshot claim: after provisioning, the hook must not re-add.
+
+    cloud-setup.sh registers marketplaces as pinned git URLs, so a hook that
+    recognized only the `(owner/repo)` shorthand would call `marketplace add`
+    every session -- failing on the existing name, or replacing the pinned
+    registration with an unpinned one.
+    """
+    hook = os.path.join(REPO, ".claude", "hooks", "session-start.sh")
+    if not os.path.exists(hook):
+        pytest.skip("this repo's hook does not carry the plugin-install loop")
+    assert env.run().returncode == 0                      # provision first
+    registered = (env.state / "markets").read_text()
+    assert "Source: Git (https://github.com/maguerrieri/claude-toolbox.git@main)" in registered
+    env.log.write_text("")
+    r = subprocess.run(["bash", hook], cwd=str(env.checkout),
+                       env={**env.vars, "CLAUDE_CODE_REMOTE": "true"}, capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = env.calls()
+    assert "marketplace add" not in calls, f"hook re-added a provisioned marketplace:\n{calls}"
+    assert "could not add marketplace" not in r.stderr
 
 
 def test_manifest_records_origin_main_hashes(env):

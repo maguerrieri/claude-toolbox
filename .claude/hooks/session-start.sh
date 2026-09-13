@@ -91,7 +91,13 @@ jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key' "$s
     # Register the marketplace once. The official one isn't in
     # extraKnownMarketplaces — Claude Code adds it itself, but asynchronously
     # after this hook has run — so it goes through the same path.
-    if ! grep -qF "($source)" <<<"$marketplaces"; then
+    #
+    # Key on the marketplace NAME, not the source spelling: cloud-setup.sh
+    # registers these as pinned git URLs (`Git (https://…git@main)`) while a
+    # hook-added one shows the shorthand `(owner/repo)`, so matching the source
+    # text would miss a provisioned snapshot and re-add on every session --
+    # replacing the pinned registration with the unpinned shorthand.
+    if ! awk -v name="$marketplace" '$1 == ">" && $2 == name { found = 1 } END { exit !found }' <<<"$marketplaces"; then
       if claude plugin marketplace add "$source" >/dev/null 2>&1; then
         marketplaces=$(claude plugin marketplace list 2>/dev/null)
       else

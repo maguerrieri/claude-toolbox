@@ -118,7 +118,12 @@ verified on Claude Code 2.1.268:
   README). Delete it once cloud sessions honor the settings natively. In this
   repo's own factory-implementer environment the plugins are already in the
   cached snapshot (see *Cloud environment provisioning* below), so the loop
-  finds them installed and skips. Alternatives that also work, outside
+  finds them installed and skips. It keys that check on the marketplace
+  **name**, not the source spelling: `cloud-setup.sh` registers pinned git URLs
+  (`Git (https://…git@main)`) while a hook-added marketplace shows the
+  `(owner/repo)` shorthand, so matching the source text would miss a
+  provisioned snapshot and re-add every session, replacing the pinned
+  registration with an unpinned one. Alternatives that also work, outside
   the repo: enable the marketplace on your claude.ai account (Customize ›
   Plugins › Add marketplace › from a repository) so the plugins sync into cloud
   sessions as `<name>@synced` (skills verified; `claude plugin list` shows
@@ -153,7 +158,11 @@ since a variable can hold a path back into the checkout. Three modes:
   install, or (in a repo that declares a key) a checkout whose `.claude/`
   drift skipped the credential all end the run non-zero with no manifest, so
   the next setup run retries instead of reporting `SETUP OK` against an
-  incomplete snapshot. This repo declares no GCP project, so it
+  incomplete snapshot. The previous snapshot's manifest is removed *before*
+  provisioning changes anything, so a failed re-provision cannot leave an
+  earlier success standing: `origin/main` is unchanged in that case, so the
+  three hashes would still match and `--verify` would answer `SETUP OK` for a
+  VM the failed run may have left without plugins or the credential. This repo declares no GCP project, so it
   materializes no credential; `toolbox`'s copy (same text, two constants
   filled in) activates the read-only logs-viewer key from
   `FACTORY_LOGS_VIEWER_KEY` and asserts its IAM scope (every testable

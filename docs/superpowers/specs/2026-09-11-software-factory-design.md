@@ -720,7 +720,10 @@ as does a plugin, marketplace, or prerequisite failure, and so does
 credential, so the snapshot does not realize `origin/main`). In every one
 of those cases **no manifest is written**, because a manifest is the claim
 that the snapshot is current and `--verify` would otherwise answer `SETUP
-OK` forever against an incomplete one. `--assert-iam`
+OK` forever against an incomplete one. Any earlier manifest is removed
+before provisioning mutates anything, so a failed *re*-provision cannot
+leave a previous success standing — `origin/main` is unchanged there, so the
+hashes would still match. `--assert-iam`
 runs the same check from a session, which is the "IAM assertion test" the
 credential-boundary test below relies on. The snapshot manifest
 (`~/.factory-setup/manifest`) records the SHA-256 of `origin/main`'s
