@@ -4,9 +4,12 @@
 #
 #   check-evidence.sh <pr> <issue> [--confirm-high] [--repo OWNER/REPO]
 #
-# Re-derives "is this PR done?" from the platform — never from the PR body —
-# and refuses (exit 1, with a FAIL line per broken rule) when any of these
-# holds, each checked against the PR's CURRENT HEAD:
+# Re-derives every piece of *state* — CI, review threads, closing references,
+# risk class, approvals — from the platform, never from the PR body; the body
+# is read only for the Evidence block (rule 6), and only to check its shape,
+# never to learn whether anything passed. It refuses (exit 1, with a FAIL line
+# per broken rule) when any of these holds, each checked against the PR's
+# CURRENT HEAD:
 #
 #   1. the set of check contexts on the head SHA is empty, or the latest
 #      attempt of any context (check run or commit status, required or not)
