@@ -712,6 +712,8 @@ def test_cloud_setup_lint_allows_known_argument_taking_options(line=None):
     '"./evil"', "'../bin/setup'", '"make" all', "'npm' ci", 'bash -c \'make\'',
     # An input redirect feeds the interpreter a script just as an argument does.
     "bash<setup.sh", "bash < setup.sh", "python3 <setup.py", 'sh "./x.sh"',
+    # A quoted interpreter runs the same script as an unquoted one.
+    '"bash" setup.sh', "'python3' setup.py", '"bash"<setup.sh',
 ])
 def test_cloud_setup_lint_sees_quoted_words_and_redirects(line):
     assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") != [], line
@@ -720,6 +722,7 @@ def test_cloud_setup_lint_sees_quoted_words_and_redirects(line):
 @pytest.mark.parametrize("line", [
     # Herestrings, heredocs and process substitution name no file to execute.
     'jq -r . <<<"$settings"', "done < <(jq -r . <<<\"$s\")", "bash < /opt/x.sh",
+    '"bash" /opt/x.sh', '"bash" -c "$s"',
 ])
 def test_cloud_setup_lint_allows_non_file_redirects(line):
     assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == [], line

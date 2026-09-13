@@ -492,8 +492,10 @@ CLOUD_SETUP_FORBIDDEN = [
 # Interpreters whose first non-option argument is a script, with the option
 # letters that switch them to inline code (nothing from the checkout runs), the
 # option letters that consume the following token, and the long forms of both.
+# `['\"]?` consumes a closing quote, so `"bash" setup.sh` is parsed like the
+# bare form -- otherwise the lookahead lands on the quote and never matches.
 # `(?=[\s<])`: `bash<setup.sh` feeds the interpreter that file on stdin.
-_INTERPRETER = re.compile(_CMD + _Q + _PATH + r"(bash|sh|zsh|python3?|node|ruby|perl)(?=[\s<])")
+_INTERPRETER = re.compile(_CMD + _Q + _PATH + r"(bash|sh|zsh|python3?|node|ruby|perl)['\"]?(?=[\s<])")
 _CODE_LETTERS = {"bash": "c", "sh": "c", "zsh": "c", "python": "cm", "python3": "cm", "node": "ep", "ruby": "e", "perl": "eE"}
 _ARG_LETTERS = {"bash": "o", "sh": "o", "zsh": "o", "python": "WXQ", "python3": "WXQ", "node": "r", "ruby": "Ir", "perl": "IM"}
 _LONG_CODE = {"node": {"--eval", "--print"}, "python": {"--command"}, "python3": {"--command"}}

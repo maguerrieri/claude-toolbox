@@ -749,8 +749,9 @@ literal absolute path (its options walked, so `bash -e setup.sh` and `bash
 "$dir/x.sh"` are caught and `bash -c "$s"` is not). Comment stripping is
 quote-aware, backslash continuations are joined before matching (`ma\` +
 `ke` is one command to the shell and one line to the lint), a tool matches
-by any path and through a quote (`"make"` and `"./evil"` run like the bare
-forms), an interpreter fed a script by an input redirect (`bash<setup.sh`)
+by any path and through a quote (`"make"`, `"./evil"` and `"bash" setup.sh`
+run like the bare forms; the closing quote is consumed so the interpreter's
+arguments are still parsed), an interpreter fed a script by an input redirect (`bash<setup.sh`)
 alongside one given it as an argument — while a herestring, heredoc, or
 process substitution names no file and passes — an interpreter's long option
 that the lint knows takes an
