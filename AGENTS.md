@@ -141,14 +141,18 @@ managers, sourcing, and relative invocations, so a branch that plants a
 - **provision** (no argument): reads `enabledPlugins` from
   `origin/main:.claude/settings.json`, installs them from the two allowlisted
   marketplaces pinned as git URLs at `#main`, and writes a snapshot manifest
-  (`~/.factory-setup/manifest`) holding the SHA-256 of `origin/main`'s script
-  and of `.claude/cloud-allowlist`. This repo declares no GCP project, so it
+  (`~/.factory-setup/manifest`) holding the SHA-256 of `origin/main`'s script,
+  of `.claude/cloud-allowlist`, and of `.claude/settings.json` (the plugin
+  set). This repo declares no GCP project, so it
   materializes no credential; `toolbox`'s copy (same text, two constants
   filled in) activates the read-only logs-viewer key from
-  `FACTORY_LOGS_VIEWER_KEY` and asserts its IAM scope.
+  `FACTORY_LOGS_VIEWER_KEY` and asserts its IAM scope (every testable
+  permission on the project the credential holds must be in
+  `roles/logging.viewer`; anything else, or a check that cannot run, revokes
+  the key and fails provisioning).
 - **`--verify`**: run per session by `.claude/hooks/session-start.sh` (which
   fetches `origin/main` and runs *that* copy) and prints `SETUP STALE` when
-  `main`'s script or allowlist changed after the snapshot was built (fix: bump
+  `main`'s script, allowlist, or settings changed after the snapshot was built (fix: bump
   the `(v1)` comment in the GUI stub in each account), `UNTRUSTED .claude/`
   when the checkout's `.claude/` differs from `origin/main` (content, not
   branch name; `.claude/worktrees/` excluded), and `PROJECT remote.* OVERRIDE
@@ -277,8 +281,9 @@ with a `pull_request` trigger means updating three things in the same PR**:
 the workflow, its entry in `.github/factory-ci.yml` (the `pull_request` block
 copied verbatim; `push` and other triggers are not recorded), and the name in
 `ci-gate.yml`'s `workflow_run.workflows` list. The `factory scripts` workflow
-runs the evaluator's tests plus that same lint on every `.github/**` change
-(`uvx --with pyyaml pytest .github/scripts/tests -q` locally), so drift fails
+runs the evaluator's tests plus that same lint on every `.github/**` or
+`.claude/**` change (`uvx --with pyyaml pytest .github/scripts/tests -q`
+locally; the `.claude/**` half is the cloud-setup tests), so drift fails
 before merge. A PR that *adds or renames* a workflow needs one manual
 re-evaluation once that workflow has finished (re-run the last `ci-gate` run, or
 dispatch `ci-gate` with the PR's head SHA), because `workflow_run` matches by

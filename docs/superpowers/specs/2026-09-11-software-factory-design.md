@@ -704,19 +704,27 @@ config dir by `gcloud auth activate-service-account`; the 1Password `op`
 path the old hook used is kept as a labelled transitional fallback, since
 an `OP_SERVICE_ACCOUNT_TOKEN` reaches its whole vault and is therefore
 broader than the credential rule allows in a factory environment. After
-activation the script POSTs `projects.testIamPermissions` (needs no
-permission, changes nothing) for logging.viewer's own permissions plus
-nineteen read and write permissions beyond it, and any excess revokes the
-key and fails provisioning; `--assert-iam` runs the same check from a
-session, which is the "IAM assertion test" the credential-boundary test
-below relies on. The snapshot manifest (`~/.factory-setup/manifest`)
-records the SHA-256 of `origin/main`'s script and allowlist and the `main`
-commit; `--verify` prints `SETUP OK`, `SETUP STALE`, `SETUP ABSENT` (no
+activation the script reads `roles/logging.viewer`'s permission list from
+the IAM API, enumerates every testable permission on the project
+(`permissions:queryTestablePermissions`, paginated), asks
+`projects.testIamPermissions` (needs no permission, changes nothing; 100
+names per call) which of them the credential holds, and revokes the key and
+fails provisioning on any permission outside the role or on a check that
+could not run — a full enumeration rather than a sample, so a stray
+mutating grant on any service is caught; a declared key that cannot be
+obtained or activated fails provisioning the same way, since a snapshot
+without the credential would report `SETUP OK` forever. `--assert-iam`
+runs the same check from a session, which is the "IAM assertion test" the
+credential-boundary test below relies on. The snapshot manifest
+(`~/.factory-setup/manifest`) records the SHA-256 of `origin/main`'s
+script, allowlist, and `settings.json` (the plugin set, so a plugin change
+on `main` also reads as stale) and the `main` commit; `--verify` prints `SETUP OK`, `SETUP STALE`, `SETUP ABSENT` (no
 manifest: not a factory environment), or `SETUP VERIFY SKIPPED`
 (`origin/main` unreachable), then `UNTRUSTED .claude/` and `PROJECT
 remote.* OVERRIDE PRESENT` as applicable, and always exits 0. The hooks
 run `origin/main`'s copy in `--verify` mode, not the checkout's, so a
-branch edit to the script cannot silence its own nudge; `claude-toolbox`'s
+branch edit to the script cannot silence its own nudge (and print `SETUP
+VERIFY SKIPPED` themselves when the fetch fails before the script can); `claude-toolbox`'s
 hook keeps its plugin-install loop after that (a no-op where the snapshot
 already holds the plugins, still needed by the other environments and the
 repos that curl the hook), while `toolbox`'s hook drops the install and
@@ -726,8 +734,10 @@ its factory environments exist, runs `origin/main`'s provisioning when
 head tree's script must carry the header line `NEVER EXECUTES ANYTHING
 FROM THE CHECKOUT` and no line may invoke `make`, a Node or Python package
 manager, a build tool, `terraform`/`docker`/`direnv`, a `./` or `../`
-path, a sourced file, or an interpreter on a relative script (comments
-excluded). `.github/scripts/tests/test_cloud_setup.py` runs the real
+path, a sourced file, or an interpreter on a relative script (its options
+walked, so `bash -e setup.sh` is caught and `bash -c "$s"` is not; comments
+excluded, quote-aware), and a PR that removes a script its base carries
+fails the gate. `.github/scripts/tests/test_cloud_setup.py` runs the real
 script against a throwaway origin with recording `claude`/`gcloud`/`curl`/
 `op` stubs and covers the setup-script tests below that need no
 environment (branch marker never runs, planted `Makefile` and `postinstall`

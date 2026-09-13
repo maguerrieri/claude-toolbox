@@ -7,6 +7,7 @@ feature branch checked out from it, and recording stubs for `claude`,
 stub and the SessionStart hook run it: origin/main's copy, through
 `bash -euo pipefail -c "$script"`.
 """
+import json
 import os
 import re
 import stat
@@ -20,12 +21,18 @@ SCRIPT = os.path.join(REPO, ".claude", "cloud-setup.sh")
 ALLOWLIST = os.path.join(REPO, ".claude", "cloud-allowlist")
 
 STUBS = {
+    # `marketplace list` prints the real CLI's shape: a `> name` line followed
+    # by an indented `Source:` line; `add <url>#<ref>` records `Git (url@ref)`.
     "claude": r"""#!/bin/bash
 echo "claude $*" >> "$STUB_LOG"
 case "$*" in
   "plugin marketplace list") cat "$STUB_STATE/markets" 2>/dev/null ;;
   "plugin list") cat "$STUB_STATE/plugins" 2>/dev/null ;;
-  "plugin marketplace add "*) name=$(basename "${4%%.git#*}"); [ "$name" = claude-toolbox ] && name=maguerrieri-toolbox; echo "  > $name" >> "$STUB_STATE/markets" ;;
+  "plugin marketplace add "*)
+    url="${4%%#*}"; ref="${4##*#}"; name=$(basename "${url%.git}"); [ "$name" = claude-toolbox ] && name=maguerrieri-toolbox
+    printf '  > %s\n    Source: Git (%s@%s)\n' "$name" "$url" "$ref" >> "$STUB_STATE/markets" ;;
+  "plugin marketplace remove "*)
+    awk -v name="$4" '$1 == ">" { skip = ($2 == name) } !skip' "$STUB_STATE/markets" > "$STUB_STATE/markets.new" && mv "$STUB_STATE/markets.new" "$STUB_STATE/markets" ;;
   "plugin install "*) echo "  > $3" >> "$STUB_STATE/plugins" ;;
 esac
 """,
@@ -36,13 +43,31 @@ case "$1 $2" in
   "auth print-access-token") echo token ;;
 esac
 """,
+    # The three IAM endpoints the assertion uses. The testable set is the
+    # role's permissions, three foreign ones, one disabled-API permission, and
+    # 250 synthetic ones on a second page, so batching and pagination are
+    # exercised; the credential "holds" the role's set, plus two foreign ones
+    # under STUB_IAM_EXCESS. STUB_IAM_FAIL makes every call fail.
     "curl": r"""#!/bin/bash
-echo "curl ${@: -1}" >> "$STUB_LOG"
-if [ -n "${STUB_IAM_EXCESS:-}" ]; then
-  echo '{"permissions":["logging.logEntries.list","logging.logs.list","run.services.list","secretmanager.versions.access"]}'
-else
-  echo '{"permissions":["logging.logEntries.list","logging.logs.list"]}'
-fi
+url="${@: -1}"; body=""
+while [ $# -gt 0 ]; do case "$1" in -d) body="$2"; shift ;; esac; shift; done
+echo "curl $url" >> "$STUB_LOG"
+[ -n "$body" ] && printf '%s\n' "$body" >> "$STUB_STATE/iam-requests"
+[ -n "${STUB_IAM_FAIL:-}" ] && exit 22
+role='["logging.logEntries.list","logging.logs.list","logging.views.get"]'
+case "$url" in
+  *roles/logging.viewer) jq -cn --argjson r "$role" '{name: "roles/logging.viewer", includedPermissions: $r}' ;;
+  *queryTestablePermissions)
+    if [ -z "$(jq -r '.pageToken // ""' <<<"$body")" ]; then
+      jq -cn --argjson r "$role" '{permissions: ((($r + ["run.services.list","secretmanager.versions.access","logging.exclusions.create"]) | map({name: .})) + [{name: "disabled.api.perm", apiDisabled: true}]), nextPageToken: "p2"}'
+    else
+      jq -cn '{permissions: [range(1; 251) | {name: ("synthetic.perm." + tostring)}]}'
+    fi ;;
+  *testIamPermissions)
+    held='["logging.logEntries.list","logging.logs.list","logging.views.get"]'
+    [ -n "${STUB_IAM_EXCESS:-}" ] && held='["logging.logEntries.list","logging.logs.list","logging.views.get","run.services.list","logging.exclusions.create"]'
+    jq -c --argjson h "$held" '{permissions: [.permissions[] | select(. as $p | $h | index($p))]}' <<<"$body" ;;
+esac
 """,
     "op": r"""#!/bin/bash
 echo "op $*" >> "$STUB_LOG"
@@ -158,8 +183,24 @@ def test_provisioning_is_idempotent(env):
     env.log.write_text("")
     assert env.run().returncode == 0
     calls = env.calls()
-    assert "marketplace add" not in calls and "plugin install" not in calls
+    assert "marketplace add" not in calls and "marketplace remove" not in calls and "plugin install" not in calls
     assert "claude plugin marketplace update maguerrieri-toolbox" in calls
+
+
+def test_marketplace_registered_from_another_source_is_replaced(env):
+    """A same-named marketplace that is not the pinned git URL and ref is removed and re-added."""
+    (env.state / "markets").write_text("  > maguerrieri-toolbox\n    Source: GitHub (maguerrieri/claude-toolbox)\n"
+                                       "  > claude-plugins-official\n    Source: Git (https://github.com/anthropics/claude-plugins-official.git@v1)\n")
+    r = env.run()
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = env.calls()
+    assert "claude plugin marketplace remove maguerrieri-toolbox" in calls
+    assert "claude plugin marketplace remove claude-plugins-official" in calls
+    assert "claude plugin marketplace add https://github.com/maguerrieri/claude-toolbox.git#main" in calls
+    assert "claude plugin marketplace add https://github.com/anthropics/claude-plugins-official.git#main" in calls
+    assert "marketplace update" not in calls
+    assert "registered from 'GitHub (maguerrieri/claude-toolbox)', not the pinned source; replacing it" in r.stdout
+    assert (env.state / "markets").read_text().count("Source: Git (https://github.com/maguerrieri/claude-toolbox.git@main)") == 1
 
 
 def test_materializes_logs_key_and_asserts_iam(env):
@@ -168,9 +209,11 @@ def test_materializes_logs_key_and_asserts_iam(env):
     calls = env.calls()
     assert "gcloud auth activate-service-account logs-viewer@proj.iam.gserviceaccount.com --key-file=" in calls
     assert "gcloud config set project proj --quiet" in calls
+    assert "curl https://iam.googleapis.com/v1/roles/logging.viewer" in calls
+    assert "curl https://iam.googleapis.com/v1/permissions:queryTestablePermissions" in calls
     assert "curl https://cloudresourcemanager.googleapis.com/v1/projects/proj:testIamPermissions" in calls
     assert (env.state / "materialized-key").read_text().startswith('{"type": "service_account"')
-    assert "IAM OK" in r.stdout
+    assert "IAM OK: of 256 testable permissions on proj the credential holds 3, all within roles/logging.viewer" in r.stdout
     # The key file never survives the run.
     assert not [p for p in env.checkout.rglob("logs-viewer-key.json")]
 
@@ -192,19 +235,44 @@ def test_key_falls_back_to_op_with_a_warning(env):
     assert (env.state / "materialized-key").read_text() == '{"from":"op"}\n'
 
 
-def test_no_key_source_skips_gcloud(env):
+def test_declared_key_without_source_fails_provisioning(env):
+    """A repo that declares a project must get its key: no snapshot without it."""
     env.vars.pop("FACTORY_LOGS_VIEWER_KEY")
     r = env.run()
-    assert r.returncode == 0
+    assert r.returncode == 1
     assert "gcloud" not in env.calls()
-    assert "no logs key available" in r.stdout
+    assert "no logs key available" in r.stdout and "no snapshot manifest written" in r.stderr
+    assert not (env.home / ".factory-setup" / "manifest").exists()
+    # Plugins were still provisioned before the key step.
+    assert "claude plugin install defaults@maguerrieri-toolbox" in env.calls()
+
+
+def test_iam_enumerates_every_testable_permission_in_batches(env):
+    assert env.run().returncode == 0
+    requests = (env.state / "iam-requests").read_text().splitlines()
+    tests = [json.loads(b) for b in requests if "fullResourceName" not in b]
+    queries = [json.loads(b) for b in requests if "fullResourceName" in b]
+    assert [q.get("pageToken") for q in queries] == [None, "p2"]  # both pages fetched
+    assert queries[0]["fullResourceName"] == "//cloudresourcemanager.googleapis.com/projects/proj"
+    assert len(tests) == 3 and all(len(t["permissions"]) <= 100 for t in tests)  # 256 names, 100 per call
+    requested = {p for t in tests for p in t["permissions"]}
+    assert "synthetic.perm.250" in requested and "logging.exclusions.create" in requested
+    assert "disabled.api.perm" not in requested
 
 
 def test_excess_iam_revokes_key_and_fails_provisioning(env):
     r = env.run(STUB_IAM_EXCESS="1")
     assert r.returncode == 1
-    assert "IAM: EXCESS run.services.list is held" in r.stdout
-    assert "IAM: EXCESS secretmanager.versions.access is held" in r.stdout
+    assert "IAM: EXCESS: the credential holds permissions outside roles/logging.viewer: logging.exclusions.create,run.services.list" in r.stdout
+    assert "gcloud auth revoke logs-viewer@proj.iam.gserviceaccount.com --quiet" in env.calls()
+    assert not (env.home / ".factory-setup" / "manifest").exists()
+
+
+def test_unprovable_iam_scope_fails_closed(env):
+    """A check that cannot run (API down, unknown names) is not a pass."""
+    r = env.run(STUB_IAM_FAIL="1")
+    assert r.returncode == 1
+    assert "cannot assert" in r.stdout and "scope not proven" in r.stdout
     assert "gcloud auth revoke logs-viewer@proj.iam.gserviceaccount.com --quiet" in env.calls()
     assert not (env.home / ".factory-setup" / "manifest").exists()
 
@@ -214,6 +282,19 @@ def test_assert_iam_mode(env):
     assert ok.returncode == 0 and "IAM OK" in ok.stdout, ok.stdout + ok.stderr
     bad = env.run("--assert-iam", STUB_IAM_EXCESS="1")
     assert bad.returncode == 1 and "EXCESS" in bad.stdout
+    down = env.run("--assert-iam", STUB_IAM_FAIL="1")
+    assert down.returncode == 2 and "cannot assert" in down.stdout
+
+
+def test_assert_iam_is_a_noop_without_a_project(env):
+    """The repo's own copy, when it declares no GCP project, has nothing to assert."""
+    with open(SCRIPT) as f:
+        text = f.read()
+    if 'GCP_PROJECT=""' not in text:
+        pytest.skip("this repo's copy declares a project")
+    r = subprocess.run(["bash", "-euo", "pipefail", "-c", text, "cloud-setup", "--assert-iam"],
+                       cwd=str(env.checkout), env=env.vars, capture_output=True, text=True)
+    assert r.returncode == 0 and "nothing to assert" in r.stdout, r.stdout + r.stderr
 
 
 def test_untrusted_claude_dir_withholds_key(env):
@@ -243,7 +324,8 @@ def test_manifest_records_origin_main_hashes(env):
     import hashlib
     script_sha = hashlib.sha256(env.main_script().encode()).hexdigest()
     allow_sha = hashlib.sha256(git(str(env.checkout), "show", "origin/main:.claude/cloud-allowlist").encode()).hexdigest()
-    assert f"script {script_sha}" in m and f"allowlist {allow_sha}" in m
+    settings_sha = hashlib.sha256(git(str(env.checkout), "show", "origin/main:.claude/settings.json").encode()).hexdigest()
+    assert f"script {script_sha}" in m and f"allowlist {allow_sha}" in m and f"settings {settings_sha}" in m
     assert re.search(r"origin_main [0-9a-f]{40}", m)
 
 
@@ -255,6 +337,14 @@ def test_verify_ok_then_stale_after_main_changes(env):
     r = env.run("--verify")
     assert r.returncode == 0 and "SETUP STALE" in r.stdout
     assert "bump the (v1) comment" in r.stdout
+
+
+def test_verify_stale_after_plugin_set_changes(env):
+    """The plugin set comes from settings.json, so a settings-only change on main is stale too."""
+    assert env.run().returncode == 0
+    env.commit_main(".claude/settings.json", '{"enabledPlugins": {"defaults@maguerrieri-toolbox": true, "gm@maguerrieri-toolbox": true}}\n')
+    r = env.run("--verify")
+    assert "SETUP STALE" in r.stdout
 
 
 def test_verify_absent_without_snapshot(env):

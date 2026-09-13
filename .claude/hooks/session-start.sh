@@ -43,6 +43,8 @@ if git fetch -q --depth=1 origin +refs/heads/main:refs/remotes/origin/main 2>/de
   if [ -n "$setup_script" ]; then
     bash -c "$setup_script" cloud-setup --verify || true
   fi
+else
+  echo "cloud-setup: SETUP VERIFY SKIPPED: origin/main unreachable from the SessionStart hook"
 fi
 
 # Allowlist. Only these marketplaces are ever registered or installed from,

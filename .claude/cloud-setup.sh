@@ -23,10 +23,10 @@
 #                 against a fresh origin/main: prints SETUP STALE, UNTRUSTED
 #                 .claude/, or PROJECT remote.* OVERRIDE PRESENT. Always exits
 #                 0 -- a SessionStart hook cannot block a session anyway.
-#   --assert-iam  IAM assertion for the active logs-viewer credential: it holds
-#                 the logging.viewer permissions and none of the read/write
-#                 permissions listed below. Exit 1 on excess, 2 if the check
-#                 could not run.
+#   --assert-iam  IAM assertion for the active logs-viewer credential: of every
+#                 testable permission on the project it holds only ones in
+#                 roles/logging.viewer. Exit 1 on excess, 2 if the check could
+#                 not run, 0 (nothing to assert) in a repo with no GCP project.
 #
 # What this guards and what it does not (spec 2b): provisioning only. The
 # result is a cached filesystem snapshot shared by every later session in the
@@ -52,17 +52,16 @@ allowed_marketplace() {
   esac
 }
 
-# Permissions the logs key must hold (roles/logging.viewer) and a sample of
-# read and write permissions it must not, checked with
-# projects.testIamPermissions, which needs no permission of its own and
-# changes nothing.
-IAM_HELD="logging.logEntries.list logging.logs.list"
-IAM_DENIED="run.services.list run.services.get run.services.create run.services.update run.services.delete
-secretmanager.secrets.list secretmanager.secrets.create secretmanager.versions.access secretmanager.versions.add
-logging.logEntries.create logging.logs.delete logging.sinks.create
-storage.buckets.list storage.buckets.create
-iam.serviceAccountKeys.create iam.serviceAccounts.actAs resourcemanager.projects.setIamPolicy
-cloudbuild.builds.create artifactregistry.repositories.list"
+# The one role the logs key may hold. --assert-iam reads that role's
+# permission list from the IAM API, enumerates every testable permission on
+# the project, asks projects.testIamPermissions (needs no permission of its
+# own, changes nothing; IAM_BATCH names per call) which of them the active
+# credential holds, and fails on any permission outside the role -- a full
+# enumeration, not a sample, so a stray mutating grant anywhere is caught.
+LOGS_VIEWER_ROLE="roles/logging.viewer"
+IAM_CORE="logging.logEntries.list"
+IAM_BATCH=100          # testIamPermissions accepts at most 100 names per call
+IAM_MAX_PAGES=50       # a bound on the testable-permission listing, not a limit
 
 mode="${1:-}"
 repo_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
@@ -98,8 +97,18 @@ remote_override() {
   jq -e 'type == "object" and ([keys[] | select(. == "remote" or startswith("remote."))] | length > 0)' "$f" >/dev/null 2>&1
 }
 
+# The `Source:` line `claude plugin marketplace list` prints for marketplace
+# $1 (e.g. `Git (https://github.com/o/r.git@main)`), or empty if unregistered.
+# Reads the caller's `$marketplaces` (the listing provision_plugins holds).
+marketplace_source() {
+  awk -v name="$1" '
+    $1 == ">" { found = ($2 == name); next }
+    found && /^[[:space:]]*Source:/ { sub(/^[[:space:]]*Source:[[:space:]]*/, ""); print; exit }
+  ' <<<"$marketplaces"
+}
+
 provision_plugins() {
-  local settings marketplaces installed plugin market src
+  local settings marketplaces installed plugin market src registered
   if ! command -v claude >/dev/null || ! command -v jq >/dev/null; then
     say "claude or jq not on PATH; skipping plugin install"
     return 0
@@ -116,13 +125,24 @@ provision_plugins() {
       say "skipping $plugin: marketplace $market is not on this script's allowlist"
       continue
     fi
-    if grep -qF "> $market" <<<"$marketplaces"; then
+    # A marketplace already registered under this name counts only if its
+    # source is exactly the pinned git URL and ref; a cached or
+    # settings-registered entry of the same name (an unpinned GitHub source,
+    # another repo) is replaced rather than updated in place.
+    registered=$(marketplace_source "$market")
+    if [ "$registered" = "Git (${src%%#*}@${src##*#})" ]; then
       claude plugin marketplace update "$market" >/dev/null 2>&1 || say "could not update marketplace $market"
-    elif claude plugin marketplace add "$src" >/dev/null 2>&1; then
-      marketplaces=$(claude plugin marketplace list 2>/dev/null || true)
     else
-      say "could not add marketplace $src; skipping $plugin"
-      continue
+      if [ -n "$registered" ]; then
+        say "marketplace $market is registered from '$registered', not the pinned source; replacing it"
+        claude plugin marketplace remove "$market" >/dev/null 2>&1 || { say "could not remove marketplace $market; skipping $plugin"; continue; }
+      fi
+      if claude plugin marketplace add "$src" >/dev/null 2>&1; then
+        marketplaces=$(claude plugin marketplace list 2>/dev/null || true)
+      else
+        say "could not add marketplace $src; skipping $plugin"
+        continue
+      fi
     fi
     grep -qF "> $plugin" <<<"$installed" && continue
     if claude plugin install "$plugin" >/dev/null 2>&1; then
@@ -135,12 +155,14 @@ provision_plugins() {
 }
 
 # Writes the key into the gcloud config dir (the one in-VM credential) and
-# asserts its IAM scope; a key that holds more than logging.viewer is revoked
-# and fails provisioning.
+# asserts its IAM scope. A repo that declares a project fails provisioning
+# (no snapshot manifest, so the next run retries) whenever the key cannot be
+# obtained, activated, or proven in scope: a "successful" snapshot without
+# the credential would report SETUP OK forever.
 provision_logs_key() {
-  local key_file rc
+  local key_file
   [ -n "$GCP_PROJECT" ] || { say "no GCP project declared for this repo; no logs key to materialize"; return 0; }
-  command -v gcloud >/dev/null || { say "gcloud not on PATH; skipping the logs key"; return 0; }
+  command -v gcloud >/dev/null || { say "gcloud not on PATH but this repo declares a logs key; failing provisioning"; return 1; }
   # The remote environment sets a token the GCP APIs reject and that overrides
   # any activated account; the SessionStart hook keeps it unset per session.
   unset CLOUDSDK_AUTH_ACCESS_TOKEN
@@ -153,53 +175,95 @@ provision_logs_key() {
   elif [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && command -v op >/dev/null; then
     say "FACTORY_LOGS_VIEWER_KEY unset; fetching the key from 1Password (transitional: that token reaches its whole vault, so set FACTORY_LOGS_VIEWER_KEY on the environment instead and drop the op token)"
     if ! op document get gcp-logs-viewer-key --vault "Claude (personal)" --out-file "$key_file" --force >/dev/null; then
-      say "could not fetch gcp-logs-viewer-key from 1Password; skipping gcloud auth"
-      return 0
+      say "could not fetch gcp-logs-viewer-key from 1Password; failing provisioning"
+      return 1
     fi
   else
-    say "no logs key available (set FACTORY_LOGS_VIEWER_KEY on the environment); skipping gcloud auth"
-    return 0
+    say "no logs key available (set FACTORY_LOGS_VIEWER_KEY on the environment); failing provisioning"
+    return 1
   fi
   if ! gcloud auth activate-service-account "$LOGS_VIEWER_SA" --key-file="$key_file" --quiet; then
-    say "gcloud service-account activation failed; skipping gcloud auth"
+    say "gcloud service-account activation failed; failing provisioning"
     rm -f "$key_file"
-    return 0
+    return 1
   fi
   rm -f "$key_file"
   gcloud config set project "$GCP_PROJECT" --quiet || true
-  rc=0
-  assert_iam || rc=$?
-  if [ "$rc" -eq 1 ]; then
-    say "logs key holds permissions beyond roles/logging.viewer; revoking it and failing provisioning"
+  # Fail closed on any non-zero: an unproven scope (the check could not run)
+  # is as unacceptable in a shared snapshot as a proven excess.
+  if ! assert_iam; then
+    say "logs key scope not proven (see the IAM lines above); revoking it and failing provisioning"
     gcloud auth revoke "$LOGS_VIEWER_SA" --quiet || true
     return 1
   fi
   return 0
 }
 
-# 0 = scope as expected; 1 = excess or missing permission; 2 = could not check.
+# 0 = scope as expected; 1 = excess or missing permission; 2 = could not
+# check. A repo that declares no GCP project has nothing to assert (0).
+iam_get() { curl -fsS --max-time 60 -H "Authorization: Bearer $token" "$1"; }
+iam_post() { curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$2" "$1"; }
 assert_iam() {
-  local token body resp held p rc=0 t
-  [ -n "$GCP_PROJECT" ] || { say "IAM: no GCP project declared for this repo; nothing to assert"; return 2; }
+  local token role_perms testable page_token page resp held excess missing batch n i t rc=0
+  if [ -z "$GCP_PROJECT" ]; then
+    say "IAM: no GCP project declared for this repo; nothing to assert"
+    return 0
+  fi
   for t in gcloud curl jq; do
     command -v "$t" >/dev/null || { say "IAM: $t not on PATH; cannot assert"; return 2; }
   done
   unset CLOUDSDK_AUTH_ACCESS_TOKEN
   token=$(gcloud auth print-access-token 2>/dev/null) || { say "IAM: no active gcloud credential; cannot assert"; return 2; }
-  body=$(jq -cn --arg p "$IAM_HELD $IAM_DENIED" '{permissions: ($p | split(" ") | map(select(. != "")))}')
-  if ! resp=$(curl -fsS -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
-      -d "$body" "https://cloudresourcemanager.googleapis.com/v1/projects/$GCP_PROJECT:testIamPermissions"); then
-    say "IAM: testIamPermissions call failed; cannot assert"
-    return 2
+  # 1. The role's own permissions: the only ones the credential may hold.
+  # `|| true`: under pipefail a failed curl would otherwise abort the whole
+  # script with curl's status, and --assert-iam (called outside a condition,
+  # where set -e is live) must report 2, not 22. An empty result is the signal.
+  role_perms=$(iam_get "https://iam.googleapis.com/v1/$LOGS_VIEWER_ROLE" 2>/dev/null | jq -r '.includedPermissions[]?' | sort -u) || true
+  [ -n "$role_perms" ] || { say "IAM: could not read $LOGS_VIEWER_ROLE from the IAM API; cannot assert"; return 2; }
+  # 2. Every permission that can be tested on the project. Paginated at the
+  #    server's own page size (no pageSize of ours to get wrong), bounded so a
+  #    repeating nextPageToken cannot spin forever; permissions of disabled
+  #    APIs cannot be exercised and are skipped.
+  page_token=""
+  page=0
+  : >"$work/testable"
+  while :; do
+    resp=$(iam_post "https://iam.googleapis.com/v1/permissions:queryTestablePermissions" \
+      "$(jq -cn --arg r "//cloudresourcemanager.googleapis.com/projects/$GCP_PROJECT" --arg p "$page_token" \
+          '{fullResourceName: $r} + (if $p == "" then {} else {pageToken: $p} end)')") \
+      || { say "IAM: could not enumerate the project's testable permissions; cannot assert"; return 2; }
+    jq -r '.permissions[]? | select(.apiDisabled != true) | .name' <<<"$resp" >>"$work/testable"
+    page_token=$(jq -r '.nextPageToken // empty' <<<"$resp")
+    [ -n "$page_token" ] || break
+    page=$((page + 1))
+    [ "$page" -lt "$IAM_MAX_PAGES" ] || { say "IAM: the testable-permission listing did not end within $IAM_MAX_PAGES pages; cannot assert"; return 2; }
+  done
+  sort -u -o "$work/testable" "$work/testable"
+  n=$(sed '/^$/d' "$work/testable" | wc -l)
+  [ "$n" -gt 0 ] || { say "IAM: the project reports no testable permissions; cannot assert"; return 2; }
+  # 3. Which of those the credential holds, IAM_BATCH names per call.
+  : >"$work/held"
+  i=1
+  while [ "$i" -le "$n" ]; do
+    batch=$(sed -n "${i},$((i + IAM_BATCH - 1))p" "$work/testable" | jq -R . | jq -cs '{permissions: .}')
+    resp=$(iam_post "https://cloudresourcemanager.googleapis.com/v1/projects/$GCP_PROJECT:testIamPermissions" "$batch") \
+      || { say "IAM: testIamPermissions call failed; cannot assert"; return 2; }
+    jq -r '.permissions[]?' <<<"$resp" >>"$work/held"
+    i=$((i + IAM_BATCH))
+  done
+  sort -u -o "$work/held" "$work/held"
+  held=$(cat "$work/held")
+  excess=$(comm -23 "$work/held" <(printf '%s\n' "$role_perms"))
+  missing=$(comm -23 <(printf '%s\n' "$IAM_CORE" | sort -u) "$work/held")
+  if [ -n "$excess" ]; then
+    say "IAM: EXCESS: the credential holds permissions outside $LOGS_VIEWER_ROLE: $(paste -sd, - <<<"$excess")"
+    rc=1
   fi
-  held=$(jq -r '.permissions // [] | .[]' <<<"$resp")
-  for p in $IAM_HELD; do
-    grep -qx "$p" <<<"$held" || { say "IAM: $p is not held; the key is not the logs-viewer key"; rc=1; }
-  done
-  for p in $IAM_DENIED; do
-    grep -qx "$p" <<<"$held" && { say "IAM: EXCESS $p is held"; rc=1; }
-  done
-  [ "$rc" -eq 0 ] && say "IAM OK: the active credential holds logging.viewer and none of the $(wc -w <<<"$IAM_DENIED") permissions tested beyond it"
+  if [ -n "$missing" ]; then
+    say "IAM: $(paste -sd, - <<<"$missing") not held; the credential is not the logs-viewer key"
+    rc=1
+  fi
+  [ "$rc" -eq 0 ] && say "IAM OK: of $n testable permissions on $GCP_PROJECT the credential holds $(sed '/^$/d' <<<"$held" | wc -l), all within $LOGS_VIEWER_ROLE"
   return "$rc"
 }
 
@@ -209,6 +273,7 @@ write_manifest() {
     printf 'schema factory-setup/1\n'
     printf 'script %s\n' "$(hash_blob .claude/cloud-setup.sh)"
     printf 'allowlist %s\n' "$(hash_blob .claude/cloud-allowlist)"
+    printf 'settings %s\n' "$(hash_blob .claude/settings.json)"
     printf 'origin_main %s\n' "$(git -C "$repo_dir" rev-parse origin/main)"
     printf 'provisioned_at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } >"$manifest"
@@ -226,7 +291,7 @@ provision() {
   if [ -n "$drift" ]; then
     say "UNTRUSTED .claude/: the checkout's .claude/ differs from origin/main ($(paste -sd, - <<<"$drift")); not materializing the logs key in this snapshot"
   else
-    provision_logs_key
+    provision_logs_key || die "logs key not provisioned; no snapshot manifest written, the next setup run retries"
   fi
   if remote_override; then
     say "PROJECT remote.* OVERRIDE PRESENT: the checkout's .claude/settings.json carries a remote.* key (spec 2c)"
@@ -235,7 +300,7 @@ provision() {
 }
 
 verify() {
-  local drift want_s want_a have_s have_a
+  local drift want_s want_a want_p have_s have_a have_p
   if ! fetch_main; then
     say "SETUP VERIFY SKIPPED: origin/main unreachable"
   else
@@ -244,12 +309,14 @@ verify() {
     else
       want_s=$(hash_blob .claude/cloud-setup.sh)
       want_a=$(hash_blob .claude/cloud-allowlist)
+      want_p=$(hash_blob .claude/settings.json)
       have_s=$(awk '$1 == "script" {print $2}' "$manifest")
       have_a=$(awk '$1 == "allowlist" {print $2}' "$manifest")
-      if [ "$want_s" = "$have_s" ] && [ "$want_a" = "$have_a" ]; then
-        say "SETUP OK: this snapshot matches origin/main's cloud-setup.sh and cloud-allowlist"
+      have_p=$(awk '$1 == "settings" {print $2}' "$manifest")
+      if [ "$want_s" = "$have_s" ] && [ "$want_a" = "$have_a" ] && [ "$want_p" = "$have_p" ]; then
+        say "SETUP OK: this snapshot matches origin/main's cloud-setup.sh, cloud-allowlist, and settings.json"
       else
-        say "SETUP STALE: origin/main's cloud-setup.sh or cloud-allowlist changed after this snapshot was built; bump the (v1) comment in the GUI setup script, in each account, to rebuild it"
+        say "SETUP STALE: origin/main's cloud-setup.sh, cloud-allowlist, or settings.json (the plugin set) changed after this snapshot was built; bump the (v1) comment in the GUI setup script, in each account, to rebuild it"
       fi
     fi
     drift=$(claude_dir_drift)
