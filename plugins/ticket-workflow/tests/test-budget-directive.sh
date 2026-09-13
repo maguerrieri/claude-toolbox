@@ -155,6 +155,55 @@ assert "budget.md records a no-PR stop via the tracker COMMENT op" grep -q 'COMM
 assert "budget.md clears the marker on every hand-back" grep -q 'every\*\* hand-back' <<<"$budget_prose"
 assert "budget.md recomputes the path and guards the session id in cleanup" grep -q 'CLAUDE_SESSION_ID" \] && rm -f' <<<"$budget_text"
 
+# --- 4. the documented usable() predicate, executed ---------------------------
+# The prose assertions above only prove the rules are written down. This runs the
+# marker validator budget.md actually publishes, against fixtures for both
+# shapes, so a predicate that contradicts its own documented marker (an EPIC
+# marker has no clock line; requiring one rejected every orchestrator marker)
+# fails here rather than in a live run.
+usable_src=$(awk '/^usable\(\) \{$/,/^\}$/' "$budget_doc")
+assert "budget.md publishes a usable() definition" test -n "$usable_src"
+
+marker_dir=$(mktemp -d)
+trap 'rm -rf "$marker_dir"' EXIT
+budget_file="$marker_dir/m.budget"
+eval "$usable_src"      # the doc's own function, verbatim
+
+# <kind> <run_id> <file contents...> — returns usable()'s verdict for that marker
+verdict() {
+	kind=$1 run_id=$2; shift 2
+	printf '%s\n' "$@" >"$budget_file"
+	usable
+}
+START_RUN='#42 42-fix-flaky-upload'
+EPIC_RUN='#89 epic-89'
+
+assert "usable: a well-formed start marker" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5"
+assert "usable: a start marker with spent rounds" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5" "round: 1" "round: 2"
+assert "usable: a well-formed EPIC marker, untimed" verdict epic "$EPIC_RUN" \
+	"kind: epic" "run: $EPIC_RUN" "Budget: wall_clock_min=60 review_rounds=3"
+refute "usable: a start marker missing its clock" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "Budget: wall_clock_min=180 review_rounds=5"
+refute "usable: an EPIC marker carrying a clock" verdict epic "$EPIC_RUN" \
+	"kind: epic" "run: $EPIC_RUN" "clock: 1789260795" "Budget: wall_clock_min=60 review_rounds=3"
+refute "usable: another run's marker" verdict start "$START_RUN" \
+	"kind: start" "run: #99 other-branch" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5"
+refute "usable: the wrong kind for this phase" verdict start "$START_RUN" \
+	"kind: epic" "run: $START_RUN" "Budget: wall_clock_min=180 review_rounds=5"
+refute "usable: a placeholder-bearing Budget line" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=<N> review_rounds=<M>"
+refute "usable: a partial Budget line" verdict epic "$EPIC_RUN" \
+	"kind: epic" "run: $EPIC_RUN" "Budget: review_rounds=3"
+refute "usable: a leading-zero value" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=08 review_rounds=5"
+refute "usable: a truncated marker" verdict start "$START_RUN" "kind: start" "run: $START_RUN"
+refute "usable: a kindless legacy marker" verdict start "$START_RUN" \
+	"run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5"
+rm -f "$budget_file"
+refute "usable: no marker at all" verdict start "$START_RUN"
+
 # Forwarding surfaces.
 assert "phases/epic.md points at budget.md" grep -q 'Read `budget.md`' <<<"$epic_prose"
 assert "phases/epic.md rejects a partial override before spawning" grep -q 'before spawning' <<<"$epic_prose"

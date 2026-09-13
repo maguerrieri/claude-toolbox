@@ -45,6 +45,7 @@ better than `Role:` does, and a budget that evaporates is no budget. So persist
 it beside the role marker, as `<session-id>.budget`:
 
 ```
+kind: start
 run: <issue id> <branch>
 clock: <epoch seconds, captured at the Step 1 clock note>
 Budget: wall_clock_min=180 review_rounds=5
@@ -52,6 +53,24 @@ round: 1
 round: 2
 ```
 
+Two shapes, distinguished by `kind:`, because two phases persist one:
+
+| | `kind: start` | `kind: epic` |
+|---|---|---|
+| written by | START Step 1, for its own run | EPIC Step 1, for the children it will spawn |
+| `clock:` | **required** — the run is timed | **absent** — an orchestrator is not timed, only its children are |
+| `round:` | appended per fix push | never |
+| `Budget:` | the validated directive | the **fully merged** child line (override over cap), so it is always full-shape |
+
+EPIC merges before persisting rather than storing a partial override: the
+profile, and so the cap, is already resolved at Step 0, and a half-line in the
+file would force every reader to re-derive the merge. Where the cap has no
+`Budget:` line and the override is partial, EPIC has already errored (it rejects
+that before spawning), so a `kind: epic` marker always carries both keys.
+
+- **`kind:`** is the shape, `start` or `epic`, and decides which of the rules
+  below apply. Validating without it would mean either rejecting every untimed
+  EPIC marker or accepting a START marker that lost its clock.
 - **`run:`** is the run identity — the issue ID and branch this budget belongs
   to. The file is keyed only by session, so without it a session that finishes
   one ticket and starts another before cleanup would read the first ticket's
@@ -60,7 +79,8 @@ round: 2
 - **`clock:`** is epoch seconds (`date +%s` — portable, and what the deadline
   arithmetic below needs), captured at the **same moment** as Step 1's clock
   note, not later. Writing it after issue-reading and setup would start the
-  deadline late and grant more than the requested budget.
+  deadline late and grant more than the requested budget. `kind: epic` markers
+  carry none, and a clock line in one is itself a malformation.
 - **`Budget:`** carries the **validated numbers**, never the `<N>`/`<M>`
   placeholders this file writes them as — the enforcement below reads this line
   as authoritative, so a literal placeholder makes the budget unenforceable.
@@ -76,18 +96,29 @@ clock_epoch=$(date +%s)        # the Step 1 clock note's own moment
 wall_clock_min=180             # substitute the validated numbers from the directive
 review_rounds=5
 run_id='#42 42-fix-flaky-upload'
+kind=start                     # `epic` when EPIC Step 1 writes it
 
-usable() {   # a marker is usable only if it is this run's and well-formed
-	[ -f "$budget_file" ] &&
-		grep -qxF "run: $run_id" "$budget_file" &&
-		grep -qxE 'Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)' "$budget_file" &&
+# A marker is usable only if it is this run's, well-formed, and timed exactly
+# when its kind says it should be.
+usable() {
+	[ -f "$budget_file" ] || return 1
+	grep -qxF "run: $run_id" "$budget_file" || return 1
+	grep -qxF "kind: $kind" "$budget_file" || return 1
+	grep -qxE 'Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)' "$budget_file" || return 1
+	if [ "$kind" = start ]; then
 		grep -qxE 'clock: [0-9]+' "$budget_file"
+	else
+		! grep -q '^clock:' "$budget_file"
+	fi
 }
 
 if [ -n "$CLAUDE_SESSION_ID" ]; then
 	mkdir -p "$roles_dir"
-	usable || printf 'run: %s\nclock: %s\nBudget: wall_clock_min=%s review_rounds=%s\n' \
-		"$run_id" "$clock_epoch" "$wall_clock_min" "$review_rounds" >"$budget_file"
+	if ! usable; then
+		printf 'kind: %s\nrun: %s\n' "$kind" "$run_id" >"$budget_file"
+		[ "$kind" = start ] && printf 'clock: %s\n' "$clock_epoch" >>"$budget_file"
+		printf 'Budget: wall_clock_min=%s review_rounds=%s\n' "$wall_clock_min" "$review_rounds" >>"$budget_file"
+	fi
 fi
 ```
 
@@ -110,8 +141,11 @@ removes it with the marker.
 
 In order:
 
-1. **The marker**, when `usable` above holds — it is the provenance, the clock,
-   and the rounds already spent.
+1. **The marker**, when `usable` above holds **for this phase's own kind** — it
+   is the provenance, the clock (for a `start` marker), and the rounds already
+   spent. An EPIC wake validates the untimed `epic` shape; requiring a clock
+   there would reject every correctly written orchestrator marker and silently
+   drop the children's override back to the cap default.
 2. **The briefing's directive**, if still in context. Measure the clock from the
    branch's first commit (START Step 7's fallback) and count rounds as the
    branch's commits dated after the PR opened (`gh pr view <pr> --json
