@@ -236,6 +236,8 @@ Tell the user the worktree path. Optionally run the adapter's `START` to mark th
 
 Re-read the issue, plan, and implement inside the worktree. Commit incrementally (never batch). Message format: the tracker's `COMMIT_REF`, unless the profile's `COMMIT_STYLE` overrides it (e.g. an org's flagged format).
 
+**Factory identity — before the first commit.** In a cloud implementer environment (`FACTORY_BROKER_URL` is set; spec 2d item 8b), run `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" setup-git` in the checkout now, before committing anything: it runs `gh auth setup-git` under the App token so a push carries the App, points an SSH origin's push URL at HTTPS, and sets the App's commit author. **Any non-zero exit stops the ticket here** — report it rather than commit as the user: 3 is proxy-injected mode (M1 not in effect), 4 a broker refusal or an unusable App identity, 5 an unreachable broker, 2 a configuration error. Details in `factory-identity.md` (read on demand). No `FACTORY_BROKER_URL` → skip.
+
 ### Step 6 — Verify tests + docs
 
 Look at the diff (`git diff origin/<base_branch>...HEAD` — compare against `origin/<base_branch>`, which always exists after the fetch in Step 3; a local `<base_branch>` ref may not). The same diff drives two checks:
@@ -251,11 +253,29 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 - Each commit subject matches the tracker's `COMMIT_REF` (via `COMMIT_STYLE`) and accurately describes its diff — reword stale/placeholder subjects with `git rebase` now, while nothing's reviewed yet.
 - No hold / placeholder / leftover-debug markers — the same commit/diff markers FINISH Step 1's gate blocks on (`DO NOT MERGE`, `WIP`, qualified `FIXME`/`XXX`/`HACK`, stray debug) — remain in the commit messages or the diff (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`).
 
+**Factory identity (cloud implementer sessions only).** If the environment carries `FACTORY_BROKER_URL` (spec 2d item 8b), the push and the PR must carry the factory's App identity, not the user's. Step 5 already ran `setup-git`; if it did not, run it now. Then, still before the push:
+
 ```bash
-git push -u origin <branch>
+ft="$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token"
+"$ft" normalize-commits <base_branch>   # App identity on this PR's own commits
+"$ft" exec -- git push -u origin <branch>
+```
+
+That **replaces** the plain `git push` below — run one or the other, never both:
+a second, unwrapped push in a factory session either fails on the sentinel or,
+in proxy-injected mode, pushes as the user.
+
+`normalize-commits` rewrites author and committer of the commits in `origin/<base_branch>..HEAD` that carry the platform's default identity, and **stops (exit 6) on any other non-App author or committer** — hand back rather than relabel someone else's work. Each Bash call is a fresh shell, so wrap **every `gh` call in this step and Step 8** — the `gh pr create` template below (written for ordinary sessions), `gh pr checks`, and the profile's `REVIEW_BOT` commands — in `"$ft" exec --`. The SessionStart hook also puts a wrapped `gh` first on `PATH`, so an unwrapped call still carries the token; the explicit `exec` here is what makes identity independent of that hook. Any non-zero exit stops the ticket (3 = proxy-injected mode; a PR opened anyway would be authored as the user). No `FACTORY_BROKER_URL` → an ordinary session; skip this.
+
+```bash
+git push -u origin <branch>          # ordinary sessions; a factory session used the wrapped push above
 ```
 
 Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
+
+In a factory implementer session every `gh` below runs through the wrapper, as the
+factory-identity paragraph says — `"$ft" exec -- gh pr create …`, with `ft` as set
+there. Ordinary sessions run them as written.
 
 ```bash
 gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'EOF'
@@ -278,7 +298,7 @@ EOF
 Watch CI in parallel with any review bot:
 
 ```bash
-gh pr checks <pr> --watch --fail-fast
+gh pr checks <pr> --watch --fail-fast          # factory session: "$ft" exec -- gh pr checks …
 ```
 
 Run the profile's `REVIEW_BOT` step. The `default` profile: if an automated reviewer (Copilot, CodeRabbit, etc.) is configured, request a review and resolve every thread — address each with a code change + reply + resolve, or, if the bot is wrong, reply explaining why + resolve; push fixes, re-request, and loop until there are no unresolved threads AND CI is green. If there's **no** review bot, rely on CI + the user's own review.
