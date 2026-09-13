@@ -236,7 +236,7 @@ Tell the user the worktree path. Optionally run the adapter's `START` to mark th
 
 Re-read the issue, plan, and implement inside the worktree. Commit incrementally (never batch). Message format: the tracker's `COMMIT_REF`, unless the profile's `COMMIT_STYLE` overrides it (e.g. an org's flagged format).
 
-**Factory identity — before the first commit.** In a cloud implementer environment (`FACTORY_BROKER_URL` is set; spec 2d item 8b), run `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" setup-git` in the checkout now, before committing anything: it sets the App's commit author and wires the push to carry the App token, and commits made before it keep the user's author. **Any non-zero exit stops the ticket here** — report it rather than commit as the user: 3 is proxy-injected mode (M1 not in effect), 4 a broker refusal or an unusable App identity, 5 an unreachable broker, 2 a configuration error. Details in `factory-identity.md` (read on demand). No `FACTORY_BROKER_URL` → skip.
+**Factory identity — before the first commit.** In a cloud implementer environment (`FACTORY_BROKER_URL` is set; spec 2d item 8b), run `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" setup-git` in the checkout now, before committing anything: it runs `gh auth setup-git` under the App token so a push carries the App, points an SSH origin's push URL at HTTPS, and sets the App's commit author. **Any non-zero exit stops the ticket here** — report it rather than commit as the user: 3 is proxy-injected mode (M1 not in effect), 4 a broker refusal or an unusable App identity, 5 an unreachable broker, 2 a configuration error. Details in `factory-identity.md` (read on demand). No `FACTORY_BROKER_URL` → skip.
 
 ### Step 6 — Verify tests + docs
 
@@ -253,7 +253,15 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 - Each commit subject matches the tracker's `COMMIT_REF` (via `COMMIT_STYLE`) and accurately describes its diff — reword stale/placeholder subjects with `git rebase` now, while nothing's reviewed yet.
 - No hold / placeholder / leftover-debug markers — the same commit/diff markers FINISH Step 1's gate blocks on (`DO NOT MERGE`, `WIP`, qualified `FIXME`/`XXX`/`HACK`, stray debug) — remain in the commit messages or the diff (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`).
 
-**Factory identity (cloud implementer sessions only).** If the environment carries `FACTORY_BROKER_URL` (spec 2d item 8b), the push and the PR must carry the factory's App identity, not the user's. Step 5 already ran `setup-git` (if it did not, run it now; commits made before it keep the user's author — the identity the rulesets key on is the PR author and the pusher). Each Bash call is a fresh shell, so prefix **every `gh` call in this step and Step 8** — the `gh pr create` template below (written for ordinary sessions), `gh pr checks`, and the profile's `REVIEW_BOT` commands — with `"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" exec --`; `git push` needs no prefix (the credential helper `setup-git` installed answers it). A helper exit of 3 means proxy-injected mode — stop and report; a PR opened anyway would be authored as the user. No `FACTORY_BROKER_URL` → an ordinary session; skip this.
+**Factory identity (cloud implementer sessions only).** If the environment carries `FACTORY_BROKER_URL` (spec 2d item 8b), the push and the PR must carry the factory's App identity, not the user's. Step 5 already ran `setup-git`; if it did not, run it now. Then, still before the push:
+
+```bash
+ft="$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token"
+"$ft" normalize-commits <base_branch>   # App identity on this PR's own commits
+"$ft" exec -- git push -u origin <branch>
+```
+
+`normalize-commits` rewrites author and committer of the commits in `origin/<base_branch>..HEAD` that carry the platform's default identity, and **stops (exit 6) on any other non-App author or committer** — hand back rather than relabel someone else's work. Each Bash call is a fresh shell, so wrap **every `gh` call in this step and Step 8** — the `gh pr create` template below (written for ordinary sessions), `gh pr checks`, and the profile's `REVIEW_BOT` commands — in `"$ft" exec --`. The SessionStart hook also puts a wrapped `gh` first on `PATH`, so an unwrapped call still carries the token; the explicit `exec` here is what makes identity independent of that hook. Any non-zero exit stops the ticket (3 = proxy-injected mode; a PR opened anyway would be authored as the user). No `FACTORY_BROKER_URL` → an ordinary session; skip this.
 
 ```bash
 git push -u origin <branch>

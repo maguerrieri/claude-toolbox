@@ -1,22 +1,42 @@
 #!/usr/bin/env bash
-# factory-token — obtain the factory's GitHub App identity for this session.
+# factory-token — the factory's GitHub App identity for an implementer session.
 #
 # Software-factory design, section 2d / item 8b. An implementer session holds no
 # GitHub App key and no broker bearer: it calls the token broker (a Cloud Run
 # service; see services/factory-token-broker in maguerrieri/toolbox) and the
 # environment's API-credentials proxy attaches the per-environment bearer after
 # the request leaves the VM. The broker maps that bearer to exactly one
-# repository and returns an installation token scoped to it (`contents: write`,
-# `pull_requests: write`, at most one hour). This helper caches that token for
-# its lifetime and hands it to gh and git.
+# repository and returns an installation token scoped to it, carrying the five
+# permissions the START loop needs (2d): contents and pull_requests read & write,
+# issues read & write, checks read, metadata read.
 #
-# Usage:
-#   eval "$(factory-token env)"                 # export GH_TOKEN for this shell
-#   factory-token exec -- gh pr create ...      # run one command with GH_TOKEN set
-#   factory-token setup-git                     # git pushes + commits carry the App identity (run before the first commit)
-#   factory-token status                        # bound repo, expiry, auth mode (no secrets)
-#   factory-token clear                         # drop the cached token
-#   factory-token git-credential get            # git credential-helper protocol (set up by setup-git)
+# **A wrapper, not an exporter** (2d). Implementer environments set `GH_TOKEN` to
+# the non-secret sentinel `factory-token-required` so the session runs in
+# pass-through mode, and in that mode *every* `gh` call reads the sentinel — not
+# only the ones START Step 7 spells out. An `export` in one Bash call does not
+# reach the next, so the token is supplied per process, two ways:
+#
+#   factory-token exec <command...>   run one command with GH_TOKEN set for it
+#   factory-token shim                install a `gh` shim earlier on PATH, so
+#                                     every other gh call is wrapped too (the
+#                                     SessionStart hook runs this)
+#
+# START Step 7 calls `exec` explicitly for the push and `gh pr create`, so
+# identity never depends on the hook: a branch that removes the hook leaves the
+# unwrapped calls reading the sentinel, and they fail rather than acting as the
+# user.
+#
+# Other subcommands:
+#   factory-token setup-git                 gh auth setup-git under the token, so a
+#                                           push under `exec` carries the App; also
+#                                           points an SSH origin's push URL at HTTPS
+#                                           and sets the App's commit identity
+#   factory-token normalize-commits <base>  rewrite author+committer of this PR's own
+#                                           commits that carry the platform default
+#                                           identity to the App's address; stop on any
+#                                           other non-App author or committer (2d)
+#   factory-token status                    bound repo, expiry, auth mode (no secrets)
+#   factory-token clear                     drop the cached token
 #
 # Options (before the subcommand):
 #   --repo OWNER/REPO   repository this session works on (default: FACTORY_REPO,
@@ -25,36 +45,38 @@
 #   --force             ignore the cache and mint a fresh token
 #
 # Environment:
-#   FACTORY_BROKER_URL              broker base URL, e.g. https://factory-token-broker-....run.app
+#   FACTORY_BROKER_URL              broker base URL, https:// (http:// on loopback only)
 #   FACTORY_REPO                    repository override (same as --repo)
 #   FACTORY_TOKEN_CACHE_DIR         cache directory (default: a per-user dir under $XDG_RUNTIME_DIR or $TMPDIR)
 #   FACTORY_TOKEN_REFRESH_SECONDS   re-mint when the token expires within this many seconds (default 300)
-#   GH_TOKEN                        read only to detect the proxy's auth mode (see below); never sent anywhere
+#   GH_TOKEN                        read only to detect the proxy's auth mode; never sent anywhere
 #
 # Fail-closed rules (spec 2d, platform facts 1 and 3; 8b's isolation test):
 #   * GH_TOKEN == "proxy-injected" means the environment is in proxy-injected mode,
-#     where the git proxy substitutes the user's credential and a broker token would
-#     be silently ignored. The helper refuses (exit 3) rather than let a PR be
-#     authored as the user. Implementer environments set GH_TOKEN to the sentinel
-#     "factory-token-required" so they run in pass-through mode.
+#     where the git proxy substitutes the user's credential and a broker token is
+#     silently ignored. Every path refuses (exit 3) rather than let a PR be
+#     authored as the user.
 #   * The broker's response must name exactly the repository this session asked for
-#     and carry exactly contents: write + pull_requests: write (metadata: read
-#     allowed). Any other repository or permission set, or a malformed response, is
-#     refused (exit 4) and never cached or exported.
-#   * setup-git answers git's credential request only for https://github.com (exact
-#     host) and rewrites an SSH origin's push URL to HTTPS so the push goes through
-#     the helper; it refuses (exit 4) if the broker names no App slug / bot user id.
-#   * The token is written only to the 0600 cache file and to stdout/env for the
-#     caller; it is never logged, echoed to stderr, or passed on a command line.
+#     and carry exactly the five permissions above. Anything else is refused
+#     (exit 4) and never cached or exported.
+#   * A token that is already expired, or whose lifetime cannot be determined, is
+#     refused (exit 4); a longer one is held for at most an hour.
+#   * The token is written only to the 0600 cache file and into the environment of
+#     the one process `exec` runs; it is never logged, echoed, or passed on a
+#     command line.
 #
-# Exit codes: 0 ok; 2 usage/config; 3 proxy-injected mode; 4 broker refused or
-# returned a token for another repository; 5 broker unreachable / HTTP error.
+# Exit codes: 0 ok; 2 usage/config; 3 proxy-injected mode; 4 broker refused, or
+# returned a token for another repository / with the wrong permissions / expired;
+# 5 broker unreachable or HTTP error; 6 normalize-commits found a foreign author.
 #
-# Dependencies: bash, curl, jq, git. `date -d` (GNU) or `expires_in` from the broker.
+# Dependencies: bash, curl, jq, git; `gh` for setup-git and the shim.
 set -euo pipefail
 
 SENTINEL_INJECTED="proxy-injected"
 SENTINEL_REQUIRED="factory-token-required"
+# The five permissions 2d's least-privilege contract names for the START loop.
+REQUIRED_PERMISSIONS='{"contents":"write","pull_requests":"write","issues":"write","checks":"read","metadata":"read"}'
+PLATFORM_DEFAULT_EMAIL="noreply@anthropic.com"
 
 # Temp files (broker responses) are removed on any exit, including `die`.
 TMPFILES=()
@@ -68,7 +90,6 @@ usage() {
 }
 
 self_path() {
-	# Absolute path to this script, for the credential-helper line git stores.
 	local dir
 	dir=$(cd "$(dirname "$0")" && pwd -P)
 	printf '%s/%s' "$dir" "$(basename "$0")"
@@ -91,22 +112,21 @@ while [ $# -gt 0 ]; do
 	*) break ;;
 	esac
 done
-SUBCOMMAND=${1:-env}
+SUBCOMMAND=${1:-}
 [ $# -gt 0 ] && shift
+[ -n "$SUBCOMMAND" ] || usage
 
 for tool in curl jq git; do
 	command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
 done
 
 # --- repository resolution --------------------------------------------------
-# owner/repo from the origin remote: git@github.com:o/r.git, https://github.com/o/r(.git), ssh://git@github.com/o/r
+# owner/repo from the origin remote, for the exact github.com host only.
 repo_from_origin() {
 	local url rest
 	url=$(git remote get-url origin 2>/dev/null) || return 1
 	url=${url%/}
 	url=${url%.git}
-	# Exact github.com host only, in the three URL forms git uses for it; anything
-	# else (another host, a lookalike such as evilgithub.com) is not a factory repo.
 	case "$url" in
 	git@github.com:*) rest=${url#git@github.com:} ;;
 	ssh://git@github.com/*) rest=${url#ssh://git@github.com/} ;;
@@ -123,13 +143,11 @@ repo_from_origin() {
 normalize_repo() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 resolve_repo() {
-	[ -n "$REPO" ] || REPO=$(repo_from_origin) || die "cannot determine the repository: pass --repo OWNER/REPO or set FACTORY_REPO (no GitHub origin remote here)"
-	case "$REPO" in
-	*/*) ;;
-	*) die "repository must be OWNER/REPO, got: $REPO" ;;
-	esac
+	[ -n "$REPO" ] || REPO=$(repo_from_origin) || die "cannot determine the repository: pass --repo OWNER/REPO or set FACTORY_REPO (no github.com origin remote here)"
 	case "$REPO" in
 	*/*/* | *' '* | '') die "repository must be OWNER/REPO, got: $REPO" ;;
+	*/*) ;;
+	*) die "repository must be OWNER/REPO, got: $REPO" ;;
 	esac
 }
 
@@ -159,9 +177,7 @@ cache_dir() {
 		printf '%s/factory-token-%s' "${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}" "$(id -u)"
 	fi
 }
-cache_file() {
-	printf '%s/%s.json' "$(cache_dir)" "$(normalize_repo "$REPO" | tr '/' '_')"
-}
+cache_file() { printf '%s/%s.json' "$(cache_dir)" "$(normalize_repo "$REPO" | tr '/' '_')"; }
 ensure_cache_dir() {
 	local dir
 	dir=$(cache_dir)
@@ -171,7 +187,7 @@ ensure_cache_dir() {
 
 now_epoch() { date -u +%s; }
 
-# ISO-8601 (GitHub style, `2026-09-11T22:00:00Z`) → epoch. GNU date first, BSD date second.
+# ISO-8601 (GitHub style, `2026-09-11T22:00:00Z`) → epoch. GNU date first, BSD second.
 iso_to_epoch() {
 	local iso=$1
 	date -u -d "$iso" +%s 2>/dev/null && return 0
@@ -179,7 +195,7 @@ iso_to_epoch() {
 	return 1
 }
 
-cached_token_valid() { # prints nothing; exit 0 when the cache holds a fresh token for $REPO
+cached_token_valid() {
 	local file expires refresh
 	file=$(cache_file)
 	[ "$FORCE" = 0 ] || return 1
@@ -192,12 +208,12 @@ cached_token_valid() { # prints nothing; exit 0 when the cache holds a fresh tok
 }
 
 # --- broker call --------------------------------------------------------------
-mint_token() { # writes the cache file; prints nothing
+mint_token() {
 	[ -n "$BROKER" ] || die "broker URL not set: pass --broker or set FACTORY_BROKER_URL on the environment"
 	BROKER=${BROKER%/}
 	local proto_args=(--proto =https)
 	case "$BROKER" in
-	http://localhost[:/]* | http://127.0.0.1[:/]* | http://\[::1\]* ) proto_args=(--proto =http,https) ;;
+	http://localhost[:/]* | http://127.0.0.1[:/]* | http://\[::1\]*) proto_args=(--proto =http,https) ;;
 	https://*) ;;
 	*) die "broker URL must be https:// (http:// is allowed for loopback only): $BROKER" ;;
 	esac
@@ -210,33 +226,29 @@ mint_token() { # writes the cache file; prints nothing
 	# attaches the bearer outside the VM. The token comes back in the body only.
 	status=$(curl -sS "${proto_args[@]}" --max-time 20 -o "$tmp" -w '%{http_code}' \
 		-X POST -H 'Content-Type: application/json' -H 'Accept: application/json' \
-		--data "$body" "$BROKER/token" 2>/dev/null) || {
-		die "broker unreachable at $BROKER" 5
-	}
+		--data "$body" "$BROKER/token" 2>/dev/null) || die "broker unreachable at $BROKER" 5
 	case "$status" in
 	200) ;;
 	401) die "broker refused: no bearer reached it (is the environment's API credential configured for the broker host?) [HTTP 401]" 4 ;;
-	403) die "broker refused: this environment's bearer is not bound to $REPO [HTTP 403]" 4 ;;
+	403) die "broker refused: this environment's bearer is not bound to $REPO, or its issuance budget is exhausted [HTTP 403]" 4 ;;
+	429) die "broker refused: this bearer's daily issuance budget is exhausted [HTTP 429]" 4 ;;
 	*) die "broker error [HTTP $status]" 5 ;;
 	esac
 
-	local got_repo token expires_in expires_at expires_epoch
+	local got_repo expires_in expires_at expires_epoch
 	jq -e 'type == "object" and (.token | type == "string" and length > 0) and (.repository | type == "string")' "$tmp" >/dev/null 2>&1 ||
 		die "broker returned a malformed response; refusing" 4
 	got_repo=$(jq -r '.repository' "$tmp")
 	if [ "$(normalize_repo "$got_repo")" != "$(normalize_repo "$REPO")" ]; then
 		die "broker returned a token for '$got_repo' but this session asked for '$REPO'; refusing (not cached, not exported)" 4
 	fi
-	# Permissions: exactly contents=write and pull_requests=write, optionally
-	# metadata=read, nothing else (spec 2d item 4). A broker that hands out more
-	# is misconfigured; refuse rather than cache a wider token.
-	jq -e '.permissions | type == "object"
-		and .contents == "write" and .pull_requests == "write"
-		and ([to_entries[] | select(.key != "contents" and .key != "pull_requests" and (.key != "metadata" or .value != "read"))] | length == 0)' "$tmp" >/dev/null 2>&1 ||
-		die "broker returned a token whose permissions are not exactly contents: write + pull_requests: write; refusing (not cached, not exported)" 4
-	# Expiry: take the earlier of expires_in and expires_at when both are present,
-	# refuse a non-positive lifetime (an already-expired token is not a token), and
-	# never hold one past an hour whatever the broker says (spec 2d item 4).
+	# Permissions: exactly the five 2d names, no more and no fewer. A broker that
+	# hands out a wider set is misconfigured; refuse rather than cache it.
+	jq -e --argjson want "$REQUIRED_PERMISSIONS" '.permissions == $want' "$tmp" >/dev/null 2>&1 ||
+		die "broker returned a token whose permissions are not exactly $(printf '%s' "$REQUIRED_PERMISSIONS" | jq -r 'to_entries | map("\(.key): \(.value)") | join(", ")'); refusing (not cached, not exported)" 4
+
+	# Expiry: the earlier of expires_in and expires_at when both are present; a
+	# non-positive lifetime is refused; never hold one past an hour (2d item 4).
 	expires_in=$(jq -r '.expires_in // empty' "$tmp")
 	expires_at=$(jq -r '.expires_at // empty' "$tmp")
 	local now_s from_in="" from_at=""
@@ -275,80 +287,151 @@ ensure_token() {
 read_field() { jq -r "$1 // empty" "$(cache_file)"; }
 
 # --- subcommands --------------------------------------------------------------
-cmd_env() {
+cmd_exec() {
+	[ "${1:-}" != "--" ] || shift
+	[ $# -gt 0 ] || die "exec: nothing to run (usage: factory-token exec <command...>)"
 	ensure_token
 	local token
 	token=$(read_field '.token')
 	[ -n "$token" ] || die "cache holds no token" 4
-	printf 'export GH_TOKEN=%q\n' "$token"
+	# The token reaches the child through its environment only — never argv.
+	GH_TOKEN=$token GITHUB_TOKEN=$token FACTORY_TOKEN_ACTIVE=1 exec "$@"
 }
 
-cmd_exec() {
-	[ "${1:-}" != "--" ] || shift
-	[ $# -gt 0 ] || die "exec: nothing to run (usage: factory-token exec -- <command...>)"
-	ensure_token
-	local token
-	token=$(read_field '.token')
-	GH_TOKEN=$token GITHUB_TOKEN=$token exec "$@"
-}
-
-cmd_git_credential() {
-	# git credential-helper protocol: read key=value lines, answer only for github.com.
-	local action=${1:-get} key value host="" protocol=""
-	while IFS= read -r line; do
-		[ -n "$line" ] || break
-		key=${line%%=*}
-		value=${line#*=}
-		case "$key" in
-		host) host=$value ;;
-		protocol) protocol=$value ;;
-		esac
-	done
-	[ "$action" = get ] || exit 0
-	# Exactly https://github.com — no subdomains, no other hosts, no plain http.
-	[ "$host" = github.com ] || exit 0
-	[ "$protocol" = https ] || exit 0
-	ensure_token
-	printf 'username=x-access-token\npassword=%s\n' "$(read_field '.token')"
+# A `gh` shim earlier on PATH, so gh calls this helper never sees still run with
+# the App token (spec 2d). Prints the line a SessionStart hook adds to the env.
+cmd_shim() {
+	local dir=${1:-}
+	# Resolve the repository now and bake it into the shim: a wrapped `gh` can run
+	# from any directory (a subshell that cd'd elsewhere, a hook), so the shim must
+	# not depend on the cwd's origin remote the way an interactive call does.
+	resolve_repo
+	[ -n "$dir" ] || dir="$(cache_dir)/bin"
+	mkdir -p "$dir"
+	chmod 700 "$dir" 2>/dev/null || true
+	local helper real
+	helper=$(self_path)
+	# Resolve the real gh once, with this dir excluded, so the shim cannot recurse.
+	real=$(PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$dir" | paste -sd: -) command -v gh 2>/dev/null || true)
+	[ -n "$real" ] || die "gh is not on PATH; nothing to shim"
+	cat >"$dir/gh" <<EOF
+#!/usr/bin/env bash
+# Generated by factory-token shim — runs the real gh with the App token (spec 2d).
+# Already inside \`factory-token exec\`? The token is in the environment; just run gh.
+if [ -n "\${FACTORY_TOKEN_ACTIVE:-}" ]; then
+	exec $(printf '%q' "$real") "\$@"
+fi
+exec $(printf '%q' "$helper") --repo $(printf '%q' "$REPO") exec -- $(printf '%q' "$real") "\$@"
+EOF
+	chmod 755 "$dir/gh"
+	printf 'factory-token: gh shim installed at %s (real gh: %s)\n' "$dir/gh" "$real" >&2
+	printf 'export PATH=%q\n' "$dir:$PATH"
 }
 
 cmd_setup_git() {
 	ensure_token
 	git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "setup-git must run inside the checkout"
-	local slug bot_id helper
+	command -v gh >/dev/null 2>&1 || die "gh is required for setup-git (it configures git's credential helper)"
+	local slug bot_id
 	slug=$(read_field '.app.slug')
 	bot_id=$(read_field '.app.bot_user_id')
-	# Fail closed: without the App's slug and bot user id the commits would keep
-	# the user's author while the push carries the App token — a half identity.
+	# Fail closed: without the App's slug and bot user id the commit identity
+	# cannot be set, so drop the minted token rather than leave half of it wired.
 	{ [ -n "$slug" ] && [ -n "$bot_id" ] && [ "$bot_id" -eq "$bot_id" ] 2>/dev/null; } || {
-		# Drop the just-minted token too: a later `env`/`exec` must not push work
-		# under the App token while commits keep the user's author.
 		rm -f "$(cache_file)"
-		die "broker response carries no usable app.slug / app.bot_user_id; cannot set the App's commit identity — refusing to configure git (cached token discarded)" 4
+		die "broker response carries no usable app.slug / app.bot_user_id; refusing to configure git (cached token discarded)" 4
 	}
-	helper=$(self_path)
-	# A credential helper only serves HTTPS. An SSH origin (git@github.com:… or
-	# ssh://) would bypass it and push with whatever SSH identity the VM has, so
-	# point the *push* URL at the bound repo over HTTPS (fetch URL untouched).
-	local push_url
-	push_url="https://github.com/${REPO}.git"
+	# A credential helper only serves HTTPS. An SSH origin would bypass it and push
+	# with whatever SSH identity the VM has, so point the *push* URL at the bound
+	# repo over HTTPS (the fetch URL is left alone).
+	local push_url="https://github.com/${REPO}.git"
 	git config --local remote.origin.pushurl "$push_url"
-	# Pushes: git asks this helper for github.com credentials and gets the broker's
-	# token, so the pushing actor is the App (the durable equivalent of
-	# `gh auth setup-git`, which would only see the per-command GH_TOKEN).
-	git config --local credential.useHttpPath false
-	# Credential helpers accumulate across config levels and the first one to answer
-	# wins, so reset the list (an empty entry) before adding this one; otherwise a
-	# global helper (the cloud proxy's, or gh's) would keep answering for github.com.
-	git config --local --unset-all credential.helper 2>/dev/null || true
-	git config --local --add credential.helper ''
-	git config --local --add credential.helper "!'$helper' git-credential"
-	# Commits: GitHub matches the author email, so use the App's noreply address
-	# (spec 2d, fact 5): <bot-user-id>+<slug>[bot]@users.noreply.github.com.
+	# `gh auth setup-git` is required, not optional (2d): it points git at
+	# `gh auth git-credential`, which reads GH_TOKEN — so a push run under
+	# `factory-token exec` carries the App, and an unwrapped one reads the
+	# sentinel and fails instead of pushing as the user.
+	"$(self_path)" exec -- gh auth setup-git
+	# Commit identity is an optimization here; normalize-commits at Step 7 is what
+	# the design relies on (2d: commit authorship is cosmetic, not provenance).
 	git config --local user.name "${slug}[bot]"
 	git config --local user.email "${bot_id}+${slug}[bot]@users.noreply.github.com"
-	printf 'factory-token: git configured for %s (push URL: %s, helper: %s, author: %s)\n' \
-		"$REPO" "$push_url" "$helper" "$(git config --local user.email)" >&2
+	printf 'factory-token: git configured for %s (push URL: %s, author: %s, gh credential helper installed)\n' \
+		"$REPO" "$push_url" "$(git config --local user.email)" >&2
+}
+
+# Rewrite this PR's own commits that carry the platform's default identity to the
+# App's address, and stop on any other non-App author or committer (spec 2d).
+cmd_normalize_commits() {
+	local base=${1:-}
+	[ -n "$base" ] || die "normalize-commits: name the base branch (usage: factory-token normalize-commits <base>)"
+	ensure_token
+	git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "normalize-commits must run inside the checkout"
+	local slug bot_id app_email
+	slug=$(read_field '.app.slug')
+	bot_id=$(read_field '.app.bot_user_id')
+	{ [ -n "$slug" ] && [ -n "$bot_id" ]; } || die "broker response carries no app.slug / app.bot_user_id" 4
+	app_email="${bot_id}+${slug}[bot]@users.noreply.github.com"
+
+	local range="origin/${base}..HEAD"
+	git rev-parse --verify --quiet "origin/${base}" >/dev/null || die "origin/${base} is not a known ref (fetch it first)"
+	local commits
+	commits=$(git rev-list --reverse "$range")
+	if [ -z "$commits" ]; then
+		printf 'factory-token: no commits in %s; nothing to normalize\n' "$range" >&2
+		return 0
+	fi
+
+	# Refuse the whole range if any commit carries an identity that is neither the
+	# platform default nor the App: a human's work is never relabelled.
+	local foreign=0 c ae ce
+	while read -r c; do
+		ae=$(git show -s --format='%ae' "$c")
+		ce=$(git show -s --format='%ce' "$c")
+		for e in "$ae" "$ce"; do
+			case "$e" in
+			"$PLATFORM_DEFAULT_EMAIL" | "$app_email") ;;
+			*) printf 'factory-token: %s carries a non-App identity: %s\n' "$(git show -s --format='%h %s' "$c")" "$e" >&2; foreign=1 ;;
+			esac
+		done
+	done <<<"$commits"
+	[ "$foreign" = 0 ] || die "normalize-commits stopped: $range contains commits authored or committed by someone other than the platform default or the App; hand back for review rather than reassigning them" 6
+
+	# Replay the range with git commit-tree, overriding only the platform-default
+	# identities. Parents outside the range keep their original ids.
+	local map_from=() map_to=() new_parent="" rewritten=0
+	local parent mapped i tree msg new
+	for c in $commits; do
+		tree=$(git rev-parse "$c^{tree}")
+		msg=$(git show -s --format='%B' "$c")
+		local parent_args=()
+		for parent in $(git rev-list --parents -n 1 "$c" | cut -d' ' -f2-); do
+			mapped=$parent
+			for i in "${!map_from[@]}"; do
+				[ "${map_from[$i]}" = "$parent" ] && mapped=${map_to[$i]}
+			done
+			parent_args+=(-p "$mapped")
+		done
+		ae=$(git show -s --format='%ae' "$c")
+		ce=$(git show -s --format='%ce' "$c")
+		local an ad cn cd
+		an=$(git show -s --format='%an' "$c"); ad=$(git show -s --format='%aI' "$c")
+		cn=$(git show -s --format='%cn' "$c"); cd=$(git show -s --format='%cI' "$c")
+		if [ "$ae" = "$PLATFORM_DEFAULT_EMAIL" ]; then an="${slug}[bot]"; ae=$app_email; rewritten=1; fi
+		if [ "$ce" = "$PLATFORM_DEFAULT_EMAIL" ]; then cn="${slug}[bot]"; ce=$app_email; rewritten=1; fi
+		new=$(printf '%s' "$msg" | GIT_AUTHOR_NAME=$an GIT_AUTHOR_EMAIL=$ae GIT_AUTHOR_DATE=$ad \
+			GIT_COMMITTER_NAME=$cn GIT_COMMITTER_EMAIL=$ce GIT_COMMITTER_DATE=$cd \
+			git commit-tree "$tree" "${parent_args[@]}")
+		map_from+=("$c"); map_to+=("$new")
+	done
+	if [ "$rewritten" = 0 ]; then
+		printf 'factory-token: every commit in %s already carries the App identity; nothing to rewrite\n' "$range" >&2
+		return 0
+	fi
+	local head_new=${map_to[${#map_to[@]} - 1]}
+	[ "$(git rev-parse "$head_new^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ] ||
+		die "normalize-commits produced a different tree; refusing to move the branch"
+	git reset --soft "$head_new"
+	printf 'factory-token: rewrote %s commit identities in %s to %s\n' "${#map_to[@]}" "$range" "$app_email" >&2
 }
 
 cmd_status() {
@@ -360,13 +443,11 @@ cmd_status() {
 	if [ -f "$file" ]; then
 		local exp
 		exp=$(jq -r '.expires_epoch // empty' "$file")
-		if [ -n "$exp" ]; then
-			local left=$((exp - $(now_epoch)))
-			if [ "$left" -gt 0 ]; then
-				printf 'token:      cached for %s, expires in %ss (app: %s)\n' "$(jq -r '.repository' "$file")" "$left" "$(jq -r '.app.slug // "?"' "$file")"
-			else
-				printf 'token:      cached but expired\n'
-			fi
+		if [ -n "$exp" ] && [ "$exp" -gt "$(now_epoch)" ]; then
+			printf 'token:      cached for %s, expires in %ss (app: %s)\n' \
+				"$(jq -r '.repository' "$file")" "$((exp - $(now_epoch)))" "$(jq -r '.app.slug // "?"' "$file")"
+		else
+			printf 'token:      cached but expired\n'
 		fi
 	else
 		printf 'token:      none cached\n'
@@ -379,10 +460,10 @@ cmd_clear() {
 }
 
 case "$SUBCOMMAND" in
-env) cmd_env ;;
 exec) cmd_exec "$@" ;;
+shim) cmd_shim "$@" ;;
 setup-git) cmd_setup_git ;;
-git-credential) cmd_git_credential "$@" ;;
+normalize-commits) cmd_normalize_commits "$@" ;;
 status) cmd_status ;;
 clear) cmd_clear ;;
 -h | --help | help) usage ;;

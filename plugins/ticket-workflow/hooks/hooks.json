@@ -1,5 +1,5 @@
 {
-  "description": "Session roles — export the session id so /role can key its marker, re-inject the charter across resume/clear/compact, and guard a pinned planner against drifting into implementation.",
+  "description": "Session roles and factory identity — export the session id so /role can key its marker, re-inject the charter across resume/compaction, guard a pinned planner against drifting into implementation, and (in a factory implementer environment) install the gh shim that carries the App token.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +8,15 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/role-session-start.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/factory-shim.sh\""
           }
         ]
       }
