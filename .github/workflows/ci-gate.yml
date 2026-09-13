@@ -79,9 +79,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/${GITHUB_REPOSITORY}/contents/.github/scripts/ci_gate.py?ref=${GITHUB_SHA}" \
-            -H "Accept: application/vnd.github.raw+json" > ci_gate.py
-          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --user --quiet pyyaml
+          for file in ci_gate.py requirements.txt; do
+            gh api "repos/${GITHUB_REPOSITORY}/contents/.github/scripts/${file}?ref=${GITHUB_SHA}" \
+              -H "Accept: application/vnd.github.raw+json" > "${file}"
+          done
+          # This job holds a repository token and reads private repository
+          # data, so it never installs whatever PyPI serves at run time: the
+          # runner's own PyYAML is used when present, and otherwise pip may
+          # install only the hash-pinned artifacts recorded in the base
+          # commit's requirements.txt.
+          python3 -c 'import yaml' 2>/dev/null \
+            || python3 -m pip install --user --quiet --no-deps --only-binary=:all: --require-hashes -r requirements.txt
       - name: Evaluate
         id: gate
         env:

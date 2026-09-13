@@ -395,7 +395,11 @@ parts pending.** Both repos carry the same three files:
 is never checked out), and `.github/factory-ci.yml` (the manifest), plus the
 evaluator's unit tests under `.github/scripts/tests/` run by a
 `factory-scripts` workflow, the ruleset JSON under `.github/rulesets/`, and
-`.github/scripts/apply-rulesets` to apply it. Refinements the implementation
+`.github/scripts/apply-rulesets` to apply it. The evaluator's one dependency
+is PyYAML: the job uses the runner's copy when it has one and otherwise
+installs only the version- and hash-pinned artifact recorded in
+`.github/scripts/requirements.txt` (also read from the base commit), so a job
+holding a repository token never runs whatever PyPI serves at that moment. Refinements the implementation
 settled, all consistent with the paragraphs above:
 
 - **The manifest and workflow files are read from the PR's head tree**,

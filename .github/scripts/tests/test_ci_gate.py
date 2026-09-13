@@ -841,3 +841,18 @@ def test_evaluate_reopened_pr_is_pending_until_ci_reruns():
     result = ci_gate.evaluate(api, "a" * 40, "999", reopened_at=REOPENED_AT)
     assert result["verdict"] == "pending"
     assert all("reopened" in r["detail"] for r in result["rows"])
+
+
+def test_evaluator_dependency_is_hash_pinned():
+    """The evaluate job holds a repository token: no unbounded PyPI install."""
+    with open(os.path.join(REPO, ".github", "scripts", "requirements.txt")) as fh:
+        requirements = fh.read()
+    pinned = [line for line in requirements.splitlines() if line and not line.lstrip().startswith("#")]
+    assert pinned[0].startswith("pyyaml=="), pinned
+    assert sum("--hash=sha256:" in line for line in pinned) >= 1
+    with open(os.path.join(REPO, ".github", "workflows", "ci-gate.yml")) as fh:
+        gate = fh.read()
+    install = [line for line in gate.splitlines() if "pip install" in line]
+    assert len(install) == 1, install
+    for flag in ("--require-hashes", "--no-deps", "--only-binary=:all:", "-r requirements.txt"):
+        assert flag in install[0], (flag, install[0])
