@@ -1,6 +1,7 @@
 # Manifest of the CI workflows `factory/ci-gate` aggregates (spec section 1d).
 #
-# `ci-gate.yml` reads this file from the PR's head tree, evaluates each entry's
+# `ci-gate.yml` reads this file from the tree GitHub runs for the PR
+# (`refs/pull/<n>/merge`, falling back to the branch head), evaluates each entry's
 # pull_request filters against the PR the way GitHub does, and reports success
 # only when every expected workflow has run and succeeded on the head SHA. Its
 # lint fails the gate when an entry differs from the workflow's real `on:`

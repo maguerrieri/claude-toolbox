@@ -14,16 +14,19 @@ Each evaluation:
 1. asserts the repository's default branch is `main`;
 2. resolves exactly one open PR targeting `main` whose head is the SHA under
    evaluation (zero -> nothing to report; more than one -> fail closed);
-3. reads the PR's head tree: `.github/factory-ci.yml` (the manifest of CI
-   workflows and the `pull_request` triggers they are expected under) and every
-   file in `.github/workflows/`; lints the manifest against the workflows (an
-   entry for ci-gate itself or for a `pull_request_target` workflow, a listed
-   workflow whose actual `on:` differs, an unlisted `pull_request` workflow, a
-   trigger construct this evaluator does not implement, or a ci-gate.yml whose
-   own triggers or `workflow_run.workflows` list do not match all fail the
-   gate). The head tree is used because it is
-   the tree GitHub actually executes for the PR: expecting a workflow the PR
-   removed would pend forever, and the manifest change is visible in the diff;
+3. reads the PR's merge ref (`refs/pull/<n>/merge`, falling back to the branch
+   head commit and then the PR's `head` ref): `.github/factory-ci.yml` (the
+   manifest of CI workflows and the `pull_request` triggers they are expected
+   under) and every file in `.github/workflows/`; lints the manifest against the
+   workflows (an entry for ci-gate itself or for a `pull_request_target`
+   workflow, a listed workflow whose actual `on:` differs or whose name is
+   ci-gate's own, an unlisted `pull_request` workflow, a trigger construct this
+   evaluator does not implement, or a ci-gate.yml whose own triggers or
+   `workflow_run.workflows` list do not match all fail the gate). That tree is
+   used because it is the one GitHub actually executes for a `pull_request`
+   event: it carries the workflows the base branch has gained or lost since this
+   branch diverged, expecting a workflow the PR removed would pend forever, and
+   the manifest change is visible in the diff;
 4. computes the expected set by evaluating each manifest entry's `types`,
    `branches`, `branches-ignore`, `paths`, and `paths-ignore` against the PR
    with GitHub's own filter semantics;
@@ -106,7 +109,7 @@ FORCE_PUSH_EVENT = "head_ref_force_pushed"
 # GitHub evaluates path filters against at most 300 changed files, and runs
 # every path-filtered workflow regardless when it cannot compute the diff at
 # all (documented for pushes of more than 1000 commits, or a diff timeout).
-# A filter pattern comes from the PR's head tree and is matched against the
+# A filter pattern comes from the tree under evaluation and is matched against the
 # PR's own file names, so both sides are PR-controlled. Python's `re` is a
 # backtracking engine with no time limit, and a pattern stacking many
 # variable-width wildcards (`a*a*a*...b`) can take exponential time on a
@@ -409,7 +412,7 @@ def lint(manifest, workflows: dict[str, object], gate_doc) -> list[str]:
             errors.append(f"{filename}: {exc}")
 
     if gate_doc is None:
-        errors.append(f"{WORKFLOWS_DIR}/{SELF_WORKFLOW} is missing from the head tree")
+        errors.append(f"{WORKFLOWS_DIR}/{SELF_WORKFLOW} is missing from the evaluated tree")
     else:
         expected_names = sorted(workflow_name(f, workflows[f]) for f in entries if f in workflows)
         errors += [f"{SELF_WORKFLOW}: {e}" for e in lint_gate(gate_doc, expected_names)]
@@ -867,7 +870,7 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     manifest_text = api.raw(MANIFEST_PATH, head_ref)
     manifest = None
     if manifest_text is None:
-        reasons.append(f"{MANIFEST_PATH} is missing from the head tree")
+        reasons.append(f"{MANIFEST_PATH} is missing from the evaluated tree")
     else:
         try:
             manifest = yaml.safe_load(manifest_text)

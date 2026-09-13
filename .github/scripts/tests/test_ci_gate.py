@@ -498,7 +498,7 @@ def test_contents_endpoint_encodes_segments():
 
 
 def test_evaluate_fork_head_falls_back_to_pull_ref():
-    """A head tree unreadable by SHA is read through refs/pull/<n>/head instead."""
+    """A fork head unreadable by SHA is read through refs/pull/<n>/head instead."""
     api = FakeApi([pr(7, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")])
     api.pull_ref_only = True
     result = ci_gate.evaluate(api, "abc", "999")

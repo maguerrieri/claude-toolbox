@@ -418,7 +418,7 @@ settled, all consistent with the paragraphs above:
   `pull_request_target` workflow executes base-branch YAML, so its head-tree
   config says nothing about whether it ran, and such workflows (ci-gate
   itself, 3a's critic, 3b's merge) post their own checks. The lint requires
-  the head tree to be self-consistent: every listed workflow's real
+  that tree to be self-consistent: every listed workflow's real
   `pull_request` config equals its manifest entry (non-PR triggers such as
   `push`, and `pull_request_target`, are not recorded and not compared),
   every workflow with a `pull_request` trigger is listed and named,
@@ -449,7 +449,7 @@ settled, all consistent with the paragraphs above:
   rename is matched on its new path only, and a PR with more than 300
   changed files fails the gate, because GitHub evaluates path filters on at
   most 300 files in an order the evaluator cannot reproduce. Both sides of a
-  match are PR-controlled (the head tree's patterns, the PR's file names) and
+  match are PR-controlled (the evaluated tree's patterns, the PR's file names) and
   Python's regex engine has no time limit, so a pattern stacking wildcards can
   be made slow on a crafted name: patterns over 200 characters or with more
   than six wildcards are refused during translation, and the `evaluate` job's

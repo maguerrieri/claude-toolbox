@@ -141,7 +141,9 @@ to run into one `factory/ci-gate` check, posted by the `factory-ci` GitHub App
 (design: `docs/superpowers/specs/2026-09-11-software-factory-design.md`,
 section 1d). Its expected set comes from `.github/factory-ci.yml`, and the
 evaluator (`.github/scripts/ci_gate.py`) lints that manifest against the
-workflows on the PR's head — so **adding, removing, or re-filtering a workflow
+workflows in the tree GitHub runs for the PR — its merge ref, so a workflow the
+base branch gained or lost since the branch diverged counts, with the branch
+head as the fallback — so **adding, removing, or re-filtering a workflow
 with a `pull_request` trigger means updating three things in the same PR**:
 the workflow, its entry in `.github/factory-ci.yml` (the `pull_request` block
 copied verbatim; `push` and other triggers are not recorded), and the name in
