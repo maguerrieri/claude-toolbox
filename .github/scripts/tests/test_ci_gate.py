@@ -1028,3 +1028,12 @@ def test_force_push_back_to_an_old_head_floors_every_workflow():
                      run("plugin-versions.yml", id=4, started="2026-01-06T00:00:01Z")]
     api = FakeApi([pr(1, "a" * 40)], ["plugins/gm/x.py"], TREE, after, events=events)
     assert ci_gate.evaluate(api, "a" * 40, "999")["verdict"] == "success"
+
+
+def test_lint_rejects_a_workflow_wearing_the_gate_s_name():
+    """Excluding ci-gate by file name is not enough: workflow_run matches names."""
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["twin.yml"] = {"pull_request": {}}
+    w = dict(WORKFLOWS, **{"twin.yml": wf({"pull_request": None}, "ci-gate")})
+    errors = ci_gate.lint(m, w, w["ci-gate.yml"])
+    assert any("subscribe to its own completions" in e for e in errors), errors

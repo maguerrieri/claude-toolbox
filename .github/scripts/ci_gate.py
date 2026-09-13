@@ -362,6 +362,12 @@ def lint(manifest, workflows: dict[str, object], gate_doc) -> list[str]:
             name = doc.get("name") if isinstance(doc, dict) else None
             if not isinstance(name, str) or not name.strip():
                 raise GateError("workflow has no `name:`; ci-gate subscribes to workflow_run by name, so every listed workflow needs one")
+            if gate_doc is not None and name == workflow_name(SELF_WORKFLOW, gate_doc):
+                # Excluding ci-gate.yml by file name is not enough: a second
+                # file carrying the gate's `name:` (or a renamed gate) would
+                # put that name in workflow_run.workflows, and every gate
+                # completion would then retrigger the gate.
+                raise GateError(f"is named {name!r}, the same as {SELF_WORKFLOW}; ci-gate would subscribe to its own completions")
             declared_norm = normalize_on(declared if declared is not None else {})
             if set(declared_norm) - set(PR_EVENTS):
                 raise GateError("manifest entries may only declare pull_request (pull_request_target workflows run "
