@@ -89,6 +89,12 @@ gh pr list --state open -L 500 --search "#<n> in:body" --json number,headRefName
 ```
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
+## COMMENT(id, body)  — post a durable note on the issue (START phase)
+```bash
+gh issue comment <n> --body "<body>"
+```
+- For records that must outlive the session and be readable by whoever polls the tracker — e.g. START Step 8's no-PR budget stop (`blocked: budget exceeded (<which>), nothing committed`), where no PR body exists to carry the Evidence record. Same prefixed-line vocabulary as `COORD`, on the ticket itself rather than the epic.
+
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
 The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
 ```bash

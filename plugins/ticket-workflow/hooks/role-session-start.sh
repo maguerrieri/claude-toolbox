@@ -48,8 +48,12 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 marker="$roles_dir/$session_id"
 
 # Refresh THIS session's marker before GC runs: a still-live session must not
-# have its own pin reaped just because it was set >30 days ago.
+# have its own pin reaped just because it was set >30 days ago. The `.budget`
+# sidecar START Step 1 writes beside it is per-run state on the same clock, so
+# it gets the same protection — losing it mid-run would silently unbound a
+# budgeted session.
 [ -f "$marker" ] && touch "$marker" 2>/dev/null || true
+[ -f "$marker.budget" ] && touch "$marker.budget" 2>/dev/null || true
 
 # Opportunistic GC: markers outlive their sessions and nothing else reaps them.
 # Only in the DEFAULT location — an overridden roles dir (test scaffolding, or a

@@ -42,7 +42,8 @@ receivers and greps treat the two channels uniformly:
 
 - **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks
   a dependent's spawn), `done:` (START-complete: CI green, review clean),
-  `blocked:` (stuck; say on what), `filed:` (a follow-up ticket filed for
+  `blocked:` (stuck; say on what — a spent `Budget:` included, e.g. `blocked: budget
+  exceeded (review_rounds)`), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
   acceptance criteria` when it's urgent). A `filed:` ping is a **request, not an
   allocation**: the sender never spawns the work itself (see

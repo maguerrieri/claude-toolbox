@@ -71,6 +71,9 @@ gh pr list --state open -L 500 --search "<ID> in:title,body" --json number,headR
 ```
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
+## COMMENT(id, body)  — post a durable note on the ticket (START phase)
+- Add a comment on `<id>` via the Jira MCP/CLI add-comment operation — the same API `COORD` uses, on the ticket itself rather than the epic. For records that must outlive the session and be readable by whoever polls the tracker, e.g. START Step 8's no-PR budget stop (`blocked: budget exceeded (<which>), nothing committed`). If comments aren't agent-writable, say so in the hand-back rather than improvising another channel.
+
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
 The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On Jira, use **comments on the epic issue** via the Jira MCP/CLI (add-comment / read-comments on `<epic_id>`); markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6). Unlike GitHub's `gh issue comment`, this goes through the MCP comment API, not a CLI flag — which is exactly why the channel is an adapter op rather than hard-coded in the skill body. If comments aren't agent-writable here, the coordinated route isn't available — **fall back to `--independent` bg routing and note the overlap risk**, rather than improvising an unspecified channel. For the `stack:` record specifically, an unwritable channel is not blocking: put the stack number in the EPIC Step 6 aggregate report instead, and Step 7 re-derives or re-links it just-in-time.
 
