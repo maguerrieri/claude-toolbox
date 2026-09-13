@@ -117,6 +117,10 @@ assert "budget.md exists" test -f "$budget_doc"
 # wrapped, so a phrase can straddle a line break and a raw grep would report a
 # rule missing that is merely reflowed. Code-shaped greps stay line-oriented.
 flatten() { tr '\n' ' ' <"$1" | tr -s ' '; }
+# BSD/macOS `wc -l` pads its output; GNU's does not. `test -eq` tolerates the
+# padding but string interpolation does not, so normalize before building a
+# pattern from a count.
+line_count() { wc -l <"$1" | tr -d '[:space:]'; }
 budget_text=$(cat "$budget_doc" 2>/dev/null || true)
 budget_prose=$(flatten "$budget_doc" 2>/dev/null || true)
 epic_prose=$(flatten "$epic" 2>/dev/null || true)
@@ -128,11 +132,11 @@ assert "SKILL.md START Step 8 points at budget.md" grep -q 'budget.md` carries i
 assert "SKILL.md START Step 9 points at budget.md cleanup" grep -q "budget.md.*cleanup snippet" <<<"$start_text"
 assert "SKILL.md opt-outs point at budget.md" grep -q 'as `budget.md` prescribes' <<<"$start_text"
 assert "SKILL.md SPAWN Step 2 points at budget.md" grep -q 'read `budget.md`' <<<"$spawn_text"
-assert "SKILL.md stays under the 500-line rule" test "$(wc -l <"$skill")" -lt 500
+assert "SKILL.md stays under the 500-line rule" test "$(line_count "$skill")" -lt 500
 # No `||` fallback here: one supplying the expected count from SKILL.md itself
 # made this pass for any AGENTS.md value.
 assert "AGENTS.md records SKILL.md's current size" \
-	grep -qF "($(wc -l <"$skill")" "$repo/AGENTS.md"
+	grep -qF "($(line_count "$skill")" "$repo/AGENTS.md"
 assert "SKILL.md unbudgeted watch is marked no-budget-only" grep -q 'no budget in play; see budget.md otherwise' <<<"$start_text"
 
 # The mechanism itself.
