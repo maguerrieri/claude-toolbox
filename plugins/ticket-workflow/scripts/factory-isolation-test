@@ -10,7 +10,10 @@
 #   2. the broker called directly with no repository at all → an A token, or a 403 refusal
 #      (any token these two return is checked against GitHub in step 5 — the
 #      broker's own `repository` label is a claim, not proof of scope)
-#   3. the helper replayed with --repo B                     → refuses with exit 4, exports nothing
+#   3. the helper replayed with --repo B                     → refuses on the repository
+#      boundary (exit 4 with reason=repository_not_bound|repository_mismatch — exit 4
+#      alone also covers a malformed response, so the reason is what is checked),
+#      exporting and caching nothing
 #   4. the environment read for credential material         → no broker bearer, no App key
 #   5. (with GitHub) the A token, minted the normal way:
 #        GET  /installation/repositories  lists only A
@@ -25,8 +28,9 @@
 #                                         2xx would leave one dangling, unreferenced blob.
 #
 # Only an expected refusal passes a negative path. A transport failure, a 5xx, a
-# 401 (no bearer reached the broker: the API credential is not configured), or any
-# other status is reported as inconclusive and FAILS: a broker that is down or
+# 401 (no bearer reached the broker: the API credential is not configured), a 403
+# that is not the broker's own `repository_not_bound`, or any other status is
+# reported as inconclusive and FAILS: a broker that is down or
 # misconfigured must not read as isolated. --broker must be https:// (http:// on
 # loopback only), the same rule the helper enforces.
 #
@@ -57,9 +61,23 @@ done
 BROKER=${BROKER%/}
 # Same transport rule as the helper: the API-credentials proxy attaches the bearer
 # to requests for this host, so it must never be plaintext except on loopback.
+# A prefix glob is not enough: curl reads `http://127.0.0.1:80@evil.example` as
+# host evil.example, so the authority is parsed and userinfo rejected outright.
+is_loopback_url() {
+	local rest=${1#http://} authority host port=""
+	authority=${rest%%/*}; authority=${authority%%\?*}; authority=${authority%%#*}
+	case "$authority" in *@*) return 1 ;; esac
+	host=$authority
+	case "$authority" in
+	\[*\]) ;;
+	\[*\]:* | *:*) host=${authority%:*}; port=${authority##*:} ;;
+	esac
+	[ -z "$port" ] || case "$port" in '' | *[!0-9]*) return 1 ;; esac
+	case "$host" in localhost | 127.0.0.1 | '[::1]') return 0 ;; *) return 1 ;; esac
+}
 case "$BROKER" in
 https://*) ;;
-http://localhost[:/]* | http://127.0.0.1[:/]* | http://\[::1\]*) ;;
+http://*) is_loopback_url "$BROKER" || { echo "broker URL must be https:// (http:// only for loopback): $BROKER" >&2; exit 2; } ;;
 *) echo "broker URL must be https:// (http:// only for loopback): $BROKER" >&2; exit 2 ;;
 esac
 for tool in curl jq; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 2; }; done
@@ -92,7 +110,15 @@ classify() {
 	local status=$1 file=$2
 	case "$status" in
 	200) if has_token "$file"; then printf 'token:%s' "$(token_repo "$file")"; else printf 'error'; fi ;;
-	403) printf 'refused' ;;
+	403)
+		# Only the broker's own repository-boundary refusal proves anything. A 403
+		# from a WAF, an IAM policy, or any other cause is inconclusive.
+		if [ "$(jq -r '.error // empty' "$file" 2>/dev/null)" = "repository_not_bound" ]; then
+			printf 'refused'
+		else
+			printf 'other403'
+		fi
+		;;
 	401) printf 'nobearer' ;;
 	*) printf 'error' ;;
 	esac
@@ -112,6 +138,7 @@ refused) ok "direct call for $FOREIGN refused (HTTP 403)" ;;
 	else
 		fail "direct call for $FOREIGN yielded a token for '$(token_repo "$work/1.json")' — broker leaks across repos"
 	fi ;;
+other403) fail "direct call for $FOREIGN: HTTP 403 but the body is not repository_not_bound ($(jq -r '.error // "no error field"' "$work/1.json" 2>/dev/null)) — inconclusive" ;;
 nobearer) fail "direct call for $FOREIGN: HTTP 401 — no bearer reached the broker (API credential not configured?) — inconclusive" ;;
 *) fail "direct call for $FOREIGN: HTTP $status is neither a refusal nor a token (broker down or misconfigured — inconclusive)" ;;
 esac
@@ -127,6 +154,7 @@ refused) ok "direct call with no repository refused (HTTP 403)" ;;
 	else
 		fail "direct call with no repository minted for '$(token_repo "$work/2.json")'"
 	fi ;;
+other403) fail "direct call with no repository: HTTP 403 but the body is not repository_not_bound ($(jq -r '.error // "no error field"' "$work/2.json" 2>/dev/null)) — inconclusive" ;;
 nobearer) fail "direct call with no repository: HTTP 401 — no bearer reached the broker — inconclusive" ;;
 *) fail "direct call with no repository: HTTP $status is neither a refusal nor a token (inconclusive)" ;;
 esac
@@ -135,8 +163,14 @@ esac
 cache="$work/cache"
 rc=0
 out=$(FACTORY_TOKEN_CACHE_DIR="$cache" FACTORY_BROKER_URL="$BROKER" "$helper" --repo "$FOREIGN" exec -- true 2>"$work/3.err") || rc=$?
-if [ "$rc" -eq 4 ] && [ -z "$out" ] && ! ls "$cache"/*.json >/dev/null 2>&1; then
-	ok "helper replayed with --repo $FOREIGN refuses (exit 4: repository not bound), exports and caches nothing"
+reason=$(sed -n 's/.*\[reason=\([a-z_]*\)\].*/\1/p' "$work/3.err" | head -1)
+if [ "$rc" -eq 4 ] && { [ "$reason" = repository_not_bound ] || [ "$reason" = repository_mismatch ]; } &&
+	[ -z "$out" ] && ! ls "$cache"/*.json >/dev/null 2>&1; then
+	ok "helper replayed with --repo $FOREIGN refuses on the repository boundary (exit 4, reason=$reason), exports and caches nothing"
+elif [ "$rc" -eq 4 ]; then
+	# Exit 4 also covers a malformed response, wrong permissions, an expired token:
+	# a broken broker must not read as isolation.
+	fail "helper replayed with --repo $FOREIGN exited 4 for reason=${reason:-unknown}, not a repository-boundary refusal — inconclusive"
 elif [ "$rc" -eq 3 ]; then
 	fail "helper replayed with --repo $FOREIGN stopped on proxy-injected mode (exit 3): M1 is not in effect here, so the replay path was not exercised"
 elif [ "$rc" -eq 0 ]; then

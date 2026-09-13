@@ -68,6 +68,11 @@
 # Exit codes: 0 ok; 2 usage/config; 3 proxy-injected mode; 4 broker refused, or
 # returned a token for another repository / with the wrong permissions / expired;
 # 5 broker unreachable or HTTP error; 6 normalize-commits found a foreign author.
+# Exit 4 covers several distinct refusals, so each also prints a machine-readable
+# `[reason=<slug>]` for a caller that must tell them apart (the isolation test
+# does): repository_not_bound, repository_mismatch, wrong_permissions,
+# expired_token, malformed_response, budget_exhausted, unauthorized, forbidden,
+# no_app_identity.
 #
 # Dependencies: bash, curl, jq, git; `gh` for setup-git and the shim.
 set -euo pipefail
@@ -83,7 +88,12 @@ TMPFILES=()
 cleanup_tmp() { [ "${#TMPFILES[@]}" -eq 0 ] || rm -f "${TMPFILES[@]}"; }
 trap cleanup_tmp EXIT
 
-die() { printf 'factory-token: %s\n' "$*" >&2; exit "${2:-2}"; }
+# die <message> [exit-code] — the code is the status, never part of the message.
+die() { printf 'factory-token: %s\n' "$1" >&2; exit "${2:-2}"; }
+# die_reason <slug> <message> [exit-code] — same, with a machine-readable slug the
+# isolation test matches on: exit codes alone cannot tell a repository-boundary
+# refusal from a malformed response, and both are exit 4.
+die_reason() { printf 'factory-token: [reason=%s] %s\n' "$1" "$2" >&2; exit "${3:-4}"; }
 usage() {
 	sed -n '2,/^set -euo pipefail/{/^set -euo pipefail/d;s/^# \{0,1\}//;p;}' "$0" >&2
 	exit 2
@@ -141,6 +151,34 @@ repo_from_origin() {
 }
 
 normalize_repo() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# is_loopback_url <http url> — true only when the URL's *authority* is loopback.
+# A prefix glob is not enough: curl reads `http://127.0.0.1:80@evil.example` as
+# host evil.example, so anything with userinfo is rejected outright.
+is_loopback_url() {
+	local rest=${1#http://} authority
+	authority=${rest%%/*}
+	authority=${authority%%\?*}
+	authority=${authority%%#*}
+	case "$authority" in
+	*@*) return 1 ;;  # userinfo: the real host is whatever follows, not loopback
+	esac
+	local host=$authority port=""
+	case "$authority" in
+	\[*\]) host=$authority ;;
+	\[*\]:*) host=${authority%:*}; port=${authority##*:} ;;
+	*:*) host=${authority%:*}; port=${authority##*:} ;;
+	esac
+	if [ -n "$port" ]; then
+		case "$port" in
+		'' | *[!0-9]*) return 1 ;;
+		esac
+	fi
+	case "$host" in
+	localhost | 127.0.0.1 | '[::1]') return 0 ;;
+	*) return 1 ;;
+	esac
+}
 
 resolve_repo() {
 	[ -n "$REPO" ] || REPO=$(repo_from_origin) || die "cannot determine the repository: pass --repo OWNER/REPO or set FACTORY_REPO (no github.com origin remote here)"
@@ -213,8 +251,11 @@ mint_token() {
 	BROKER=${BROKER%/}
 	local proto_args=(--proto =https)
 	case "$BROKER" in
-	http://localhost[:/]* | http://127.0.0.1[:/]* | http://\[::1\]*) proto_args=(--proto =http,https) ;;
 	https://*) ;;
+	http://*)
+		is_loopback_url "$BROKER" || die "broker URL must be https:// (http:// is allowed for loopback only): $BROKER"
+		proto_args=(--proto =http,https)
+		;;
 	*) die "broker URL must be https:// (http:// is allowed for loopback only): $BROKER" ;;
 	esac
 
@@ -229,23 +270,24 @@ mint_token() {
 		--data "$body" "$BROKER/token" 2>/dev/null) || die "broker unreachable at $BROKER" 5
 	case "$status" in
 	200) ;;
-	401) die "broker refused: no bearer reached it (is the environment's API credential configured for the broker host?) [HTTP 401]" 4 ;;
-	403) die "broker refused: this environment's bearer is not bound to $REPO, or its issuance budget is exhausted [HTTP 403]" 4 ;;
-	429) die "broker refused: this bearer's daily issuance budget is exhausted [HTTP 429]" 4 ;;
+	401) die_reason unauthorized "broker refused: no bearer reached it (is the environment's API credential configured for the broker host?) [HTTP 401]" ;;
+	403) die_reason "$(jq -r 'if .error == "repository_not_bound" then "repository_not_bound" else "forbidden" end' "$tmp" 2>/dev/null || echo forbidden)" \
+		"broker refused this environment's bearer for $REPO [HTTP 403: $(jq -r '.error // "no error field"' "$tmp" 2>/dev/null || echo unreadable)]" ;;
+	429) die_reason budget_exhausted "broker refused: this bearer's daily issuance budget is exhausted [HTTP 429]" ;;
 	*) die "broker error [HTTP $status]" 5 ;;
 	esac
 
 	local got_repo expires_in expires_at expires_epoch
 	jq -e 'type == "object" and (.token | type == "string" and length > 0) and (.repository | type == "string")' "$tmp" >/dev/null 2>&1 ||
-		die "broker returned a malformed response; refusing" 4
+		die_reason malformed_response "broker returned a malformed response; refusing"
 	got_repo=$(jq -r '.repository' "$tmp")
 	if [ "$(normalize_repo "$got_repo")" != "$(normalize_repo "$REPO")" ]; then
-		die "broker returned a token for '$got_repo' but this session asked for '$REPO'; refusing (not cached, not exported)" 4
+		die_reason repository_mismatch "broker returned a token for '$got_repo' but this session asked for '$REPO'; refusing (not cached, not exported)"
 	fi
 	# Permissions: exactly the five 2d names, no more and no fewer. A broker that
 	# hands out a wider set is misconfigured; refuse rather than cache it.
 	jq -e --argjson want "$REQUIRED_PERMISSIONS" '.permissions == $want' "$tmp" >/dev/null 2>&1 ||
-		die "broker returned a token whose permissions are not exactly $(printf '%s' "$REQUIRED_PERMISSIONS" | jq -r 'to_entries | map("\(.key): \(.value)") | join(", ")'); refusing (not cached, not exported)" 4
+		die_reason wrong_permissions "broker returned a token whose permissions are not exactly $(printf '%s' "$REQUIRED_PERMISSIONS" | jq -r 'to_entries | map("\(.key): \(.value)") | join(", ")'); refusing (not cached, not exported)"
 
 	# Expiry: the earlier of expires_in and expires_at when both are present; a
 	# non-positive lifetime is refused; never hold one past an hour (2d item 4).
@@ -254,19 +296,19 @@ mint_token() {
 	local now_s from_in="" from_at=""
 	now_s=$(now_epoch)
 	if [ -n "$expires_in" ]; then
-		[ "$expires_in" -eq "$expires_in" ] 2>/dev/null || die "broker response has a non-numeric expires_in; refusing" 4
+		[ "$expires_in" -eq "$expires_in" ] 2>/dev/null || die_reason malformed_response "broker response has a non-numeric expires_in; refusing"
 		from_in=$((now_s + expires_in))
 	fi
 	if [ -n "$expires_at" ]; then
-		from_at=$(iso_to_epoch "$expires_at") || { [ -n "$from_in" ] || die "cannot parse expires_at '$expires_at' (need GNU date or an expires_in field)" 4; }
+		from_at=$(iso_to_epoch "$expires_at") || { [ -n "$from_in" ] || die_reason malformed_response "cannot parse expires_at '$expires_at' (need GNU date or an expires_in field)"; }
 	fi
-	[ -n "$from_in$from_at" ] || die "broker response carries neither expires_in nor expires_at; refusing" 4
+	[ -n "$from_in$from_at" ] || die_reason malformed_response "broker response carries neither expires_in nor expires_at; refusing"
 	if [ -n "$from_in" ] && [ -n "$from_at" ]; then
 		expires_epoch=$((from_in < from_at ? from_in : from_at))
 	else
 		expires_epoch=${from_in:-$from_at}
 	fi
-	[ "$expires_epoch" -gt "$now_s" ] || die "broker returned an already-expired token; refusing (not cached, not exported)" 4
+	[ "$expires_epoch" -gt "$now_s" ] || die_reason expired_token "broker returned an already-expired token; refusing (not cached, not exported)"
 	local cap=$((now_s + 3600))
 	[ "$expires_epoch" -le "$cap" ] || expires_epoch=$cap
 
@@ -294,6 +336,10 @@ cmd_exec() {
 	local token
 	token=$(read_field '.token')
 	[ -n "$token" ] || die "cache holds no token" 4
+	# `exec` replaces this shell, so the EXIT trap would never fire: remove the
+	# broker-response temp files (which hold a second copy of the token) first.
+	cleanup_tmp
+	TMPFILES=()
 	# The token reaches the child through its environment only — never argv.
 	GH_TOKEN=$token GITHUB_TOKEN=$token FACTORY_TOKEN_ACTIVE=1 exec "$@"
 }
@@ -339,7 +385,7 @@ cmd_setup_git() {
 	# cannot be set, so drop the minted token rather than leave half of it wired.
 	{ [ -n "$slug" ] && [ -n "$bot_id" ] && [ "$bot_id" -eq "$bot_id" ] 2>/dev/null; } || {
 		rm -f "$(cache_file)"
-		die "broker response carries no usable app.slug / app.bot_user_id; refusing to configure git (cached token discarded)" 4
+		die_reason no_app_identity "broker response carries no usable app.slug / app.bot_user_id; refusing to configure git (cached token discarded)"
 	}
 	# A credential helper only serves HTTPS. An SSH origin would bypass it and push
 	# with whatever SSH identity the VM has, so point the *push* URL at the bound

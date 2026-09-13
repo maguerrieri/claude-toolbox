@@ -269,6 +269,10 @@ git push -u origin <branch>
 
 Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
 
+In a factory implementer session every `gh` below runs through the wrapper, as the
+factory-identity paragraph says — `"$ft" exec -- gh pr create …`, with `ft` as set
+there. Ordinary sessions run them as written.
+
 ```bash
 gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'EOF'
 ## Summary
@@ -290,7 +294,7 @@ EOF
 Watch CI in parallel with any review bot:
 
 ```bash
-gh pr checks <pr> --watch --fail-fast
+gh pr checks <pr> --watch --fail-fast          # factory session: "$ft" exec -- gh pr checks …
 ```
 
 Run the profile's `REVIEW_BOT` step. The `default` profile: if an automated reviewer (Copilot, CodeRabbit, etc.) is configured, request a review and resolve every thread — address each with a code change + reply + resolve, or, if the bot is wrong, reply explaining why + resolve; push fixes, re-request, and loop until there are no unresolved threads AND CI is green. If there's **no** review bot, rely on CI + the user's own review.

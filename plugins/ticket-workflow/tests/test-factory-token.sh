@@ -14,7 +14,9 @@
 #      repository other than the one asked for (exit 4); permissions that are not
 #      exactly the five 2d names (exit 4); an already-expired token (exit 4); a
 #      403, a 429 budget refusal, a 5xx, a malformed body, a non-loopback
-#      http:// broker, a missing broker URL.
+#      http:// broker (userinfo forms included), a missing broker URL. Each exit-4
+#      refusal carries a machine-readable [reason=…] slug, and `exec` leaves no
+#      broker response behind despite replacing the shell.
 #   4. `shim` installs a `gh` shim that wraps the real gh and does not recurse.
 #   5. `setup-git` runs `gh auth setup-git` with the token in the environment,
 #      points an SSH origin's push URL at HTTPS, sets the App's commit identity,
@@ -106,6 +108,17 @@ assert "exec runs the command with GH_TOKEN and GITHUB_TOKEN set" test "$out" = 
 assert "exec sets FACTORY_TOKEN_ACTIVE for the shim to see" test "$(run "$c1" --repo "$BOUND" exec -- sh -c 'printf %s "$FACTORY_TOKEN_ACTIVE"')" = 1
 assert "exec works without the -- separator" test "$(run "$c1" --repo "$BOUND" exec sh -c 'printf %s "$GH_TOKEN"')" = "$(token_of "$c1")"
 refute "token never on stderr" grep -q ghs_fake "$work/c1.err"
+# `exec` replaces the shell, so the EXIT trap never runs: the broker response must
+# already be gone, or a second copy of the token outlives the command.
+# Loose mktemp files only (the 0600 cache file is deliberate and lives elsewhere).
+loose_temp_with_token() { find "${TMPDIR:-/tmp}" -maxdepth 1 -type f -name 'tmp.*' -exec grep -l ghs_fake {} + 2>/dev/null | grep -q .; }
+refute "no stray broker response before" loose_temp_with_token
+FACTORY_TOKEN_CACHE_DIR="$work/cx" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$good" "$helper" --repo "$BOUND" exec -- true
+refute "exec leaves no broker response holding the token" loose_temp_with_token
+expect_exit "a refusal leaves none either" 4 env FACTORY_TOKEN_CACHE_DIR="$work/cy" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$lenient" "$helper" --repo "Acme/Repo-B" exec -- true
+refute "a refused mint leaves no broker response either" loose_temp_with_token
+err=$(run "$work/cerr" --repo "not-a-repo" exec -- true 2>&1 || true)
+refute "a die message does not end in its exit code" bash -c "printf '%s' \"\$1\" | grep -qE '[^0-9]4\$|[^0-9]2\$'" _ "$err"
 assert "cache file is mode 0600" bash -c "[ \"\$(stat -c %a \"\$1\"/*.json)\" = 600 ]" _ "$c1"
 rc=0; run "$c1" --repo "$BOUND" exec -- sh -c 'exit 7' || rc=$?
 assert "exec passes the command's exit status through" test "$rc" -eq 7
@@ -141,9 +154,18 @@ c5="$work/c5"
 expect_exit "a token for another repo than asked is refused (exit 4)" 4 env FACTORY_TOKEN_CACHE_DIR="$c5" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$lenient" "$helper" --repo "Acme/Repo-B" exec -- true
 refute "mismatched token: nothing cached" ls "$c5"
 expect_exit "well-behaved broker: foreign repo gets 403 → exit 4" 4 run "$c5" --repo "Acme/Repo-B" exec -- true
+err=$(run "$c5" --repo "Acme/Repo-B" exec -- true 2>&1 || true)
+assert "the foreign-repo refusal carries reason=repository_not_bound" bash -c "printf '%s' \"\$1\" | grep -q '\[reason=repository_not_bound\]'" _ "$err"
+err=$(FACTORY_TOKEN_CACHE_DIR="$work/cmm" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$lenient" "$helper" --repo "Acme/Repo-B" exec -- true 2>&1 || true)
+assert "a mismatched token carries reason=repository_mismatch" bash -c "printf '%s' \"\$1\" | grep -q '\[reason=repository_mismatch\]'" _ "$err"
 expect_exit "broker 500 → exit 5" 5 env FACTORY_TOKEN_CACHE_DIR="$c5" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$broken" "$helper" --repo "$BOUND" exec -- true
 expect_exit "unreachable broker → exit 5" 5 env FACTORY_TOKEN_CACHE_DIR="$c5" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="http://127.0.0.1:1" "$helper" --repo "$BOUND" exec -- true
 expect_exit "non-loopback http:// broker refused (exit 2)" 2 env FACTORY_TOKEN_CACHE_DIR="$c5" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="http://broker.example" "$helper" --repo "$BOUND" exec -- true
+# The loopback allowance is an authority check, not a prefix match: curl reads
+# `http://127.0.0.1:80@evil.example` as host evil.example.
+for bad_url in "http://127.0.0.1:80@evil.example" "http://localhost@evil.example/x" "http://127.0.0.1.evil.example" "http://127.0.0.1:notaport"; do
+	expect_exit "http broker $bad_url is refused (exit 2)" 2 env FACTORY_TOKEN_CACHE_DIR="$c5" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$bad_url" "$helper" --repo "$BOUND" exec -- true
+done
 expect_exit "missing broker URL → exit 2" 2 env FACTORY_TOKEN_CACHE_DIR="$c5" GH_TOKEN=factory-token-required FACTORY_BROKER_URL= "$helper" --repo "$BOUND" exec -- true
 expect_exit "malformed repository → exit 2" 2 run "$c5" --repo "not-a-repo" exec -- true
 # A leaky broker (mints for whatever is asked) is the isolation test's to catch.

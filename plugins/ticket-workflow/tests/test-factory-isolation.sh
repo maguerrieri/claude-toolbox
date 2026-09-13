@@ -8,8 +8,10 @@
 #      exists to catch) fails on path 1; an unreachable or 5xx broker fails as
 #      inconclusive rather than passing as "no token".
 #   3. A bearer-shaped or PEM value in the environment fails path 4.
-#   3b. A 401 (no bearer reached the broker) is inconclusive, not a refusal, and a
-#      non-loopback http:// broker URL is refused outright.
+#   3b. A 401 (no bearer reached the broker), a 403 that is not the broker's own
+#      repository_not_bound, and a helper exit 4 for any reason other than the
+#      repository boundary are all inconclusive, not refusals. A non-loopback
+#      http:// broker URL is refused outright, userinfo forms included.
 #   4. Usage errors: same repo for both, missing args.
 set -euo pipefail
 
@@ -57,12 +59,31 @@ run() { env -i PATH="$PATH" HOME="$HOME" "$@"; }
 out=$(run "$script" --bound "$A" --foreign "$B" --broker "$good" --skip-github 2>&1) && rc=0 || rc=$?
 assert "well-behaved broker: PASS" test "$rc" -eq 0
 assert "well-behaved broker: reports the foreign 403 as a refusal" bash -c "printf '%s' \"\$1\" | grep -q 'refused (HTTP 403)'" _ "$out"
-assert "well-behaved broker: helper replay refuses with exit 4" bash -c "printf '%s' \"\$1\" | grep -q 'helper replayed with --repo Acme/Repo-B refuses (exit 4'" _ "$out"
+assert "well-behaved broker: helper replay refuses on the repository boundary" bash -c "printf '%s' \"\$1\" | grep -q 'refuses on the repository boundary (exit 4, reason=repository_not_bound)'" _ "$out"
 refute "output never contains a token" bash -c "printf '%s' \"\$1\" | grep -q ghs_fake" _ "$out"
 
 out=$(run "$script" --bound "$A" --foreign "$B" --broker "$leaky" --skip-github 2>&1) && rc=0 || rc=$?
 assert "leaky broker: FAIL" test "$rc" -eq 1
 assert "leaky broker: names the cross-repo leak" bash -c "printf '%s' \"\$1\" | grep -q 'broker leaks across repos'" _ "$out"
+
+# A 403 that is not the broker's own repository_not_bound (a WAF, an IAM policy)
+# proves nothing about repository binding: inconclusive, not a refusal.
+waf=$(start_broker waf FAKE_BROKER_BOUND="$A" FAKE_BROKER_403_ERROR=blocked_by_waf)
+out=$(run "$script" --bound "$A" --foreign "$B" --broker "$waf" --skip-github 2>&1) && rc=0 || rc=$?
+assert "a 403 that is not repository_not_bound: FAIL" test "$rc" -eq 1
+assert "the non-binding 403 is named as inconclusive" bash -c "printf '%s' \"\$1\" | grep -q 'not repository_not_bound (blocked_by_waf)'" _ "$out"
+
+# Exit 4 for another reason (wrong permissions) is not a repository-boundary
+# refusal either: a broken broker must not read as isolation.
+# Leaky *and* wrong-permissioned: the replay for B gets a 200 the helper then
+# refuses on permissions, so its exit 4 is not a repository-boundary refusal.
+badperms=$(start_broker badperms FAKE_BROKER_BOUND="$A" FAKE_BROKER_LEAK=1 FAKE_BROKER_PERMS='{"contents":"write"}')
+out=$(run "$script" --bound "$A" --foreign "$B" --broker "$badperms" --skip-github 2>&1) && rc=0 || rc=$?
+assert "helper exit 4 for a non-boundary reason: FAIL" test "$rc" -eq 1
+assert "the replay reason is named" bash -c "printf '%s' \"\$1\" | grep -q 'reason=wrong_permissions'" _ "$out"
+
+# A userinfo URL whose real authority is not loopback must be refused outright.
+refute "a loopback-looking userinfo URL is refused" run "$script" --bound "$A" --foreign "$B" --broker "http://127.0.0.1:80@evil.example" --skip-github
 
 # A broker that is down, or answers 5xx, is inconclusive and must FAIL, not pass.
 out=$(run "$script" --bound "$A" --foreign "$B" --broker "http://127.0.0.1:1" --skip-github 2>&1) && rc=0 || rc=$?

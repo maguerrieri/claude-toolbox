@@ -20,6 +20,9 @@ Configuration (environment):
   FAKE_BROKER_NO_APP=1    omit the `app` object (misbehaving broker)
   FAKE_BROKER_EXPIRED=1   answer with an expiry already in the past (misbehaving broker)
   FAKE_BROKER_BUDGET      refuse with 429 budget_exhausted after this many mints
+  FAKE_BROKER_403_ERROR   the `error` string a foreign-repo 403 carries (default
+                          repository_not_bound; set something else to stand in for a
+                          WAF or IAM 403 that proves nothing about repo binding)
   FAKE_BROKER_OMIT_EXPIRES_IN=1  respond with expires_at only
   FAKE_BROKER_REQUIRE_BEARER  when set, requests must carry `Authorization: Bearer <this>`
                           (401 otherwise) — the real broker always requires one; the
@@ -47,6 +50,7 @@ PERMS = os.environ.get("FAKE_BROKER_PERMS", "")
 NO_APP = os.environ.get("FAKE_BROKER_NO_APP") == "1"
 EXPIRED = os.environ.get("FAKE_BROKER_EXPIRED") == "1"
 BUDGET = int(os.environ.get("FAKE_BROKER_BUDGET", "0"))
+FORBIDDEN_ERROR = os.environ.get("FAKE_BROKER_403_ERROR", "repository_not_bound")
 COUNTER = {"n": 0}
 
 
@@ -95,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
             elif LENIENT:
                 pass
             else:
-                return self._json(403, {"error": "repository_not_bound"})
+                return self._json(403, {"error": FORBIDDEN_ERROR})
         n = COUNTER["n"]
         delta = datetime.timedelta(seconds=-60 if EXPIRED else EXPIRES_IN)
         expires_at = (datetime.datetime.now(datetime.timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
