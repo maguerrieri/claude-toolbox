@@ -20,7 +20,9 @@
 #      and refuses without App metadata; a broker response with any permission set
 #      other than contents+pull_requests write (+ metadata read) is refused;
 #      `clear` drops the cache; `status` prints no token.
-#   5. The repository is resolved from the origin remote when --repo is absent.
+#   5. The repository is resolved from the origin remote when --repo is absent, in
+#      all three GitHub URL forms, and a lookalike host (evilgithub.com) or another
+#      host is refused rather than parsed.
 #
 # Stdlib only: bash, jq, curl, python3, git. Run: bash plugins/ticket-workflow/tests/test-factory-token.sh
 set -euo pipefail
@@ -45,8 +47,14 @@ expect_exit() {
 }
 
 work=$(mktemp -d)
-pids=()
-cleanup() { for p in "${pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done; rm -rf "$work"; }
+# start_broker runs inside $(...) subshells, so PIDs go to a file the parent reads
+# at cleanup (an array append in the subshell would be lost and the servers leak).
+pidfile="$work/pids"
+: >"$pidfile"
+cleanup() {
+	while read -r p; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done <"$pidfile"
+	rm -rf "$work"
+}
 trap cleanup EXIT
 
 # start_broker <name> [ENV=VALUE...] → prints the base URL
@@ -54,7 +62,7 @@ start_broker() {
 	local name=$1; shift
 	local out="$work/$name.port"
 	env "$@" python3 "$fake" >"$out" 2>"$work/$name.err" &
-	pids+=($!)
+	echo $! >>"$pidfile"
 	local i=0
 	until grep -q '^PORT ' "$out" 2>/dev/null; do
 		i=$((i + 1)); [ "$i" -lt 100 ] || { echo "fake broker $name did not start: $(cat "$work/$name.err")" >&2; exit 2; }
@@ -153,7 +161,7 @@ srv = HTTPServer(("127.0.0.1", 0), H)
 open(sys.argv[1], "w").write(f"PORT {srv.server_address[1]}\n")
 srv.serve_forever()
 PY
-pids+=($!)
+echo $! >>"$pidfile"
 until [ -s "$work/malformed.port" ]; do sleep 0.05; done
 malformed="http://127.0.0.1:$(awk '{print $2}' "$work/malformed.port")"
 expect_exit "malformed broker body → exit 4" 4 env FACTORY_TOKEN_CACHE_DIR="$c5" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$malformed" "$helper" --repo "$BOUND" env
@@ -204,10 +212,27 @@ for perms in '{"contents":"write"}' '{"contents":"read","pull_requests":"write"}
 done
 b=$(start_broker permsok FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_PERMS='{"contents":"write","pull_requests":"write","metadata":"read"}')
 assert "permissions with metadata: read are accepted" env FACTORY_TOKEN_CACHE_DIR="$work/c9" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$b" "$helper" --repo "$BOUND" env
+# An already-expired token is refused rather than cached and handed out.
+expired=$(start_broker expired FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_EXPIRED=1)
+c10="$work/c10"
+expect_exit "an already-expired token is refused (exit 4)" 4 env FACTORY_TOKEN_CACHE_DIR="$c10" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$expired" "$helper" --repo "$BOUND" env
+refute "expired token: nothing cached" ls "$c10"
+# setup-git without App metadata must not leave the minted token behind for a
+# later env/exec: the cache is dropped with the refusal.
+refute "setup-git failure discards the cached token" ls "$c7"/*.json
 # 5. repository resolved from origin (no --repo)
 assert "repo resolved from origin remote (ssh form)" bash -c "cd $repo && $helper --broker $good status | grep -q '^repository: $BOUND\$'" 
 git -C "$repo" remote set-url origin "https://github.com/$BOUND"
 assert "repo resolved from origin remote (https form)" bash -c "cd $repo && $helper --broker $good status | grep -q '^repository: $BOUND\$'"
+git -C "$repo" remote set-url origin "ssh://git@github.com/$BOUND.git"
+assert "repo resolved from origin remote (ssh:// form)" bash -c "cd $repo && $helper --broker $good status | grep -q '^repository: $BOUND\$'"
+# Lookalike and non-GitHub hosts are not the factory repo: resolution must fail
+# rather than parse an owner/repo out of them (exit 2, no broker call).
+for bad_origin in "https://evilgithub.com/$BOUND.git" "https://github.com.evil.test/$BOUND.git" "git@gitlab.com:$BOUND.git" "https://github.com/onepathonly"; do
+	git -C "$repo" remote set-url origin "$bad_origin"
+	expect_exit "origin $bad_origin is not resolved as a factory repo (exit 2)" 2 bash -c "cd $repo && $helper --broker $good status"
+done
+git -C "$repo" remote set-url origin "https://github.com/$BOUND"
 st=$(run "$c6" --repo "$BOUND" status)
 refute "status prints no token" bash -c "printf '%s' \"\$1\" | grep -q ghs_fake" _ "$st"
 assert "status reports the pass-through sentinel" bash -c "printf '%s' \"\$1\" | grep -q 'pass-through (sentinel)'" _ "$st"

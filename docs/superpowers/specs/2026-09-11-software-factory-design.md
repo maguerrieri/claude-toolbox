@@ -700,8 +700,10 @@ pushing actor is the user too. Therefore:
    so your scripts and GitHub's `gh` CLI use it directly"), so `gh pr
    create` authors the PR as `<slug>[bot]` while coordinator and
    interactive sessions keep the user's identity; git pushes still go
-   through the proxy as the user unless the session runs `gh auth
-   setup-git` with the minted token. What a compromised branch can now do
+   through the proxy as the user unless the helper's `setup-git` installs
+   it as the checkout's git credential helper with the minted token (the
+   durable form of `gh auth setup-git`, which would only see one
+   command's `GH_TOKEN`). What a compromised branch can now do
    is what the token can do: write to non-protected branches and PRs of
    **its own repo** for an hour — nothing on `main` the rulesets don't
    already gate, and nothing in any other repo. Isolation test (item 8b):
@@ -853,8 +855,9 @@ App-on-cloud path wins") applies. 8b changes in four ways:
 - Implementer environments set `GH_TOKEN` in their variables to a
   non-secret sentinel (`factory-token-required`) so sessions run in
   pass-through mode; `factory-token` replaces it with the broker's token
-  before START Step 7 and runs `gh auth setup-git` so pushes carry the App
-  identity too. That token is the **one write-capable credential this
+  per command (START Steps 7–8) and its `setup-git` installs it as the
+  checkout's git credential helper before the first commit (START Step 5)
+  so pushes carry the App identity too. That token is the **one write-capable credential this
   design admits into a session**, and it is admitted deliberately: item 4
   above bounds it to one repo, two permissions, non-protected branches,
   and one hour, and 8b's isolation test asserts those bounds. 2b's blanket

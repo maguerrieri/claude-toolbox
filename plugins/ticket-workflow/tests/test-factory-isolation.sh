@@ -8,6 +8,8 @@
 #      exists to catch) fails on path 1; an unreachable or 5xx broker fails as
 #      inconclusive rather than passing as "no token".
 #   3. A bearer-shaped or PEM value in the environment fails path 4.
+#   3b. A 401 (no bearer reached the broker) is inconclusive, not a refusal, and a
+#      non-loopback http:// broker URL is refused outright.
 #   4. Usage errors: same repo for both, missing args.
 set -euo pipefail
 
@@ -23,14 +25,20 @@ assert() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then ok "$desc"; else 
 refute() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then fail "$desc"; else ok "$desc"; fi; }
 
 work=$(mktemp -d)
-pids=()
-cleanup() { for p in "${pids[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done; rm -rf "$work"; }
+# start_broker runs inside $(...) subshells, so PIDs go to a file the parent reads
+# at cleanup (an array append in the subshell would be lost and the servers leak).
+pidfile="$work/pids"
+: >"$pidfile"
+cleanup() {
+	while read -r p; do [ -n "$p" ] && kill "$p" 2>/dev/null || true; done <"$pidfile"
+	rm -rf "$work"
+}
 trap cleanup EXIT
 start_broker() {
 	local name=$1; shift
 	local out="$work/$name.port"
 	env "$@" python3 "$fake" >"$out" 2>"$work/$name.err" &
-	pids+=($!)
+	echo $! >>"$pidfile"
 	local i=0
 	until grep -q '^PORT ' "$out" 2>/dev/null; do
 		i=$((i + 1)); [ "$i" -lt 100 ] || { echo "fake broker $name did not start" >&2; exit 2; }
@@ -79,6 +87,13 @@ assert "proxy-injected environment: the helper replay is reported as not exercis
 out=$(run env GH_TOKEN=factory-token-required "$script" --bound "$A" --foreign "$B" --broker "$good" --skip-github 2>&1) && rc=0 || rc=$?
 assert "pass-through sentinel environment: PASS" test "$rc" -eq 0
 
+# A bearer that never reaches the broker (401) proves nothing: inconclusive, not pass.
+nobearer=$(start_broker nobearer FAKE_BROKER_BOUND="$A" FAKE_BROKER_REQUIRE_BEARER=neverSent)
+out=$(run "$script" --bound "$A" --foreign "$B" --broker "$nobearer" --skip-github 2>&1) && rc=0 || rc=$?
+assert "401 from the broker: FAIL (no bearer reached it)" test "$rc" -eq 1
+assert "401 is reported as no bearer, not as a refusal" bash -c "printf '%s' \"\$1\" | grep -q 'no bearer reached the broker'" _ "$out"
+
+refute "a non-loopback http:// broker URL is a usage error" run "$script" --bound "$A" --foreign "$B" --broker "http://broker.example" --skip-github
 refute "same repo for --bound and --foreign is a usage error" run "$script" --bound "$A" --foreign "$A" --broker "$good" --skip-github
 refute "missing --foreign is a usage error" run "$script" --bound "$A" --broker "$good" --skip-github
 

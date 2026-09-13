@@ -73,6 +73,8 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
 ## REVIEW_BOT
 Driven entirely by `gh` + the GitHub GraphQL API — no external tooling required. Copilot is the
 default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
+In a factory implementer session (`FACTORY_BROKER_URL` set) every `gh` command below takes the
+`"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token" exec --` prefix (SKILL.md START Step 7).
 
 - **Detect, don't guess.** Copilot-review availability is *not* visible in the repo tree — an
   absent `.github/` means no Actions/CI, **not** no review bot. After opening the PR, check whether

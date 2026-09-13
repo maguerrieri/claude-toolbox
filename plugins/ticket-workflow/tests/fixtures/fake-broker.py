@@ -18,6 +18,7 @@ Configuration (environment):
   FAKE_BROKER_EXPIRES_IN  seconds until expiry (default 3600)
   FAKE_BROKER_PERMS       JSON object to return as `permissions` (misbehaving broker)
   FAKE_BROKER_NO_APP=1    omit the `app` object (misbehaving broker)
+  FAKE_BROKER_EXPIRED=1   answer with an expiry already in the past (misbehaving broker)
   FAKE_BROKER_OMIT_EXPIRES_IN=1  respond with expires_at only
   FAKE_BROKER_REQUIRE_BEARER  when set, requests must carry `Authorization: Bearer <this>`
                           (401 otherwise) — the real broker always requires one; the
@@ -43,6 +44,7 @@ COUNT_FILE = os.environ.get("FAKE_BROKER_COUNT_FILE", "")
 FORCE_STATUS = os.environ.get("FAKE_BROKER_STATUS", "")
 PERMS = os.environ.get("FAKE_BROKER_PERMS", "")
 NO_APP = os.environ.get("FAKE_BROKER_NO_APP") == "1"
+EXPIRED = os.environ.get("FAKE_BROKER_EXPIRED") == "1"
 COUNTER = {"n": 0}
 
 
@@ -91,9 +93,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 return self._json(403, {"error": "repository_not_bound"})
         n = COUNTER["n"]
-        expires_at = (
-            datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=EXPIRES_IN)
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        delta = datetime.timedelta(seconds=-60 if EXPIRED else EXPIRES_IN)
+        expires_at = (datetime.datetime.now(datetime.timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
         body = {
             "token": f"ghs_fake_{repo.replace('/', '_')}_{n}",
             "expires_at": expires_at,
@@ -102,7 +103,7 @@ class Handler(BaseHTTPRequestHandler):
             "app": {"slug": "factory-fake", "bot_user_id": 424242, "bot_login": "factory-fake[bot]"},
         }
         if not OMIT_EXPIRES_IN:
-            body["expires_in"] = EXPIRES_IN
+            body["expires_in"] = -60 if EXPIRED else EXPIRES_IN
         if PERMS:
             body["permissions"] = json.loads(PERMS)
         if NO_APP:

@@ -6,8 +6,10 @@
 # token for a repository B other than the one this environment is bound to (A),
 # and asserts each yields only an A-scoped token or nothing:
 #
-#   1. the broker called directly with `repository: B`      → a refusal (401/403), or an A token
-#   2. the broker called directly with no repository at all → an A token, or a refusal
+#   1. the broker called directly with `repository: B`      → a 403 refusal, or an A token
+#   2. the broker called directly with no repository at all → an A token, or a 403 refusal
+#      (any token these two return is checked against GitHub in step 5 — the
+#      broker's own `repository` label is a claim, not proof of scope)
 #   3. the helper replayed with --repo B                     → refuses with exit 4, exports nothing
 #   4. the environment read for credential material         → no broker bearer, no App key
 #   5. (with GitHub) the A token, minted the normal way:
@@ -21,9 +23,11 @@
 #                                         2xx is a real answer, not a false negative; a
 #                                         2xx would leave one dangling, unreferenced blob.
 #
-# Only an expected refusal passes a negative path. A transport failure, a 5xx, or a
-# 4xx other than the refusal codes is reported as inconclusive and FAILS: a broker
-# that is down or misconfigured must not read as isolated.
+# Only an expected refusal passes a negative path. A transport failure, a 5xx, a
+# 401 (no bearer reached the broker: the API credential is not configured), or any
+# other status is reported as inconclusive and FAILS: a broker that is down or
+# misconfigured must not read as isolated. --broker must be https:// (http:// on
+# loopback only), the same rule the helper enforces.
 #
 # Usage:
 #   factory-isolation-test --bound OWNER/A --foreign OWNER/B [--broker URL] [--skip-github]
@@ -50,6 +54,13 @@ done
 [ -n "$BOUND" ] && [ -n "$FOREIGN" ] || { echo "--bound and --foreign are required" >&2; exit 2; }
 [ -n "$BROKER" ] || { echo "--broker or FACTORY_BROKER_URL is required" >&2; exit 2; }
 BROKER=${BROKER%/}
+# Same transport rule as the helper: the API-credentials proxy attaches the bearer
+# to requests for this host, so it must never be plaintext except on loopback.
+case "$BROKER" in
+https://*) ;;
+http://localhost[:/]* | http://127.0.0.1[:/]* | http://\[::1\]*) ;;
+*) echo "broker URL must be https:// (http:// only for loopback): $BROKER" >&2; exit 2 ;;
+esac
 for tool in curl jq; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 2; }; done
 lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 [ "$(lc "$BOUND")" != "$(lc "$FOREIGN")" ] || { echo "--bound and --foreign must differ" >&2; exit 2; }
@@ -72,39 +83,50 @@ broker_call() {
 token_repo() { jq -r '.repository // empty' "$1" 2>/dev/null || true; }
 has_token() { jq -e '.token | type == "string" and length > 0' "$1" >/dev/null 2>&1; }
 
-# classify <status> <file> → prints: refused | token:<repo> | error
+# classify <status> <file> → prints: refused | token:<repo> | nobearer | error
+# Only 403 (repository_not_bound) is the broker refusing a bound bearer's request.
+# 401 means no bearer reached the broker at all — the API credential is not
+# configured — which proves nothing about isolation and must not pass.
 classify() {
 	local status=$1 file=$2
 	case "$status" in
 	200) if has_token "$file"; then printf 'token:%s' "$(token_repo "$file")"; else printf 'error'; fi ;;
-	401 | 403) printf 'refused' ;;
+	403) printf 'refused' ;;
+	401) printf 'nobearer' ;;
 	*) printf 'error' ;;
 	esac
 }
+# Tokens the direct paths obtain are checked against GitHub later (path 5): the
+# broker's own `repository` field is a claim, not proof of the token's scope.
+direct_tokens=()
 
 # --- 1. direct call asking for B -------------------------------------------------
 status=$(broker_call "$(jq -cn --arg r "$FOREIGN" '{repository: $r}')" "$work/1.json")
 case "$(classify "$status" "$work/1.json")" in
-refused) ok "direct call for $FOREIGN refused (HTTP $status)" ;;
+refused) ok "direct call for $FOREIGN refused (HTTP 403)" ;;
 "token:"*)
 	if [ "$(lc "$(token_repo "$work/1.json")")" = "$(lc "$BOUND")" ]; then
-		ok "direct call for $FOREIGN answered with an $BOUND-scoped token only (HTTP 200)"
+		ok "direct call for $FOREIGN answered with a token the broker labels $BOUND (scope verified against GitHub below)"
+		direct_tokens+=("$work/1.json")
 	else
 		fail "direct call for $FOREIGN yielded a token for '$(token_repo "$work/1.json")' — broker leaks across repos"
 	fi ;;
+nobearer) fail "direct call for $FOREIGN: HTTP 401 — no bearer reached the broker (API credential not configured?) — inconclusive" ;;
 *) fail "direct call for $FOREIGN: HTTP $status is neither a refusal nor a token (broker down or misconfigured — inconclusive)" ;;
 esac
 
 # --- 2. direct call with no repository --------------------------------------------
 status=$(broker_call "" "$work/2.json")
 case "$(classify "$status" "$work/2.json")" in
-refused) ok "direct call with no repository refused (HTTP $status)" ;;
+refused) ok "direct call with no repository refused (HTTP 403)" ;;
 "token:"*)
 	if [ "$(lc "$(token_repo "$work/2.json")")" = "$(lc "$BOUND")" ]; then
-		ok "direct call with no repository mints for $BOUND only"
+		ok "direct call with no repository mints a token the broker labels $BOUND (scope verified against GitHub below)"
+		direct_tokens+=("$work/2.json")
 	else
 		fail "direct call with no repository minted for '$(token_repo "$work/2.json")'"
 	fi ;;
+nobearer) fail "direct call with no repository: HTTP 401 — no bearer reached the broker — inconclusive" ;;
 *) fail "direct call with no repository: HTTP $status is neither a refusal nor a token (inconclusive)" ;;
 esac
 
@@ -170,10 +192,23 @@ else
 		s=$(gh_api GET /installation/repositories)
 		if [ "$s" = 200 ]; then
 			listed=$(jq -r '[.repositories[].full_name | ascii_downcase] | sort | join(",")' "$work/gh.json")
-			if [ "$listed" = "$(lc "$BOUND")" ]; then ok "token lists exactly one repository: $BOUND"; else fail "token lists repositories: $listed"; fi
+			if [ "$listed" = "$(lc "$BOUND")" ]; then ok "helper token lists exactly one repository: $BOUND"; else fail "helper token lists repositories: $listed"; fi
 		else
 			fail "GET /installation/repositories → HTTP $s"
 		fi
+		# The tokens the direct broker calls returned (paths 1–2): their real scope.
+		for tf in "${direct_tokens[@]:-}"; do
+			[ -n "$tf" ] || continue
+			(umask 077 && jq -r '"header = \"Authorization: Bearer \(.token)\""' "$tf" >"$cfg")
+			s=$(gh_api GET /installation/repositories)
+			if [ "$s" = 200 ]; then
+				listed=$(jq -r '[.repositories[].full_name | ascii_downcase] | sort | join(",")' "$work/gh.json")
+				if [ "$listed" = "$(lc "$BOUND")" ]; then ok "direct-call token ($(basename "$tf" .json)) lists exactly one repository: $BOUND"; else fail "direct-call token ($(basename "$tf" .json)) lists repositories: $listed — the broker's repository label lied"; fi
+			else
+				fail "direct-call token ($(basename "$tf" .json)): GET /installation/repositories → HTTP $s"
+			fi
+		done
+		(umask 077 && jq -r '"header = \"Authorization: Bearer \(.token)\""' "$cache"/*.json >"$cfg")
 		s=$(gh_api GET "/repos/$BOUND")
 		[ "$s" = 200 ] && ok "GET /repos/$BOUND → 200 (positive control)" || fail "GET /repos/$BOUND → HTTP $s (positive control failed)"
 		s=$(gh_api GET "/repos/$FOREIGN")

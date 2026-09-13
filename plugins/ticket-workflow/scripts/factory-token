@@ -101,12 +101,21 @@ done
 # --- repository resolution --------------------------------------------------
 # owner/repo from the origin remote: git@github.com:o/r.git, https://github.com/o/r(.git), ssh://git@github.com/o/r
 repo_from_origin() {
-	local url
+	local url rest
 	url=$(git remote get-url origin 2>/dev/null) || return 1
 	url=${url%/}
 	url=${url%.git}
+	# Exact github.com host only, in the three URL forms git uses for it; anything
+	# else (another host, a lookalike such as evilgithub.com) is not a factory repo.
 	case "$url" in
-	*github.com[:/]*/*) printf '%s' "${url##*github.com[:/]}" ;;
+	git@github.com:*) rest=${url#git@github.com:} ;;
+	ssh://git@github.com/*) rest=${url#ssh://git@github.com/} ;;
+	https://github.com/*) rest=${url#https://github.com/} ;;
+	*) return 1 ;;
+	esac
+	case "$rest" in
+	*/*/* | */ | /* | '') return 1 ;;
+	*/*) printf '%s' "$rest" ;;
 	*) return 1 ;;
 	esac
 }
@@ -225,17 +234,28 @@ mint_token() { # writes the cache file; prints nothing
 		and .contents == "write" and .pull_requests == "write"
 		and ([to_entries[] | select(.key != "contents" and .key != "pull_requests" and (.key != "metadata" or .value != "read"))] | length == 0)' "$tmp" >/dev/null 2>&1 ||
 		die "broker returned a token whose permissions are not exactly contents: write + pull_requests: write; refusing (not cached, not exported)" 4
+	# Expiry: take the earlier of expires_in and expires_at when both are present,
+	# refuse a non-positive lifetime (an already-expired token is not a token), and
+	# never hold one past an hour whatever the broker says (spec 2d item 4).
 	expires_in=$(jq -r '.expires_in // empty' "$tmp")
 	expires_at=$(jq -r '.expires_at // empty' "$tmp")
-	if [ -n "$expires_in" ] && [ "$expires_in" -eq "$expires_in" ] 2>/dev/null; then
-		expires_epoch=$(($(now_epoch) + expires_in))
-	elif [ -n "$expires_at" ]; then
-		expires_epoch=$(iso_to_epoch "$expires_at") || die "cannot parse expires_at '$expires_at' (need GNU date or an expires_in field)" 4
-	else
-		die "broker response carries neither expires_in nor expires_at; refusing" 4
+	local now_s from_in="" from_at=""
+	now_s=$(now_epoch)
+	if [ -n "$expires_in" ]; then
+		[ "$expires_in" -eq "$expires_in" ] 2>/dev/null || die "broker response has a non-numeric expires_in; refusing" 4
+		from_in=$((now_s + expires_in))
 	fi
-	# Never hold a token past an hour, whatever the broker says (spec 2d item 4).
-	local cap=$(($(now_epoch) + 3600))
+	if [ -n "$expires_at" ]; then
+		from_at=$(iso_to_epoch "$expires_at") || { [ -n "$from_in" ] || die "cannot parse expires_at '$expires_at' (need GNU date or an expires_in field)" 4; }
+	fi
+	[ -n "$from_in$from_at" ] || die "broker response carries neither expires_in nor expires_at; refusing" 4
+	if [ -n "$from_in" ] && [ -n "$from_at" ]; then
+		expires_epoch=$((from_in < from_at ? from_in : from_at))
+	else
+		expires_epoch=${from_in:-$from_at}
+	fi
+	[ "$expires_epoch" -gt "$now_s" ] || die "broker returned an already-expired token; refusing (not cached, not exported)" 4
+	local cap=$((now_s + 3600))
 	[ "$expires_epoch" -le "$cap" ] || expires_epoch=$cap
 
 	ensure_cache_dir
@@ -300,8 +320,12 @@ cmd_setup_git() {
 	bot_id=$(read_field '.app.bot_user_id')
 	# Fail closed: without the App's slug and bot user id the commits would keep
 	# the user's author while the push carries the App token — a half identity.
-	{ [ -n "$slug" ] && [ -n "$bot_id" ] && [ "$bot_id" -eq "$bot_id" ] 2>/dev/null; } ||
-		die "broker response carries no usable app.slug / app.bot_user_id; cannot set the App's commit identity — refusing to configure git" 4
+	{ [ -n "$slug" ] && [ -n "$bot_id" ] && [ "$bot_id" -eq "$bot_id" ] 2>/dev/null; } || {
+		# Drop the just-minted token too: a later `env`/`exec` must not push work
+		# under the App token while commits keep the user's author.
+		rm -f "$(cache_file)"
+		die "broker response carries no usable app.slug / app.bot_user_id; cannot set the App's commit identity — refusing to configure git (cached token discarded)" 4
+	}
 	helper=$(self_path)
 	# A credential helper only serves HTTPS. An SSH origin (git@github.com:… or
 	# ssh://) would bypass it and push with whatever SSH identity the VM has, so
