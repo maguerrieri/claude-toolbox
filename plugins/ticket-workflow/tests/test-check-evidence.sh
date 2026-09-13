@@ -94,6 +94,8 @@ rollup_run() { # <name> <suite> <databaseId> [<status> <conclusion>]
 		'{__typename: "CheckRun", name: $n, status: $st, conclusion: (if $c == "null" then null else $c end), databaseId: $id, checkSuite: {databaseId: $s}}'
 }
 ROLLUP='.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup'
+# The aggregate rollup state is its own read, issued after the direct ones.
+set_rollup_state() { patch graphql/RollupState.json --arg s "$1" "$ROLLUP.state = \$s"; }
 CLOSING='.data.repository.pullRequest.closingIssuesReferences'
 
 review() { # <login> <state> <sha> <submittedAt>
@@ -107,6 +109,8 @@ body_with() { # <jq filter over the evidence object> — a full PR body with tha
 # --- green + complete ----------------------------------------------------------------
 new_case green
 expect_pass "green + complete passes" 7 42 --repo o/r
+expect_output "green: the verdict names the head it is a snapshot of" "as of head $HEAD"
+expect_output "green: the verdict says to pin the merge to that head" "pin the merge to $HEAD"
 for rule in "1 check github-actions/check" "1 statusCheckRollup on head: SUCCESS" "1 statusCheckRollup contexts are all in the head-SHA read" "2 review threads: none unresolved" "3 closing references: exactly #42" "4 issue #42 risk label: risk:normal" "6 evidence block: well-formed" "6 context_reads path is in the head tree: AGENTS.md"; do
 	expect_output "green: reports '$rule'" "ok   - $rule"
 done
@@ -149,11 +153,11 @@ patch check-runs.json --argjson r "$(run 3999 test 92 completed failure)" '.chec
 expect_refuse "an older green attempt does not cover a newer red one" "1 check github-actions/test [suite 92]: failure" 7 42 --repo o/r
 new_case red-optional
 patch check-runs.json '(.check_runs[] | select(.id == 3003) | .conclusion) = "failure"'
-patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
+set_rollup_state FAILURE
 expect_refuse "a red optional check refuses" "1 check github-actions/check [suite 93]: failure" 7 42 --repo o/r
 new_case pending
 patch check-runs.json '(.check_runs[] | select(.id == 3003)) |= (.status = "in_progress" | .conclusion = null)'
-patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "PENDING"'
+set_rollup_state PENDING
 expect_refuse "a pending check refuses" "1 check github-actions/check [suite 93]: in_progress" 7 42 --repo o/r
 new_case skipped
 patch check-runs.json '(.check_runs[] | select(.id == 3003) | .conclusion) = "skipped"'
@@ -161,20 +165,25 @@ expect_refuse "a skipped conclusion is not success" "[suite 93]: skipped" 7 42 -
 new_case empty
 patch check-runs.json '.check_runs = [] | .total_count = 0'
 patch graphql/RollupContexts.json "$ROLLUP = null"
-patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup = null'
+patch graphql/RollupState.json "$ROLLUP = null"
 expect_refuse "an empty check set refuses (never vacuously green)" "1 checks: no check runs or statuses on head" 7 42 --repo o/r
 new_case status-red
 patch statuses.json --arg h "$HEAD" '. + [{id: 501, context: "ci/legacy", state: "failure"}]'
 patch graphql/RollupContexts.json "$ROLLUP.contexts.nodes += [{__typename: \"StatusContext\", context: \"ci/legacy\", state: \"FAILURE\"}]"
-patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
+set_rollup_state FAILURE
 expect_refuse "a red commit status (legacy Status API) refuses" "1 status ci/legacy: failure" 7 42 --repo o/r
 new_case status-rerun-green
 patch statuses.json '. + [{id: 501, context: "ci/legacy", state: "failure"}, {id: 502, context: "ci/legacy", state: "success"}]'
 patch graphql/RollupContexts.json "$ROLLUP.contexts.nodes += [{__typename: \"StatusContext\", context: \"ci/legacy\", state: \"SUCCESS\"}]"
 expect_pass "a commit status whose newest state is success passes" 7 42 --repo o/r
 new_case rollup-state
-patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
+set_rollup_state FAILURE
 expect_refuse "a non-SUCCESS statusCheckRollup refuses even when the direct read is green" "1 statusCheckRollup on head: FAILURE" 7 42 --repo o/r
+new_case rollup-state-late-expected
+# A required context with no run at all turns the aggregate EXPECTED after the
+# direct reads have already seen every context green.
+set_rollup_state EXPECTED
+expect_refuse "an aggregate that turns EXPECTED after the direct reads refuses" "1 statusCheckRollup on head: EXPECTED" 7 42 --repo o/r
 new_case rollup-mismatch
 patch graphql/RollupContexts.json --argjson r "$(rollup_run extra-workflow 99 3009)" "$ROLLUP.contexts.nodes += [\$r]"
 expect_refuse "a rollup context the head-SHA read did not see refuses" "1 statusCheckRollup lists context(s) the head-SHA read did not see: check:99/extra-workflow" 7 42 --repo o/r
@@ -204,7 +213,7 @@ expect_refuse "a non-green context the rollup does not list still refuses" "1 ch
 new_case paginated-red
 patch check-runs.json '.check_runs = .check_runs[0:2]'
 jq -nc --argjson r "$(run 3001 test 91 completed failure)" '{total_count: 3, check_runs: [$r]}' >"$case_dir/check-runs.page2.json"
-patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
+set_rollup_state FAILURE
 expect_refuse "a red check on page 2 of the check-runs list refuses" "1 check github-actions/test [suite 91]: failure" 7 42 --repo o/r
 new_case body-claims-green
 patch check-runs.json '(.check_runs[] | select(.id == 3003) | .conclusion) = "failure"'
@@ -392,6 +401,21 @@ expect_pass "a ### subheading does not end the Evidence section" 7 42 --repo o/r
 new_case next-h2-ends-section
 set_body "$(printf '## Evidence\n\n## Notes\n```json\n%s\n```\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
 expect_refuse "a fence under the next h2 is outside the Evidence section" "found 0" 7 42 --repo o/r
+new_case cr-in-json
+# A bare CR inside the JSON is an unescaped control character, which is invalid
+# JSON; stripping every CR rather than only line endings would launder it.
+set_body "$(printf '## Evidence\n```json\n%s\n```\n\nCloses #42\n' "$(printf '%s' "$EVIDENCE_BLOCK" | sed 's/"docs": "no doc impact"/"docs": "no\rdoc impact"/')")"
+expect_refuse "a raw CR inside the Evidence JSON is not laundered away" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r
+new_case crlf-body-still-fine
+patch pull.json '.body |= gsub("\n"; "\r\n")'
+expect_pass "a CRLF body still parses after only line-ending CRs are stripped" 7 42 --repo o/r
+new_case newline-in-context-read
+# One entry holding two real paths must not be split into two passing checks.
+set_body "$(body_with '.context_reads = ["AGENTS.md\nplugins/ticket-workflow/skills/ticket-workflow/profiles/default.md"]')"
+expect_refuse "a context_reads entry containing a newline is rejected, not split into two checks" "6 evidence block: context_reads must not contain control characters" 7 42 --repo o/r
+new_case tab-in-context-read
+set_body "$(body_with '.context_reads = ["AGENTS.md\tx"]')"
+expect_refuse "a context_reads entry containing a tab is rejected" "must not contain control characters" 7 42 --repo o/r
 new_case malformed
 set_body "$(printf '## Evidence\n```json\n{"schema": "ticket-workflow/evidence/1",\n```\n\nCloses #42\n')"
 expect_refuse "malformed JSON refuses" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r
@@ -445,7 +469,7 @@ expect_output "invented-read: the real paths still pass" "ok   - 6 context_reads
 # --- everything wrong at once reports every rule --------------------------------------------
 new_case all-wrong
 patch check-runs.json '(.check_runs[] | select(.id == 3003) | .conclusion) = "failure"'
-patch graphql/PrGate.json '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state = "FAILURE"'
+set_rollup_state FAILURE
 patch graphql/ReviewThreads.json '.data.repository.pullRequest.reviewThreads.nodes[0].isResolved = false'
 patch graphql/ClosingRefs.json "$CLOSING.nodes = []"
 patch issue-labels.json '[]'

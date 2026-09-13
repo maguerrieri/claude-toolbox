@@ -6,19 +6,7 @@
         "author": {
           "login": "author"
         },
-        "reviewDecision": null,
-        "commits": {
-          "nodes": [
-            {
-              "commit": {
-                "oid": "0123456789abcdef0123456789abcdef01234567",
-                "statusCheckRollup": {
-                  "state": "SUCCESS"
-                }
-              }
-            }
-          ]
-        }
+        "reviewDecision": null
       }
     }
   }

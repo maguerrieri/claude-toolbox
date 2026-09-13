@@ -178,13 +178,15 @@ pr_state=$(printf '%s' "$pull_json" | jq -r '.state')
 [ "$pr_state" = open ] || die 2 "PR #$pr is $pr_state, not open; nothing to gate"
 head=$(printf '%s' "$pull_json" | jq -r '.head.sha')
 pr_author=$(printf '%s' "$pull_json" | jq -r '.user.login')
-printf '%s' "$pull_json" | jq -r '.body // ""' | tr -d '\r' >"$tmpdir/body"
+# Strip only a line-ending CR (a body edited in the GitHub web UI is CRLF).
+# Deleting every CR would launder a raw control character inside the Evidence
+# JSON — invalid JSON jq must reject — into something that parses.
+printf '%s' "$pull_json" | jq -r '.body // ""' | sed 's/\r$//' >"$tmpdir/body"
 
 # One un-paginated GraphQL read for the scalar facts.
 pr_gate_query='query PrGate($owner:String!,$name:String!,$pr:Int!){
   repository(owner:$owner,name:$name){ pullRequest(number:$pr){
-    headRefOid author{login} reviewDecision
-    commits(last:1){ nodes{ commit{ oid statusCheckRollup{ state } } } } } } }'
+    headRefOid author{login} reviewDecision } } }'
 gate_json=$(api graphql -f owner="$owner" -f name="$name" -F pr="$pr" -f query="$pr_gate_query" --jq '.data.repository.pullRequest')
 [ "$(printf '%s' "$gate_json" | jq -r '.headRefOid')" = "$head" ] ||
 	die 2 "PR #$pr's head moved between reads (REST $head vs GraphQL $(printf '%s' "$gate_json" | jq -r '.headRefOid')); re-run"
@@ -224,7 +226,14 @@ fi
 # (filter=all, every suite, plus commit statuses) and each extra it sees is
 # still held to success above, so only a context the read missed could weaken
 # the gate.
-rollup_state=$(printf '%s' "$gate_json" | jq -r '.commits.nodes[0].commit.statusCheckRollup.state // "none"')
+# Read the aggregate state *after* the direct check/status reads, not from the
+# earlier scalar query: an aggregate that turns EXPECTED (a required context
+# with no run at all) between the two would otherwise never be seen.
+rollup_state_query='query RollupState($owner:String!,$name:String!,$pr:Int!){
+  repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+    commits(last:1){ nodes{ commit{ oid statusCheckRollup{ state } } } } } } }'
+rollup_state=$(api graphql -f owner="$owner" -f name="$name" -F pr="$pr" -f query="$rollup_state_query" \
+	--jq '.data.repository.pullRequest.commits.nodes[0].commit.statusCheckRollup.state // "none"')
 rollup_query='query RollupContexts($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
   repository(owner:$owner,name:$name){ pullRequest(number:$pr){ commits(last:1){ nodes{ commit{ statusCheckRollup{
     contexts(first:100, after:$endCursor){ pageInfo{ hasNextPage endCursor }
@@ -442,6 +451,7 @@ if [ "$have_block" -eq 1 ]; then
 			(if (to_entries | map(select(.key != "context_reads")) | all(.value | type == "string")) then empty else "every scalar must be a quoted string" end),
 			(if ((.context_reads | type) == "array" and (.context_reads | length) > 0 and (.context_reads | all(type == "string" and length > 0))) then empty else "context_reads must be a non-empty array of strings" end),
 			(if ((.context_reads | type) == "array" and (.context_reads | all(type == "string" and relative))) then empty else "context_reads must be repo-relative (no leading /, no . or .. segment)" end),
+			(if ((.context_reads | type) == "array" and (.context_reads | all(type == "string" and (test("[\u0000-\u001f]") | not)))) then empty else "context_reads must not contain control characters" end),
 			(if ([.tests, .docs] | all(type == "string" and length > 0)) then empty else "tests and docs must be non-empty" end),
 			(if ([.tests, .docs] + (if (.context_reads | type) == "array" then .context_reads else [] end) | all(type == "string" and (placeholder | not))) then empty else "placeholder left in tests, docs, or context_reads (TODO, TBD, n/a without a reason, <…>)" end),
 			(if (.session | type) == "string" and (.session | test("^(cse_[A-Za-z0-9]+|session_[A-Za-z0-9]+|local)$")) then empty else "session must match ^(cse_…|session_…|local)$" end),
@@ -451,13 +461,13 @@ if [ "$have_block" -eq 1 ]; then
 		] | .[]')
 	if [ -z "$problems" ]; then
 		ok "6 evidence block: well-formed ($(printf '%s' "$block" | jq -r '.schema'))"
-		while IFS= read -r read_path; do
+		while IFS= read -r -d '' read_path; do
 			if head_has_path "$read_path"; then
 				ok "6 context_reads path is in the head tree: $read_path"
 			else
 				fail "6 context_reads path is not in the head tree: $read_path"
 			fi
-		done < <(printf '%s' "$block" | jq -r '.context_reads[]')
+		done < <(printf '%s' "$block" | jq -j '.context_reads[] | ., "\u0000"')
 	else
 		while IFS= read -r problem; do fail "6 evidence block: $problem"; done <<<"$problems"
 	fi
@@ -478,4 +488,12 @@ if [ "$failures" -gt 0 ]; then
 	printf 'REFUSED: %d rule violation(s) on PR #%s; report and stop — never auto-fix from FINISH\n' "$failures" "$pr"
 	exit 1
 fi
-printf 'PASS: PR #%s satisfies the FINISH gate for issue #%s\n' "$pr" "$issue"
+# The verdict is a snapshot, not a lock. Every rule was evaluated against head
+# $head on an open PR, and the head and open state were re-read at the end; the
+# other inputs (labels, threads, reviews, the body) can still change in the
+# moment between this line and a merge, and no amount of re-reading closes that
+# window — the gate is a drift control, not a mutual exclusion (spec 1b). What
+# does close it is pinning the merge to the SHA below, which the GitHub merge
+# API accepts and refuses if the head has moved; FINISH should pass it through.
+printf 'PASS: PR #%s satisfies the FINISH gate for issue #%s, as of head %s\n' "$pr" "$issue" "$head"
+printf '      (a snapshot — pin the merge to %s so a change after this verdict cannot slip through)\n' "$head"
