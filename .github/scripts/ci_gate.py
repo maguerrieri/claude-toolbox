@@ -71,6 +71,31 @@ SUPPORTED_KEYS = {"types", "branches", "branches-ignore", "paths", "paths-ignore
 DEFAULT_TYPES = ["opened", "synchronize", "reopened"]
 HEAD_TYPES = {"opened", "synchronize"}
 CLOSE_TYPES = {"closed"}
+
+# `pull_request` actions that start a new run *without* changing the head SHA,
+# mapped to the issue-event name that records them. Every one of these leaves
+# the PR's older runs in place for the same SHA, so a workflow subscribing to
+# one is only satisfied by a run that started after the action (see
+# `retrigger_freshness`). `opened` and `synchronize` need no such floor: the
+# first brings a PR with no history, the second a new SHA of its own.
+RETRIGGER_TYPES = {
+    "reopened": "reopened",
+    "ready_for_review": "ready_for_review",
+    "converted_to_draft": "convert_to_draft",
+    "labeled": "labeled",
+    "unlabeled": "unlabeled",
+    "review_requested": "review_requested",
+    "review_request_removed": "review_request_removed",
+    "assigned": "assigned",
+    "unassigned": "unassigned",
+    "milestoned": "milestoned",
+    "demilestoned": "demilestoned",
+    "locked": "locked",
+    "unlocked": "unlocked",
+}
+# Types ci-gate can place in time. `edited` is deliberately absent: a body edit
+# leaves no issue event, so a run predating it cannot be told from one after it.
+KNOWN_TYPES = HEAD_TYPES | CLOSE_TYPES | set(RETRIGGER_TYPES)
 # GitHub evaluates path filters against at most 300 changed files, and runs
 # every path-filtered workflow regardless when it cannot compute the diff at
 # all (documented for pushes of more than 1000 commits, or a diff timeout).
@@ -460,6 +485,15 @@ def validate_constructs(event: str, cfg: dict) -> None:
             f"{event}.types {sorted(types)}: must include both opened and synchronize "
             "(or be only closed) for ci-gate to know whether a head SHA triggers it"
         )
+    unknown = sorted(types - KNOWN_TYPES)
+    if unknown and not types <= CLOSE_TYPES:
+        # Such an action starts a run on an unchanged head SHA and leaves no
+        # issue event behind, so ci-gate could not tell an older run from the
+        # one the action triggered, and would report a stale success.
+        raise GateError(
+            f"{event}.types {unknown}: ci-gate cannot place such an event in time "
+            "(nothing records it), so it cannot tell a stale run from the one that event starts"
+        )
     if "branches" in cfg and "branches-ignore" in cfg:
         raise GateError(f"{event}: branches and branches-ignore cannot both be set")
     if "paths" in cfg and "paths-ignore" in cfg:
@@ -564,51 +598,52 @@ def latest_run(runs: list[dict], filename: str, event: str, own_run_id, pr_numbe
     return max(candidates, key=lambda r: (run_time(r), int(r.get("id", 0))))
 
 
-def last_reopened_at(events: list[dict]) -> str | None:
-    """When this PR was most recently reopened, from its issue events.
-
-    Read on every evaluation rather than taken from the triggering event: the
-    reopen's own runs may still be missing several triggers later (an `edited`
-    event, a manual dispatch, another workflow completing), and a floor that
-    existed only on the `reopened` event would drop away in exactly those
-    evaluations and let the pre-close runs turn the check green.
-    """
-    stamps = [e.get("created_at") for e in events if e.get("event") == "reopened" and e.get("created_at")]
+def latest_event_at(events: list[dict], name: str) -> str | None:
+    """When the PR most recently saw issue event `name`, if ever."""
+    stamps = [e.get("created_at") for e in events if e.get("event") == name and e.get("created_at")]
     return max(stamps) if stamps else None
 
 
-def reopen_freshness(manifest: dict, expected: list[tuple[str, str]], reopened_at: str | None) -> dict[str, str]:
-    """`{file: instant}` for expected workflows a reopen re-triggers.
+def retrigger_freshness(manifest: dict, expected: list[tuple[str, str]],
+                        events: list[dict]) -> dict[str, tuple[str, str]]:
+    """`{file: (instant, action)}` for workflows an action re-triggered on this head.
 
-    Reopening a PR does not change its head SHA, so every run from before it
-    was closed is still listed for that SHA. A workflow that subscribes to the
-    `reopened` type is about to run again, and its old success is not evidence
-    for the reopened PR -- until the new run exists, that workflow is pending.
-    Workflows without the type are not re-triggered, so their runs still count,
-    and a run that started after the reopen clears the floor for good.
+    Reopening a PR, marking it ready for review or labelling it does not change
+    its head SHA, so the runs from before the action are still listed for that
+    SHA while the run it started may not exist yet. A workflow subscribing to
+    such a type is only satisfied by a run that started after the action's own
+    instant; a run that did clears the floor for good, and a workflow with no
+    such type keeps counting its existing run.
+
+    The instants come from the PR's issue events, read on every evaluation
+    rather than taken from the triggering event: the new run may still be
+    missing several triggers later (a dispatch, another workflow completing),
+    and a floor that existed only on the triggering event would drop away in
+    exactly those evaluations.
     """
-    if not reopened_at:
-        return {}
-    fresh = {}
+    fresh: dict[str, tuple[str, str]] = {}
     for filename, event in expected:
         declared = (manifest.get("workflows") or {}).get(filename)
         cfg = normalize_on(declared if declared is not None else {}).get(event, {})
-        if "reopened" in set(cfg.get("types", DEFAULT_TYPES)):
-            fresh[filename] = reopened_at
+        for action in sorted(set(cfg.get("types", DEFAULT_TYPES)) & set(RETRIGGER_TYPES)):
+            instant = latest_event_at(events, RETRIGGER_TYPES[action])
+            if instant and instant > fresh.get(filename, ("", ""))[0]:
+                fresh[filename] = (instant, action)
     return fresh
 
 
 def aggregate(expected: list[tuple[str, str]], runs: list[dict], own_run_id, pr_number=None,
-              fresh_after: dict[str, str] | None = None) -> tuple[str, list[dict]]:
+              fresh_after: dict[str, tuple[str, str]] | None = None) -> tuple[str, list[dict]]:
     """Return (`success`|`failure`|`pending`, rows) for the expected set."""
     rows = []
     verdict = "success"
     fresh_after = fresh_after or {}
     for filename, event in expected:
-        run = latest_run(runs, filename, event, own_run_id, pr_number, fresh_after.get(filename))
+        floor = fresh_after.get(filename)
+        run = latest_run(runs, filename, event, own_run_id, pr_number, floor[0] if floor else None)
         if run is None:
             state = "pending"
-            detail = "no run since the PR was reopened" if filename in fresh_after else "no run yet"
+            detail = f"no run since this PR's latest `{floor[1]}` event" if floor else "no run yet"
         elif run.get("status") != "completed":
             state, detail = "pending", f"{run.get('status')} (run {run.get('id')})"
         elif run.get("conclusion") == "success":
@@ -769,14 +804,26 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     if commits > MAX_COMMITS:
         reasons.append(f"{commits} commits: GitHub skips path filtering (runs everything) above {MAX_COMMITS}, which ci-gate cannot mirror")
 
-    # Head-tree manifest + workflows, read by SHA: the head commit of any PR,
-    # fork PRs included, is present in the base repository's object store. If
-    # that read comes back empty anyway, fall back to the PR's own pull ref.
-    head_ref = head_sha
-    listing = api.listing(WORKFLOWS_DIR, head_ref)
-    if not listing and api.raw(MANIFEST_PATH, head_ref) is None:
-        head_ref = f"refs/pull/{number}/head"
+    # The manifest and workflows come from the tree GitHub actually runs for a
+    # `pull_request` event: the merge ref, this PR merged with the current
+    # base. A workflow added on the base branch after this one diverged runs
+    # for the PR even though the branch has never seen it, and one the base
+    # removed does not. The head commit is the fallback when the merge ref is
+    # not readable (a conflicted PR, or one GitHub has not computed yet), and
+    # the pull ref the fallback after that (a fork head the SHA read misses).
+    merge_ref = f"refs/pull/{number}/merge"
+    listing: list = []
+    for head_ref in (merge_ref, head_sha, f"refs/pull/{number}/head"):
         listing = api.listing(WORKFLOWS_DIR, head_ref)
+        if listing or api.raw(MANIFEST_PATH, head_ref) is not None:
+            break
+    notes = []
+    if head_ref != merge_ref:
+        notes.append(
+            f"read the CI configuration from `{head_ref}`: this PR's merge ref was not readable "
+            "(conflicted, or not computed yet), so a workflow the base branch added since this "
+            "branch diverged is not in the expected set"
+        )
     workflows: dict[str, object] = {}
     for entry in listing:
         name = entry.get("name", "")
@@ -816,12 +863,12 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
 
     if reasons:
         return {"verdict": "failure", "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows,
-                "changed_files": len(changed), "notes": ci_change_notes(changed)}
+                "changed_files": len(changed), "notes": notes + ci_change_notes(changed)}
 
     runs = api.runs(head_sha)
     expected = expected_set(manifest, changed, pr["base"]["ref"])
     observed = observed_unexpected(manifest, runs, expected, own_run_id, number)
-    fresh_after = reopen_freshness(manifest, expected, last_reopened_at(api.issue_events(number)))
+    fresh_after = retrigger_freshness(manifest, expected, api.issue_events(number))
     verdict, rows = aggregate(expected + observed, runs, own_run_id, number, fresh_after)
     for row in rows:
         if (row["workflow"], row["event"]) in observed:
@@ -829,7 +876,7 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     if base_sha:
         flag_unsubscribed(rows, workflows, subscribed_names(api, base_sha))
     return {"verdict": verdict, "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows,
-            "changed_files": len(changed), "notes": ci_change_notes(changed)}
+            "changed_files": len(changed), "notes": notes + ci_change_notes(changed)}
 
 
 def ci_change_notes(changed_files: list[str]) -> list[str]:

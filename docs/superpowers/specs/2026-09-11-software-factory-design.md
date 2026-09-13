@@ -402,11 +402,17 @@ installs only the version- and hash-pinned artifact recorded in
 holding a repository token never runs whatever PyPI serves at that moment. Refinements the implementation
 settled, all consistent with the paragraphs above:
 
-- **The manifest and workflow files are read from the PR's head tree**,
-  because that is the tree GitHub executes for the PR: computing the expected
-  set from `main`'s manifest would leave a PR that legitimately removes or
-  narrows a CI workflow pending forever (and no two-step landing escapes it,
-  since the workflow file itself matches its own path filter). The
+- **The manifest and workflow files are read from the PR's merge ref** --
+  `refs/pull/<n>/merge`, the branch merged with the current base -- because
+  that is the tree GitHub executes for a `pull_request` event: a workflow the
+  base added after this branch diverged runs for the PR even though the branch
+  has never seen it, and one the base removed does not. The branch head is the
+  fallback when the merge ref is not readable (a conflicted PR, or one GitHub
+  has not computed yet) and the PR's `head` ref the fallback after that; the
+  summary says which was used. Computing the expected set from `main`'s
+  manifest alone would instead leave a PR that legitimately removes or narrows
+  a CI workflow pending forever (and no two-step landing escapes it, since the
+  workflow file itself matches its own path filter). The
   aggregation logic, the lint, and the `remote.*` check stay base-branch
   code. Only `pull_request` workflows are aggregated: a
   `pull_request_target` workflow executes base-branch YAML, so its head-tree
@@ -452,16 +458,20 @@ settled, all consistent with the paragraphs above:
   `completed` with conclusion `success`; any other conclusion, `skipped`
   and `cancelled` included, is `failure`, and a missing or unfinished run
   is `pending`. Failure wins over pending. No expected workflow is
-  `success`. A **reopened** PR keeps its head SHA, so the runs from before
-  it was closed are still listed for that SHA while the reopen's own runs
-  may not exist yet: every expected workflow whose `types` include
-  `reopened` (the default) is `pending` until a run started after the
-  reopen exists, so the gate cannot report green on pre-close evidence; a
-  workflow the reopen does not re-trigger keeps counting its existing run.
-  The reopen instant is read from the PR's own issue events on every
-  evaluation, not taken from the triggering event, so the floor still holds
-  when the next evaluation comes from an edit, a dispatch, or another
-  workflow completing while the new runs are still missing. A crashed evaluator posts `failure` (the `report` job runs on
+  `success`. Some actions start a new run **without changing the head SHA**
+  -- `reopened` above all, but also `ready_for_review`, `labeled` and the
+  rest -- so the runs from before the action are still listed for that SHA
+  while the run it started may not exist yet. Every expected workflow whose
+  `types` name such an action is `pending` until a run started after that
+  action's own instant exists, so the gate cannot report green on stale
+  evidence; a workflow the action does not re-trigger keeps counting its
+  existing run, and one fresh run clears the floor for good. The instants
+  come from the PR's issue events, read on every evaluation rather than
+  taken from the triggering event, so the floor still holds when the next
+  evaluation comes from a dispatch or another workflow completing while the
+  new runs are still missing. `edited` is refused by the lint instead: a
+  body edit leaves no event behind, so a run predating it cannot be told
+  from one after it. A crashed evaluator posts `failure` (the `report` job runs on
   any non-cancelled outcome), and evaluations of one head SHA are serialized
   by a `concurrency` group so a stale verdict can never land after a fresher
   one. `workflow_dispatch` with the PR's head SHA re-evaluates on demand —

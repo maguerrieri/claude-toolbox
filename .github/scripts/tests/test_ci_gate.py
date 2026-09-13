@@ -402,9 +402,13 @@ def test_settings_paths_to_lint():
 # --- evaluation over a fake API ---------------------------------------------
 
 class FakeApi:
-    def __init__(self, prs, files, tree, runs, default="main", base_tree=None, commits=1, events=()):
+    def __init__(self, prs, files, tree, runs, default="main", base_tree=None, commits=1, events=(),
+                 merge_tree=None):
         self.prs, self.files, self.tree, self._runs, self.default = prs, files, tree, runs, default
         self.base_tree = tree if base_tree is None else base_tree
+        # The merge ref carries the PR merged with the base; unless a test says
+        # otherwise it holds the same files as the head.
+        self.merge_tree = tree if merge_tree is None else merge_tree
         self.commits = commits
         self.events = list(events)
 
@@ -430,7 +434,9 @@ class FakeApi:
         if ref == "base":
             return self.base_tree
         if getattr(self, "pull_ref_only", False):
-            return self.tree if ref.startswith("refs/pull/") else {}
+            return {} if ref.endswith("/merge") or not ref.startswith("refs/pull/") else self.tree
+        if ref.endswith("/merge"):
+            return self.merge_tree
         return self.tree
 
     def listing(self, path, ref):
@@ -809,23 +815,44 @@ def test_on_list_rejects_non_string_event_names():
 REOPENED_AT = "2026-01-02T00:00:00Z"
 
 
-def test_reopen_freshness_covers_only_retriggered_workflows():
+def test_retrigger_freshness_covers_only_retriggered_workflows():
     m = copy.deepcopy(MANIFEST)
     # gm-ci.yml keeps the default types (reopened included); this one does not.
     m["workflows"]["plugin-versions.yml"] = {"pull_request": {"types": ["opened", "synchronize"]}}
-    fresh = ci_gate.reopen_freshness(m, EXPECTED, REOPENED_AT)
-    assert fresh == {"gm-ci.yml": REOPENED_AT}
-    assert ci_gate.reopen_freshness(m, EXPECTED, None) == {}
+    fresh = ci_gate.retrigger_freshness(m, EXPECTED, REOPEN_EVENT)
+    assert fresh == {"gm-ci.yml": (REOPENED_AT, "reopened")}
+    assert ci_gate.retrigger_freshness(m, EXPECTED, []) == {}
+
+
+def test_retrigger_freshness_covers_every_action_it_can_place_in_time():
+    """A label or a ready-for-review starts a run on an unchanged head too."""
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["gm-ci.yml"] = {"pull_request": dict(GM["pull_request"], types=["opened", "synchronize", "labeled"])}
+    events = [{"event": "labeled", "created_at": "2026-01-05T00:00:00Z"},
+              {"event": "reopened", "created_at": REOPENED_AT}]
+    assert ci_gate.retrigger_freshness(m, EXPECTED, events)["gm-ci.yml"] == ("2026-01-05T00:00:00Z", "labeled")
+    # The newest applicable action wins; an action the workflow ignores does not.
+    m["workflows"]["gm-ci.yml"] = {"pull_request": dict(GM["pull_request"], types=["opened", "synchronize", "reopened"])}
+    assert ci_gate.retrigger_freshness(m, EXPECTED, events)["gm-ci.yml"] == (REOPENED_AT, "reopened")
+
+
+def test_lint_rejects_types_it_cannot_place_in_time():
+    """`edited` leaves no issue event, so a stale run cannot be told from a fresh one."""
+    m = copy.deepcopy(MANIFEST)
+    edited = {"pull_request": {"types": ["opened", "synchronize", "edited"]}}
+    m["workflows"]["plugin-versions.yml"] = edited
+    w = dict(WORKFLOWS, **{"plugin-versions.yml": wf(edited, "plugin versions")})
+    assert any("cannot place such an event in time" in e for e in ci_gate.lint(m, w, w["ci-gate.yml"]))
 
 
 def test_reopened_pr_ignores_runs_from_before_the_close():
     """The head SHA is unchanged by a reopen, so its old runs are still listed."""
     stale = [run("gm-ci.yml", id=1, started="2026-01-01T00:00:00Z"),
              run("plugin-versions.yml", id=2, started="2026-01-01T00:00:00Z")]
-    fresh_after = {f: REOPENED_AT for f, _ in EXPECTED}
+    fresh_after = {f: (REOPENED_AT, "reopened") for f, _ in EXPECTED}
     verdict, rows = ci_gate.aggregate(EXPECTED, stale, "999", fresh_after=fresh_after)
     assert verdict == "pending"
-    assert all(r["detail"] == "no run since the PR was reopened" for r in rows)
+    assert all(r["detail"] == "no run since this PR's latest `reopened` event" for r in rows)
 
     # The run the reopen triggered is evidence; a failure from it still blocks.
     after = stale + [run("gm-ci.yml", id=3, started="2026-01-02T00:00:01Z"),
@@ -837,14 +864,15 @@ def test_reopened_pr_ignores_runs_from_before_the_close():
     assert ci_gate.aggregate(EXPECTED, stale, "999")[0] == "success"
 
 
-def test_last_reopened_at_takes_the_most_recent_reopen():
+def test_latest_event_at_takes_the_most_recent_matching_event():
     events = [{"event": "closed", "created_at": "2026-01-03T00:00:00Z"},
               {"event": "reopened", "created_at": "2026-01-02T00:00:00Z"},
               {"event": "labeled", "created_at": "2026-01-04T00:00:00Z"},
               {"event": "reopened", "created_at": "2026-01-01T00:00:00Z"}]
-    assert ci_gate.last_reopened_at(events) == REOPENED_AT
-    assert ci_gate.last_reopened_at([{"event": "closed", "created_at": "2026-01-05T00:00:00Z"}]) is None
-    assert ci_gate.last_reopened_at([]) is None
+    assert ci_gate.latest_event_at(events, "reopened") == REOPENED_AT
+    assert ci_gate.latest_event_at(events, "labeled") == "2026-01-04T00:00:00Z"
+    assert ci_gate.latest_event_at([{"event": "closed", "created_at": "2026-01-05T00:00:00Z"}], "reopened") is None
+    assert ci_gate.latest_event_at([], "reopened") is None
 
 
 REOPEN_EVENT = [{"event": "reopened", "created_at": REOPENED_AT}]
@@ -935,7 +963,7 @@ def test_reopened_pr_still_floors_the_workflows_that_have_not_rerun():
     assert result["verdict"] == "pending"
     states = {r["workflow"]: (r["state"], r["detail"]) for r in result["rows"]}
     assert states["gm-ci.yml"][0] == "success"
-    assert states["plugin-versions.yml"] == ("pending", "no run since the PR was reopened")
+    assert states["plugin-versions.yml"] == ("pending", "no run since this PR's latest `reopened` event")
 
 
 @pytest.mark.parametrize("pattern,value,expected", [
@@ -951,3 +979,32 @@ def test_reopened_pr_still_floors_the_workflows_that_have_not_rerun():
 ])
 def test_character_classes_honor_escapes(pattern, value, expected):
     assert bool(ci_gate.pattern_to_regex(pattern).match(value)) is expected
+
+
+# --- the tree GitHub runs ----------------------------------------------------
+
+def test_evaluate_reads_the_merge_ref_not_the_branch_head():
+    """A workflow the base added after this branch diverged still runs for the PR."""
+    cleanup = wf({"pull_request": {"paths": ["docs/**"]}}, "cleanup")
+    merge_manifest = copy.deepcopy(MANIFEST)
+    merge_manifest["workflows"]["cleanup.yml"] = {"pull_request": {"paths": ["docs/**"]}}
+    merge_tree = dict(TREE, **{
+        ".github/factory-ci.yml": yaml.safe_dump(merge_manifest),
+        ".github/workflows/cleanup.yml": yaml.safe_dump(cleanup),
+        ".github/workflows/ci-gate.yml": yaml.safe_dump(gate(["cleanup", "gm CI", "plugin versions"])),
+    })
+    api = FakeApi([pr(1, "a" * 40)], ["docs/x.md"], TREE, [], merge_tree=merge_tree)
+    result = ci_gate.evaluate(api, "a" * 40, "999")
+    # The branch's own tree knows nothing of cleanup.yml; the merge ref does.
+    assert result["verdict"] == "pending"
+    assert "cleanup.yml" in [r["workflow"] for r in result["rows"]]
+    assert not any("merge ref was not readable" in n for n in result["notes"])
+
+
+def test_evaluate_falls_back_to_the_head_when_the_merge_ref_is_missing():
+    """A conflicted PR has no merge ref; the gate says so instead of failing."""
+    api = FakeApi([pr(1, "a" * 40)], ["docs/x.md"], TREE, [], merge_tree={})
+    result = ci_gate.evaluate(api, "a" * 40, "999")
+    # Evaluated from the branch head instead: only what that tree declares.
+    assert [r["workflow"] for r in result["rows"]] == ["plugin-versions.yml"]
+    assert any("merge ref was not readable" in n for n in result["notes"]), result["notes"]
