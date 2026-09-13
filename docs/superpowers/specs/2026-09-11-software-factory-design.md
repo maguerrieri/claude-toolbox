@@ -439,7 +439,10 @@ settled, all consistent with the paragraphs above:
   the rulesets protect, and the `factory-ci` environment is restricted to
   `main` anyway. Two open PRs to `main` sharing one head SHA fail closed.
 - **Filter semantics mirrored:** GitHub's pattern grammar (`*` not crossing
-  `/`, `**`, `?`/`+` quantifiers, character classes, ordered `!` negation),
+  `/`, `**`, `?`/`+` quantifiers, character classes with `!` negation and
+  backslash escapes -- a leading unescaped `^` in a class is refused, since
+  the cheat sheet does not say whether GitHub reads it as a negation or as a
+  member -- ordered `!` negation between patterns),
   `paths` vs `paths-ignore`, `branches` vs `branches-ignore` against the base
   ref, and `types` (a workflow whose types include neither `opened` nor
   `synchronize`, e.g. `closed`, is never expected). Two documented gaps: a

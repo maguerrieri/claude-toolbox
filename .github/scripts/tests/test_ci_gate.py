@@ -970,7 +970,7 @@ def test_reopened_pr_still_floors_the_workflows_that_have_not_rerun():
     (r"a[\]]b", "a]b", True),          # an escaped ] is a member, not the end of the class
     (r"a[\]]b", "axb", False),
     ("a[]]b", "a]b", True),            # a leading ] is a literal member (POSIX glob)
-    (r"[\^]x", "^x", True),            # ^ is only a negation to re, never to a glob
+    (r"[\^]x", "^x", True),            # an escaped caret is a plain member
     ("[!x]y", "ay", True),
     ("[!x]y", "xy", False),
     ("v[0-9]+", "v12", True),
@@ -1037,3 +1037,16 @@ def test_lint_rejects_a_workflow_wearing_the_gate_s_name():
     w = dict(WORKFLOWS, **{"twin.yml": wf({"pull_request": None}, "ci-gate")})
     errors = ci_gate.lint(m, w, w["ci-gate.yml"])
     assert any("subscribe to its own completions" in e for e in errors), errors
+
+
+def test_caret_class_is_refused_rather_than_guessed():
+    """GitHub's cheat sheet does not say whether a leading `^` negates a class."""
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.pattern_to_regex("[^x]y")
+    # The lint reports it instead of crashing, and the documented forms work.
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["gm-ci.yml"] = {"pull_request": {"paths": ["[^x]/**"]}}
+    w = dict(WORKFLOWS, **{"gm-ci.yml": wf({"pull_request": {"paths": ["[^x]/**"]}}, "gm CI")})
+    assert any("cannot tell whether GitHub reads a leading" in e for e in ci_gate.lint(m, w, w["ci-gate.yml"]))
+    assert ci_gate.select(["[!x]/y"], "a/y") is True
+    assert ci_gate.select([r"[\^x]/y"], "^/y") is True

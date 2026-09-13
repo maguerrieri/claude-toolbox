@@ -158,10 +158,21 @@ def class_to_regex(body: str) -> str:
     The body is never passed through verbatim: a member such as `]`, `^` or
     `\\` is meaningful to `re` in a different place than to a glob, so each one
     is escaped and only a range hyphen is kept as itself.
+
+    `!` is the documented glob negation. A leading unescaped `^` is refused
+    rather than guessed at: GitHub's filter cheat sheet does not say whether it
+    negates the class (as in `re`) or is a member of it, and either guess could
+    disagree with the selection GitHub actually makes. Write `[!...]` for a
+    negated class, or `[\\^...]` for one containing a caret.
     """
     out = ["["]
     i = 0
-    if body[:1] in ("!", "^"):
+    if body[:1] == "^":
+        raise GateError(
+            "character class `[^...]`: ci-gate cannot tell whether GitHub reads a leading `^` as "
+            "negation or as a member; write `[!...]` to negate, or escape it as `[\\^...]`"
+        )
+    if body[:1] == "!":
         out.append("^")  # glob negation
         i = 1
     first = i
