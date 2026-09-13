@@ -229,9 +229,12 @@ assert "a gh call through the shim carries the App token" grep -q "api /rate_lim
 : >"$GH_STUB_LOG"
 ( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$good" "$helper" --repo "$BOUND" exec -- gh api /user )
 assert "the shim does not recurse inside exec (one gh invocation)" test "$(wc -l <"$GH_STUB_LOG")" -eq 1
-# No environment flag may turn the shim into a pass-through. A caller can set any
-# variable, so a flag-based guard would let `FOO=... gh` reach the real gh with
-# whatever credential the session carries — under proxy-injected mode, the user's.
+# Nothing in the environment may turn the shim into a pass-through. Every call
+# goes through the helper, so the token is always this shim's repository and
+# broker, minted or refreshed now.
+#
+# A flag is settable by anyone: `FOO=... gh` must not reach the real gh with the
+# session's credential.
 for bogus in 0 1 true "$BOUND" "Other/Repo"; do
 	: >"$GH_STUB_LOG"
 	( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required \
@@ -239,7 +242,19 @@ for bogus in 0 1 true "$BOUND" "Other/Repo"; do
 	assert "FACTORY_TOKEN_ACTIVE=$bogus still goes through the wrapper" \
 		grep -q "api /rate_limit|$(token_of "$c6")" "$GH_STUB_LOG"
 done
-# Each environment sentinel means "no token yet", so each must be wrapped.
+# An inherited GH_TOKEN is no better a signal: it is not necessarily this shim's
+# token. A pre-existing user credential would author the work as the user, and an
+# installation token inherited by a long-running command may already have expired.
+# Both must be replaced by the helper's current token, not passed through.
+for inherited in gho_a_users_own_credential ghp_personal_access_token ghs_someone_elses_expired_installation_token; do
+	: >"$GH_STUB_LOG"
+	( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN="$inherited" \
+		FACTORY_BROKER_URL="$good" gh api /rate_limit )
+	assert "an inherited GH_TOKEN ($inherited) is replaced by the App token" \
+		grep -q "api /rate_limit|$(token_of "$c6")" "$GH_STUB_LOG"
+	refute "the inherited token ($inherited) never reaches gh" grep -q "$inherited" "$GH_STUB_LOG"
+done
+# The empty and pass-through cases go the same way.
 for sentinel in factory-token-required ""; do
 	: >"$GH_STUB_LOG"
 	( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN="$sentinel" \
@@ -247,8 +262,8 @@ for sentinel in factory-token-required ""; do
 	assert "GH_TOKEN=${sentinel:-(empty)} goes through the wrapper" \
 		grep -q "api /rate_limit|$(token_of "$c6")" "$GH_STUB_LOG"
 done
-# proxy-injected is also wrapped, and the wrapper then refuses: running gh there
-# would act as the user, so a non-zero exit with no gh call is the right outcome.
+# proxy-injected is wrapped and then refused: running gh there would act as the
+# user, so a non-zero exit with no gh call is the right outcome.
 : >"$GH_STUB_LOG"
 expect_exit "GH_TOKEN=proxy-injected is wrapped and refused (exit 3)" 3 bash -c \
 	"cd $work && PATH=$(printf '%q' "$shimdir"):\$PATH FACTORY_TOKEN_CACHE_DIR=$c6 GH_TOKEN=proxy-injected FACTORY_BROKER_URL=$good gh api /rate_limit"
