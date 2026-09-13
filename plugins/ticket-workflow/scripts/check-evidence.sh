@@ -463,10 +463,15 @@ if [ "$have_block" -eq 1 ]; then
 	fi
 fi
 
-# --- head consistency: every read above was against $head; a push during the gate
-# would leave a green old commit judged while the PR now points elsewhere.
-final_head=$(api "repos/$repo/pulls/$pr" --jq '.head.sha')
+# --- final state: every read above was against $head on an open PR. A push
+# during the gate would leave a green old commit judged while the PR points
+# elsewhere; a merge or close during the gate would hand FINISH a verdict for a
+# PR that is no longer open (and a merge keeps the same head, so the SHA alone
+# does not catch it). Either way nothing is decided — exit 2 and re-run.
+final_state=$(api "repos/$repo/pulls/$pr" --jq '"\(.state) \(.head.sha)"')
+final_head=${final_state#* }
 [ "$final_head" = "$head" ] || die 2 "PR #$pr's head moved during the gate ($head -> $final_head); re-run"
+[ "${final_state%% *}" = open ] || die 2 "PR #$pr stopped being open during the gate (now ${final_state%% *}); nothing was decided"
 
 # --- verdict -------------------------------------------------------------------------------
 if [ "$failures" -gt 0 ]; then

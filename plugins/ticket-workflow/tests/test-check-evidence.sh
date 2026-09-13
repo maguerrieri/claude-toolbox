@@ -479,6 +479,13 @@ expect_error "a head that moved between reads is an error, not a verdict" "head 
 new_case head-moved-late
 jq --arg s "$OLD" '.head.sha = $s' "$green/pull.json" >"$case_dir/pull.later.json"
 expect_error "a push during the gate is an error, not a verdict" "head moved during the gate" 7 42 --repo o/r
+new_case merged-late
+# A merge during the gate keeps the same head, so only the state catches it.
+jq '.state = "closed" | .merged = true' "$green/pull.json" >"$case_dir/pull.later.json"
+expect_error "a merge during the gate is an error, not a verdict" "stopped being open during the gate (now closed)" 7 42 --repo o/r
+new_case closed-late
+jq '.state = "closed"' "$green/pull.json" >"$case_dir/pull.later.json"
+expect_error "a close during the gate is an error, not a verdict" "stopped being open during the gate" 7 42 --repo o/r
 new_case api-down
 rm "$case_dir/pull.json"
 expect_error "an API failure is an error, not a verdict" "gh api repos/o/r/pulls/7 failed" 7 42 --repo o/r
