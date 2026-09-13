@@ -936,3 +936,18 @@ def test_reopened_pr_still_floors_the_workflows_that_have_not_rerun():
     states = {r["workflow"]: (r["state"], r["detail"]) for r in result["rows"]}
     assert states["gm-ci.yml"][0] == "success"
     assert states["plugin-versions.yml"] == ("pending", "no run since the PR was reopened")
+
+
+@pytest.mark.parametrize("pattern,value,expected", [
+    (r"a[\]]b", "a]b", True),          # an escaped ] is a member, not the end of the class
+    (r"a[\]]b", "axb", False),
+    ("a[]]b", "a]b", True),            # a leading ] is a literal member (POSIX glob)
+    (r"[\^]x", "^x", True),            # ^ is only a negation to re, never to a glob
+    ("[!x]y", "ay", True),
+    ("[!x]y", "xy", False),
+    ("v[0-9]+", "v12", True),
+    ("a[b", "a[b", True),              # unterminated: a literal bracket
+    (r"a[\\]b", "a\\b", True),         # an escaped backslash as a member
+])
+def test_character_classes_honor_escapes(pattern, value, expected):
+    assert bool(ci_gate.pattern_to_regex(pattern).match(value)) is expected

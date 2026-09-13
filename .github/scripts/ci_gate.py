@@ -98,6 +98,56 @@ class GateError(Exception):
 # --- GitHub filter patterns -------------------------------------------------
 
 
+def class_end(pattern: str, start: int) -> int:
+    """Index of the `]` that closes the class opened at `start`, or -1.
+
+    Backslash escapes hold inside a class, and a `]` written first (after the
+    optional `!`) is a literal member, as in POSIX globs -- so neither one ends
+    the class: `[\\]]` and `[]]` both match a literal `]`.
+    """
+    j = start + 1
+    if pattern[j : j + 1] == "!":
+        j += 1
+    if pattern[j : j + 1] == "]":
+        j += 1
+    while j < len(pattern):
+        if pattern[j] == "\\":
+            j += 2
+            continue
+        if pattern[j] == "]":
+            return j
+        j += 1
+    return -1
+
+
+def class_to_regex(body: str) -> str:
+    """A glob class body as a regex class, every member escaped for `re`.
+
+    The body is never passed through verbatim: a member such as `]`, `^` or
+    `\\` is meaningful to `re` in a different place than to a glob, so each one
+    is escaped and only a range hyphen is kept as itself.
+    """
+    out = ["["]
+    i = 0
+    if body[:1] in ("!", "^"):
+        out.append("^")  # glob negation
+        i = 1
+    first = i
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body):
+            out.append(re.escape(body[i + 1]))
+            i += 2
+            continue
+        if ch == "-" and first < i < len(body) - 1:
+            out.append("-")  # a range, e.g. 0-9
+        else:
+            out.append(re.escape(ch))
+        i += 1
+    out.append("]")
+    return "".join(out)
+
+
 def pattern_to_regex(pattern: str) -> re.Pattern:
     """Translate a GitHub filter pattern (the `paths:`/`branches:` cheat sheet) to a regex.
 
@@ -145,15 +195,12 @@ def pattern_to_regex(pattern: str) -> re.Pattern:
             out.append(c)
             i += 1
         elif c == "[":
-            j = pattern.find("]", i + 1)
+            j = class_end(pattern, i)
             if j == -1:
-                out.append(re.escape(c))
+                out.append(re.escape(c))  # unterminated: a literal bracket
                 i += 1
             else:
-                body = pattern[i + 1 : j]
-                if body.startswith("!"):
-                    body = "^" + body[1:]  # glob negation inside a class
-                out.append("[" + body + "]")
+                out.append(class_to_regex(pattern[i + 1 : j]))
                 i = j + 1
         else:
             out.append(re.escape(c))
