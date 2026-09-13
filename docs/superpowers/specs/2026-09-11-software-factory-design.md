@@ -459,8 +459,9 @@ settled, all consistent with the paragraphs above:
   and `cancelled` included, is `failure`, and a missing or unfinished run
   is `pending`. Failure wins over pending. No expected workflow is
   `success`. Some actions start a new run **without changing the head SHA**
-  -- `reopened` above all, but also `ready_for_review`, `labeled` and the
-  rest -- so the runs from before the action are still listed for that SHA
+  -- `reopened` above all, but also `ready_for_review`, `labeled`, and a
+  force-push back onto a commit the branch already used -- so the runs from
+  before the action are still listed for that SHA
   while the run it started may not exist yet. Every expected workflow whose
   `types` name such an action is `pending` until a run started after that
   action's own instant exists, so the gate cannot report green on stale
@@ -522,6 +523,17 @@ environment, or ruleset access) — in this order, per repo:*
    unenforced there until the account is on GitHub Pro (the rulesets API
    accepts them either way). Not verifiable from the implementing session;
    record the plan here once checked.
+7. Set **Settings › Actions › General › Workflow permissions** to *Read
+   repository contents and packages permissions* in both repos. A
+   `pull_request` workflow runs the PR's own YAML, so the `permissions:`
+   block in a CI workflow (`factory-scripts.yml` included) is a statement of
+   intent that the PR itself can rewrite; the repository default is the
+   ceiling that actually caps what a PR-authored workflow may request, and
+   it is the only place the read-only guarantee for PR-controlled test code
+   can be enforced. `ci-gate` is unaffected either way: it is
+   `pull_request_target`, so it runs base-branch YAML, and its verdict is
+   posted by the App from a `main`-only environment rather than with
+   `GITHUB_TOKEN`.
 
 *Recorded ruleset JSON* (as committed under `.github/rulesets/`; the
 `integration_id` `0` is the placeholder the apply script replaces with the

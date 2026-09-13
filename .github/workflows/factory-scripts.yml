@@ -10,6 +10,10 @@ on:
       - ".github/**"
 
 # Runs PR-controlled test code, so the token it holds must be read-only.
+# This block is itself PR-controlled -- a `pull_request` workflow runs the PR's
+# own YAML -- so it is a statement of intent, not the boundary. The boundary is
+# the repository's default workflow permissions, set to read-only, which caps
+# what any PR-authored workflow can request (spec 1d, manual step 7).
 permissions:
   contents: read
 
@@ -18,6 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Do not leave the token in .git/config for the PR's own test code.
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Run script tests

@@ -1008,3 +1008,23 @@ def test_evaluate_falls_back_to_the_head_when_the_merge_ref_is_missing():
     # Evaluated from the branch head instead: only what that tree declares.
     assert [r["workflow"] for r in result["rows"]] == ["plugin-versions.yml"]
     assert any("merge ref was not readable" in n for n in result["notes"]), result["notes"]
+
+
+def test_force_push_back_to_an_old_head_floors_every_workflow():
+    """B -> A restores a head whose old runs are still listed for that SHA."""
+    events = [{"event": "head_ref_force_pushed", "created_at": "2026-01-06T00:00:00Z"}]
+    fresh = ci_gate.retrigger_freshness(MANIFEST, EXPECTED, events)
+    assert fresh == {f: ("2026-01-06T00:00:00Z", "force-push") for f, _ in EXPECTED}
+
+    stale = [run("gm-ci.yml", id=1, started="2026-01-01T00:00:00Z"),
+             run("plugin-versions.yml", id=2, started="2026-01-01T00:00:00Z")]
+    api = FakeApi([pr(1, "a" * 40)], ["plugins/gm/x.py"], TREE, stale, events=events)
+    result = ci_gate.evaluate(api, "a" * 40, "999")
+    assert result["verdict"] == "pending"
+    assert all("force-push" in r["detail"] for r in result["rows"])
+
+    # Runs from after the force-push are the ones that count.
+    after = stale + [run("gm-ci.yml", id=3, started="2026-01-06T00:00:01Z"),
+                     run("plugin-versions.yml", id=4, started="2026-01-06T00:00:01Z")]
+    api = FakeApi([pr(1, "a" * 40)], ["plugins/gm/x.py"], TREE, after, events=events)
+    assert ci_gate.evaluate(api, "a" * 40, "999")["verdict"] == "success"

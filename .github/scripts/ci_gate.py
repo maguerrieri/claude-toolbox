@@ -96,6 +96,13 @@ RETRIGGER_TYPES = {
 # Types ci-gate can place in time. `edited` is deliberately absent: a body edit
 # leaves no issue event, so a run predating it cannot be told from one after it.
 KNOWN_TYPES = HEAD_TYPES | CLOSE_TYPES | set(RETRIGGER_TYPES)
+
+# A force-push can put the branch back on a commit it used before, so a
+# `synchronize` run is starting while that SHA's older runs are still listed.
+# Every aggregated workflow subscribes to `synchronize` (the lint requires it),
+# so this floor applies to all of them. On a force-push to a SHA never used
+# before it is a no-op: that SHA has no older runs to exclude.
+FORCE_PUSH_EVENT = "head_ref_force_pushed"
 # GitHub evaluates path filters against at most 300 changed files, and runs
 # every path-filtered workflow regardless when it cannot compute the diff at
 # all (documented for pushes of more than 1000 commits, or a diff timeout).
@@ -608,9 +615,10 @@ def retrigger_freshness(manifest: dict, expected: list[tuple[str, str]],
                         events: list[dict]) -> dict[str, tuple[str, str]]:
     """`{file: (instant, action)}` for workflows an action re-triggered on this head.
 
-    Reopening a PR, marking it ready for review or labelling it does not change
-    its head SHA, so the runs from before the action are still listed for that
-    SHA while the run it started may not exist yet. A workflow subscribing to
+    Reopening a PR, marking it ready for review, labelling it or force-pushing
+    it back onto a commit it already used does not give it a head SHA without
+    history, so the runs from before the action are still listed for that SHA
+    while the run it started may not exist yet. A workflow subscribing to
     such a type is only satisfied by a run that started after the action's own
     instant; a run that did clears the floor for good, and a workflow with no
     such type keeps counting its existing run.
@@ -622,11 +630,16 @@ def retrigger_freshness(manifest: dict, expected: list[tuple[str, str]],
     exactly those evaluations.
     """
     fresh: dict[str, tuple[str, str]] = {}
+    forced = latest_event_at(events, FORCE_PUSH_EVENT)
     for filename, event in expected:
         declared = (manifest.get("workflows") or {}).get(filename)
         cfg = normalize_on(declared if declared is not None else {}).get(event, {})
-        for action in sorted(set(cfg.get("types", DEFAULT_TYPES)) & set(RETRIGGER_TYPES)):
-            instant = latest_event_at(events, RETRIGGER_TYPES[action])
+        actions = set(cfg.get("types", DEFAULT_TYPES)) & set(RETRIGGER_TYPES)
+        candidates = [(latest_event_at(events, RETRIGGER_TYPES[a]), a) for a in sorted(actions)]
+        if forced:
+            # A force-push restores a head whose runs may already be listed.
+            candidates.append((forced, "force-push"))
+        for instant, action in candidates:
             if instant and instant > fresh.get(filename, ("", ""))[0]:
                 fresh[filename] = (instant, action)
     return fresh
