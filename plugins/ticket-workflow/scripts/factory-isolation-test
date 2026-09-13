@@ -62,6 +62,15 @@ while [ $# -gt 0 ]; do
 	esac
 done
 [ -n "$BOUND" ] && [ -n "$FOREIGN" ] || { echo "--bound and --foreign are required" >&2; exit 2; }
+# Strictly owner/repo. A malformed value such as `Acme/Repo-A?probe` would be
+# refused by the broker *because it is malformed*, and the run would print PASS
+# without ever exercising a real foreign repository.
+REPO_RE='^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'
+for arg in BOUND FOREIGN; do
+	val=${!arg}
+	case "$val" in .* | */.*) echo "--$(printf '%s' "$arg" | tr 'A-Z' 'a-z') must be owner/repo: $val" >&2; exit 2 ;; esac
+	printf '%s' "$val" | grep -Eq "$REPO_RE" || { echo "--$(printf '%s' "$arg" | tr 'A-Z' 'a-z') must be owner/repo: $val" >&2; exit 2; }
+done
 [ -n "$BROKER" ] || { echo "--broker or FACTORY_BROKER_URL is required" >&2; exit 2; }
 BROKER=${BROKER%/}
 # Same transport rule as the helper: the API-credentials proxy attaches the bearer
@@ -193,7 +202,10 @@ if printf '%s' "$envdump" | grep -Eq '(^|=)fb_[A-Za-z0-9_-]{43}($|[^A-Za-z0-9_-]
 else
 	ok "environment holds no broker-bearer-shaped value"
 fi
-if printf '%s' "$envdump" | grep -Eq 'BEGIN (RSA )?PRIVATE KEY'; then
+# Any PEM private key, not only RSA: EC, DSA, OPENSSH and ENCRYPTED headers are
+# just as much key material, and a scan that misses them reports a clean
+# environment that is not.
+if printf '%s' "$envdump" | grep -Eq 'BEGIN [A-Z0-9 ]*PRIVATE KEY'; then
 	fail "environment holds a PEM private key"
 else
 	ok "environment holds no PEM private key"
@@ -276,8 +288,21 @@ else
 			echo "# note: could not confirm $FOREIGN exists unauthenticated (HTTP $foreign_exists); a 404 below will be inconclusive"
 		fi
 		s=$(gh_api POST "/repos/$FOREIGN/git/blobs" '{"content":"factory-isolation-test probe","encoding":"utf-8"}')
+		# Only an authorization denial proves isolation. A 401 says the credential
+		# itself was rejected — but this same token just answered 200 on
+		# /installation/repositories, so a 401 here is something else and settles
+		# nothing. A 403 for rate limiting or abuse detection is likewise not a
+		# statement about repository scope, and GitHub names itself in the body.
+		blob_msg=$(jq -r '.message // ""' "$work/gh.json" 2>/dev/null || printf '')
 		case "$s" in
-		401 | 403) ok "POST /repos/$FOREIGN/git/blobs → $s (write rejected)" ;;
+		403)
+			case "$(printf '%s' "$blob_msg" | tr 'A-Z' 'a-z')" in
+			*"rate limit"* | *"abuse"* | *"secondary"* | *"too many requests"*)
+				fail "POST /repos/$FOREIGN/git/blobs → 403, but the body reads \"$blob_msg\" — that is throttling, not a repository-scope denial, so it proves nothing. Re-run when the limit has cleared." ;;
+			*) ok "POST /repos/$FOREIGN/git/blobs → 403 (write rejected: not authorized for $FOREIGN)" ;;
+			esac
+			;;
+		401) fail "POST /repos/$FOREIGN/git/blobs → 401, yet this token answered 200 on /installation/repositories — the credential was rejected for some reason other than repository scope, so this path is inconclusive." ;;
 		404)
 			if [ "$foreign_exists" = 200 ]; then
 				ok "POST /repos/$FOREIGN/git/blobs → 404 (write rejected; $FOREIGN is known to exist)"

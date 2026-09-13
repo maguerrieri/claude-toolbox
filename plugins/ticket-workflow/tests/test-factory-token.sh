@@ -242,6 +242,29 @@ done
 	FACTORY_BROKER_URL="$good" FACTORY_TOKEN_ACTIVE="$BOUND" gh api /rate_limit )
 assert "the matching repository short-circuits to the real gh" grep -q "api /rate_limit|factory-token-required" "$GH_STUB_LOG"
 
+# A previous session's deny shim stays on PATH through CLAUDE_ENV_FILE. If `shim`
+# resolved it as the real gh, the new wrapper would call the deny shim and every
+# gh call stayed refused even after the broker came back.
+stale="$work/stale-deny"; mkdir -p "$stale"
+cat >"$stale/gh" <<'DENY'
+#!/usr/bin/env bash
+# factory-token-generated-shim
+echo "gh is refused in this factory session" >&2
+exit 3
+DENY
+chmod 755 "$stale/gh"
+shim2="$work/shim-after-deny"
+( cd "$work" && PATH="$stale:$PATH" run "$c6" --repo "$BOUND" shim "$shim2" ) >/dev/null 2>&1
+assert "shim never resolves a factory-generated shim as the real gh" \
+	bash -c "! grep -q $(printf '%q' "$stale/gh") $(printf '%q' "$shim2/gh")"
+: >"$GH_STUB_LOG"
+( cd "$work" && PATH="$shim2:$stale:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required \
+	FACTORY_BROKER_URL="$good" gh api /rate_limit )
+assert "a session recovers after a stale deny shim: the call reaches the real gh" \
+	grep -q "api /rate_limit|$(token_of "$c6")" "$GH_STUB_LOG"
+# The "no real gh at all" case is covered by test-factory-shim-hook.sh, which runs
+# the hook on a stripped PATH and asserts the deny shim is what lands.
+
 # --- 5. setup-git ---------------------------------------------------------------
 repo="$work/checkout"
 git init -q "$repo" && git -C "$repo" remote add origin "git@github.com:$BOUND.git"
@@ -318,6 +341,47 @@ head_before=$(git -C "$nrepo" rev-parse HEAD)
 expect_exit "a foreign author in the range stops normalize-commits (exit 6)" 6 bash -c "cd $nrepo && FACTORY_TOKEN_CACHE_DIR=$c6 GH_TOKEN=factory-token-required FACTORY_BROKER_URL=$good $helper normalize-commits main"
 assert "the branch is untouched when it stops" test "$(git -C "$nrepo" rev-parse HEAD)" = "$head_before"
 expect_exit "normalize-commits needs a base branch" 2 bash -c "cd $nrepo && FACTORY_TOKEN_CACHE_DIR=$c6 GH_TOKEN=factory-token-required FACTORY_BROKER_URL=$good $helper normalize-commits"
+
+# A range containing a root commit: `git rev-list --parents` prints the hash alone
+# for it, and `cut` without -s passes that whole line through, which would make the
+# commit its own parent.
+rrepo="$work/rootrange"
+git init -q -b main "$rrepo"
+git -C "$rrepo" remote add origin "https://github.com/$BOUND"
+commit_as "$rrepo" "claude" "noreply@anthropic.com" r.txt "root commit, platform identity"
+git -C "$rrepo" update-ref refs/remotes/origin/main "$(git -C "$rrepo" rev-parse HEAD)"
+git -C "$rrepo" update-ref -d refs/remotes/origin/main
+git -C "$rrepo" branch -f base_empty 2>/dev/null || true
+# origin/main points at nothing before the root commit, so the root is in range.
+git -C "$rrepo" symbolic-ref refs/remotes/origin/main refs/heads/empty_base 2>/dev/null || true
+git -C "$rrepo" symbolic-ref -d refs/remotes/origin/main 2>/dev/null || true
+commit_as "$rrepo" "claude" "noreply@anthropic.com" r2.txt "child of the root"
+git -C "$rrepo" update-ref refs/remotes/origin/main "$(git -C "$rrepo" rev-list --max-parents=0 HEAD)"
+rroot=$(git -C "$rrepo" rev-list --max-parents=0 HEAD)
+rc=0; ( cd "$rrepo" && run "$c6" normalize-commits main 2>"$work/root.err" ) || rc=$?
+assert "normalize-commits succeeds when the range abuts a root commit" test "$rc" -eq 0
+assert "the root commit keeps exactly one child and no self-parent" \
+	test "$(git -C "$rrepo" rev-list --count HEAD)" -eq 2
+assert "the root commit itself is not rewritten into its own parent" \
+	test "$(git -C "$rrepo" rev-list --max-parents=0 HEAD)" = "$rroot"
+
+# An unusable App identity in normalize-commits must fail closed the way setup-git
+# does, with the same machine-readable reason slug.
+badapp=$(start_broker badapp FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_BAD_APP_ID=not-a-number)
+cbad="$work/cbad"
+expect_exit "normalize-commits refuses a non-numeric bot_user_id (exit 4)" 4 bash -c \
+	"cd $nrepo && FACTORY_TOKEN_CACHE_DIR=$cbad GH_TOKEN=factory-token-required FACTORY_BROKER_URL=$badapp $helper normalize-commits main 2>$work/badapp.err"
+assert "that refusal carries reason=no_app_identity" grep -q 'reason=no_app_identity' "$work/badapp.err"
+
+# The refresh window may only make the helper mint earlier, never resurrect an
+# expired token, and a nonsense value is refused rather than silently inverting it.
+cref="$work/cref"
+# Populate the cache first: with no cache file the refresh window is never consulted.
+run "$cref" --repo "$BOUND" exec -- true >/dev/null 2>&1
+for bad_refresh in -3600 abc 1.5 " "; do
+	expect_exit "FACTORY_TOKEN_REFRESH_SECONDS=$bad_refresh is refused (exit 2)" 2 bash -c \
+		"FACTORY_TOKEN_CACHE_DIR=$cref GH_TOKEN=factory-token-required FACTORY_BROKER_URL=$good FACTORY_TOKEN_REFRESH_SECONDS='$bad_refresh' $helper --repo $BOUND exec -- true"
+done
 
 # --- 7. repository resolution + status/clear -------------------------------------
 assert "repo resolved from origin remote (ssh form)" bash -c "cd $repo && $helper --broker $good status | grep -q '^repository: $BOUND\$'"

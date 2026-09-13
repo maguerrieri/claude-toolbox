@@ -118,5 +118,20 @@ refute "a non-loopback http:// broker URL is a usage error" run "$script" --boun
 refute "same repo for --bound and --foreign is a usage error" run "$script" --bound "$A" --foreign "$A" --broker "$good" --skip-github
 refute "missing --foreign is a usage error" run "$script" --bound "$A" --broker "$good" --skip-github
 
+# Every PEM private-key header, not only RSA: a scan that misses EC, DSA, OPENSSH
+# or an encrypted key reports a clean environment that is not.
+for pem_kind in "EC" "DSA" "OPENSSH" "ENCRYPTED"; do
+	out=$(run env SOME_KEY="-----BEGIN $pem_kind PRIVATE KEY-----" "$script" --bound "$A" --foreign "$B" --broker "$good" --skip-github 2>&1) && rc=0 || rc=$?
+	assert "a $pem_kind PEM key in the environment: FAIL" test "$rc" -eq 1
+done
+
+# A malformed --bound/--foreign would be refused by the broker *because* it is
+# malformed, so the run could print PASS without exercising a real foreign repo.
+for bad in "Acme/Repo-A?probe" "Acme/Repo-A/extra" "no-slash" "/leading" "trailing/" "../etc" "Acme/../x"; do
+	refute "--foreign $bad is a usage error" run "$script" --bound "$A" --foreign "$bad" --broker "$good" --skip-github
+	refute "--bound $bad is a usage error" run "$script" --bound "$bad" --foreign "$B" --broker "$good" --skip-github
+done
+assert "a well-formed owner/repo pair is still accepted" run "$script" --bound "$A" --foreign "$B" --broker "$good" --skip-github
+
 printf '\n%s\n' "$([ "$failures" -eq 0 ] && echo "all tests passed" || echo "$failures test(s) failed")"
 exit "$([ "$failures" -eq 0 ] && echo 0 || echo 1)"

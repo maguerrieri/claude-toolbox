@@ -18,6 +18,7 @@ Configuration (environment):
   FAKE_BROKER_EXPIRES_IN  seconds until expiry (default 3600)
   FAKE_BROKER_PERMS       JSON object to return as `permissions` (misbehaving broker)
   FAKE_BROKER_NO_APP=1    omit the `app` object (misbehaving broker)
+  FAKE_BROKER_BAD_APP_ID=x  app.bot_user_id is present but not a number
   FAKE_BROKER_EXPIRED=1   answer with an expiry already in the past (misbehaving broker)
   FAKE_BROKER_BUDGET      refuse with 429 budget_exhausted after this many mints
   FAKE_BROKER_EXPIRES_AT  literal value to send as `expires_at` (e.g. garbage, to check
@@ -50,6 +51,8 @@ COUNT_FILE = os.environ.get("FAKE_BROKER_COUNT_FILE", "")
 FORCE_STATUS = os.environ.get("FAKE_BROKER_STATUS", "")
 PERMS = os.environ.get("FAKE_BROKER_PERMS", "")
 NO_APP = os.environ.get("FAKE_BROKER_NO_APP") == "1"
+# A present but unusable app object: a non-numeric bot_user_id.
+BAD_APP_ID = os.environ.get("FAKE_BROKER_BAD_APP_ID", "")
 EXPIRED = os.environ.get("FAKE_BROKER_EXPIRED") == "1"
 BUDGET = int(os.environ.get("FAKE_BROKER_BUDGET", "0"))
 FORBIDDEN_ERROR = os.environ.get("FAKE_BROKER_403_ERROR", "repository_not_bound")
@@ -127,6 +130,8 @@ class Handler(BaseHTTPRequestHandler):
             body["permissions"] = json.loads(PERMS)
         if NO_APP:
             del body["app"]
+        if BAD_APP_ID:
+            body["app"]["bot_user_id"] = BAD_APP_ID
         self._json(200, body)
 
 
