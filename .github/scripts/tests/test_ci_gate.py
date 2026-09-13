@@ -671,6 +671,64 @@ def test_apply_rulesets_rejects_placeholder_and_bad_ids(app_id):
     assert "App id" in proc.stderr
 
 
+def _apply_rulesets(tmp_path, rulesets, app_id="12345"):
+    """Run the script over a copy of the tree whose rulesets/ holds `rulesets`.
+
+    Only jq (and the coreutils the script itself calls) are on PATH: gh is
+    deliberately absent, so a run that gets past validation dies at the first
+    API call and never touches a real repository.
+    """
+    import shutil
+    import subprocess
+    jq = shutil.which("jq")
+    if jq is None:
+        pytest.skip("jq is not installed")
+    scripts, rules, bin_dir = (tmp_path / d for d in ("scripts", "rulesets", "bin"))
+    for d in (scripts, rules, bin_dir):
+        d.mkdir()
+    shutil.copy(os.path.join(REPO, ".github", "scripts", "apply-rulesets"), scripts / "apply-rulesets")
+    for name, body in rulesets.items():
+        (rules / f"{name}.json").write_text(body if isinstance(body, str) else json.dumps(body))
+    for tool in ("jq", "dirname", "head", "sed"):
+        found = shutil.which(tool)
+        if found:
+            os.symlink(found, bin_dir / tool)
+    return subprocess.run(["/bin/bash", str(scripts / "apply-rulesets"), "owner/repo", app_id],
+                          capture_output=True, text=True, env=dict(os.environ, PATH=str(bin_dir)))
+
+
+def _recorded_rulesets():
+    out = {}
+    for name in ("main-integrity", "agent-branches"):
+        with open(os.path.join(REPO, ".github", "rulesets", f"{name}.json")) as fh:
+            out[name] = json.load(fh)
+    return out
+
+
+@pytest.mark.parametrize("mutate,found", [
+    (lambda checks: [], "found 0"),
+    (lambda checks: checks + [{"context": "factory/ci-gate", "integration_id": 0}], "found 2"),
+    (lambda checks: [{"context": "ci/other", "integration_id": 0}], "found 0"),
+])
+def test_apply_rulesets_rejects_an_unpinnable_main_integrity(tmp_path, mutate, found):
+    rulesets = _recorded_rulesets()
+    for rule in rulesets["main-integrity"]["rules"]:
+        if rule["type"] == "required_status_checks":
+            params = rule["parameters"]
+            params["required_status_checks"] = mutate(params["required_status_checks"])
+    proc = _apply_rulesets(tmp_path, rulesets)
+    assert proc.returncode != 0, proc
+    assert "expected exactly one factory/ci-gate required status check" in proc.stderr, proc.stderr
+    assert found in proc.stderr, proc.stderr
+
+
+def test_apply_rulesets_pins_the_recorded_rulesets(tmp_path):
+    """The recorded files pass the assertion (the run then dies at the missing gh)."""
+    proc = _apply_rulesets(tmp_path, _recorded_rulesets())
+    assert proc.returncode != 0, proc  # no gh on PATH
+    assert "factory/ci-gate" not in proc.stderr, proc.stderr
+
+
 # --- this repository's own manifest -----------------------------------------
 
 def test_repo_manifest_is_consistent():
@@ -687,3 +745,49 @@ def test_repo_manifest_is_consistent():
     # Every entry evaluates without hitting an unsupported construct.
     for f, e in ci_gate.expected_set(manifest, ["README.md", ".github/workflows/x.yml"], "main"):
         assert f in manifest["workflows"] and e in ci_gate.PR_EVENTS
+
+
+# --- shapes GitHub will not run ---------------------------------------------
+
+def test_lint_gate_rejects_mapping_trigger_lists():
+    """A mapping iterates as its keys in Python, so it must be rejected by type.
+
+    `types: {opened: null, synchronize: null}` is not a list of strings to
+    GitHub; accepting it would lint a gate GitHub refuses to run.
+    """
+    keys = ["opened", "synchronize", "reopened", "ready_for_review", "edited"]
+    doc = gate(["gm CI", "plugin versions"],
+               pull_request_target={"types": dict.fromkeys(keys), "branches": {"main": None}})
+    errors = ci_gate.lint(MANIFEST, dict(WORKFLOWS, **{"ci-gate.yml": doc}), doc)
+    assert any("types must be a string or a list of strings" in e for e in errors), errors
+    assert any("branches must be exactly" in e for e in errors), errors
+
+    doc = gate({"gm CI": None, "plugin versions": None})
+    errors = ci_gate.lint(MANIFEST, dict(WORKFLOWS, **{"ci-gate.yml": doc}), doc)
+    assert any("workflows must be a string or a list of strings" in e for e in errors), errors
+
+
+def test_lint_gate_rejects_non_string_list_items():
+    doc = gate(["gm CI", 7])
+    errors = ci_gate.lint(MANIFEST, dict(WORKFLOWS, **{"ci-gate.yml": doc}), doc)
+    assert any("workflows must be a string or a list of strings" in e for e in errors), errors
+
+
+def test_lint_gate_accepts_a_bare_string_branch():
+    doc = gate(["gm CI", "plugin versions"],
+               pull_request_target={"types": ["opened", "synchronize", "reopened", "ready_for_review"],
+                                    "branches": "main"})
+    assert ci_gate.lint(MANIFEST, dict(WORKFLOWS, **{"ci-gate.yml": doc}), doc) == []
+
+
+def test_summary_is_capped_for_the_check_runs_api():
+    """output.summary over 65535 characters is rejected outright by the API."""
+    rows = [{"workflow": f"w{i}.yml", "event": "pull_request", "state": "pending", "detail": "x" * 300}
+            for i in range(500)]
+    result = {"verdict": "pending", "head_sha": "a" * 40, "pr": 7, "reasons": [], "rows": rows, "changed_files": 1}
+    title, summary = ci_gate.render(result)
+    assert len(summary) <= ci_gate.MAX_SUMMARY_CHARS
+    assert summary.endswith(ci_gate.TRUNCATED)
+    assert summary.startswith("PR #7")
+    short = ci_gate.render({**result, "rows": rows[:1]})[1]
+    assert ci_gate.TRUNCATED not in short and short.endswith("\n")

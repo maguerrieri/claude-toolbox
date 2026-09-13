@@ -306,9 +306,11 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
             # A path filter here would let GitHub skip the gate for some PRs,
             # so the required check would never be posted.
             errors.append(f"on.{GATE_EVENT} may only set {sorted(GATE_TARGET_KEYS)}, got {sorted(set(target) - GATE_TARGET_KEYS)}")
-        types = set(_as_list(target.get("types")))
-        if not GATE_TYPES <= types:
-            errors.append(f"on.{GATE_EVENT}.types must include {sorted(GATE_TYPES)}, got {sorted(types)}")
+        types = _as_list(target.get("types"))
+        if types is None:
+            errors.append(f"on.{GATE_EVENT}.types must be a string or a list of strings")
+        elif not GATE_TYPES <= set(types):
+            errors.append(f"on.{GATE_EVENT}.types must include {sorted(GATE_TYPES)}, got {sorted(set(types))}")
         if _as_list(target.get("branches")) != [PROTECTED_BASE]:
             errors.append(f"on.{GATE_EVENT}.branches must be exactly [{PROTECTED_BASE!r}]")
     run = raw.get("workflow_run")
@@ -321,13 +323,15 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
             errors.append(f"on.workflow_run may only set {sorted(GATE_RUN_KEYS)}, got {sorted(set(run) - GATE_RUN_KEYS)}")
         if _as_list(run.get("types")) != ["completed"]:
             errors.append("on.workflow_run.types must be exactly ['completed']")
-        if not _as_list(run.get("workflows")):
+        names = _as_list(run.get("workflows"))
+        if names is None:
+            errors.append("on.workflow_run.workflows must be a string or a list of strings")
+        elif not names:
             errors.append("on.workflow_run.workflows must be a non-empty list (omitted means every workflow, ci-gate's own included)")
-        names = sorted(_as_list(run.get("workflows")))
-        if names != expected_names:
+        elif sorted(names) != expected_names:
             errors.append(
                 "on.workflow_run.workflows must list exactly the manifest's workflows\n"
-                f"      ci-gate:  {names}\n"
+                f"      ci-gate:  {sorted(names)}\n"
                 f"      manifest: {expected_names}"
             )
     dispatch = raw.get("workflow_dispatch") if "workflow_dispatch" in raw else None
@@ -338,10 +342,21 @@ def lint_gate(gate_doc, expected_names: list[str]) -> list[str]:
     return errors
 
 
-def _as_list(value) -> list:
+def _as_list(value) -> list | None:
+    """A trigger key's value as the list of strings GitHub accepts, else None.
+
+    Strict on purpose: any iterable would otherwise pass, and a mapping
+    (`types: {opened: null, synchronize: null}`) iterates as its keys in
+    Python, so it would lint as a valid list while GitHub rejects the
+    workflow.
+    """
     if value is None:
         return []
-    return [value] if isinstance(value, str) else list(value)
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return list(value)
+    return None
 
 
 def validate_constructs(event: str, cfg: dict) -> None:
@@ -731,6 +746,11 @@ def flag_unsubscribed(rows: list[dict], workflows: dict[str, object], subscribed
 # --- Rendering + Actions glue -----------------------------------------------
 
 
+# The check-runs API caps output.summary at 65535 characters.
+MAX_SUMMARY_CHARS = 65535
+TRUNCATED = "\n\n[truncated: the full detail is in the ci-gate run log]\n"
+
+
 def render(result: dict) -> tuple[str, str]:
     """(title, markdown summary) for the check run and the step summary."""
     verdict = result["verdict"]
@@ -757,7 +777,14 @@ def render(result: dict) -> tuple[str, str]:
         "pending": "Waiting for expected CI workflows",
         "skip": "Nothing to evaluate",
     }
-    return titles[verdict], "\n".join(lines).strip() + "\n"
+    summary = "\n".join(lines).strip() + "\n"
+    if len(summary) > MAX_SUMMARY_CHARS:
+        # The check-runs API rejects a longer output.summary outright, which
+        # would lose the verdict as well as the detail. PR-controlled text
+        # (manifest keys, workflow names, filter patterns) reaches this string
+        # verbatim, so the cap is load-bearing, not theoretical.
+        summary = summary[: MAX_SUMMARY_CHARS - len(TRUNCATED)].rstrip() + TRUNCATED
+    return titles[verdict], summary
 
 
 VERDICTS = ("success", "failure", "pending", "skip")

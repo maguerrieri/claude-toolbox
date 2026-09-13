@@ -30,10 +30,24 @@ fi
 dir=$(cd "$(dirname "$0")/../rulesets" && pwd)
 
 for name in main-integrity agent-branches; do
-  body=$(jq --argjson id "$app_id" '
-    (.rules[]? | select(.type == "required_status_checks")
-      | .parameters.required_status_checks[]
-      | select(.context == "factory/ci-gate") | .integration_id) = $id
+  # The substitution is a no-op on a ruleset that does not require
+  # factory/ci-gate, and a silent no-op would apply the recorded placeholder --
+  # requiring the check by name alone. So assert the check is there and pinned,
+  # on every ruleset that requires status checks at all.
+  body=$(jq --argjson id "$app_id" --arg name "$name" '
+    def gate: [.rules[]? | select(.type == "required_status_checks")
+                 | .parameters.required_status_checks[]
+                 | select(.context == "factory/ci-gate")];
+    def requires_checks: any(.rules[]?; .type == "required_status_checks");
+    if requires_checks and (gate | length) != 1 then
+      error("\($name): expected exactly one factory/ci-gate required status check, found \(gate | length)")
+    else . end
+    | (.rules[]? | select(.type == "required_status_checks")
+        | .parameters.required_status_checks[]
+        | select(.context == "factory/ci-gate") | .integration_id) = $id
+    | if requires_checks and (gate | map(select(.integration_id == $id)) | length) != 1 then
+        error("\($name): factory/ci-gate integration_id was not pinned to \($id)")
+      else . end
   ' "$dir/$name.json")
   existing=$(gh api "repos/$repo/rulesets" --paginate --jq ".[] | select(.name == \"$name\") | .id" | head -n1)
   if [ -n "$existing" ]; then
