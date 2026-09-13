@@ -11,7 +11,11 @@ section 2d option 5 (`docs/superpowers/specs/2026-09-11-software-factory-design.
 - `hooks/checkout`, `hooks/command` — the runner's lifecycle hooks, one-line
   shims into the wrapper.
 - `Dockerfile` — the runner image; provisions with `.claude/cloud-setup.sh`
-  from a pinned ref at build time.
+  from a pinned commit at build time.
+- `provision-from-ref.sh` — the build step that does it: hands item 6's script
+  a checkout whose `origin/main` is the pinned commit, runs the reviewed copy
+  as `runner`, then deletes the context. Tests in
+  `../scripts/tests/test_provision_from_ref.py`.
 - `compose.yml` — evaluation recipe; production uses the orchestrator's
   `spawn-runner` hook (one container per session).
 

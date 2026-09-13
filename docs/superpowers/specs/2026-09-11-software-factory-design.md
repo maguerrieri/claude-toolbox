@@ -1014,7 +1014,28 @@ pushing actor is the user too. Therefore:
    an unprivileged `runner` user, and runs `.claude/cloud-setup.sh` from a
    pinned **commit SHA** of this repository **at image build** (the build
    refuses a branch or tag name and records the SHA in the image), never
-   from a session's checkout — the self-hosted analogue of 2b's protected-copy stub, and the
+   from a session's checkout.
+
+   Item 6's script is written for a cloud session, so it reads its inputs
+   from a *checkout*: `repo_dir` is `$CLAUDE_PROJECT_DIR`, which must contain
+   `.git`, and the script fetches `origin/main` and reads `settings.json`,
+   the allowlist and its own copy out of that ref. The build therefore
+   constructs one (`.github/self-hosted/provision-from-ref.sh`): the pinned
+   commit is fetched into a fresh repository, a local `main` is pointed at
+   it, and `origin` is that same repository over `file://`, so the script's
+   own fetch succeeds with **no network** and `origin/main` resolves to the
+   pinned SHA and never to whatever `main` has since become. HEAD sits on
+   that commit, so the script's `.claude/` drift check is clean and the
+   snapshot is provisioned as a trusted one. The root-owned installed copy
+   is what runs, as the `runner` user with `PATH` passed through (`su`
+   resets it, and the script silently skips the plugin install when `claude`
+   is absent from `PATH`); the writable context is deleted before the layer
+   ends, leaving the reviewed copy, the SHA record, and the plugins and
+   manifest in the provisioning user's home. The contract is covered by
+   `.github/scripts/tests/test_provision_from_ref.py`, which provisions
+   against a throwaway upstream whose `main` has moved past the pinned
+   commit and runs the repository's own `cloud-setup.sh` once item 6 lands
+   it — the self-hosted analogue of 2b's protected-copy stub, and the
    cache-staleness gap of 2b does not exist here because every session gets
    a freshly built image's filesystem. Until item 6 lands the build warns
    that the file is absent rather than pretending the image is provisioned.

@@ -44,33 +44,17 @@ RUN useradd --create-home --uid 10001 runner \
 COPY --chmod=0555 scripts/factory-session-wrapper /opt/factory/factory-session-wrapper
 COPY --chmod=0555 self-hosted/hooks/ /opt/factory/hooks/
 
-# Same provisioning as the hosted environments, from a reviewed ref. The
-# script is checkout-independent by design (2b: it never runs anything from a
-# checkout), so running it against an empty workspace at build time is the
-# intended use. Until item 6 lands the file does not exist; the build says so
-# loudly instead of pretending the image is provisioned.
-# FACTORY_SETUP_REF must be a full commit SHA, not a branch or tag: a branch
-# would let a rebuild run setup code nobody re-reviewed. The fetch lands in a
-# root-only temp dir (mktemp -d is 0700), so the reviewed script is installed
-# world-readable under /opt/factory first and run from there as the runner
-# user; the installed copy and /opt/factory/cloud-setup.ref record which setup
-# the image was provisioned with.
-RUN set -eu; \
-    case "${FACTORY_SETUP_REF:-}" in \
-      *[!0-9a-f]*|"") echo "FACTORY_SETUP_REF must be a full 40-hex commit SHA" >&2; exit 1 ;; \
-    esac; \
-    [ "${#FACTORY_SETUP_REF}" -eq 40 ] || { echo "FACTORY_SETUP_REF must be a full 40-hex commit SHA" >&2; exit 1; }; \
-    tmp=$(mktemp -d); git init -q "$tmp/src"; \
-    git -C "$tmp/src" fetch -q --depth 1 "$FACTORY_SETUP_REPO" "$FACTORY_SETUP_REF"; \
-    git -C "$tmp/src" checkout -q FETCH_HEAD; \
-    printf '%s\n' "$FACTORY_SETUP_REF" >/opt/factory/cloud-setup.ref; chmod 0444 /opt/factory/cloud-setup.ref; \
-    if [ -f "$tmp/src/.claude/cloud-setup.sh" ]; then \
-      install -m 0444 "$tmp/src/.claude/cloud-setup.sh" /opt/factory/cloud-setup.sh; \
-      su runner -c "cd /tmp && bash -euo pipefail /opt/factory/cloud-setup.sh"; \
-    else \
-      echo "WARNING: .claude/cloud-setup.sh absent at $FACTORY_SETUP_REF; image is NOT provisioned (item 6 pending)" >&2; \
-    fi; \
-    rm -rf "$tmp"
+# Same provisioning as the hosted environments, from one reviewed commit.
+# provision-from-ref.sh hands item 6's script the checkout it reads its inputs
+# from, with `origin/main` pinned to FACTORY_SETUP_REF (a full commit SHA, never
+# a branch: a rebuild must not run setup code nobody re-reviewed), installs the
+# reviewed copy root-owned at /opt/factory/cloud-setup.sh, records the SHA in
+# cloud-setup.ref, and deletes the context. See that script's header for why the
+# context is needed and `.github/scripts/tests/test_provision_from_ref.py` for
+# the integration check.
+COPY --chmod=0555 self-hosted/provision-from-ref.sh /opt/factory/provision-from-ref.sh
+RUN FACTORY_SETUP_REPO="$FACTORY_SETUP_REPO" FACTORY_RUN_AS=runner \
+      /opt/factory/provision-from-ref.sh "${FACTORY_SETUP_REF:?set with --build-arg FACTORY_SETUP_REF=<full commit SHA>}"
 
 USER runner
 WORKDIR /workspace
