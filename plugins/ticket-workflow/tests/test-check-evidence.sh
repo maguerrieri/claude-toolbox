@@ -360,19 +360,38 @@ set_body "$(printf '## Evidence\n```json\n```\n\nCloses #42\n')"
 expect_refuse "an empty json fence refuses (validation keys off the selected fence, not its content)" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r
 new_case unterminated-fence
 set_body "$(printf '## Evidence\n```json\n%s\n' "$EVIDENCE_BLOCK")"
-expect_refuse "an unterminated json fence refuses" "an unterminated \`\`\`json fence under '## Evidence' (0 completed, 1 never closed)" 7 42 --repo o/r
+expect_refuse "an unterminated json fence refuses" "an unterminated \`\`\`json fence under '## Evidence'" 7 42 --repo o/r
 new_case valid-plus-unterminated
 set_body "$(printf '## Evidence\n```json\n%s\n```\n\n```json\n%s\n' "$EVIDENCE_BLOCK" "$EVIDENCE_BLOCK")"
-expect_refuse "a valid fence followed by an unterminated one refuses" "(1 completed, 1 never closed)" 7 42 --repo o/r
+expect_refuse "a valid fence followed by an unterminated one refuses" "an unterminated \`\`\`json fence under '## Evidence'" 7 42 --repo o/r
 new_case unterminated-before-next-heading
 set_body "$(printf '## Evidence\n```json\n%s\n\n## Notes\nx\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
-expect_refuse "a fence left open when the next section starts refuses" "(0 completed, 1 never closed)" 7 42 --repo o/r
+expect_refuse "a fence left open when the next section starts refuses" "an unterminated \`\`\`json fence under '## Evidence'" 7 42 --repo o/r
 for bad in '.tests = true' '.docs = {}' '.context_reads = 7' '.context_reads = [1, "AGENTS.md"]' '.context_reads = [true]' '.session = null' '.role = 3' '.wall_clock_min = false' '.critic = []' '.schema = ["ticket-workflow/evidence/1"]'; do
 	new_case "type-$(printf '%s' "$bad" | tr -c 'a-z' '-')"
 	set_body "$(body_with "$bad")"
 	expect_refuse "a non-string value ($bad) is a rule-6 FAIL, never a jq error" "6 evidence block:" 7 42 --repo o/r
 	if [[ $out == *"jq: error"* ]]; then fail "type case $bad: jq errored"; fi
 done
+# A quoted example is text, not the section: the parser tracks enclosing fences.
+new_case decoy-only
+set_body "$(printf 'The template we fill in:\n\n````markdown\n## Evidence\n```json\n%s\n```\n````\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
+expect_refuse "an Evidence section quoted inside an enclosing fence is not a section" "6 evidence: no '## Evidence' section in the PR body" 7 42 --repo o/r
+new_case decoy-tilde
+set_body "$(printf 'Example:\n\n~~~\n## Evidence\n```json\n%s\n```\n~~~\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
+expect_refuse "a decoy inside a tilde fence is not a section" "no '## Evidence' section" 7 42 --repo o/r
+new_case decoy-then-real
+set_body "$(printf 'The template we fill in:\n\n````markdown\n## Evidence\n```json\n%s\n```\n````\n\n## Evidence\n```json\n%s\n```\n\nCloses #42\n' "$EVIDENCE_BLOCK" "$EVIDENCE_BLOCK")"
+expect_pass "a quoted example followed by the real section passes, counting only the real one" 7 42 --repo o/r
+new_case decoy-nested-under-heading
+set_body "$(printf '## Evidence\n````markdown\n```json\n%s\n```\n````\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
+expect_refuse "a json fence nested inside a longer fence under the heading does not count" "found 0" 7 42 --repo o/r
+new_case subheading-stays-inside
+set_body "$(printf '## Evidence\n### Notes\n```json\n%s\n```\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
+expect_pass "a ### subheading does not end the Evidence section" 7 42 --repo o/r
+new_case next-h2-ends-section
+set_body "$(printf '## Evidence\n\n## Notes\n```json\n%s\n```\n\nCloses #42\n' "$EVIDENCE_BLOCK")"
+expect_refuse "a fence under the next h2 is outside the Evidence section" "found 0" 7 42 --repo o/r
 new_case malformed
 set_body "$(printf '## Evidence\n```json\n{"schema": "ticket-workflow/evidence/1",\n```\n\nCloses #42\n')"
 expect_refuse "malformed JSON refuses" "6 evidence: the block is not exactly one strict JSON object" 7 42 --repo o/r

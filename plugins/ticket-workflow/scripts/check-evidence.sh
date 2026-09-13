@@ -370,39 +370,56 @@ elif [ "$confirm_high" -eq 1 ]; then
 fi
 
 # --- rule 6: exactly one well-formed Evidence block -------------------------------------
-# Print the first ```json fenced block after a line matching <anchor> (ERE via
-# awk -v, so metacharacters use bracket expressions, never backslashes).
-extract_json_after() { # <file> <anchor regex>
-	awk -v anchor="$2" '
-		!found && $0 ~ anchor { found = 1; next }
-		found && !infence && /^```json[[:space:]]*$/ { infence = 1; next }
-		infence && /^```[[:space:]]*$/ { exit }
-		infence { print }
-	' "$1"
-}
-count_evidence_headings() { grep -c '^## Evidence[[:space:]]*$' "$1" || true; }
-count_evidence_fences() { # "<completed ```json … ``` pairs> <unterminated fences>" under the Evidence heading, before the next `## `
-	awk '
-		/^## Evidence[[:space:]]*$/ { inside = 1; next }
-		inside && /^## / { inside = 0; if (open) { open = 0; dangling++ } }
-		inside && !open && /^```json[[:space:]]*$/ { open = 1; next }
-		inside && open && /^```[[:space:]]*$/ { open = 0; n++ }
-		END { print n + 0, dangling + open }
-	' "$1"
-}
+# One fence-aware parser backs the heading count, the fence count and the
+# extraction, so all three agree about what is structure and what is quoted
+# text: a `## Evidence` line or a ```json snippet quoted inside another fence
+# (a template example in a test plan, say) is text, never the block. Same
+# parser and same column-0 contract as the evidence-block contract test
+# (tests/test-evidence-block.sh, item 1a), which pins these decoys from the
+# template's side.
+evidence_parser='
+	# A fence opens with 3+ backticks or 3+ tildes (CommonMark); it closes on a
+	# line of the same character at least as long, with nothing else on it.
+	function run(s, c) { match(s, "^[" c "]+"); return RLENGTH }
+	!infence && /^(```|~~~)/ {
+		infence = 1; fchar = substr($0, 1, 1); width = run($0, fchar)
+		info = substr($0, width + 1); sub(/[[:space:]]+$/, "", info)
+		json = (inside && info == "json"); buf = ""
+		next
+	}
+	infence && substr($0, 1, 1) == fchar && run($0, fchar) >= width && $0 ~ ("^[" fchar "]+[[:space:]]*$") {
+		infence = 0
+		if (json) { fences++; if (MODE == "extract" && !done) { printf "%s", buf; done = 1 } }
+		json = 0; next
+	}
+	infence { if (json) buf = buf $0 "\n"; next }
+	/^## Evidence[[:space:]]*$/ { headings++; inside = 1; next }
+	/^##?([ \t]|$)/ { inside = 0 }
+	# A json fence still open at EOF is malformed, whatever came before it:
+	# report -1 so the "exactly one" comparison fails rather than counting an
+	# earlier closed block as the whole story.
+	END {
+		if (infence && json) fences = -1
+		if (MODE == "headings") print headings + 0; else if (MODE == "fences") print fences + 0
+	}
+'
+count_evidence_headings() { awk -v MODE=headings "$evidence_parser" "$1"; }
+count_evidence_fences() { awk -v MODE=fences "$evidence_parser" "$1"; }
+extract_evidence_block() { awk -v MODE=extract "$evidence_parser" "$1"; }
+
 headings=$(count_evidence_headings "$tmpdir/body")
-read -r fences dangling < <(count_evidence_fences "$tmpdir/body")
+fences=$(count_evidence_fences "$tmpdir/body")
 block='' have_block=0
 if [ "$headings" -eq 0 ]; then
 	fail "6 evidence: no '## Evidence' section in the PR body"
 elif [ "$headings" -gt 1 ]; then
 	fail "6 evidence: $headings '## Evidence' sections; exactly one block per PR"
-elif [ "$dangling" -ne 0 ]; then
-	fail "6 evidence: an unterminated \`\`\`json fence under '## Evidence' ($fences completed, $dangling never closed)"
+elif [ "$fences" -lt 0 ]; then
+	fail "6 evidence: an unterminated \`\`\`json fence under '## Evidence'"
 elif [ "$fences" -ne 1 ]; then
 	fail "6 evidence: expected one \`\`\`json fence under '## Evidence', found $fences"
 else
-	block=$(extract_json_after "$tmpdir/body" '^## Evidence[[:space:]]*$')
+	block=$(extract_evidence_block "$tmpdir/body")
 	have_block=1
 fi
 if [ "$have_block" -eq 1 ]; then
