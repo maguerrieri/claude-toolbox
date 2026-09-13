@@ -526,17 +526,28 @@ environment, or ruleset access) — in this order, per repo:*
    unenforced there until the account is on GitHub Pro (the rulesets API
    accepts them either way). Not verifiable from the implementing session;
    record the plan here once checked.
-7. Set **Settings › Actions › General › Workflow permissions** to *Read
-   repository contents and packages permissions* in both repos. A
-   `pull_request` workflow runs the PR's own YAML, so the `permissions:`
-   block in a CI workflow (`factory-scripts.yml` included) is a statement of
-   intent that the PR itself can rewrite; the repository default is the
-   ceiling that actually caps what a PR-authored workflow may request, and
-   it is the only place the read-only guarantee for PR-controlled test code
-   can be enforced. `ci-gate` is unaffected either way: it is
-   `pull_request_target`, so it runs base-branch YAML, and its verdict is
-   posted by the App from a `main`-only environment rather than with
-   `GITHUB_TOKEN`.
+7. Token settings, in **Settings › Actions › General**, in both repos: set
+   **Workflow permissions** to *Read repository contents and packages
+   permissions*, and leave **Send write tokens to workflows from pull
+   requests** unselected; under fork-PR settings, require approval for
+   workflows from outside collaborators.
+   **What this does and does not buy** (checked against GitHub's permission
+   calculation, which starts from the enterprise/organization/repository
+   default, *adjusts* it by the workflow and then job `permissions:` blocks,
+   and only downgrades write to read for a pull request from a **fork**): the
+   repository default governs any workflow that declares no `permissions:`,
+   and the fork rules make an untrusted contributor's PR run with a read-only
+   token, no secrets, and no run at all until approved. It does **not** cap a
+   *same-repository* PR: that PR's own YAML can request `contents: write` and
+   get it, so the `permissions:` block in `factory-scripts.yml` is containment
+   against mistakes, not a boundary against its author. No repository setting
+   closes that, and none needs to: a same-repository PR comes from someone who
+   already has push access, which is the same trusted-collaborator position
+   section 1d already takes on PR-authored CI. Treat PR-controlled test code as
+   trusted-collaborator code, not as sandboxed code.
+   `ci-gate` is unaffected by all of this: it is `pull_request_target`, so it
+   runs base-branch YAML, and its verdict is posted by the App from a
+   `main`-only environment rather than with `GITHUB_TOKEN`.
 
 *Recorded ruleset JSON* (as committed under `.github/rulesets/`; the
 `integration_id` `0` is the placeholder the apply script replaces with the

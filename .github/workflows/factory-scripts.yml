@@ -9,11 +9,17 @@ on:
     paths:
       - ".github/**"
 
-# Runs PR-controlled test code, so the token it holds must be read-only.
+# Runs PR-controlled test code, so the token it holds is read-only.
+#
 # This block is itself PR-controlled -- a `pull_request` workflow runs the PR's
-# own YAML -- so it is a statement of intent, not the boundary. The boundary is
-# the repository's default workflow permissions, set to read-only, which caps
-# what any PR-authored workflow can request (spec 1d, manual step 7).
+# own YAML -- and nothing caps it for a same-repository PR: GitHub starts from
+# the repository default and then *adjusts* it by the workflow and job blocks,
+# downgrading write to read only for pull requests from a *fork*. So this is
+# containment against mistakes, not a boundary against the PR's author, and the
+# real positions are: a same-repository PR comes from someone who already has
+# push access, while a fork PR gets a read-only token, no secrets, and (with
+# the fork-workflow approval setting) no run at all until a maintainer says so.
+# Spec 1d, manual step 7.
 permissions:
   contents: read
 
