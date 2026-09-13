@@ -711,9 +711,16 @@ the IAM API, enumerates every testable permission on the project
 names per call) which of them the credential holds, and revokes the key and
 fails provisioning on any permission outside the role or on a check that
 could not run — a full enumeration rather than a sample, so a stray
-mutating grant on any service is caught; a declared key that cannot be
-obtained or activated fails provisioning the same way, since a snapshot
-without the credential would report `SETUP OK` forever. `--assert-iam`
+mutating grant on any service is caught. Dropping the credential is local
+to the VM: deleting the key is an IAM write this role must not have, so the
+script prints `ACTION REQUIRED` and the key is rotated by hand. A declared
+key that cannot be obtained or activated fails provisioning the same way,
+as does a plugin, marketplace, or prerequisite failure, and so does
+`.claude/` drift in a repo that declares a key (the drift skips the
+credential, so the snapshot does not realize `origin/main`). In every one
+of those cases **no manifest is written**, because a manifest is the claim
+that the snapshot is current and `--verify` would otherwise answer `SETUP
+OK` forever against an incomplete one. `--assert-iam`
 runs the same check from a session, which is the "IAM assertion test" the
 credential-boundary test below relies on. The snapshot manifest
 (`~/.factory-setup/manifest`) records the SHA-256 of `origin/main`'s
@@ -734,10 +741,13 @@ its factory environments exist, runs `origin/main`'s provisioning when
 head tree's script must carry the header line `NEVER EXECUTES ANYTHING
 FROM THE CHECKOUT` and no line may invoke `make`, a Node or Python package
 manager, a build tool, `terraform`/`docker`/`direnv`, a `./` or `../`
-path, a sourced file, or an interpreter on a relative script (its options
-walked, so `bash -e setup.sh` is caught and `bash -c "$s"` is not; comments
-excluded, quote-aware), and a PR that removes a script its base carries
-fails the gate. `.github/scripts/tests/test_cloud_setup.py` runs the real
+path, a sourced file, or an interpreter whose script argument is not a
+literal absolute path (its options walked, so `bash -e setup.sh` and `bash
+"$dir/x.sh"` are caught and `bash -c "$s"` is not). Comment stripping is
+quote-aware, backslash continuations are joined before matching (`ma\` +
+`ke` is one command to the shell and one line to the lint), a tool matches
+by any path, the rule must appear as a comment line rather than anywhere in
+the text, and a PR that removes a script its base carries fails the gate. `.github/scripts/tests/test_cloud_setup.py` runs the real
 script against a throwaway origin with recording `claude`/`gcloud`/`curl`/
 `op` stubs and covers the setup-script tests below that need no
 environment (branch marker never runs, planted `Makefile` and `postinstall`

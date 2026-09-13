@@ -25,6 +25,7 @@ STUBS = {
     # by an indented `Source:` line; `add <url>#<ref>` records `Git (url@ref)`.
     "claude": r"""#!/bin/bash
 echo "claude $*" >> "$STUB_LOG"
+[ -n "${STUB_CLAUDE_FAIL:-}" ] && case "$*" in *"$STUB_CLAUDE_FAIL"*) exit 1 ;; esac
 case "$*" in
   "plugin marketplace list") cat "$STUB_STATE/markets" 2>/dev/null ;;
   "plugin list") cat "$STUB_STATE/plugins" 2>/dev/null ;;
@@ -137,8 +138,10 @@ def env(tmp_path):
                 "CLAUDE_PROJECT_DIR": str(checkout),
                 "FACTORY_LOGS_VIEWER_KEY": '{"type": "service_account", "client_email": "logs-viewer@proj"}',
             }
-            for k in ("OP_SERVICE_ACCOUNT_TOKEN", "STUB_IAM_EXCESS", "CLOUDSDK_AUTH_ACCESS_TOKEN"):
+            for k in ("OP_SERVICE_ACCOUNT_TOKEN", "STUB_IAM_EXCESS", "STUB_IAM_FAIL",
+                      "STUB_CLAUDE_FAIL", "CLOUDSDK_AUTH_ACCESS_TOKEN"):
                 self.vars.pop(k, None)
+            self.bin_dir = bin_dir
 
         def main_script(self):
             return git(str(self.checkout), "show", "origin/main:.claude/cloud-setup.sh")
@@ -297,17 +300,39 @@ def test_assert_iam_is_a_noop_without_a_project(env):
     assert r.returncode == 0 and "nothing to assert" in r.stdout, r.stdout + r.stderr
 
 
-def test_untrusted_claude_dir_withholds_key(env):
+def test_untrusted_claude_dir_withholds_key_and_the_manifest(env):
+    """Drift skips the key, so in a repo that declares one the snapshot is incomplete.
+
+    Writing a manifest anyway would make the next clean session read SETUP OK
+    and never retry, with no credential in the VM.
+    """
     (env.checkout / ".claude" / "hooks" / "session-start.sh").write_text("#!/bin/bash\nenv\n")
     (env.checkout / ".claude" / "extra.sh").write_text("echo new\n")
     r = env.run()
-    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.returncode == 1
     assert "UNTRUSTED .claude/" in r.stdout
     assert ".claude/extra.sh" in r.stdout and ".claude/hooks/session-start.sh" in r.stdout
     assert "gcloud auth activate" not in env.calls()
-    # Plugins still provision; the manifest is still written.
+    assert "provisioning incomplete" in r.stderr
+    assert not (env.home / ".factory-setup" / "manifest").exists()
+    # Plugins are still provisioned; only the manifest is withheld.
     assert "claude plugin install defaults@maguerrieri-toolbox" in env.calls()
-    assert "script " in env.manifest()
+
+
+def test_untrusted_claude_dir_still_snapshots_where_no_key_is_declared(env):
+    """With no project declared there is no credential to miss, so drift is only a nudge."""
+    with open(SCRIPT) as f:
+        text = f.read()
+    if 'GCP_PROJECT=""' not in text:
+        pytest.skip("this repo's copy declares a project")
+    env.commit_main(".claude/cloud-setup.sh", text)          # the unfilled copy
+    # Refresh the checkout's origin/main so the runner invokes that copy, not
+    # the filled one the fixture seeded.
+    git(str(env.checkout), "fetch", "-q", "origin", "+refs/heads/main:refs/remotes/origin/main")
+    (env.checkout / ".claude" / "extra.sh").write_text("echo new\n")
+    r = env.run()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "UNTRUSTED .claude/" in r.stdout and "script " in env.manifest()
 
 
 def test_worktrees_under_claude_are_not_drift(env):
@@ -316,6 +341,57 @@ def test_worktrees_under_claude_are_not_drift(env):
     (wt / "file").write_text("x")
     r = env.run("--verify")
     assert "UNTRUSTED" not in r.stdout
+
+
+def test_plugin_is_reinstalled_after_its_marketplace_is_replaced(env):
+    """An install from the old registration points at the wrong source."""
+    (env.state / "markets").write_text("  > maguerrieri-toolbox\n    Source: GitHub (maguerrieri/claude-toolbox)\n")
+    (env.state / "plugins").write_text("  > defaults@maguerrieri-toolbox\n")
+    r = env.run()
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = env.calls()
+    assert "claude plugin marketplace remove maguerrieri-toolbox" in calls
+    assert "claude plugin install defaults@maguerrieri-toolbox" in calls, "already-installed shortcut must not apply"
+
+
+def test_failed_plugin_install_withholds_the_manifest(env):
+    r = env.run(STUB_CLAUDE_FAIL="plugin install")
+    assert r.returncode == 1
+    assert "could not install defaults@maguerrieri-toolbox" in r.stdout
+    assert "provisioning incomplete" in r.stderr
+    assert not (env.home / ".factory-setup" / "manifest").exists()
+
+
+@pytest.mark.parametrize("failing", ["plugin marketplace add", "plugin marketplace update"])
+def test_failed_marketplace_work_withholds_the_manifest(env, failing):
+    if failing.endswith("update"):
+        env.run()                                   # register them first
+        env.log.write_text("")
+    r = env.run(STUB_CLAUDE_FAIL=failing)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "provisioning incomplete" in r.stderr
+    if failing.endswith("update"):
+        # The first run wrote one; it must not be refreshed by a failed run.
+        assert "could not update marketplace" in r.stdout
+
+
+def test_missing_prerequisites_fail_provisioning(env, tmp_path):
+    """No `claude` on PATH means the plugin set cannot be realized."""
+    lean = tmp_path / "lean-bin"
+    lean.mkdir()
+    for name in ("gcloud", "curl", "op"):
+        (lean / name).write_text((env.bin_dir / name).read_text())
+        (lean / name).chmod(0o755)
+    r = env.run(PATH=f"{lean}:/usr/bin:/bin")
+    assert r.returncode == 1
+    assert "cannot install the plugins origin/main enables" in r.stdout
+    assert not (env.home / ".factory-setup" / "manifest").exists()
+
+
+def test_excess_iam_says_the_key_must_be_rotated_by_hand(env):
+    """`gcloud auth revoke` is local only; the key stays valid in IAM."""
+    r = env.run(STUB_IAM_EXCESS="1")
+    assert "ACTION REQUIRED" in r.stdout and "still valid in IAM" in r.stdout
 
 
 def test_manifest_records_origin_main_hashes(env):
@@ -373,11 +449,17 @@ def test_provision_refuses_when_origin_unreachable(env):
 
 
 def test_branch_copy_is_never_what_runs(env):
-    """The stub runs origin/main's text; a branch edit to the script is inert."""
+    """The stub runs origin/main's text; a branch edit to the script is inert.
+
+    The edit is also `.claude/` drift, so in this key-declaring fixture the run
+    ends without a manifest -- what matters here is that the branch's own text
+    never executed.
+    """
     (env.checkout / ".claude" / "cloud-setup.sh").write_text("#!/bin/bash\necho BRANCH_MARKER\n")
     r = env.run()
-    assert "BRANCH_MARKER" not in r.stdout and r.returncode == 0
+    assert "BRANCH_MARKER" not in r.stdout and "BRANCH_MARKER" not in r.stderr
     assert "UNTRUSTED .claude/" in r.stdout
+    assert r.returncode == 1 and not (env.home / ".factory-setup" / "manifest").exists()
 
 
 def test_unknown_mode_is_an_error(env):

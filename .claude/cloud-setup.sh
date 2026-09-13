@@ -107,14 +107,18 @@ marketplace_source() {
   ' <<<"$marketplaces"
 }
 
+# Non-zero on any failure that leaves origin/main's plugin set unrealized, so
+# provision() withholds the manifest and the next setup run retries. A plugin
+# whose marketplace is not on the allowlist is refused by policy, not a
+# failure -- the refusal is the intended outcome.
 provision_plugins() {
-  local settings marketplaces installed plugin market src registered
+  local settings marketplaces installed plugin market src registered replaced=" " rc=0
   if ! command -v claude >/dev/null || ! command -v jq >/dev/null; then
-    say "claude or jq not on PATH; skipping plugin install"
-    return 0
+    say "claude or jq not on PATH; cannot install the plugins origin/main enables"
+    return 1
   fi
   settings=$(main_blob .claude/settings.json)
-  [ -n "$settings" ] || { say "no .claude/settings.json on origin/main; skipping plugin install"; return 0; }
+  [ -n "$settings" ] || { say "no .claude/settings.json on origin/main; no plugins to install"; return 0; }
   marketplaces=$(claude plugin marketplace list 2>/dev/null || true)
   installed=$(claude plugin list 2>/dev/null || true)
   while read -r plugin; do
@@ -131,27 +135,37 @@ provision_plugins() {
     # another repo) is replaced rather than updated in place.
     registered=$(marketplace_source "$market")
     if [ "$registered" = "Git (${src%%#*}@${src##*#})" ]; then
-      claude plugin marketplace update "$market" >/dev/null 2>&1 || say "could not update marketplace $market"
+      claude plugin marketplace update "$market" >/dev/null 2>&1 || { say "could not update marketplace $market"; rc=1; continue; }
     else
       if [ -n "$registered" ]; then
         say "marketplace $market is registered from '$registered', not the pinned source; replacing it"
-        claude plugin marketplace remove "$market" >/dev/null 2>&1 || { say "could not remove marketplace $market; skipping $plugin"; continue; }
+        claude plugin marketplace remove "$market" >/dev/null 2>&1 || { say "could not remove marketplace $market"; rc=1; continue; }
       fi
       if claude plugin marketplace add "$src" >/dev/null 2>&1; then
         marketplaces=$(claude plugin marketplace list 2>/dev/null || true)
+        # Plugins already installed from the old registration point at the
+        # wrong source, so the "already installed" shortcut below must not
+        # apply to this marketplace for the rest of the run.
+        replaced="$replaced$market "
       else
-        say "could not add marketplace $src; skipping $plugin"
+        say "could not add marketplace $src"
+        rc=1
         continue
       fi
     fi
-    grep -qF "> $plugin" <<<"$installed" && continue
+    case "$replaced" in
+      *" $market "*) ;;   # re-registered from the pinned source: reinstall
+      *) grep -qF "> $plugin" <<<"$installed" && continue ;;
+    esac
     if claude plugin install "$plugin" >/dev/null 2>&1; then
       installed=$(claude plugin list 2>/dev/null || true)
       say "installed $plugin (marketplace pinned at $src)"
     else
       say "could not install $plugin"
+      rc=1
     fi
   done < <(jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key' <<<"$settings")
+  return "$rc"
 }
 
 # Writes the key into the gcloud config dir (the one in-VM credential) and
@@ -192,8 +206,14 @@ provision_logs_key() {
   # Fail closed on any non-zero: an unproven scope (the check could not run)
   # is as unacceptable in a shared snapshot as a proven excess.
   if ! assert_iam; then
-    say "logs key scope not proven (see the IAM lines above); revoking it and failing provisioning"
+    say "logs key scope not proven (see the IAM lines above); deactivating it locally and failing provisioning"
     gcloud auth revoke "$LOGS_VIEWER_SA" --quiet || true
+    # `gcloud auth revoke` only drops the credential from this VM's gcloud
+    # config. The key stays valid in IAM and the environment variable still
+    # holds it, and this credential cannot revoke itself -- deleting a key is
+    # an IAM write, exactly what roles/logging.viewer must not have. So this
+    # is an operator alarm, not enforcement: ROTATE THE KEY BY HAND.
+    say "ACTION REQUIRED: the key is still valid in IAM and still set on the environment; delete that key and issue a logging.viewer-only replacement"
     return 1
   fi
   return 0
@@ -281,21 +301,29 @@ write_manifest() {
 }
 
 provision() {
-  local drift
+  local drift rc=0
   [ -d "$repo_dir/.git" ] || [ -f "$repo_dir/.git" ] || die "$repo_dir is not a git checkout (set CLAUDE_PROJECT_DIR)"
   fetch_main || die "origin/main unreachable; refusing to provision"
   [ -n "$(main_blob .claude/cloud-setup.sh)" ] || die "origin/main has no .claude/cloud-setup.sh; refusing to provision"
   [ -n "$(main_blob .claude/cloud-allowlist)" ] || say "origin/main has no .claude/cloud-allowlist; the allowlist hash will not be tracked"
-  provision_plugins
+  provision_plugins || rc=1
   drift=$(claude_dir_drift)
   if [ -n "$drift" ]; then
     say "UNTRUSTED .claude/: the checkout's .claude/ differs from origin/main ($(paste -sd, - <<<"$drift")); not materializing the logs key in this snapshot"
+    # In a repo that declares a key, skipping it leaves the snapshot without
+    # the credential; writing a manifest anyway would make the next clean
+    # session read SETUP OK and never retry.
+    [ -z "$GCP_PROJECT" ] || rc=1
   else
-    provision_logs_key || die "logs key not provisioned; no snapshot manifest written, the next setup run retries"
+    provision_logs_key || rc=1
   fi
   if remote_override; then
     say "PROJECT remote.* OVERRIDE PRESENT: the checkout's .claude/settings.json carries a remote.* key (spec 2c)"
   fi
+  # The manifest is the claim "this snapshot realizes origin/main". Write it
+  # only when that is true; otherwise --verify would report SETUP OK against a
+  # snapshot missing plugins or the credential, forever.
+  [ "$rc" -eq 0 ] || die "provisioning incomplete (see the lines above); no snapshot manifest written, so the next setup run retries"
   write_manifest
 }
 

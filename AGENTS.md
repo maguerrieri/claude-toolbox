@@ -136,20 +136,32 @@ refuse if empty, run it under `bash -euo pipefail`; its `(v1)` comment is the
 rebuild trigger). The script's header states its one rule — it never executes
 anything from the checkout — and `ci-gate` lints it for `make`, package
 managers, sourcing, and relative invocations, so a branch that plants a
-`Makefile` or a `postinstall` hook cannot get it run at setup. Three modes:
+`Makefile` or a `postinstall` hook cannot get it run at setup. The lint joins
+backslash continuations, strips comments quote-aware, matches a tool by any
+path (`/usr/bin/make` is still `make`), requires the rule as a comment line,
+and accepts an interpreter's script argument only as a literal absolute path,
+since a variable can hold a path back into the checkout. Three modes:
 
 - **provision** (no argument): reads `enabledPlugins` from
   `origin/main:.claude/settings.json`, installs them from the two allowlisted
   marketplaces pinned as git URLs at `#main`, and writes a snapshot manifest
   (`~/.factory-setup/manifest`) holding the SHA-256 of `origin/main`'s script,
   of `.claude/cloud-allowlist`, and of `.claude/settings.json` (the plugin
-  set). This repo declares no GCP project, so it
+  set). **The manifest is the claim that the snapshot realizes `origin/main`,
+  so it is written only when that holds**: a missing `claude` or `jq`, a
+  marketplace that cannot be registered or updated, a plugin that will not
+  install, or (in a repo that declares a key) a checkout whose `.claude/`
+  drift skipped the credential all end the run non-zero with no manifest, so
+  the next setup run retries instead of reporting `SETUP OK` against an
+  incomplete snapshot. This repo declares no GCP project, so it
   materializes no credential; `toolbox`'s copy (same text, two constants
   filled in) activates the read-only logs-viewer key from
   `FACTORY_LOGS_VIEWER_KEY` and asserts its IAM scope (every testable
   permission on the project the credential holds must be in
-  `roles/logging.viewer`; anything else, or a check that cannot run, revokes
-  the key and fails provisioning).
+  `roles/logging.viewer`; anything else, or a check that cannot run, drops the
+  credential from the VM and fails provisioning — note that this cannot revoke
+  the key in IAM, which is an IAM write a `logging.viewer` credential must not
+  have, so the script prints `ACTION REQUIRED` and a human rotates the key).
 - **`--verify`**: run per session by `.claude/hooks/session-start.sh` (which
   fetches `origin/main` and runs *that* copy) and prints `SETUP STALE` when
   `main`'s script, allowlist, or settings changed after the snapshot was built (fix: bump
