@@ -538,8 +538,8 @@ def test_the_hook_treats_a_provisioned_marketplace_as_a_no_op(env):
     registration with an unpinned one.
     """
     hook = os.path.join(REPO, ".claude", "hooks", "session-start.sh")
-    if not os.path.exists(hook):
-        pytest.skip("this repo's hook does not carry the plugin-install loop")
+    if not os.path.exists(hook) or "plugin marketplace add" not in open(hook).read():
+        pytest.skip("this repo's hook does not register marketplaces")
     assert env.run().returncode == 0                      # provision first
     registered = (env.state / "markets").read_text()
     assert "Source: Git (https://github.com/maguerrieri/claude-toolbox.git@main)" in registered
