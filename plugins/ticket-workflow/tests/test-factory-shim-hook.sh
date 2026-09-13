@@ -91,5 +91,23 @@ rc=0
 PATH="$shim4:$PATH" FACTORY_TOKEN_CACHE_DIR="$work/cache4" GH_TOKEN=factory-token-required gh api /user >/dev/null 2>&1 || rc=$?
 assert "unreachable broker: a gh call through the shim fails closed" test "$rc" -ne 0
 
+# --- 5. no gh on PATH ---------------------------------------------------------------
+# The hook used to exit early when gh was absent, installing no guard at all. If gh
+# then appears later (a PATH change, a tool install), an unwrapped call would act as
+# the user under proxy-injected mode. `shim` refuses when there is no real gh to
+# wrap, and that refusal must reach the deny shim like any other.
+e5="$work/env5"
+empty_path="$work/nogh"; mkdir -p "$empty_path"
+for t in bash sh env printf mkdir chmod id cat jq curl python3 sed grep tr paste cut; do
+	src=$(command -v "$t" 2>/dev/null) && ln -sf "$src" "$empty_path/$t"
+done
+assert "no gh on PATH: still exits 0" \
+	env PATH="$empty_path" CLAUDE_ENV_FILE="$e5" CLAUDE_PLUGIN_ROOT="$root" FACTORY_TOKEN_CACHE_DIR="$work/cache5" \
+	FACTORY_BROKER_URL="$broker" FACTORY_REPO=Acme/Repo-A GH_TOKEN=factory-token-required \
+	bash "$hook"
+assert "no gh on PATH: a deny shim is installed rather than nothing" grep -q '^export PATH=' "$e5"
+nogh_dir=$(sed -n 's/^export PATH=//p' "$e5" | tr -d "'" | cut -d: -f1)
+assert "no gh on PATH: the shim installed is the deny shim" grep -q 'is refused in this factory session' "$nogh_dir/gh"
+
 printf '\n%s\n' "$([ "$failures" -eq 0 ] && echo "all tests passed" || echo "$failures test(s) failed")"
 exit "$([ "$failures" -eq 0 ] && echo 0 || echo 1)"

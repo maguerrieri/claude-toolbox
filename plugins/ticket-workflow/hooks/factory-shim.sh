@@ -23,7 +23,11 @@ set -uo pipefail
 
 [ -n "${FACTORY_BROKER_URL:-}" ] || exit 0
 [ -n "${CLAUDE_ENV_FILE:-}" ] || exit 0
-command -v gh >/dev/null 2>&1 || exit 0
+# Deliberately NOT gated on `command -v gh`: if gh is missing now but appears
+# later (a PATH change, a tool install), an unwrapped call would act as the user
+# under proxy-injected mode. `factory-token shim` refuses when there is no real
+# gh to wrap, and that refusal falls through to the deny shim below, which is
+# the fail-closed answer either way.
 
 root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 helper="$root/scripts/factory-token"

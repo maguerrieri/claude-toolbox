@@ -105,7 +105,9 @@ token_of() { jq -r .token "$1"/*.json; }
 c1="$work/c1"
 out=$(run "$c1" --repo "$BOUND" exec -- sh -c 'printf "%s %s" "$GH_TOKEN" "$GITHUB_TOKEN"' 2>"$work/c1.err")
 assert "exec runs the command with GH_TOKEN and GITHUB_TOKEN set" test "$out" = "$(token_of "$c1") $(token_of "$c1")"
-assert "exec sets FACTORY_TOKEN_ACTIVE for the shim to see" test "$(run "$c1" --repo "$BOUND" exec -- sh -c 'printf %s "$FACTORY_TOKEN_ACTIVE"')" = 1
+# The sentinel carries the repository, not a bare flag: the shim short-circuits
+# only for the repo it was installed for, so a stray value cannot unwrap a call.
+assert "exec sets FACTORY_TOKEN_ACTIVE to the bound repository" test "$(run "$c1" --repo "$BOUND" exec -- sh -c 'printf %s "$FACTORY_TOKEN_ACTIVE"')" = "$BOUND"
 assert "exec works without the -- separator" test "$(run "$c1" --repo "$BOUND" exec sh -c 'printf %s "$GH_TOKEN"')" = "$(token_of "$c1")"
 refute "token never on stderr" grep -q ghs_fake "$work/c1.err"
 # `exec` replaces the shell, so the EXIT trap never runs: the broker response must
@@ -226,6 +228,19 @@ assert "a gh call through the shim carries the App token" grep -q "api /rate_lim
 : >"$GH_STUB_LOG"
 ( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$good" "$helper" --repo "$BOUND" exec -- gh api /user )
 assert "the shim does not recurse inside exec (one gh invocation)" test "$(wc -l <"$GH_STUB_LOG")" -eq 1
+# An arbitrary FACTORY_TOKEN_ACTIVE must not turn the shim into a pass-through:
+# the short-circuit fires only on the exact repository the shim was built for.
+for bogus in 0 1 true "Other/Repo"; do
+	: >"$GH_STUB_LOG"
+	( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required \
+		FACTORY_BROKER_URL="$good" FACTORY_TOKEN_ACTIVE="$bogus" gh api /rate_limit )
+	assert "FACTORY_TOKEN_ACTIVE=$bogus still goes through the wrapper" \
+		grep -q "api /rate_limit|$(token_of "$c6")" "$GH_STUB_LOG"
+done
+: >"$GH_STUB_LOG"
+( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required \
+	FACTORY_BROKER_URL="$good" FACTORY_TOKEN_ACTIVE="$BOUND" gh api /rate_limit )
+assert "the matching repository short-circuits to the real gh" grep -q "api /rate_limit|factory-token-required" "$GH_STUB_LOG"
 
 # --- 5. setup-git ---------------------------------------------------------------
 repo="$work/checkout"
