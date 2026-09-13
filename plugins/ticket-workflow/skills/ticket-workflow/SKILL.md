@@ -181,6 +181,8 @@ Check the request for these signals — if present, stop early at the indicated 
 
 - "setup only" / "just set up the worktree" / "don't start work" / "I'll take it from here" → stop after **Step 4** (worktree reported).
 - "stop before push" / "don't push" / "let me review the code first" / "no PR yet" → stop after **Step 6** (implementation + tests + doc check committed locally, nothing pushed).
+
+  Both of these hand back before Step 9, so each **clears the budget marker on the way out** (Step 9's `rm`) — otherwise the next run in this session reads a stale clock and round count as authoritative.
 - **Budget exhausted** — not a request signal but a `Budget:` directive from the briefing (Step 1) whose wall-clock or review-round limit Step 8's check finds spent → stop at the next safe point per that check, with the overrun recorded in the PR's Evidence block and the PR handed back as it stands — or, when the budget was spent before the first commit and no PR exists, recorded on the ticket instead (Step 8's no-PR path).
 
 ### Step 1 — Read the issue
@@ -194,10 +196,15 @@ Use the adapter's `FETCH` to read the issue. Read the title and description — 
 ```bash
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 budget_file="$roles_dir/$CLAUDE_SESSION_ID.budget"
+wall_clock_min=180   # substitute the validated numbers from the directive — never the <N>/<M> placeholders
+review_rounds=5
 # Create-only: an existing file is a resumed run, whose clock and round count must survive.
 [ -n "$CLAUDE_SESSION_ID" ] && mkdir -p "$roles_dir" && [ ! -e "$budget_file" ] &&
-	printf 'clock: %s\nBudget: wall_clock_min=<N> review_rounds=<M>\n' "$(date +%s)" >"$budget_file"
+	printf 'clock: %s\nBudget: wall_clock_min=%s review_rounds=%s\n' \
+		"$(date +%s)" "$wall_clock_min" "$review_rounds" >"$budget_file"
 ```
+
+**Substitute the real digits before running this** — the two assignments above are placeholders for the values you just validated, and Step 8 reads this file as authoritative for its deadline arithmetic and round comparison. A file whose `Budget:` line doesn't match the directive grammar (a literal `<N>` among them) is **unusable, not authoritative**: treat it as absent, take the recovery path below, and rewrite it. Read it back once after writing and confirm it holds the effective numbers.
 
 The write is **create-only on purpose**: Step 1 runs again on every resume and after each compaction, and an unconditional `>` would restart the clock and discard the `round:` lines Step 8 appended — handing a spent budget a fresh one on each context loss. An existing file is authoritative; read it and continue from it. The file is removed at Step 9 (and by `/role none`), so the next run in the same session starts clean rather than inheriting this one's spent state.
 
@@ -332,17 +339,17 @@ If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you 
 
 ```bash
 until [ "$(date +%s)" -ge "$deadline" ]; do
-	status=0; gh pr checks <pr> >/dev/null 2>&1 || status=$?
-	[ "$status" -ne 8 ] && break
+	poll_status=0; gh pr checks <pr> >/dev/null 2>&1 || poll_status=$?
+	[ "$poll_status" -ne 8 ] && break
 	sleep 60
 done
 ```
 
-(`gh pr checks` exits 8 while checks are pending; the same loop shape re-reads the review bot's threads). Capture the status with `|| status=$?` rather than testing a bare `$?` — under `set -e` the expected pending exit would abort the loop before it could be inspected. `date +%s` and `sleep` are everywhere; the `10#` keeps the arithmetic base-10. A deadline reached mid-wait is itself the overrun. Append `round: <k>` to the Step 1 budget marker after each fix push, so the count survives compaction. Once a budget is spent, **stop instead of looping**: no further fix pushes. Finish only what is safe to finish (the commit in progress; Step 7's push and PR if the clock ran out before it, opened as a **draft** — the hold signal FINISH's gate already honors), reply on each still-open review thread that the budget is exhausted but leave it unresolved (resolving without addressing would misreport), update the Evidence block **in place** with the overrun (Step 7's `budget_exceeded` clause in `tests`, and `wall_clock_min` re-measured to the stop), ping `blocked: budget exceeded (<which>)` if a `Notify:` directive is wired, and go to Step 9. **Nothing committed yet** — the clock ran out before the first commit, so there is no diff to open a PR on: there is no PR and no Evidence block to update; skip the push, and — because a cloud child has no `Notify:` channel and no PR for a coordinator's poll to read — record the stop **durably on the ticket itself** with the tracker's `COMMENT(id, body)` op — body `blocked: budget exceeded (<which>), nothing committed` — then carry it in the `blocked:` ping where wired and the Step 9 report. Where a PR exists it is handed back as it stands — red CI or open threads included — and the report names the spent budget; re-briefing with a larger one is the spawner's call, never this session's.
+(`gh pr checks` exits 8 while checks are pending; the same loop shape re-reads the review bot's threads). Capture the status with `|| poll_status=$?` rather than testing a bare `$?` — under `set -e` the expected pending exit would abort the loop before it could be inspected. The name matters: tool commands run under **zsh**, where `status` is a read-only special parameter (an alias for `?`), so assigning it fails outright — the same hazard the repo instructions record for `path`. `date +%s` and `sleep` are everywhere; the `10#` keeps the arithmetic base-10. A deadline reached mid-wait is itself the overrun. Append `round: <k>` to the Step 1 budget marker **before** each fix push, not after, so the count survives compaction *and* an interruption: a session compacted between a successful `git push` and a later append would leave recovery reading a stale count and granting an extra round. Counting a push that then fails is the safe direction — it can only stop sooner. Once a budget is spent, **stop instead of looping**: no further fix pushes. Finish only what is safe to finish (the commit in progress; Step 7's push and PR if the clock ran out before it, opened as a **draft** — the hold signal FINISH's gate already honors), reply on each still-open review thread that the budget is exhausted but leave it unresolved (resolving without addressing would misreport), update the Evidence block **in place** with the overrun (Step 7's `budget_exceeded` clause in `tests`, and `wall_clock_min` re-measured to the stop), ping `blocked: budget exceeded (<which>)` if a `Notify:` directive is wired, and go to Step 9. **Nothing committed yet** — the clock ran out before the first commit, so there is no diff to open a PR on: there is no PR and no Evidence block to update; skip the push, and — because a cloud child has no `Notify:` channel and no PR for a coordinator's poll to read — record the stop **durably on the ticket itself** with the tracker's `COMMENT(id, body)` op — body `blocked: budget exceeded (<which>), nothing committed` — then carry it in the `blocked:` ping where wired and the Step 9 report. Where a PR exists it is handed back as it stands — red CI or open threads included — and the report names the spent budget; re-briefing with a larger one is the spawner's call, never this session's.
 
 ### Step 9 — Hand back
 
-**Clear the budget marker** if Step 1 wrote one — `rm -f "$roles_dir/$CLAUDE_SESSION_ID.budget"` — so a later, differently-budgeted (or unbudgeted) run in this same session can't inherit this ticket's spent clock and round count. The role marker stays; only the budget sidecar is per-run.
+**Clear the budget marker** if Step 1 wrote one — `rm -f "$roles_dir/$CLAUDE_SESSION_ID.budget"` — so a later, differently-budgeted (or unbudgeted) run in this same session can't inherit this ticket's spent clock and round count. The role marker stays; only the budget sidecar is per-run. This applies to **every** way this phase hands back, not just a run that reaches this step: an opt-out that stops at Step 4 or Step 6, and a budget stop itself, each clear it on the way out.
 
 Report: PR URL, a 1–2 sentence summary, whether the review bot had non-trivial comments and how they were handled, and that `/finish-ticket <id>` is the next step after the user's review — or, on a budget stop, which budget ran out and what is left undone.
 

@@ -110,6 +110,10 @@ Tool commands run under zsh. Do not use `path` as a loop or script variable:
 zsh ties the `path` array to `PATH`, so assigning `path` replaces command lookup.
 Use a task-specific name such as `file_path` instead.
 
+`status` is the same trap and bites the common "capture an exit code" idiom:
+zsh makes `status` a read-only alias for `?`, so `status=$?` fails rather than
+capturing. Use a task-specific name such as `poll_status`.
+
 ## SKILL.md size — when to split phases into their own files
 
 ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~480
