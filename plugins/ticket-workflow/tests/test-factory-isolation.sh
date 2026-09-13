@@ -133,5 +133,16 @@ for bad in "Acme/Repo-A?probe" "Acme/Repo-A/extra" "no-slash" "/leading" "traili
 done
 assert "a well-formed owner/repo pair is still accepted" run "$script" --bound "$A" --foreign "$B" --broker "$good" --skip-github
 
+# Under `set -u` a bare option at the end of the line used to die with an
+# unbound-variable error instead of the documented usage error.
+for opt in --bound --foreign --broker; do
+	out=$("$script" $opt 2>&1) && rc=0 || rc=$?
+	assert "$opt with no value is a usage error (exit 2)" test "$rc" -eq 2
+	assert "$opt with no value says which option is missing" \
+		bash -c "printf '%s' \"\$1\" | grep -q -- \"\$2 needs a value\"" _ "$out" "$opt"
+	refute "$opt with no value is not an unbound-variable crash" \
+		bash -c "printf '%s' \"\$1\" | grep -qi 'unbound variable'" _ "$out"
+done
+
 printf '\n%s\n' "$([ "$failures" -eq 0 ] && echo "all tests passed" || echo "$failures test(s) failed")"
 exit "$([ "$failures" -eq 0 ] && echo 0 || echo 1)"

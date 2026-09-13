@@ -109,5 +109,31 @@ assert "no gh on PATH: a deny shim is installed rather than nothing" grep -q '^e
 nogh_dir=$(sed -n 's/^export PATH=//p' "$e5" | tr -d "'" | cut -d: -f1)
 assert "no gh on PATH: the shim installed is the deny shim" grep -q 'is refused in this factory session' "$nogh_dir/gh"
 
+# --- 6. the helper itself is missing -------------------------------------------------
+# A missing or non-executable helper used to exit 0 with no guard installed, which
+# in proxy-injected mode leaves the real gh acting as the user.
+e6="$work/env6"
+emptyroot="$work/noplugin"; mkdir -p "$emptyroot/scripts"
+assert "missing helper: still exits 0" \
+	env CLAUDE_PLUGIN_ROOT="$emptyroot" CLAUDE_ENV_FILE="$e6" FACTORY_TOKEN_CACHE_DIR="$work/cache6" \
+	FACTORY_BROKER_URL="$broker" FACTORY_REPO=Acme/Repo-A GH_TOKEN=factory-token-required bash "$hook"
+assert "missing helper: a deny shim is installed rather than nothing" grep -q '^export PATH=' "$e6"
+nohelper_dir=$(sed -n 's/^export PATH=//p' "$e6" | tr -d "'" | cut -d: -f1)
+assert "missing helper: the shim installed is the deny shim" grep -q 'is refused in this factory session' "$nohelper_dir/gh"
+
+# --- 7. the env file cannot be written ------------------------------------------------
+# The shim file existing is not the same as the session using it: if the export
+# cannot be written, PATH is unchanged and gh stays unwrapped, so the hook must not
+# report success.
+e7="$work/env7-dir"; mkdir -p "$e7"   # a directory: the append fails
+out7=$(env CLAUDE_PLUGIN_ROOT="$root" CLAUDE_ENV_FILE="$e7" FACTORY_TOKEN_CACHE_DIR="$work/cache7" \
+	FACTORY_BROKER_URL="$broker" FACTORY_REPO=Acme/Repo-A GH_TOKEN=factory-token-required \
+	bash "$hook" 2>&1) && rc=0 || rc=$?
+assert "unwritable env file: still exits 0 (never blocks the session)" test "$rc" -eq 0
+refute "unwritable env file: it does not claim the shim was installed" \
+	bash -c "printf '%s' \"\$1\" | grep -q 'gh shim installed for this session'" _ "$out7"
+assert "unwritable env file: it says the session is unguarded" \
+	bash -c "printf '%s' \"\$1\" | grep -qE 'could not be written|untrusted for identity'" _ "$out7"
+
 printf '\n%s\n' "$([ "$failures" -eq 0 ] && echo "all tests passed" || echo "$failures test(s) failed")"
 exit "$([ "$failures" -eq 0 ] && echo 0 || echo 1)"

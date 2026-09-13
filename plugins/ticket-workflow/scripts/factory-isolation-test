@@ -53,9 +53,12 @@ helper="$here/factory-token"
 BOUND=""; FOREIGN=""; BROKER="${FACTORY_BROKER_URL:-}"; SKIP_GITHUB=0
 while [ $# -gt 0 ]; do
 	case "$1" in
-	--bound) BOUND=$2; shift 2 ;;
-	--foreign) FOREIGN=$2; shift 2 ;;
-	--broker) BROKER=$2; shift 2 ;;
+	# Each needs its value present: under `set -u` a bare `--bound` at the end of
+	# the line would expand $2 and die with an unbound-variable error instead of
+	# the usage error the script documents.
+	--bound) [ $# -ge 2 ] || { echo "--bound needs a value" >&2; exit 2; }; BOUND=$2; shift 2 ;;
+	--foreign) [ $# -ge 2 ] || { echo "--foreign needs a value" >&2; exit 2; }; FOREIGN=$2; shift 2 ;;
+	--broker) [ $# -ge 2 ] || { echo "--broker needs a value" >&2; exit 2; }; BROKER=$2; shift 2 ;;
 	--skip-github) SKIP_GITHUB=1; shift ;;
 	-h | --help) sed -n '2,/^set -euo pipefail/{/^set -euo pipefail/d;s/^# \{0,1\}//;p;}' "$0" >&2; exit 2 ;;
 	*) echo "unknown argument: $1" >&2; exit 2 ;;

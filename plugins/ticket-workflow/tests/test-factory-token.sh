@@ -105,9 +105,10 @@ token_of() { jq -r .token "$1"/*.json; }
 c1="$work/c1"
 out=$(run "$c1" --repo "$BOUND" exec -- sh -c 'printf "%s %s" "$GH_TOKEN" "$GITHUB_TOKEN"' 2>"$work/c1.err")
 assert "exec runs the command with GH_TOKEN and GITHUB_TOKEN set" test "$out" = "$(token_of "$c1") $(token_of "$c1")"
-# The sentinel carries the repository, not a bare flag: the shim short-circuits
-# only for the repo it was installed for, so a stray value cannot unwrap a call.
-assert "exec sets FACTORY_TOKEN_ACTIVE to the bound repository" test "$(run "$c1" --repo "$BOUND" exec -- sh -c 'printf %s "$FACTORY_TOKEN_ACTIVE"')" = "$BOUND"
+# No environment flag is set for the shim to trust: the recursion guard reads
+# GH_TOKEN, which a caller cannot forge without already holding a token.
+assert "exec sets no FACTORY_TOKEN_ACTIVE flag for a caller to spoof" \
+	test -z "$(run "$c1" --repo "$BOUND" exec -- sh -c 'printf %s "${FACTORY_TOKEN_ACTIVE:-}"')"
 assert "exec works without the -- separator" test "$(run "$c1" --repo "$BOUND" exec sh -c 'printf %s "$GH_TOKEN"')" = "$(token_of "$c1")"
 refute "token never on stderr" grep -q ghs_fake "$work/c1.err"
 # `exec` replaces the shell, so the EXIT trap never runs: the broker response must
@@ -228,19 +229,79 @@ assert "a gh call through the shim carries the App token" grep -q "api /rate_lim
 : >"$GH_STUB_LOG"
 ( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$good" "$helper" --repo "$BOUND" exec -- gh api /user )
 assert "the shim does not recurse inside exec (one gh invocation)" test "$(wc -l <"$GH_STUB_LOG")" -eq 1
-# An arbitrary FACTORY_TOKEN_ACTIVE must not turn the shim into a pass-through:
-# the short-circuit fires only on the exact repository the shim was built for.
-for bogus in 0 1 true "Other/Repo"; do
+# No environment flag may turn the shim into a pass-through. A caller can set any
+# variable, so a flag-based guard would let `FOO=... gh` reach the real gh with
+# whatever credential the session carries — under proxy-injected mode, the user's.
+for bogus in 0 1 true "$BOUND" "Other/Repo"; do
 	: >"$GH_STUB_LOG"
 	( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required \
 		FACTORY_BROKER_URL="$good" FACTORY_TOKEN_ACTIVE="$bogus" gh api /rate_limit )
 	assert "FACTORY_TOKEN_ACTIVE=$bogus still goes through the wrapper" \
 		grep -q "api /rate_limit|$(token_of "$c6")" "$GH_STUB_LOG"
 done
+# Each environment sentinel means "no token yet", so each must be wrapped.
+for sentinel in factory-token-required ""; do
+	: >"$GH_STUB_LOG"
+	( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN="$sentinel" \
+		FACTORY_BROKER_URL="$good" gh api /rate_limit )
+	assert "GH_TOKEN=${sentinel:-(empty)} goes through the wrapper" \
+		grep -q "api /rate_limit|$(token_of "$c6")" "$GH_STUB_LOG"
+done
+# proxy-injected is also wrapped, and the wrapper then refuses: running gh there
+# would act as the user, so a non-zero exit with no gh call is the right outcome.
 : >"$GH_STUB_LOG"
-( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required \
-	FACTORY_BROKER_URL="$good" FACTORY_TOKEN_ACTIVE="$BOUND" gh api /rate_limit )
-assert "the matching repository short-circuits to the real gh" grep -q "api /rate_limit|factory-token-required" "$GH_STUB_LOG"
+expect_exit "GH_TOKEN=proxy-injected is wrapped and refused (exit 3)" 3 bash -c \
+	"cd $work && PATH=$(printf '%q' "$shimdir"):\$PATH FACTORY_TOKEN_CACHE_DIR=$c6 GH_TOKEN=proxy-injected FACTORY_BROKER_URL=$good gh api /rate_limit"
+refute "proxy-injected: the real gh is never reached" test -s "$GH_STUB_LOG"
+
+# The shim's default directory must not be shared across repositories: two
+# implementer sessions on one VM would otherwise overwrite each other's gh.
+OTHER=Acme/Repo-Other
+other_broker=$(start_broker other FAKE_BROKER_BOUND="$OTHER")
+cshare="$work/cshare"
+d1=$( cd "$work" && FACTORY_TOKEN_CACHE_DIR="$cshare" GH_TOKEN=factory-token-required \
+	"$helper" --repo "$BOUND" --broker "$good" shim 2>/dev/null | sed 's/^export PATH=//' | tr -d "'" | cut -d: -f1 )
+d2=$( cd "$work" && FACTORY_TOKEN_CACHE_DIR="$cshare" GH_TOKEN=factory-token-required \
+	"$helper" --repo "$OTHER" --broker "$other_broker" shim 2>/dev/null | sed 's/^export PATH=//' | tr -d "'" | cut -d: -f1 )
+assert "two repositories get different default shim directories" test "$d1" != "$d2"
+assert "the first repository's shim still names its own repository" grep -q -- "$BOUND" "$d1/gh"
+assert "the second repository's shim names its own repository" grep -q -- "$OTHER" "$d2/gh"
+
+# A cache entry gets the same scrutiny a fresh mint does: it may have been left by
+# an older helper or a different broker, and `exec` puts it into a real process.
+ctamper="$work/ctamper"
+run "$ctamper" --repo "$BOUND" exec -- true >/dev/null 2>&1
+tfile=$(ls "$ctamper"/*.json)
+good_entry=$(cat "$tfile")
+restore_entry() { printf '%s' "$good_entry" >"$tfile"; }
+# Wrong permissions in the cache must not reach a process.
+jq -c '.permissions = {"contents":"write","metadata":"read"}' <<<"$good_entry" >"$tfile"
+assert "a cached token with the wrong permissions is re-minted, not used" \
+	test "$(run "$ctamper" --repo "$BOUND" exec -- sh -c 'printf %s "$GH_TOKEN"')" = "$(token_of "$ctamper")"
+restore_entry
+jq -c 'del(.token)' <<<"$good_entry" >"$tfile"
+assert "a cached entry with no token is re-minted" \
+	test -n "$(run "$ctamper" --repo "$BOUND" exec -- sh -c 'printf %s "$GH_TOKEN"')"
+restore_entry
+jq -c '.expires_epoch = "soon"' <<<"$good_entry" >"$tfile"
+assert "a cached entry with a non-numeric expiry is re-minted" \
+	test -n "$(run "$ctamper" --repo "$BOUND" exec -- sh -c 'printf %s "$GH_TOKEN"')"
+restore_entry
+# The cache is bound to the broker that issued it.
+assert "the cache entry records its issuing broker" test "$(jq -r '.broker' "$tfile")" = "$good"
+second=$(start_broker second FAKE_BROKER_BOUND="$BOUND")
+old_token=$(token_of "$ctamper")
+( cd "$work" && FACTORY_TOKEN_CACHE_DIR="$ctamper" GH_TOKEN=factory-token-required \
+	"$helper" --repo "$BOUND" --broker "$second" exec -- true ) >/dev/null 2>&1
+assert "pointing at a different broker re-mints instead of reusing the old token" \
+	test "$(jq -r '.broker' "$tfile")" = "$second"
+refute "the old broker's token is not carried over" test "$(token_of "$ctamper")" = "$old_token"
+# A GH_TOKEN that is already a real token means the caller is inside `exec`.
+: >"$GH_STUB_LOG"
+( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN="$(token_of "$c6")" \
+	FACTORY_BROKER_URL="$good" gh api /rate_limit )
+assert "an already-minted GH_TOKEN short-circuits to the real gh" \
+	test "$(wc -l <"$GH_STUB_LOG")" -eq 1
 
 # A previous session's deny shim stays on PATH through CLAUDE_ENV_FILE. If `shim`
 # resolved it as the real gh, the new wrapper would call the deny shim and every

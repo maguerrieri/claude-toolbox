@@ -31,13 +31,20 @@ set -uo pipefail
 
 root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 helper="$root/scripts/factory-token"
-[ -x "$helper" ] || exit 0
+# A missing or non-executable helper is NOT a reason to leave gh unguarded: the
+# `if` below already treats it as a failure, so it falls through to the deny shim
+# like every other way the shim can fail to install.
 
 # `shim` prints the `export PATH=…` line to stdout and its notes to stderr.
-if line=$("$helper" shim 2>/dev/null); then
-	printf '%s\n' "$line" >>"$CLAUDE_ENV_FILE" 2>/dev/null || true
-	printf 'factory-token: gh shim installed for this session (spec 2d).\n'
-	exit 0
+if [ -x "$helper" ] && line=$("$helper" shim 2>/dev/null); then
+	# The shim file existing is not the same as the session using it. If the export
+	# cannot be written, PATH is unchanged and gh stays unwrapped, so that is a
+	# failure to guard the session and falls through rather than reporting success.
+	if printf '%s\n' "$line" >>"$CLAUDE_ENV_FILE" 2>/dev/null; then
+		printf 'factory-token: gh shim installed for this session (spec 2d).\n'
+		exit 0
+	fi
+	printf 'factory-token: the gh shim was built but %s could not be written; falling back to refusing gh.\n' "$CLAUDE_ENV_FILE" >&2
 fi
 
 # The helper could not mint (no broker, no repo, or proxy-injected mode). Leaving
@@ -59,8 +66,15 @@ printf 'Do not work around this by calling gh directly: in proxy-injected mode i
 exit 3
 EOF
 	chmod 755 "$deny_dir/gh" 2>/dev/null || true
-	printf 'export PATH=%q\n' "$deny_dir:$PATH" >>"$CLAUDE_ENV_FILE" 2>/dev/null || true
-	printf 'factory-token: could not mint an App token, so gh is REFUSED for this session (a deny shim is first on PATH). Run "%s" status to see why; do not bypass it, since an unwrapped gh can act as the user.\n' "$helper" >&2
+	# Both conditions matter. A non-executable deny shim is skipped by the shell,
+	# which then finds the real gh further along PATH; and an export that cannot be
+	# written leaves PATH untouched. Either one means the session is unguarded, so
+	# say that rather than claiming gh is refused.
+	if [ -x "$deny_dir/gh" ] && printf 'export PATH=%q\n' "$deny_dir:$PATH" >>"$CLAUDE_ENV_FILE" 2>/dev/null; then
+		printf 'factory-token: could not mint an App token, so gh is REFUSED for this session (a deny shim is first on PATH). Run "%s" status to see why; do not bypass it, since an unwrapped gh can act as the user.\n' "$helper" >&2
+	else
+		printf 'factory-token: could not mint an App token, and the deny shim could not be installed (not executable, or %s is unwritable). Treat every gh call in this session as untrusted for identity: run "%s" status before pushing or opening a PR.\n' "$CLAUDE_ENV_FILE" "$helper" >&2
+	fi
 else
 	printf 'factory-token: could not mint an App token and could not install the deny shim. Treat every gh call in this session as untrusted for identity: run "%s" status before pushing or opening a PR.\n' "$helper" >&2
 fi
