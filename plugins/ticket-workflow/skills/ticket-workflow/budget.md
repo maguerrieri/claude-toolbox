@@ -14,21 +14,35 @@ Budget: wall_clock_min=<N> review_rounds=<M>
 ```
 
 Both keys, in that order, non-negative integers with **no leading zero** (`0`
-itself is fine — bash reads `08` as octal, so the grammar excludes it), nothing
-else on the line. `<N>` is the most whole minutes a START run may spend from its
+itself is fine — bash reads `08` as octal, so the grammar excludes it) and **at
+most 5 digits**, nothing else on the line. The cap keeps the deadline arithmetic
+(`clock + N * 60`) far inside shell integer range; a budget beyond ~69 days is a
+typo, not an intent, and silently overflowing into a wrong stop time is worse
+than rejecting it. `<N>` is the most whole minutes a START run may spend from its
 Step 1 clock note to hand-back; `<M>` the most fix-pushes its Step 8 may make.
 
 A line that doesn't match exactly is a **briefing error: stop and report it**,
 never "no budget" — a malformed directive must fail closed, since the alternative
 is an unattended session running unbounded.
 
-**An override** (in a spawn request, shared or per-issue) is `Budget:` plus one
-*or both* keys, same value rules. It merges over the cap **key-wise, in the order
-cap → shared → per-issue**: for each key, the last source naming it wins (cap
-180/5, shared `review_rounds=3`, per-issue `wall_clock_min=60` →
-`wall_clock_min=60 review_rounds=3`). Validate every override against this
-grammar **before launching anything** — forwarding `wall_clock_min=abc` either
-stops each child at its own Step 1 or, if dropped, unbounds it.
+**An override** (in a spawn request, shared or per-issue) has its own, looser
+shape — `Budget:` followed by `wall_clock_min=<n>`, `review_rounds=<n>`, or both
+in that order, same value rules, nothing else:
+
+```
+Budget: [wall_clock_min=<N>] [review_rounds=<M>]      # at least one key
+```
+
+Validate overrides against **that** shape, not the full directive above, which
+requires both keys — a partial override like `Budget: review_rounds=1` is
+explicitly allowed and must not be rejected for missing the other key. Then merge
+over the cap **key-wise, in the order cap → shared → per-issue**: for each key,
+the last source naming it wins (cap 180/5, shared `review_rounds=3`, per-issue
+`wall_clock_min=60` → `wall_clock_min=60 review_rounds=3`). **The merged result
+is validated against the full directive grammar** before it is forwarded or
+stored, so what reaches a child always carries both keys. Do both **before
+launching anything** — forwarding `wall_clock_min=abc` either stops each child at
+its own Step 1 or, if dropped, unbounds it.
 
 Exactly one `Budget:` line reaches a child whenever the cap or an override
 supplies a budget, and **none** when a profile's `SPAWN_CAP` omits the line and
@@ -71,11 +85,20 @@ that before spawning), so a `kind: epic` marker always carries both keys.
 - **`kind:`** is the shape, `start` or `epic`, and decides which of the rules
   below apply. Validating without it would mean either rejecting every untimed
   EPIC marker or accepting a START marker that lost its clock.
-- **`run:`** is the run identity — the issue ID and branch this budget belongs
-  to. The file is keyed only by session, so without it a session that finishes
-  one ticket and starts another before cleanup would read the first ticket's
-  spent clock as authoritative. A marker whose `run:` doesn't match the current
-  ticket belongs to a finished run: **replace it**, don't resume from it.
+- **`run:`** is the run identity, `<owner>/<repo>#<id>` — the canonical
+  repository plus the tracker ID **normalized** (a leading `#` stripped, so the
+  GitHub adapter's `42` and `#42` spellings agree; Jira keys are already
+  canonical). The file is keyed only by session, so without it a session that
+  finishes one ticket and starts another before cleanup would read the first
+  ticket's spent clock as authoritative — and without the repository, so would a
+  same-numbered issue in a different repo, which `REPO_SELECT` makes reachable
+  from one session. A marker whose `run:` doesn't match belongs to another run:
+  **replace it**, don't resume from it.
+
+  It deliberately does **not** name the branch: START resolves that only in
+  Step 3, and the marker must be writable at Step 1, when the clock starts.
+  Repository plus issue is already unique per run and is known as soon as the
+  issue is fetched.
 - **`clock:`** is epoch seconds (`date +%s` — portable, and what the deadline
   arithmetic below needs), captured at the **same moment** as Step 1's clock
   note, not later. Writing it after issue-reading and setup would start the
@@ -95,7 +118,7 @@ budget_file="$roles_dir/$CLAUDE_SESSION_ID.budget"
 clock_epoch=$(date +%s)        # the Step 1 clock note's own moment
 wall_clock_min=180             # substitute the validated numbers from the directive
 review_rounds=5
-run_id='#42 42-fix-flaky-upload'
+run_id='maguerrieri/claude-toolbox#42'   # <owner>/<repo>#<id>, the ID normalized
 kind=start                     # `epic` when EPIC Step 1 writes it
 
 # A marker is usable only if every line is an allowed record, each core record
@@ -109,7 +132,7 @@ usable() {
 		$0 == "kind: " want_kind { kinds++; next }
 		$0 == "run: " want_run   { runs++;  next }
 		/^clock: [0-9]+$/        { clocks++; next }
-		/^Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)$/ { budgets++; next }
+		/^Budget: wall_clock_min=(0|[1-9][0-9]{0,4}) review_rounds=(0|[1-9][0-9]{0,4})$/ { budgets++; next }
 		/^round: [1-9][0-9]*$/   { rounds++; next }
 		{ junk++ }
 		END {
@@ -216,8 +239,9 @@ Once a budget is spent, **stop instead of looping** — no further fix pushes.
 Finish only what is safe to finish, then hand back:
 
 - The commit in progress; and START Step 7's push and PR if the clock ran out
-  before it, opened as a **draft** (the hold signal FINISH's gate already
-  honors).
+  before it — opened as a **draft**, which means adding `--draft` to that step's
+  `gh pr create` (it has no draft flag by default, and the hold signal FINISH's
+  gate honors is the draft state, not the intent).
 - Reply on each still-open review thread that the budget is exhausted, but leave
   it **unresolved** — resolving without addressing would misreport.
 - Update the Evidence block **in place**: a trailing `; budget_exceeded:

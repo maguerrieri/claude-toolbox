@@ -36,7 +36,7 @@ assert() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then ok "$desc"; else 
 refute() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then fail "$desc"; else ok "$desc"; fi; }
 
 # The directive's documented shape: both keys, that order, digits, nothing else.
-budget_re='^Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)$'
+budget_re='^Budget: wall_clock_min=(0|[1-9][0-9]{0,4}) review_rounds=(0|[1-9][0-9]{0,4})$'
 # The overrun clause START Step 8 appends inside `tests` — trailing (Step 7
 # says so), hence anchored to the end, and at most one per string.
 # Anchored at the clause boundary as well as the end: `notbudget_exceeded: ...`
@@ -71,7 +71,7 @@ assert "SPAWN_CAP payload: exactly one Budget: directive" test "$(grep -o 'Budge
 for good in 'Budget: wall_clock_min=180 review_rounds=5' 'Budget: wall_clock_min=0 review_rounds=0' 'Budget: wall_clock_min=60 review_rounds=1'; do
 	assert "shape accepts '$good'" grep -Eq "$budget_re" <<<"$good"
 done
-for bad in 'Budget: review_rounds=1' 'Budget: wall_clock_min=60' 'Budget: review_rounds=1 wall_clock_min=60' 'Budget: wall_clock_min=-1 review_rounds=1' 'Budget: wall_clock_min=1.5 review_rounds=1' 'Budget: wall_clock_min=60 review_rounds=1 extra' 'Budget: wall_clock_min=08 review_rounds=1' 'Budget: wall_clock_min=abc review_rounds=1' 'Budget:'; do
+for bad in 'Budget: review_rounds=1' 'Budget: wall_clock_min=60' 'Budget: review_rounds=1 wall_clock_min=60' 'Budget: wall_clock_min=-1 review_rounds=1' 'Budget: wall_clock_min=1.5 review_rounds=1' 'Budget: wall_clock_min=60 review_rounds=1 extra' 'Budget: wall_clock_min=08 review_rounds=1' 'Budget: wall_clock_min=abc review_rounds=1' 'Budget: wall_clock_min=123456 review_rounds=1' 'Budget:'; do
 	refute "shape rejects '$bad'" grep -Eq "$budget_re" <<<"$bad"
 done
 
@@ -123,18 +123,30 @@ epic_prose=$(flatten "$epic" 2>/dev/null || true)
 
 # SKILL.md points at the mechanism rather than restating it (and stays under the
 # ~500-line rule AGENTS.md sets for it).
-assert "SKILL.md START Step 1 points at budget.md" grep -q 'read `budget.md` now' <<<"$start_text"
+assert "SKILL.md START Step 1 points at budget.md" grep -qi 'read `budget.md` now' <<<"$start_text"
 assert "SKILL.md START Step 8 points at budget.md" grep -q 'budget.md` carries it' <<<"$start_text"
 assert "SKILL.md START Step 9 points at budget.md cleanup" grep -q "budget.md.*cleanup snippet" <<<"$start_text"
 assert "SKILL.md opt-outs point at budget.md" grep -q 'as `budget.md` prescribes' <<<"$start_text"
 assert "SKILL.md SPAWN Step 2 points at budget.md" grep -q 'read `budget.md`' <<<"$spawn_text"
 assert "SKILL.md stays under the 500-line rule" test "$(wc -l <"$skill")" -lt 500
-assert "AGENTS.md records SKILL.md's current size" grep -q "$(wc -l <"$skill") *$" <<<"$(grep -o '([0-9]* *$' "$repo/AGENTS.md" || echo "$(wc -l <"$skill") ")"
+# No `||` fallback here: one supplying the expected count from SKILL.md itself
+# made this pass for any AGENTS.md value.
+assert "AGENTS.md records SKILL.md's current size" \
+	grep -qF "($(wc -l <"$skill")" "$repo/AGENTS.md"
 assert "SKILL.md unbudgeted watch is marked no-budget-only" grep -q 'no budget in play; see budget.md otherwise' <<<"$start_text"
 
 # The mechanism itself.
 assert "budget.md pins the directive grammar" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' <<<"$budget_prose"
 assert "budget.md forbids leading zeros" grep -q 'no leading zero' <<<"$budget_prose"
+assert "budget.md bounds the value width" grep -q 'at most 5 digits' <<<"$budget_prose"
+assert "budget.md gives overrides their own looser shape" grep -q 'not the full directive above' <<<"$budget_prose"
+assert "budget.md validates the merged result against the full shape" grep -q 'merged result is validated against the full directive grammar' <<<"$budget_prose"
+assert "budget.md keys the run on repo and normalized id" grep -q 'canonical repository plus the tracker ID' <<<"$budget_prose"
+assert "budget.md explains why the branch is not in the run key" grep -q 'does \*\*not\*\* name the branch' <<<"$budget_prose"
+assert "budget.md requires --draft on a clock-stop PR" grep -q 'adding `--draft`' <<<"$budget_prose"
+assert "SKILL.md Step 1 checks the marker even when the briefing looks unbudgeted" grep -q 'even when the briefing looks unbudgeted' <<<"$start_text"
+assert "SKILL.md prefers the marker clock over the first commit" grep -q 'authoritative. Only with no marker' <<<"$(flatten "$skill")"
+assert "phases/epic.md strips every source Budget line" grep -q 'removed and replaced' <<<"$epic_prose"
 assert "budget.md fails closed on a malformed line" grep -q 'briefing error' <<<"$budget_prose"
 assert "budget.md merges key-wise cap -> shared -> per-issue" grep -q 'cap → shared → per-issue' <<<"$budget_prose"
 assert "budget.md validates overrides before launching" grep -q 'before launching anything' <<<"$budget_prose"
@@ -299,6 +311,12 @@ assert "phases/epic.md keeps at most one Budget line" grep -q 'at most one' <<<"
 assert "/role none guards the session id before removing" grep -q 'CLAUDE_SESSION_ID" \] &&' "$commands/role.md"
 assert "/role none clears the budget sidecar" grep -q 'CLAUDE_SESSION_ID.budget' "$commands/role.md"
 assert "the SessionStart hook refreshes the budget sidecar" grep -q 'marker.budget' "$repo/plugins/ticket-workflow/hooks/role-session-start.sh"
+for cmd in spawn-tickets spawn-epic; do
+	assert "/$cmd documents the Budget: override in its argument hint" \
+		grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$commands/$cmd.md"
+	assert "/$cmd explains where the override is applied" \
+		grep -qi 'budget' <<<"$(flatten "$commands/$cmd.md")"
+done
 assert "AGENTS.md records the zsh 'status' hazard" grep -q "\`status\` is the same trap" "$repo/AGENTS.md"
 
 if [ "$failures" -gt 0 ]; then
