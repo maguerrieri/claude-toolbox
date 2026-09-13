@@ -98,18 +98,28 @@ review_rounds=5
 run_id='#42 42-fix-flaky-upload'
 kind=start                     # `epic` when EPIC Step 1 writes it
 
-# A marker is usable only if it is this run's, well-formed, and timed exactly
-# when its kind says it should be.
+# A marker is usable only if every line is an allowed record, each core record
+# appears exactly once, and it is timed exactly when its kind says. Validate the
+# whole sequence, not "does a matching line exist somewhere": a file with two
+# Budget: lines or a mangled round: would otherwise be authoritative while
+# leaving the budget ambiguous or the rounds under-counted.
 usable() {
 	[ -f "$budget_file" ] || return 1
-	grep -qxF "run: $run_id" "$budget_file" || return 1
-	grep -qxF "kind: $kind" "$budget_file" || return 1
-	grep -qxE 'Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)' "$budget_file" || return 1
-	if [ "$kind" = start ]; then
-		grep -qxE 'clock: [0-9]+' "$budget_file"
-	else
-		! grep -q '^clock:' "$budget_file"
-	fi
+	awk -v want_run="$run_id" -v want_kind="$kind" '
+		$0 == "kind: " want_kind { kinds++; next }
+		$0 == "run: " want_run   { runs++;  next }
+		/^clock: [0-9]+$/        { clocks++; next }
+		/^Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)$/ { budgets++; next }
+		/^round: [1-9][0-9]*$/   { rounds++; next }
+		{ junk++ }
+		END {
+			want_clocks = (want_kind == "start") ? 1 : 0
+			ok = (kinds == 1 && runs == 1 && budgets == 1 && junk == 0 &&
+			      clocks == want_clocks &&
+			      (want_kind == "start" || rounds == 0))
+			exit ok ? 0 : 1
+		}
+	' "$budget_file"
 }
 
 if [ -n "$CLAUDE_SESSION_ID" ]; then
@@ -121,6 +131,10 @@ if [ -n "$CLAUDE_SESSION_ID" ]; then
 	fi
 fi
 ```
+
+Any line that is not one of those five records — or a second `kind:`, `run:` or
+`Budget:`, or a `round:` that isn't a positive integer — makes the marker
+**unusable**, so corrupted state is replaced rather than half-trusted.
 
 The guard is `usable`, not merely "does the file exist". A **valid marker for
 this run is authoritative** — Step 1 re-runs on every resume and after each

@@ -203,6 +203,93 @@ refute "usable: a kindless legacy marker" verdict start "$START_RUN" \
 	"run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5"
 rm -f "$budget_file"
 refute "usable: no marker at all" verdict start "$START_RUN"
+refute "usable: a duplicated Budget line" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" \
+	"Budget: wall_clock_min=180 review_rounds=5" "Budget: wall_clock_min=60 review_rounds=1"
+refute "usable: a duplicated run line" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5"
+refute "usable: two clock lines" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" "clock: 1789260800" "Budget: wall_clock_min=180 review_rounds=5"
+refute "usable: a malformed round line" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5" "round: two"
+refute "usable: a stray unknown line" verdict start "$START_RUN" \
+	"kind: start" "run: $START_RUN" "clock: 1789260795" "Budget: wall_clock_min=180 review_rounds=5" "note: hello"
+refute "usable: round lines on an EPIC marker" verdict epic "$EPIC_RUN" \
+	"kind: epic" "run: $EPIC_RUN" "Budget: wall_clock_min=60 review_rounds=3" "round: 1"
+
+# --- 5. the stateful paths, executed -------------------------------------------
+# Previously verified only by hand in a scratch shell, which CI never re-runs.
+state_dir=$(mktemp -d)
+CLAUDE_SESSION_ROLES_DIR="$state_dir" CLAUDE_SESSION_ID=sess_t
+roles_dir="$state_dir"; budget_file="$roles_dir/sess_t.budget"
+
+# The documented write, as budget.md publishes it: create-only when usable.
+write_marker() { # <kind> <run> <clock> <wcm> <rr>
+	kind=$1 run_id=$2; local c=$3 w=$4 r=$5
+	mkdir -p "$roles_dir"
+	if ! usable; then
+		printf 'kind: %s\nrun: %s\n' "$kind" "$run_id" >"$budget_file"
+		[ "$kind" = start ] && printf 'clock: %s\n' "$c" >>"$budget_file"
+		printf 'Budget: wall_clock_min=%s review_rounds=%s\n' "$w" "$r" >>"$budget_file"
+	fi
+}
+
+write_marker start "$START_RUN" 1000 180 5
+printf 'round: 1\n' >>"$budget_file"
+write_marker start "$START_RUN" 2000 180 5          # a resume re-enters Step 1
+assert "re-entry keeps the original clock" grep -qx 'clock: 1000' "$budget_file"
+assert "re-entry keeps the spent rounds" grep -qx 'round: 1' "$budget_file"
+write_marker start '#99 other' 3000 60 1            # a different ticket, same session
+assert "a foreign run replaces the marker" grep -qx 'run: #99 other' "$budget_file"
+refute "a foreign run does not inherit spent rounds" grep -q '^round:' "$budget_file"
+
+# Round accounting is before the push, so an interrupted push cannot under-count.
+rounds_used() { grep -c '^round: ' "$budget_file" || true; }
+write_marker start "$START_RUN" 1000 180 2
+before=$(rounds_used); printf 'round: 1\n' >>"$budget_file"   # record, then push
+assert "a round is counted before its push" test "$(rounds_used)" -eq $((before + 1))
+
+# The deadline poll: bounded, errexit-safe, and it breaks on a settled check.
+stub_dir="$state_dir/bin"; mkdir -p "$stub_dir"
+printf '#!/usr/bin/env bash\nexit 8\n' >"$stub_dir/gh"; chmod +x "$stub_dir/gh"
+poll() { # <deadline-seconds-from-now>
+	local deadline=$(( $(date +%s) + $1 ))
+	until [ "$(date +%s)" -ge "$deadline" ]; do
+		poll_status=0; PATH="$stub_dir:$PATH" gh pr checks 1 >/dev/null 2>&1 || poll_status=$?
+		[ "$poll_status" -ne 8 ] && break
+		sleep 1
+	done
+}
+poll_start=$(date +%s); ( set -e; poll 2 ); poll_rc=$?
+assert "the deadline poll survives set -e" test "$poll_rc" -eq 0
+assert "the deadline poll stops at its deadline" test $(( $(date +%s) - poll_start )) -lt 8
+printf '#!/usr/bin/env bash\nexit 0\n' >"$stub_dir/gh"
+poll_start=$(date +%s); poll 30
+assert "the deadline poll breaks on a settled check" test $(( $(date +%s) - poll_start )) -lt 5
+
+# Cleanup: recomputed path, guarded session id.
+clear_marker() { # <session-id>
+	local rd="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}" sid=$1
+	[ -n "$sid" ] && rm -f "$rd/$sid.budget"
+}
+printf 'x\n' >"$roles_dir/.budget"                  # what an unguarded rm would hit
+clear_marker sess_t
+refute "cleanup removes this session's marker" test -f "$budget_file"
+assert "cleanup leaves a non-session file alone" test -f "$roles_dir/.budget"
+clear_marker "" || true   # the guard returns false by design; don't trip set -e
+assert "cleanup with an unset session id is a no-op" test -f "$roles_dir/.budget"
+
+# The SessionStart hook refreshes the sidecar past its own 30-day reaper.
+hook="$repo/plugins/ticket-workflow/hooks/role-session-start.sh"
+printf 'implementer\n' >"$roles_dir/sess_t"
+printf 'kind: start\nrun: r\nclock: 1\nBudget: wall_clock_min=1 review_rounds=1\n' >"$budget_file"
+touch -d '60 days ago' "$roles_dir/sess_t" "$budget_file" 2>/dev/null || touch -t 202001010000 "$roles_dir/sess_t" "$budget_file"
+CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_PLUGIN_ROOT="$repo/plugins/ticket-workflow" \
+	bash "$hook" <<<'{"session_id":"sess_t","source":"resume"}' >/dev/null 2>&1 || true
+assert "the hook refreshes the role marker" test -z "$(find "$roles_dir" -name sess_t -mtime +30)"
+assert "the hook refreshes the budget sidecar" test -z "$(find "$roles_dir" -name 'sess_t.budget' -mtime +30)"
+rm -rf "$state_dir"
+
 
 # Forwarding surfaces.
 assert "phases/epic.md points at budget.md" grep -q 'Read `budget.md`' <<<"$epic_prose"
