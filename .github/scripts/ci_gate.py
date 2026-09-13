@@ -494,7 +494,13 @@ _INTERPRETER = re.compile(_CMD + _PATH + r"(bash|sh|zsh|python3?|node|ruby|perl)
 _CODE_LETTERS = {"bash": "c", "sh": "c", "zsh": "c", "python": "cm", "python3": "cm", "node": "ep", "ruby": "e", "perl": "eE"}
 _ARG_LETTERS = {"bash": "o", "sh": "o", "zsh": "o", "python": "WXQ", "python3": "WXQ", "node": "r", "ruby": "Ir", "perl": "IM"}
 _LONG_CODE = {"node": {"--eval", "--print"}, "python": {"--command"}, "python3": {"--command"}}
-_LONG_ARG = {"node": {"--require", "--import"}}
+# Long options that consume the following token. An option outside both maps is
+# ambiguous -- `bash --rcfile /tmp/rc setup.sh` would otherwise read /tmp/rc as
+# the script, accept it as absolute, and never see setup.sh -- so the lint says
+# so rather than guessing.
+_LONG_ARG = {"bash": {"--rcfile", "--init-file"}, "sh": set(), "zsh": {"--rcfile"},
+             "node": {"--require", "--import"}, "python": set(), "python3": set(),
+             "ruby": set(), "perl": set()}
 
 
 def _strip_comment(line: str) -> str:
@@ -540,14 +546,15 @@ def logical_lines(text: str) -> list[tuple[int, str]]:
     return out
 
 
-def relative_interpreter_script(line: str) -> str | None:
-    """The script an interpreter on this line would run, unless it is absolute.
+def interpreter_risk(line: str) -> str | None:
+    """Why an interpreter on this line might run something from the checkout.
 
     Walks the interpreter's options so `bash -e setup.sh` and `python3 -O
     setup.py` are caught while `bash -euo pipefail -c "$s"` and `node -e x` are
-    not. Only a literal absolute path is accepted: a variable can hold a path
-    back into the checkout (`bash "$CLAUDE_PROJECT_DIR/x.sh"`), and this lint
-    cannot know what it holds.
+    not. Only a literal absolute path is accepted as the script: a variable can
+    hold a path back into the checkout (`bash "$CLAUDE_PROJECT_DIR/x.sh"`), and
+    this lint cannot know what it holds. A long option in neither map is
+    reported rather than assumed to take no argument.
     """
     for m in _INTERPRETER.finditer(line):
         interp = m.group(1)
@@ -563,8 +570,10 @@ def relative_interpreter_script(line: str) -> str | None:
             if tok.startswith("--"):
                 if tok in _LONG_CODE.get(interp, ()):
                     break
-                i += 2 if tok in _LONG_ARG.get(interp, ()) else 1
-                continue
+                if tok in _LONG_ARG.get(interp, ()):
+                    i += 2
+                    continue
+                return f"an interpreter given a long option this lint cannot interpret ({tok}), so its script argument is unknown"
             if tok.startswith("-") or (tok.startswith("+") and interp in ("bash", "sh", "zsh")):
                 letters = tok[1:]
                 if any(c in _CODE_LETTERS[interp] for c in letters):
@@ -576,7 +585,7 @@ def relative_interpreter_script(line: str) -> str | None:
         if script:
             script = script.strip("\"'")
             if script and not script.startswith("/"):
-                return script
+                return "an interpreter run on a script that is not a literal absolute path"
     return None
 
 
@@ -595,8 +604,8 @@ def cloud_setup_lint(text: str) -> list[str]:
         reasons.append(f"missing the header comment stating the rule ({CLOUD_SETUP_HEADER!r})")
     for lineno, line in logical_lines(text):
         what = next((name for pattern, name in CLOUD_SETUP_FORBIDDEN if pattern.search(line)), None)
-        if what is None and relative_interpreter_script(line):
-            what = "an interpreter run on a script that is not a literal absolute path"
+        if what is None:
+            what = interpreter_risk(line)
         if what:
             reasons.append(f"line {lineno}: {what}, which could execute something from the checkout: {line.strip()}")
     return reasons

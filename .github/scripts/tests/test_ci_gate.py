@@ -689,6 +689,24 @@ def test_cloud_setup_lint_matches_a_tool_by_any_path(line):
     assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") != [], line
 
 
+@pytest.mark.parametrize("line,expected", [
+    # An option that takes an argument must not be mistaken for the script.
+    ("bash --rcfile /tmp/rc setup.sh", "not a literal absolute path"),
+    ("node --require /abs/pre.js app.js", "not a literal absolute path"),
+    # One this lint does not know is reported, not assumed argument-less.
+    ("bash --login /opt/x.sh", "cannot interpret (--login)"),
+    ("python3 --unknown-flag /opt/x.py", "cannot interpret (--unknown-flag)"),
+])
+def test_cloud_setup_lint_handles_long_options(line, expected):
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
+    assert len(reasons) == 1 and expected in reasons[0], (line, reasons)
+
+
+def test_cloud_setup_lint_allows_known_argument_taking_options(line=None):
+    for ok in ("node --require /abs/pre.js -e x", "bash --rcfile /tmp/rc -c \"$s\""):
+        assert ci_gate.cloud_setup_lint(SETUP_HEADER + ok + "\n") == [], ok
+
+
 def test_cloud_setup_lint_joins_line_continuations():
     """`ma\\` + `ke` is one command to the shell, so it is one line to the lint."""
     reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + "ma\\\nke\n")

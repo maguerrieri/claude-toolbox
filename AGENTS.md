@@ -178,7 +178,11 @@ since a variable can hold a path back into the checkout. Three modes:
 `.claude/cloud-allowlist` mirrors the environment's network allowlist
 (`level:` / `host:` lines); nothing reads it at runtime, but its hash is part
 of the staleness check, so changing the GUI allowlist means changing the file
-and bumping the stub. `.github/scripts/tests/test_cloud_setup.py` runs the
+and bumping the stub — and provisioning refuses outright if `origin/main` has
+no such file, since an absent one would hash as empty input and read as
+current. Secrets reach the script as environment variables, which every child
+process inherits, so it captures them into shell variables and unsets the
+environment copies before any `claude plugin install` runs. `.github/scripts/tests/test_cloud_setup.py` runs the
 real script against a throwaway origin with recording stubs; the
 `factory scripts` workflow runs it on every `.claude/**` change.
 

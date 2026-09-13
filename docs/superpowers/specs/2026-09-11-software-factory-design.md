@@ -746,8 +746,12 @@ literal absolute path (its options walked, so `bash -e setup.sh` and `bash
 "$dir/x.sh"` are caught and `bash -c "$s"` is not). Comment stripping is
 quote-aware, backslash continuations are joined before matching (`ma\` +
 `ke` is one command to the shell and one line to the lint), a tool matches
-by any path, the rule must appear as a comment line rather than anywhere in
-the text, and a PR that removes a script its base carries fails the gate. `.github/scripts/tests/test_cloud_setup.py` runs the real
+by any path, an interpreter's long option that the lint knows takes an
+argument is stepped over while one it does not know is reported rather than
+assumed argument-less (`bash --rcfile /tmp/rc setup.sh` would otherwise read
+the rc file as the script), the rule must appear as a comment line rather than
+anywhere in the text, and a PR that removes a script its base carries fails
+the gate. `.github/scripts/tests/test_cloud_setup.py` runs the real
 script against a throwaway origin with recording `claude`/`gcloud`/`curl`/
 `op` stubs and covers the setup-script tests below that need no
 environment (branch marker never runs, planted `Makefile` and `postinstall`

@@ -63,6 +63,15 @@ IAM_CORE="logging.logEntries.list"
 IAM_BATCH=100          # testIamPermissions accepts at most 100 names per call
 IAM_MAX_PAGES=50       # a bound on the testable-permission listing, not a limit
 
+# Secrets arrive as environment variables, and every child process inherits
+# the environment -- including `claude plugin install` and whatever install
+# hook a marketplace plugin runs. Capture them into shell variables, which are
+# not exported, and drop the environment copies before any of that runs; the
+# two places that need them pass them per-command.
+factory_key="${FACTORY_LOGS_VIEWER_KEY:-}"
+op_token="${OP_SERVICE_ACCOUNT_TOKEN:-}"
+unset FACTORY_LOGS_VIEWER_KEY OP_SERVICE_ACCOUNT_TOKEN
+
 mode="${1:-}"
 repo_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
 state_dir="${FACTORY_SETUP_STATE:-$HOME/.factory-setup}"
@@ -190,14 +199,14 @@ provision_logs_key() {
   # any activated account; the SessionStart hook keeps it unset per session.
   unset CLOUDSDK_AUTH_ACCESS_TOKEN
   key_file="$work/logs-viewer-key.json"
-  if [ -n "${FACTORY_LOGS_VIEWER_KEY:-}" ]; then
-    case "$FACTORY_LOGS_VIEWER_KEY" in
-      '{'*) printf '%s' "$FACTORY_LOGS_VIEWER_KEY" >"$key_file" ;;
-      *) printf '%s' "$FACTORY_LOGS_VIEWER_KEY" | base64 -d >"$key_file" || die "FACTORY_LOGS_VIEWER_KEY is neither JSON nor base64" ;;
+  if [ -n "$factory_key" ]; then
+    case "$factory_key" in
+      '{'*) printf '%s' "$factory_key" >"$key_file" ;;
+      *) printf '%s' "$factory_key" | base64 -d >"$key_file" || die "FACTORY_LOGS_VIEWER_KEY is neither JSON nor base64" ;;
     esac
-  elif [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && command -v op >/dev/null; then
+  elif [ -n "$op_token" ] && command -v op >/dev/null; then
     say "FACTORY_LOGS_VIEWER_KEY unset; fetching the key from 1Password (transitional: that token reaches its whole vault, so set FACTORY_LOGS_VIEWER_KEY on the environment instead and drop the op token)"
-    if ! op document get gcp-logs-viewer-key --vault "Claude (personal)" --out-file "$key_file" --force >/dev/null; then
+    if ! OP_SERVICE_ACCOUNT_TOKEN="$op_token" op document get gcp-logs-viewer-key --vault "Claude (personal)" --out-file "$key_file" --force >/dev/null; then
       say "could not fetch gcp-logs-viewer-key from 1Password; failing provisioning"
       return 1
     fi
@@ -325,7 +334,10 @@ provision() {
   [ -d "$repo_dir/.git" ] || [ -f "$repo_dir/.git" ] || die "$repo_dir is not a git checkout (set CLAUDE_PROJECT_DIR)"
   fetch_main || die "origin/main unreachable; refusing to provision"
   [ -n "$(main_blob .claude/cloud-setup.sh)" ] || die "origin/main has no .claude/cloud-setup.sh; refusing to provision"
-  [ -n "$(main_blob .claude/cloud-allowlist)" ] || say "origin/main has no .claude/cloud-allowlist; the allowlist hash will not be tracked"
+  # Not optional: the manifest's staleness check hashes it, and a missing file
+  # hashes as empty input, so --verify would answer SETUP OK for a snapshot
+  # whose reviewable network-allowlist mirror is not tracked at all.
+  [ -n "$(main_blob .claude/cloud-allowlist)" ] || die "origin/main has no .claude/cloud-allowlist; refusing to provision"
   provision_plugins || rc=1
   drift=$(claude_dir_drift)
   if [ -n "$drift" ]; then

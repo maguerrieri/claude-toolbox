@@ -25,6 +25,7 @@ STUBS = {
     # by an indented `Source:` line; `add <url>#<ref>` records `Git (url@ref)`.
     "claude": r"""#!/bin/bash
 echo "claude $*" >> "$STUB_LOG"
+[ -n "${FACTORY_LOGS_VIEWER_KEY:-}${OP_SERVICE_ACCOUNT_TOKEN:-}" ] && echo "LEAKED_SECRET_TO_CLAUDE" >> "$STUB_LOG"
 [ -n "${STUB_CLAUDE_FAIL:-}" ] && case "$*" in *"$STUB_CLAUDE_FAIL"*) exit 1 ;; esac
 case "$*" in
   "plugin marketplace list") cat "$STUB_STATE/markets" 2>/dev/null ;;
@@ -455,6 +456,27 @@ def test_excess_iam_says_the_key_must_be_rotated_by_hand(env):
     """`gcloud auth revoke` is local only; the key stays valid in IAM."""
     r = env.run(STUB_IAM_EXCESS="1")
     assert "ACTION REQUIRED" in r.stdout and "still valid in IAM" in r.stdout
+
+
+def test_secrets_are_not_in_the_environment_of_plugin_commands(env):
+    """`claude plugin install` runs marketplace-declared hooks; they inherit the environment."""
+    r = env.run(OP_SERVICE_ACCOUNT_TOKEN="op-token-value")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "claude plugin install" in env.calls()
+    assert "LEAKED_SECRET_TO_CLAUDE" not in env.calls()
+    # The key still reaches the step that needs it.
+    assert (env.state / "materialized-key").read_text().startswith('{"type": "service_account"')
+
+
+def test_a_missing_allowlist_on_main_refuses_to_provision(env):
+    """Its hash is part of the staleness check; absent, it would hash as empty."""
+    git(str(env.seed), "rm", "-q", ".claude/cloud-allowlist")
+    git(str(env.seed), "commit", "-qm", "drop allowlist")
+    git(str(env.seed), "push", "-q", "origin", "HEAD:main")
+    r = env.run()
+    assert r.returncode == 1
+    assert "no .claude/cloud-allowlist; refusing to provision" in r.stderr
+    assert not (env.home / ".factory-setup" / "manifest").exists()
 
 
 def test_manifest_records_origin_main_hashes(env):
