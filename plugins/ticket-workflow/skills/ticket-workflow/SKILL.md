@@ -261,10 +261,14 @@ ft="$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/factory-token"
 "$ft" exec -- git push -u origin <branch>
 ```
 
+That **replaces** the plain `git push` below — run one or the other, never both:
+a second, unwrapped push in a factory session either fails on the sentinel or,
+in proxy-injected mode, pushes as the user.
+
 `normalize-commits` rewrites author and committer of the commits in `origin/<base_branch>..HEAD` that carry the platform's default identity, and **stops (exit 6) on any other non-App author or committer** — hand back rather than relabel someone else's work. Each Bash call is a fresh shell, so wrap **every `gh` call in this step and Step 8** — the `gh pr create` template below (written for ordinary sessions), `gh pr checks`, and the profile's `REVIEW_BOT` commands — in `"$ft" exec --`. The SessionStart hook also puts a wrapped `gh` first on `PATH`, so an unwrapped call still carries the token; the explicit `exec` here is what makes identity independent of that hook. Any non-zero exit stops the ticket (3 = proxy-injected mode; a PR opened anyway would be authored as the user). No `FACTORY_BROKER_URL` → an ordinary session; skip this.
 
 ```bash
-git push -u origin <branch>
+git push -u origin <branch>          # ordinary sessions; a factory session used the wrapped push above
 ```
 
 Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):

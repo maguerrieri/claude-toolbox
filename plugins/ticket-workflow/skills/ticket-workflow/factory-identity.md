@@ -44,9 +44,17 @@ ft="${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/factory-token"
 and the **`gh` shim**: the plugin's SessionStart hook runs `factory-token shim`
 when `FACTORY_BROKER_URL` is set, which writes a `gh` wrapper into the cache dir
 and puts it first on `PATH`, so every *other* `gh` call in the session is wrapped
-too. The shim bakes the repository in at install time, so it works from any
-directory, and it does not recurse: inside `exec` the token is already in the
-environment and it runs the real `gh` directly.
+too. The shim bakes the repository *and the broker* in at install time, so it
+works from any directory and with neither variable exported, and it does not
+recurse: inside `exec` the token is already in the environment and it runs the
+real `gh` directly.
+
+If the helper cannot install that shim, the hook installs a **deny shim**
+instead — a `gh` that refuses and explains. That matters most in proxy-injected
+mode: there an unwrapped `gh` does not fail on the sentinel, it quietly acts as
+the *user*, so refusing is the only safe default. Do not work around a deny
+shim; run `factory-token status` and fix the cause (usually M1 not being in
+effect for this environment).
 
 Step 7 still calls `exec` explicitly for the push and `gh pr create`, so identity
 never depends on the hook. A branch that deletes the hook leaves those calls
@@ -74,6 +82,9 @@ committer** rather than relabelling someone else's work. It verifies the tree is
 unchanged before moving the branch. Per 2d, commit authorship is cosmetic: the
 identities the factory relies on are the PR author and the pusher, both set by
 the token.
+
+`normalize-commits` walks the range in topological order, so a merge commit's
+parents are rewritten before it is.
 
 The helper resolves the repository from the checkout's `origin` remote (the exact
 `github.com` host, in its three URL forms) or from `--repo` / `FACTORY_REPO`,
@@ -174,6 +185,10 @@ reported but not judged. Only an expected refusal passes a negative path: a
 broker that is down, answers 5xx, or answers 401 (no bearer reached it) is
 reported as inconclusive and fails, and so does a helper that stops on
 proxy-injected mode (exit 3) instead of refusing the repository (exit 4).
+The write probe accepts a 404 only when `B`'s existence is independently
+confirmed (an unauthenticated read of it succeeds), since GitHub answers 404
+both for "you may not" and "no such repository" — so pick a `--foreign` the App
+is installed on and whose existence can be verified, not an arbitrary name.
 `--skip-github` runs the broker/helper/environment paths only — what CI runs
 against the fake broker in `tests/`. Record the output in the PR that enables
 item 4b.

@@ -120,6 +120,10 @@ refute "a refused mint leaves no broker response either" loose_temp_with_token
 err=$(run "$work/cerr" --repo "not-a-repo" exec -- true 2>&1 || true)
 refute "a die message does not end in its exit code" bash -c "printf '%s' \"\$1\" | grep -qE '[^0-9]4\$|[^0-9]2\$'" _ "$err"
 assert "cache file is mode 0600" bash -c "[ \"\$(stat -c %a \"\$1\"/*.json)\" = 600 ]" _ "$c1"
+# The file must never exist as 0644 first: created under umask 077, not chmodded.
+cumask="$work/cumask"
+( umask 000 && FACTORY_TOKEN_CACHE_DIR="$cumask" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$good" "$helper" --repo "$BOUND" exec -- true )
+assert "cache file is 0600 even under a permissive umask" bash -c "[ \"\$(stat -c %a \"\$1\"/*.json)\" = 600 ]" _ "$cumask"
 rc=0; run "$c1" --repo "$BOUND" exec -- sh -c 'exit 7' || rc=$?
 assert "exec passes the command's exit status through" test "$rc" -eq 7
 expect_exit "exec with nothing to run is a usage error" 2 run "$c1" --repo "$BOUND" exec
@@ -186,6 +190,12 @@ done
 b=$(start_broker permsok FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_PERMS='{"contents":"write","pull_requests":"write","issues":"write","checks":"read","metadata":"read"}')
 assert "exactly the five permissions is accepted" env FACTORY_TOKEN_CACHE_DIR="$work/c9" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$b" "$helper" --repo "$BOUND" exec -- true
 
+# A present-but-unparsable expires_at is a refusal even when expires_in is fine:
+# the unparsed one may be earlier, and holding to the later value outlives it.
+badat=$(start_broker badat FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_EXPIRES_AT=not-a-timestamp)
+expect_exit "an unparsable expires_at is refused even with expires_in present (exit 4)" 4 env FACTORY_TOKEN_CACHE_DIR="$work/cbad" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$badat" "$helper" --repo "$BOUND" exec -- true
+refute "unparsable expires_at: nothing cached" ls "$work/cbad"
+
 expired=$(start_broker expired FAKE_BROKER_BOUND="$BOUND" FAKE_BROKER_EXPIRED=1)
 c10="$work/c10"
 expect_exit "an already-expired token is refused (exit 4)" 4 env FACTORY_TOKEN_CACHE_DIR="$c10" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$expired" "$helper" --repo "$BOUND" exec -- true
@@ -203,6 +213,12 @@ shim_out=$(cd "$work" && run "$c6" --repo "$BOUND" shim "$shimdir" 2>"$work/shim
 assert "shim writes an executable gh" test -x "$shimdir/gh"
 assert "shim prints a PATH export putting itself first" bash -c "printf '%s' \"\$1\" | grep -q \"^export PATH=.*$shimdir\"" _ "$shim_out"
 assert "shim bakes the repository in, so it works from any directory" grep -q -- "--repo" "$shimdir/gh"
+assert "shim bakes the broker in, so it does not need the env var later" grep -q -- "--broker" "$shimdir/gh"
+# With neither the env var nor a flag, the shim must still reach its broker.
+: >"$GH_STUB_LOG"
+( cd "$work" && env -u FACTORY_BROKER_URL PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required gh api /rate_limit )
+assert "the shim works with FACTORY_BROKER_URL unset" grep -q "api /rate_limit|" "$GH_STUB_LOG"
+expect_exit "shim refuses to install without a broker URL" 2 bash -c "cd $work && env -u FACTORY_BROKER_URL FACTORY_TOKEN_CACHE_DIR=$c6 GH_TOKEN=factory-token-required $helper --repo $BOUND shim $work/shim2"
 refute "shim never prints the token" bash -c "printf '%s%s' \"\$1\" \"\$(cat \"\$2\")\" | grep -q ghs_fake" _ "$shim_out" "$work/shim.err"
 : >"$GH_STUB_LOG"
 ( cd "$work" && PATH="$shimdir:$PATH" FACTORY_TOKEN_CACHE_DIR="$c6" GH_TOKEN=factory-token-required FACTORY_BROKER_URL="$good" gh api /rate_limit )
@@ -217,6 +233,13 @@ git init -q "$repo" && git -C "$repo" remote add origin "git@github.com:$BOUND.g
 : >"$GH_STUB_LOG"
 ( cd "$repo" && run "$c6" setup-git 2>"$work/setup.err" )
 assert "setup-git runs gh auth setup-git with the App token" grep -q "^auth setup-git|$(token_of "$c6")\$" "$GH_STUB_LOG"
+# The nested call must carry the outer --repo/--broker, not re-resolve from cwd.
+repo3="$work/checkout3"; c12="$work/c12"
+git init -q "$repo3" && git -C "$repo3" remote add origin "https://github.com/Other/Repo"
+: >"$GH_STUB_LOG"
+( cd "$repo3" && FACTORY_TOKEN_CACHE_DIR="$c12" GH_TOKEN=factory-token-required "$helper" --repo "$BOUND" --broker "$good" setup-git 2>/dev/null )
+assert "setup-git honours an explicit --repo over the checkout's origin" test "$(git -C "$repo3" config --local remote.origin.pushurl)" = "https://github.com/$BOUND.git"
+assert "the nested gh auth setup-git used that same token" grep -q "^auth setup-git|$(token_of "$c12")\$" "$GH_STUB_LOG"
 # Raw config keys, not `git remote get-url`: an environment-level insteadOf
 # rewrite (the cloud git proxy has one) would mask what setup-git actually wrote.
 assert "setup-git sets an HTTPS push URL for the SSH origin" test "$(git -C "$repo" config --local remote.origin.pushurl)" = "https://github.com/$BOUND.git"
@@ -260,6 +283,20 @@ assert "all three commits are still there" test "$(git -C "$nrepo" rev-list --co
 assert "messages survive the rewrite" bash -c "git -C $nrepo log origin/main..HEAD --format='%s' | grep -qx 'already the App'"
 ( cd "$nrepo" && run "$c6" normalize-commits main 2>"$work/norm2.err" )
 assert "a second run is a no-op" grep -q 'already carries the App identity' "$work/norm2.err"
+
+# A merge commit in the range: rev-list must hand parents to the replay before
+# their children, or a rewritten child would still point at an un-rewritten parent.
+git -C "$nrepo" checkout -q -b side origin/main
+commit_as "$nrepo" "claude" "noreply@anthropic.com" side.txt "a side-branch commit"
+git -C "$nrepo" checkout -q -
+GIT_AUTHOR_NAME=claude GIT_AUTHOR_EMAIL=noreply@anthropic.com \
+	GIT_COMMITTER_NAME=claude GIT_COMMITTER_EMAIL=noreply@anthropic.com \
+	git -C "$nrepo" merge -q --no-ff side -m "merge the side branch"
+( cd "$nrepo" && run "$c6" normalize-commits main 2>"$work/norm3.err" )
+assert "a range with a merge commit normalizes every author" test "$(git -C "$nrepo" log origin/main..HEAD --format='%ae' | sort -u)" = "$app_email"
+assert "a range with a merge commit normalizes every committer" test "$(git -C "$nrepo" log origin/main..HEAD --format='%ce' | sort -u)" = "$app_email"
+assert "the merge commit keeps both parents" test "$(git -C "$nrepo" rev-list --parents -n 1 HEAD | wc -w)" -eq 3
+assert "no commit in the range still points at an un-rewritten parent" bash -c "! git -C $nrepo log origin/main..HEAD --format='%P' | tr ' ' '\n' | sort -u | xargs -r -n1 git -C $nrepo show -s --format='%ae' 2>/dev/null | grep -qx 'noreply@anthropic.com'"
 
 commit_as "$nrepo" "A Human" "human@example.com" d.txt "a human's commit"
 head_before=$(git -C "$nrepo" rev-parse HEAD)

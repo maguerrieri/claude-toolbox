@@ -300,7 +300,11 @@ mint_token() {
 		from_in=$((now_s + expires_in))
 	fi
 	if [ -n "$expires_at" ]; then
-		from_at=$(iso_to_epoch "$expires_at") || { [ -n "$from_in" ] || die_reason malformed_response "cannot parse expires_at '$expires_at' (need GNU date or an expires_in field)"; }
+		# A present expiry that cannot be parsed is a refusal, not something to skip
+		# past because expires_in happens to be there: the unparsed one may be
+		# earlier, and holding the token to the later value would outlive it.
+		from_at=$(iso_to_epoch "$expires_at") ||
+			die_reason malformed_response "broker response has an unparsable expires_at '$expires_at'; refusing (not cached, not exported)"
 	fi
 	[ -n "$from_in$from_at" ] || die_reason malformed_response "broker response carries neither expires_in nor expires_at; refusing"
 	if [ -n "$from_in" ] && [ -n "$from_at" ]; then
@@ -315,8 +319,9 @@ mint_token() {
 	ensure_cache_dir
 	local out
 	out=$(cache_file)
-	jq -c --argjson exp "$expires_epoch" --arg repo "$REPO" '. + {expires_epoch: $exp, repository: $repo}' "$tmp" >"$out.tmp.$$"
-	chmod 600 "$out.tmp.$$"
+	# umask before the redirection creates the file: a chmod afterwards leaves a
+	# window in which another process can read the token from a 0644 file.
+	(umask 077 && jq -c --argjson exp "$expires_epoch" --arg repo "$REPO" '. + {expires_epoch: $exp, repository: $repo}' "$tmp" >"$out.tmp.$$")
 	mv -f "$out.tmp.$$" "$out"
 }
 
@@ -348,10 +353,17 @@ cmd_exec() {
 # the App token (spec 2d). Prints the line a SessionStart hook adds to the env.
 cmd_shim() {
 	local dir=${1:-}
-	# Resolve the repository now and bake it into the shim: a wrapped `gh` can run
-	# from any directory (a subshell that cd'd elsewhere, a hook), so the shim must
-	# not depend on the cwd's origin remote the way an interactive call does.
+	# Resolve the repository now and bake it, with the broker, into the shim: a
+	# wrapped `gh` can run from any directory (a subshell that cd'd elsewhere, a
+	# hook) and with any environment, so the shim must not depend on the cwd's
+	# origin remote or on FACTORY_BROKER_URL still being exported.
 	resolve_repo
+	# Refuse to install under proxy-injected mode. Wrapping `gh` there would be
+	# theatre — every wrapped call exits 3 — and, more importantly, the caller
+	# (the SessionStart hook) needs this failure so it can deny `gh` outright:
+	# an unwrapped call in that mode runs as the *user*, not against the sentinel.
+	require_passthrough_mode
+	[ -n "$BROKER" ] || die "broker URL not set: pass --broker or set FACTORY_BROKER_URL before installing the shim"
 	[ -n "$dir" ] || dir="$(cache_dir)/bin"
 	mkdir -p "$dir"
 	chmod 700 "$dir" 2>/dev/null || true
@@ -367,7 +379,7 @@ cmd_shim() {
 if [ -n "\${FACTORY_TOKEN_ACTIVE:-}" ]; then
 	exec $(printf '%q' "$real") "\$@"
 fi
-exec $(printf '%q' "$helper") --repo $(printf '%q' "$REPO") exec -- $(printf '%q' "$real") "\$@"
+exec $(printf '%q' "$helper") --repo $(printf '%q' "$REPO") --broker $(printf '%q' "$BROKER") exec -- $(printf '%q' "$real") "\$@"
 EOF
 	chmod 755 "$dir/gh"
 	printf 'factory-token: gh shim installed at %s (real gh: %s)\n' "$dir/gh" "$real" >&2
@@ -396,7 +408,7 @@ cmd_setup_git() {
 	# `gh auth git-credential`, which reads GH_TOKEN — so a push run under
 	# `factory-token exec` carries the App, and an unwrapped one reads the
 	# sentinel and fails instead of pushing as the user.
-	"$(self_path)" exec -- gh auth setup-git
+	"$(self_path)" --repo "$REPO" --broker "$BROKER" exec -- gh auth setup-git
 	# Commit identity is an optimization here; normalize-commits at Step 7 is what
 	# the design relies on (2d: commit authorship is cosmetic, not provenance).
 	git config --local user.name "${slug}[bot]"
@@ -421,7 +433,9 @@ cmd_normalize_commits() {
 	local range="origin/${base}..HEAD"
 	git rev-parse --verify --quiet "origin/${base}" >/dev/null || die "origin/${base} is not a known ref (fetch it first)"
 	local commits
-	commits=$(git rev-list --reverse "$range")
+	# --topo-order --reverse: parents before children whatever the commit dates say,
+	# so a rewritten parent is always in the map by the time its child is replayed.
+	commits=$(git rev-list --topo-order --reverse "$range")
 	if [ -z "$commits" ]; then
 		printf 'factory-token: no commits in %s; nothing to normalize\n' "$range" >&2
 		return 0

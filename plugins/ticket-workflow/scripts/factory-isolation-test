@@ -21,11 +21,15 @@
 #        GET  /repos/B                    informational only: a public B is readable by
 #                                         anyone, so this proves nothing either way
 #        the token's own permissions are exactly the five 2d names
-#        POST /repos/B/git/blobs          401/403/404 (a write to B is rejected). A blob
+#        POST /repos/B/git/blobs          401/403 (a write to B is rejected). A blob
 #                                         create needs only contents: write and has no
 #                                         input that can fail validation, so a 422 or a
 #                                         2xx is a real answer, not a false negative; a
 #                                         2xx would leave one dangling, unreferenced blob.
+#                                         A 404 counts only when B is independently known
+#                                         to exist (an unauthenticated read of it
+#                                         succeeds), since GitHub answers 404 both for
+#                                         "you may not" and "no such repository".
 #
 # Only an expected refusal passes a negative path. A transport failure, a 5xx, a
 # 401 (no bearer reached the broker: the API credential is not configured), a 403
@@ -37,8 +41,9 @@
 # Usage:
 #   factory-isolation-test --bound OWNER/A --foreign OWNER/B [--broker URL] [--skip-github]
 #
-# The foreign repo must be one the App is installed on (otherwise a 404 proves
-# nothing about the token); pick the other factory repo. Output is TAP-like; exit
+# The foreign repo must be one the App is installed on and one whose existence the
+# script can confirm (otherwise a 404 proves nothing about the token); pick the
+# other factory repo. Output is TAP-like; exit
 # 0 only when every path passes. No token or bearer is ever printed.
 set -euo pipefail
 
@@ -258,9 +263,28 @@ else
 		echo "# note: GET /repos/$FOREIGN → HTTP $s (informational: 200 is expected when $FOREIGN is public; not an isolation signal)"
 		# Authorization-sensitive write: a blob create needs contents: write on B and
 		# has no input that can fail validation before the permission check.
+		#
+		# A 404 is ambiguous on its own — GitHub answers it both for "you may not"
+		# and for "no such repository" — so establish independently that B exists
+		# before accepting one. An unauthenticated read settles it for a public B;
+		# for anything else only 401/403 counts, and a 404 is inconclusive.
+		foreign_exists=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+			-H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$FOREIGN" 2>/dev/null || printf '000')
+		if [ "$foreign_exists" = 200 ]; then
+			echo "# note: $FOREIGN is publicly visible, so a 404 below means the token cannot reach it"
+		else
+			echo "# note: could not confirm $FOREIGN exists unauthenticated (HTTP $foreign_exists); a 404 below will be inconclusive"
+		fi
 		s=$(gh_api POST "/repos/$FOREIGN/git/blobs" '{"content":"factory-isolation-test probe","encoding":"utf-8"}')
 		case "$s" in
-		401 | 403 | 404) ok "POST /repos/$FOREIGN/git/blobs → $s (write rejected)" ;;
+		401 | 403) ok "POST /repos/$FOREIGN/git/blobs → $s (write rejected)" ;;
+		404)
+			if [ "$foreign_exists" = 200 ]; then
+				ok "POST /repos/$FOREIGN/git/blobs → 404 (write rejected; $FOREIGN is known to exist)"
+			else
+				fail "POST /repos/$FOREIGN/git/blobs → 404, but $FOREIGN could not be confirmed to exist — a nonexistent or uninstalled foreign repo cannot demonstrate isolation. Pick a --foreign the App is installed on and whose existence can be verified."
+			fi
+			;;
 		2*) fail "POST /repos/$FOREIGN/git/blobs → HTTP $s (write ACCEPTED: an $BOUND token can write to $FOREIGN; one dangling blob was created there)" ;;
 		*) fail "POST /repos/$FOREIGN/git/blobs → HTTP $s (neither rejected nor accepted — inconclusive)" ;;
 		esac
