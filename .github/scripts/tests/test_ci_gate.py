@@ -640,6 +640,36 @@ def test_cloud_setup_lint_allows_provisioning_shapes(line):
     assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == []
 
 
+@pytest.mark.parametrize("line", [
+    "printf '%s\\n' 'x # not a comment'; make",
+    'echo "a # b"; npm ci',
+    "echo 'it''s' ; ./run",
+    "bash -e setup.sh", "bash -x -- setup.sh", "python3 -O setup.py", "sh -u ./x.sh", "node --no-warnings app.js",
+    "ruby -w script.rb", "perl -w tool.pl", "bash -o pipefail setup.sh",
+])
+def test_cloud_setup_lint_is_shell_aware(line):
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
+    assert len(reasons) == 1 and reasons[0].startswith("line 3:"), (line, reasons)
+
+
+@pytest.mark.parametrize("line", [
+    "echo hi  # make; npm install; ./x",
+    "bash -euo pipefail -c \"$script\"", "bash -c 'make' 2>/dev/null", "bash -s", "bash -x -- /opt/x.sh",
+    "node -e 'process.exit()'", "node --eval x", "node -r /abs/pre.js -e x", "python3 -m json.tool", "python3 -W ignore -c pass",
+    "ruby -e puts", "perl -E say", 'bash "$work/setup.sh"', "bash $HOME/x.sh",
+    "printf 'a # b' | grep '#'",
+])
+def test_cloud_setup_lint_shell_aware_allows(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == [], line
+
+
+def test_strip_comment():
+    assert ci_gate._strip_comment("echo hi # make") == "echo hi "
+    assert ci_gate._strip_comment("echo 'a # b' # c") == "echo 'a # b' "
+    assert ci_gate._strip_comment('url="https://x/r.git#main" # ref') == 'url="https://x/r.git#main" '
+    assert ci_gate._strip_comment('x="a\\"# b" # c') == 'x="a\\"# b" '
+
+
 def test_cloud_setup_lint_reports_every_line():
     reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + "make\nnpm install\n")
     assert [r.split(":")[0] for r in reasons] == ["line 3", "line 4"]
@@ -656,6 +686,16 @@ def test_evaluate_cloud_setup_clean_passes():
     tree = dict(TREE, **{".claude/cloud-setup.sh": SETUP_HEADER + "gcloud config list\n"})
     api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
     assert ci_gate.evaluate(api, "abc", None, "999")["verdict"] == "success"
+
+
+def test_evaluate_cloud_setup_removed_fails():
+    base = dict(TREE, **{".claude/cloud-setup.sh": SETUP_HEADER + "gcloud config list\n"})
+    api = FakeApi([pr(1, "abc")], [".claude/cloud-setup.sh"], TREE, [run("plugin-versions.yml")], base_tree=base)
+    result = ci_gate.evaluate(api, "abc", "999", base_sha="base")
+    assert result["verdict"] == "failure" and "removed by this PR" in result["reasons"][0]
+    # Never on the base either (a repo without the script): nothing to enforce.
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")])
+    assert ci_gate.evaluate(api, "abc", "999", base_sha="base")["verdict"] == "success"
 
 
 def test_repo_cloud_setup_passes_lint():

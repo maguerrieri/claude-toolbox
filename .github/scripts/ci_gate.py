@@ -37,7 +37,8 @@ Each evaluation:
 7. fails the PR if the head tree's `.claude/cloud-setup.sh` (the provisioning
    script a factory environment runs from `origin/main`) lacks its
    never-executes-the-checkout header or contains a build-tool, package-manager,
-   sourcing, or relative invocation (spec section 2b).
+   sourcing, or relative invocation, or if the PR removes a script the base
+   carries (spec section 2b).
 
 Stdlib plus PyYAML. The pure functions take plain data and are unit-tested in
 `tests/test_ci_gate.py`; `main()` is the GitHub Actions glue.
@@ -481,8 +482,71 @@ CLOUD_SETUP_FORBIDDEN = [
     (re.compile(_CMD + r"(?:uv|uvx|poetry|pipenv)" + _END), "a Python project tool"),
     (re.compile(_CMD + r"(?:cargo|gradle|gradlew|mvn|bundle|composer|mix|swift|go)\s+(?:build|run|install|test|sync|generate|mod|package|exec)" + _END), "a build tool"),
     (re.compile(_CMD + r"(?:direnv|pre-commit|terraform|docker|docker-compose|xcodegen)" + _END), "a tool that reads project files"),
-    (re.compile(_CMD + r"(?:bash|sh|zsh|python3?|node|ruby|perl)\s+(?!-)[^\s$/\"']"), "an interpreter run on a relative script"),
 ]
+
+# Interpreters whose first non-option argument is a script, with the option
+# letters that switch them to inline code (nothing from the checkout runs), the
+# option letters that consume the following token, and the long forms of both.
+_INTERPRETER = re.compile(_CMD + r"(bash|sh|zsh|python3?|node|ruby|perl)(?=\s)")
+_CODE_LETTERS = {"bash": "c", "sh": "c", "zsh": "c", "python": "cm", "python3": "cm", "node": "ep", "ruby": "e", "perl": "eE"}
+_ARG_LETTERS = {"bash": "o", "sh": "o", "zsh": "o", "python": "WXQ", "python3": "WXQ", "node": "r", "ruby": "Ir", "perl": "IM"}
+_LONG_CODE = {"node": {"--eval", "--print"}, "python": {"--command"}, "python3": {"--command"}}
+_LONG_ARG = {"node": {"--require", "--import"}}
+
+
+def _strip_comment(line: str) -> str:
+    """Drop a trailing `#` comment, honoring single and double quotes."""
+    single = double = False
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if ch == "\\" and not single:
+            i += 2
+            continue
+        if ch == "'" and not double:
+            single = not single
+        elif ch == '"' and not single:
+            double = not double
+        elif ch == "#" and not single and not double and (i == 0 or line[i - 1].isspace()):
+            return line[:i]
+        i += 1
+    return line
+
+
+def relative_interpreter_script(line: str) -> str | None:
+    """The relative script an interpreter on this line would run, if any.
+
+    Walks the interpreter's options so `bash -e setup.sh` and `python3 -O
+    setup.py` are caught while `bash -euo pipefail -c "$s"`, `node -e x`, and
+    `bash "$dir/x"` (a variable or absolute path) are not.
+    """
+    for m in _INTERPRETER.finditer(line):
+        interp = m.group(1)
+        rest = re.split(r"[;|&)`]", line[m.end():], 1)[0]
+        tokens = rest.split()
+        script = None
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            if tok == "--":
+                script = tokens[i + 1] if i + 1 < len(tokens) else None
+                break
+            if tok.startswith("--"):
+                if tok in _LONG_CODE.get(interp, ()):
+                    break
+                i += 2 if tok in _LONG_ARG.get(interp, ()) else 1
+                continue
+            if tok.startswith("-") or (tok.startswith("+") and interp in ("bash", "sh", "zsh")):
+                letters = tok[1:]
+                if any(c in _CODE_LETTERS[interp] for c in letters):
+                    break
+                i += 2 if letters and letters[-1] in _ARG_LETTERS[interp] else 1
+                continue
+            script = tok
+            break
+        if script and script[0] not in "$/\"'":
+            return script
+    return None
 
 
 def cloud_setup_lint(text: str) -> list[str]:
@@ -493,18 +557,19 @@ def cloud_setup_lint(text: str) -> list[str]:
     from the checkout, since a branch can plant a Makefile, a lockfile, or a
     postinstall hook. This lint requires the header that states that rule and
     flags the invocations the spec names. Comments are ignored (a `#` at line
-    start or after whitespace; `#` inside a word, as in a `url#ref`, is not a
-    comment).
+    start or after whitespace, outside quotes; `#` inside a word, as in a
+    `url#ref`, or inside a string is not a comment).
     """
     reasons = []
     if CLOUD_SETUP_HEADER not in text:
         reasons.append(f"missing the header line stating the rule ({CLOUD_SETUP_HEADER!r})")
     for lineno, raw in enumerate(text.splitlines(), 1):
-        line = re.sub(r"(?:^|\s)#.*$", "", raw)
-        for pattern, what in CLOUD_SETUP_FORBIDDEN:
-            if pattern.search(line):
-                reasons.append(f"line {lineno}: {what}, which could execute something from the checkout: {raw.strip()}")
-                break
+        line = _strip_comment(raw)
+        what = next((name for pattern, name in CLOUD_SETUP_FORBIDDEN if pattern.search(line)), None)
+        if what is None and relative_interpreter_script(line):
+            what = "an interpreter run on a relative script"
+        if what:
+            reasons.append(f"line {lineno}: {what}, which could execute something from the checkout: {raw.strip()}")
     return reasons
 
 
@@ -663,6 +728,8 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     setup_text = api.raw(CLOUD_SETUP_FILE, head_sha)
     if setup_text is not None:
         reasons += [f"{CLOUD_SETUP_FILE}: {r}" for r in cloud_setup_lint(setup_text)]
+    elif base_sha and api.raw(CLOUD_SETUP_FILE, base_sha) is not None:
+        reasons.append(f"{CLOUD_SETUP_FILE}: removed by this PR; the factory environment provisions from {PROTECTED_BASE}'s copy, so it must stay in the tree")
 
     if reasons:
         return {"verdict": "failure", "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows, "changed_files": len(changed)}
