@@ -77,7 +77,10 @@ while [ $# -gt 0 ]; do
 		shift
 		repo=$1
 		;;
-	--repo=*) repo=${1#--repo=} ;;
+	--repo=*)
+		repo=${1#--repo=}
+		[ -n "$repo" ] || die 2 "--repo needs a value (OWNER/REPO)"
+		;;
 	-h | --help)
 		usage
 		exit 0
@@ -99,12 +102,23 @@ done
 	usage >&2
 	die 2 "need a numeric <pr> and <issue>"
 }
+# Normalize to plain decimal: `042` and `42` name the same issue, but rule 3
+# compares the id against GitHub's canonical `o/r#42` reference as a string.
+pr=$((10#$pr))
+issue=$((10#$issue))
 for tool in gh jq git; do
 	command -v "$tool" >/dev/null || die 2 "$tool is required"
 done
 if [ -z "$repo" ]; then
 	remote=$(git remote get-url origin 2>/dev/null) || die 2 "no origin remote; pass --repo OWNER/REPO"
-	repo=$(printf '%s' "$remote" | sed -E 's#^(https?://[^/]+/|ssh://[^/]+/|[^@/]+@[^:]+:)##; s#\.git$##; s#/$##')
+	# Split the remote into host and path — every git URL form (https://, ssh://
+	# with an optional port, git://, and the scp-like git@host:path) — because a
+	# path alone would let a non-GitHub origin be gated as though it were the
+	# GitHub repo of the same name.
+	remote_host=$(printf '%s' "$remote" | sed -E 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#^[^@/]+@##; s#[:/].*$##')
+	repo=$(printf '%s' "$remote" | sed -E 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#^[^@/]+@##; s#^[^:/]+(:[0-9]+)?[:/]##; s#\.git$##; s#/$##')
+	[ "$(printf '%s' "$remote_host" | tr '[:upper:]' '[:lower:]')" = github.com ] ||
+		die 2 "origin is not on github.com (host '$remote_host'); this gate reads the GitHub API — pass --repo OWNER/REPO for the GitHub repository it should gate"
 fi
 [[ $repo =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] || die 2 "cannot derive OWNER/REPO (got '$repo'); pass --repo"
 owner=${repo%/*}
@@ -327,7 +341,10 @@ if [ "$risk_class" = "risk:high" ]; then
 	# an approval on an older commit, a dismissed one, or an unsubmitted (PENDING)
 	# one is not a current approval.
 	verdict=$(jq -n --argjson reviews "$reviews_json" --argjson allow "$allowlist" --arg head "$head" --arg author "$pr_author" '
-		[$reviews[] | select(.commit.oid == $head and .state != "PENDING")]
+		# COMMENTED carries no verdict — leaving a comment after approving does not
+		# withdraw the approval (GitHub keeps reviewDecision APPROVED), so only a
+		# verdict-bearing review supersedes an earlier one. PENDING is unsubmitted.
+		[$reviews[] | select(.commit.oid == $head and (.state | IN("APPROVED", "CHANGES_REQUESTED", "DISMISSED")))]
 		| group_by(.author.login) | map(sort_by(.submittedAt) | last) as $latest
 		| {
 			changes_requested: [$latest[] | select(.state == "CHANGES_REQUESTED") | .author.login],

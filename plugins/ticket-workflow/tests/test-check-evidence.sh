@@ -120,6 +120,17 @@ git -C "$case_dir" init -q && git -C "$case_dir" remote add origin git@github.co
 if (cd "$case_dir" && FAKE_GH_FIXTURES="$case_dir" bash "$script" 7 42 >/dev/null 2>&1); then ok "repo derived from an ssh origin remote"; else fail "repo derived from an ssh origin remote"; fi
 git -C "$case_dir" remote set-url origin https://github.com/o/r.git
 if (cd "$case_dir" && FAKE_GH_FIXTURES="$case_dir" bash "$script" '#7' '#42' >/dev/null 2>&1); then ok "repo derived from an https origin remote; # prefixes stripped"; else fail "repo derived from an https origin remote; # prefixes stripped"; fi
+git -C "$case_dir" remote set-url origin ssh://git@github.com:22/o/r.git
+if (cd "$case_dir" && FAKE_GH_FIXTURES="$case_dir" bash "$script" 7 42 >/dev/null 2>&1); then ok "repo derived from an ssh:// origin remote carrying a port"; else fail "repo derived from an ssh:// origin remote carrying a port"; fi
+# A non-GitHub origin must never be gated as the GitHub repo of the same name.
+for bad_remote in git@gitlab.com:o/r.git https://gitlab.com/o/r.git ssh://git@git.example.com/o/r.git; do
+	git -C "$case_dir" remote set-url origin "$bad_remote"
+	set +e
+	out=$(cd "$case_dir" && FAKE_GH_FIXTURES="$case_dir" bash "$script" 7 42 2>&1)
+	status=$?
+	set -e
+	if [ "$status" -eq 2 ] && [[ $out == *"origin is not on github.com"* ]]; then ok "a non-GitHub origin ($bad_remote) refuses with exit 2"; else fail "a non-GitHub origin ($bad_remote) refuses with exit 2 (exit $status: $out)"; fi
+done
 new_case repo-casing
 expect_pass "--repo in a different case than GitHub's canonical spelling passes" 7 42 --repo O/R
 expect_output "repo-casing: the canonical spelling is used" "check-evidence: o/r PR #7"
@@ -286,6 +297,15 @@ patch issue-labels.json '[{name: "risk:high"}]'
 patch graphql/PrGate.json '.data.repository.pullRequest.reviewDecision = "APPROVED"'
 patch graphql/Reviews.json --argjson r "$(review human PENDING "$HEAD" 2026-09-11T22:00:00Z)" '.data.repository.pullRequest.reviews.nodes += [$r]'
 expect_refuse "an unsubmitted (PENDING) review refuses" "no APPROVED review on head" 7 42 --confirm-high --repo o/r
+new_case high-then-commented
+high human "$HEAD" APPROVED
+patch graphql/Reviews.json --argjson r "$(review human COMMENTED "$HEAD" 2026-09-11T22:05:00Z)" '.data.repository.pullRequest.reviews.nodes += [$r]'
+expect_pass "a comment-only review after an approval does not withdraw it (only CHANGES_REQUESTED and DISMISSED do)" 7 42 --confirm-high --repo o/r
+new_case high-commented-only
+patch issue-labels.json '[{name: "risk:high"}]'
+patch graphql/PrGate.json '.data.repository.pullRequest.reviewDecision = "REVIEW_REQUIRED"'
+patch graphql/Reviews.json --argjson r "$(review human COMMENTED "$HEAD" 2026-09-11T22:00:00Z)" '.data.repository.pullRequest.reviews.nodes += [$r]'
+expect_refuse "a comment-only review is not an approval" "no APPROVED review on head" 7 42 --confirm-high --repo o/r
 new_case high-changes-requested
 high human "$HEAD" CHANGES_REQUESTED
 patch graphql/Reviews.json --argjson r "$(review other CHANGES_REQUESTED "$HEAD" 2026-09-11T22:05:00Z)" '.data.repository.pullRequest.reviews.nodes += [$r]'
@@ -425,6 +445,12 @@ expect_error "a missing issue refuses with usage" "need a numeric <pr> and <issu
 expect_error "an unknown flag refuses with usage" "unknown flag: --force" 7 42 --force --repo o/r
 expect_error "a bad --repo refuses" "cannot derive OWNER/REPO" 7 42 --repo not-a-repo
 expect_error "--repo without a value is a usage error (exit 2), not a bare shift failure" "--repo needs a value" 7 42 --repo
+expect_error "--repo= with an empty value is a usage error, not a silent fallback to the checkout's origin" "--repo needs a value" 7 42 --repo=
+new_case repo-equals
+expect_pass "--repo=OWNER/REPO (the = form) passes" 7 42 --repo=o/r
+new_case leading-zeros
+expect_pass "leading-zero ids name the same PR and issue" 007 042 --repo o/r
+expect_output "leading-zeros: the ids are normalized for the canonical comparison" "3 closing references: exactly #42"
 new_case closed-pr
 patch pull.json '.state = "closed"'
 expect_error "a closed PR is not gateable" "PR #7 is closed, not open" 7 42 --repo o/r
