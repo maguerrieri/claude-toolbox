@@ -402,10 +402,14 @@ def test_settings_paths_to_lint():
 # --- evaluation over a fake API ---------------------------------------------
 
 class FakeApi:
-    def __init__(self, prs, files, tree, runs, default="main", base_tree=None, commits=1):
+    def __init__(self, prs, files, tree, runs, default="main", base_tree=None, commits=1, events=()):
         self.prs, self.files, self.tree, self._runs, self.default = prs, files, tree, runs, default
         self.base_tree = tree if base_tree is None else base_tree
         self.commits = commits
+        self.events = list(events)
+
+    def issue_events(self, number):
+        return self.events
 
     def pull(self, number):
         return dict(next(p for p in self.prs if p["number"] == number), commits=self.commits)
@@ -833,14 +837,38 @@ def test_reopened_pr_ignores_runs_from_before_the_close():
     assert ci_gate.aggregate(EXPECTED, stale, "999")[0] == "success"
 
 
+def test_last_reopened_at_takes_the_most_recent_reopen():
+    events = [{"event": "closed", "created_at": "2026-01-03T00:00:00Z"},
+              {"event": "reopened", "created_at": "2026-01-02T00:00:00Z"},
+              {"event": "labeled", "created_at": "2026-01-04T00:00:00Z"},
+              {"event": "reopened", "created_at": "2026-01-01T00:00:00Z"}]
+    assert ci_gate.last_reopened_at(events) == REOPENED_AT
+    assert ci_gate.last_reopened_at([{"event": "closed", "created_at": "2026-01-05T00:00:00Z"}]) is None
+    assert ci_gate.last_reopened_at([]) is None
+
+
+REOPEN_EVENT = [{"event": "reopened", "created_at": REOPENED_AT}]
+
+
 def test_evaluate_reopened_pr_is_pending_until_ci_reruns():
+    """The floor comes from the PR's own history, so every trigger applies it."""
     stale = [run("gm-ci.yml", id=1, started="2026-01-01T00:00:00Z"),
              run("plugin-versions.yml", id=2, started="2026-01-01T00:00:00Z")]
-    api = FakeApi([pr(1, "a" * 40)], ["plugins/gm/x.py"], TREE, stale)
-    assert ci_gate.evaluate(api, "a" * 40, "999")["verdict"] == "success"
-    result = ci_gate.evaluate(api, "a" * 40, "999", reopened_at=REOPENED_AT)
+    files = ["plugins/gm/x.py"]
+    assert ci_gate.evaluate(FakeApi([pr(1, "a" * 40)], files, TREE, stale), "a" * 40, "999")["verdict"] == "success"
+
+    # Any later trigger (an edit, a dispatch, another workflow completing) sees
+    # the same reopen, not just the `reopened` event that first found it.
+    api = FakeApi([pr(1, "a" * 40)], files, TREE, stale, events=REOPEN_EVENT)
+    result = ci_gate.evaluate(api, "a" * 40, "999")
     assert result["verdict"] == "pending"
     assert all("reopened" in r["detail"] for r in result["rows"])
+
+    # Once the reopen's own runs exist, the floor is satisfied.
+    fresh = stale + [run("gm-ci.yml", id=3, started="2026-01-02T00:00:01Z"),
+                     run("plugin-versions.yml", id=4, started="2026-01-02T00:00:01Z")]
+    api = FakeApi([pr(1, "a" * 40)], files, TREE, fresh, events=REOPEN_EVENT)
+    assert ci_gate.evaluate(api, "a" * 40, "999")["verdict"] == "success"
 
 
 def test_evaluator_dependency_is_hash_pinned():

@@ -448,11 +448,14 @@ settled, all consistent with the paragraphs above:
   is `pending`. Failure wins over pending. No expected workflow is
   `success`. A **reopened** PR keeps its head SHA, so the runs from before
   it was closed are still listed for that SHA while the reopen's own runs
-  may not exist yet: on that event every expected workflow whose `types`
-  include `reopened` (the default) is `pending` until a run started after
-  the reopen exists, so the gate cannot report green on pre-close evidence;
-  a workflow the reopen does not re-trigger keeps counting its existing
-  run. A crashed evaluator posts `failure` (the `report` job runs on
+  may not exist yet: every expected workflow whose `types` include
+  `reopened` (the default) is `pending` until a run started after the
+  reopen exists, so the gate cannot report green on pre-close evidence; a
+  workflow the reopen does not re-trigger keeps counting its existing run.
+  The reopen instant is read from the PR's own issue events on every
+  evaluation, not taken from the triggering event, so the floor still holds
+  when the next evaluation comes from an edit, a dispatch, or another
+  workflow completing while the new runs are still missing. A crashed evaluator posts `failure` (the `report` job runs on
   any non-cancelled outcome), and evaluations of one head SHA are serialized
   by a `concurrency` group so a stale verdict can never land after a fresher
   one. `workflow_dispatch` with the PR's head SHA re-evaluates on demand —

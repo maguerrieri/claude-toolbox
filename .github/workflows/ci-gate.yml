@@ -51,6 +51,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      issues: read        # the PR's reopen history (issues/<n>/events)
       pull-requests: read
     outputs:
       verdict: ${{ steps.gate.outputs.verdict }}

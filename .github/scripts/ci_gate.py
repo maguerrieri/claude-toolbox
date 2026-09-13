@@ -488,6 +488,19 @@ def latest_run(runs: list[dict], filename: str, event: str, own_run_id, pr_numbe
     return max(candidates, key=lambda r: (run_time(r), int(r.get("id", 0))))
 
 
+def last_reopened_at(events: list[dict]) -> str | None:
+    """When this PR was most recently reopened, from its issue events.
+
+    Read on every evaluation rather than taken from the triggering event: the
+    reopen's own runs may still be missing several triggers later (an `edited`
+    event, a manual dispatch, another workflow completing), and a floor that
+    existed only on the `reopened` event would drop away in exactly those
+    evaluations and let the pre-close runs turn the check green.
+    """
+    stamps = [e.get("created_at") for e in events if e.get("event") == "reopened" and e.get("created_at")]
+    return max(stamps) if stamps else None
+
+
 def reopen_freshness(manifest: dict, expected: list[tuple[str, str]], reopened_at: str | None) -> dict[str, str]:
     """`{file: instant}` for expected workflows a reopen re-triggers.
 
@@ -495,7 +508,8 @@ def reopen_freshness(manifest: dict, expected: list[tuple[str, str]], reopened_a
     was closed is still listed for that SHA. A workflow that subscribes to the
     `reopened` type is about to run again, and its old success is not evidence
     for the reopened PR -- until the new run exists, that workflow is pending.
-    Workflows without the type are not re-triggered, so their runs still count.
+    Workflows without the type are not re-triggered, so their runs still count,
+    and a run that started after the reopen clears the floor for good.
     """
     if not reopened_at:
         return {}
@@ -627,6 +641,9 @@ class Api:
     def changed_files(self, number: int) -> list[dict]:
         return self.paginate(f"pulls/{number}/files")
 
+    def issue_events(self, number: int) -> list[dict]:
+        return self.paginate(f"issues/{number}/events")
+
     def runs(self, head_sha: str) -> list[dict]:
         return self.paginate("actions/runs", key="workflow_runs", params={"head_sha": head_sha})
 
@@ -648,14 +665,12 @@ def resolve_pr(api: Api, head_sha: str) -> tuple[str, dict | None, list[str]]:
     return "ok", candidates[0], []
 
 
-def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None, reopened_at: str | None = None) -> dict:
+def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -> dict:
     """Full evaluation. Returns a result dict; `verdict` is success|failure|pending|skip.
 
     `base_sha` is the commit the running copy of ci-gate.yml comes from; when
     given, a pending workflow whose name that copy is not subscribed to is
-    flagged, since its completion will not re-trigger this gate. `reopened_at`
-    is set only on the `reopened` event, where the head SHA carries runs from
-    before the PR was closed (see `reopen_freshness`).
+    flagged, since its completion will not re-trigger this gate.
     """
     reasons: list[str] = []
     rows: list[dict] = []
@@ -730,7 +745,7 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None, r
     runs = api.runs(head_sha)
     expected = expected_set(manifest, changed, pr["base"]["ref"])
     observed = observed_unexpected(manifest, runs, expected, own_run_id, number)
-    fresh_after = reopen_freshness(manifest, expected, reopened_at)
+    fresh_after = reopen_freshness(manifest, expected, last_reopened_at(api.issue_events(number)))
     verdict, rows = aggregate(expected + observed, runs, own_run_id, number, fresh_after)
     for row in rows:
         if (row["workflow"], row["event"]) in observed:
@@ -901,13 +916,8 @@ def main() -> int:
     with open(os.environ["GITHUB_EVENT_PATH"]) as fh:
         event = json.load(fh)
 
-    reopened_at = None
     if event_name == "pull_request_target":
         head_sha = event["pull_request"]["head"]["sha"]
-        if event.get("action") == "reopened":
-            # The PR's timestamp at the moment it was reopened: runs older than
-            # this are the pre-close ones on the same head SHA.
-            reopened_at = event["pull_request"].get("updated_at")
     elif event_name == "workflow_run":
         head_sha = event["workflow_run"]["head_sha"]
     elif event_name == "workflow_dispatch":
@@ -916,7 +926,7 @@ def main() -> int:
         print(f"ci-gate: unsupported event {event_name!r}", file=sys.stderr)
         return 1
 
-    result = evaluate(api, head_sha, os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_SHA"), reopened_at)
+    result = evaluate(api, head_sha, os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_SHA"))
     title, summary = render(result)
     print(f"{CHECK_NAME}: {result['verdict']} — {title}\n\n{summary}")
     write_outputs(result, title, summary)
