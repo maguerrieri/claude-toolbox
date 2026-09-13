@@ -32,8 +32,13 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 3. **`none` — unpin:**
 
    ```bash
-   rm -f "$roles_dir/$CLAUDE_SESSION_ID" "$roles_dir/$CLAUDE_SESSION_ID.budget"
+   [ -n "$CLAUDE_SESSION_ID" ] &&
+     rm -f "$roles_dir/$CLAUDE_SESSION_ID" "$roles_dir/$CLAUDE_SESSION_ID.budget"
    ```
+
+   The session-id guard matters: unguarded, an unset `$CLAUDE_SESSION_ID` (step
+   2's case) expands the second path to `$roles_dir/.budget` and removes a file
+   that belongs to no session.
 
    The `.budget` sidecar goes with it: START Step 1 writes one beside the
    marker for a budgeted run, and leaving it behind would let a later run in

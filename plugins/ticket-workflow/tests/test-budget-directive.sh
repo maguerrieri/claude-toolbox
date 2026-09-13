@@ -39,7 +39,9 @@ refute() { local desc=$1; shift; if "$@" >/dev/null 2>&1; then fail "$desc"; els
 budget_re='^Budget: wall_clock_min=(0|[1-9][0-9]*) review_rounds=(0|[1-9][0-9]*)$'
 # The overrun clause START Step 8 appends inside `tests` — trailing (Step 7
 # says so), hence anchored to the end, and at most one per string.
-overrun_re='budget_exceeded: (wall_clock_min|review_rounds) [0-9]+ of [0-9]+$'
+# Anchored at the clause boundary as well as the end: `notbudget_exceeded: ...`
+# must not satisfy the documented trailing `; budget_exceeded: ...` form.
+overrun_re='(^|; )budget_exceeded: (wall_clock_min|review_rounds) [0-9]+ of [0-9]+$'
 
 # --- 1. the SPAWN_CAP payload ------------------------------------------------
 # The payload is the text between the pair of double quotes in the first
@@ -76,7 +78,9 @@ done
 # --- 2. the overrun record inside the Evidence block --------------------------
 # Same predicates the evidence-block test enforces for `tests`/`docs`, applied
 # to the strings START Step 8 writes on a budget stop.
-placeholder_def='def placeholder: test("^\\s*(TODO|TBD|n/?a)\\s*$"; "i") or test("<[^>]*>");'
+# Identical to the checker's own predicate (tests/test-evidence-block.sh): `n/a`
+# literally, so a bare `na` is accepted there and must be accepted here too.
+placeholder_def='def placeholder: test("^\\s*(TODO|TBD|n/a)\\s*$"; "i") or test("<[^>]*>");'
 no_placeholders="$placeholder_def ([.tests, .docs] | all(placeholder | not))"
 strings_nonempty='[.tests, .docs] | all(type == "string" and length > 0)'
 wall_clock_digits='.wall_clock_min | test("^[0-9]+$")'
@@ -107,50 +111,59 @@ refute "an overrun clause naming an unknown budget is rejected" grep -Eq "$overr
 # --- 3. the surfaces that forward or honor the directive -----------------------
 start_text=$(sed -n '/^## START phase/,/^## FINISH phase/p' "$skill")
 spawn_text=$(sed -n '/^## SPAWN phase/,/^## EPIC phase/p' "$skill")
-assert "SKILL.md START Step 1 notes the Budget: directive" grep -q 'Note your budget' <<<"$start_text"
-assert "SKILL.md START Step 8 carries the budget check" grep -q 'Budget check' <<<"$start_text"
-assert "SKILL.md START Step 1 persists the budget beside the role marker" grep -q 'CLAUDE_SESSION_ID.budget' <<<"$start_text"
-assert "SKILL.md START Step 8 records a no-PR stop on the ticket" grep -q 'durably on the ticket itself' <<<"$start_text"
-assert "SKILL.md SPAWN Step 2 rejects a partial override over a cap with no budget" grep -q 'no.*`Budget:` line.*partial' <<<"$spawn_text"
-assert "SKILL.md SPAWN Step 2 merges key-wise cap -> shared -> per-issue" grep -q 'cap → shared → per-issue' <<<"$spawn_text"
-assert "SKILL.md SPAWN Step 2 validates overrides before launching" grep -q 'Validate before launching' <<<"$spawn_text"
-assert "SKILL.md START Step 1 rejects a malformed Budget: line" grep -q 'briefing error' <<<"$start_text"
-assert "SKILL.md START Step 8 uses a portable deadline poll, not timeout" grep -q 'deadline poll' <<<"$start_text"
-refute "SKILL.md START Step 8 no longer relies on GNU timeout" grep -q 'timeout "\$((' <<<"$start_text"
-assert "SKILL.md START Step 8 records the no-PR stop through the tracker COMMENT op" grep -q 'COMMENT(id, body)' <<<"$start_text"
-assert "SKILL.md START recovery never infers a budget from the role marker" grep -q 'never infer one from the role marker' <<<"$start_text"
-assert "SKILL.md START Step 1 writes the budget marker create-only" grep -q 'create-only on purpose' <<<"$start_text"
-assert "SKILL.md START Step 8 captures the poll status errexit-safely" grep -q 'poll_status=\$?' <<<"$start_text"
-refute "SKILL.md START Step 8 does not test a bare \$? after the poll" grep -q 'gh pr checks <pr> >/dev/null 2>&1; \[ \$? ' <<<"$start_text"
-# zsh makes `status` a read-only alias for `?`, so the capture idiom must not use that name
-# (the same class of hazard AGENTS.md records for `path`).
-refute "SKILL.md START Step 8 avoids the zsh-reserved 'status' name" grep -qE '(^|[^_])status=' <<<"$start_text"
-assert "AGENTS.md records the zsh 'status' hazard" grep -q "\`status\` is the same trap" "$repo/AGENTS.md"
-assert "SKILL.md START Step 1 substitutes real digits, not placeholders" grep -q 'never the <N>/<M> placeholders' <<<"$start_text"
-assert "SKILL.md START Step 1 treats a placeholder-bearing marker as unusable" grep -q 'unusable, not authoritative' <<<"$start_text"
-assert "SKILL.md START Step 8 counts the round before the push" grep -q 'before\*\* each fix push' <<<"$start_text"
-assert "SKILL.md opt-outs clear the marker on early hand-back" grep -q 'clears the budget marker on the way out' <<<"$start_text"
-assert "phases/epic.md writes the validated line, not a placeholder" grep -q 'never a placeholder' "$epic"
-assert "phases/epic.md clears the marker on both hand-back paths" grep -q 'either hand-back path' "$epic"
-assert "phases/epic.md keeps zero Budget lines when the cap has none" grep -q 'at most one' "$epic"
-assert "SKILL.md START Step 9 clears the budget marker" grep -q 'Clear the budget marker' <<<"$start_text"
-assert "SKILL.md opt-outs name the no-PR recording path" grep -q 'no PR exists, recorded on the ticket' <<<"$start_text"
-assert "profile qualifies the Evidence promise with the no-PR path" grep -q "no-PR path" "$profile"
-assert "the SessionStart hook refreshes the budget sidecar" grep -q 'marker.budget' "$repo/plugins/ticket-workflow/hooks/role-session-start.sh"
+budget_doc="$skill_dir/budget.md"
+assert "budget.md exists" test -f "$budget_doc"
+# Prose greps run against a whitespace-collapsed copy: these files are hard-
+# wrapped, so a phrase can straddle a line break and a raw grep would report a
+# rule missing that is merely reflowed. Code-shaped greps stay line-oriented.
+flatten() { tr '\n' ' ' <"$1" | tr -s ' '; }
+budget_text=$(cat "$budget_doc" 2>/dev/null || true)
+budget_prose=$(flatten "$budget_doc" 2>/dev/null || true)
+epic_prose=$(flatten "$epic" 2>/dev/null || true)
+
+# SKILL.md points at the mechanism rather than restating it (and stays under the
+# ~500-line rule AGENTS.md sets for it).
+assert "SKILL.md START Step 1 points at budget.md" grep -q 'read `budget.md` now' <<<"$start_text"
+assert "SKILL.md START Step 8 points at budget.md" grep -q 'budget.md` carries it' <<<"$start_text"
+assert "SKILL.md START Step 9 points at budget.md cleanup" grep -q "budget.md.*cleanup snippet" <<<"$start_text"
+assert "SKILL.md opt-outs point at budget.md" grep -q 'as `budget.md` prescribes' <<<"$start_text"
+assert "SKILL.md SPAWN Step 2 points at budget.md" grep -q 'read `budget.md`' <<<"$spawn_text"
+assert "SKILL.md stays under the 500-line rule" test "$(wc -l <"$skill")" -lt 500
+assert "AGENTS.md records SKILL.md's current size" grep -q "$(wc -l <"$skill") *$" <<<"$(grep -o '([0-9]* *$' "$repo/AGENTS.md" || echo "$(wc -l <"$skill") ")"
+assert "SKILL.md unbudgeted watch is marked no-budget-only" grep -q 'no budget in play; see budget.md otherwise' <<<"$start_text"
+
+# The mechanism itself.
+assert "budget.md pins the directive grammar" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' <<<"$budget_prose"
+assert "budget.md forbids leading zeros" grep -q 'no leading zero' <<<"$budget_prose"
+assert "budget.md fails closed on a malformed line" grep -q 'briefing error' <<<"$budget_prose"
+assert "budget.md merges key-wise cap -> shared -> per-issue" grep -q 'cap → shared → per-issue' <<<"$budget_prose"
+assert "budget.md validates overrides before launching" grep -q 'before launching anything' <<<"$budget_prose"
+assert "budget.md keeps zero lines when the cap omits one" grep -q 'and \*\*none\*\* when a profile' <<<"$budget_prose"
+assert "budget.md keys the marker to a run identity" grep -q 'run: <issue id> <branch>' <<<"$budget_text"
+assert "budget.md captures the clock at the Step 1 note" grep -q 'same moment' <<<"$budget_prose"
+assert "budget.md stores validated numbers, not placeholders" grep -q 'validated numbers\*\*, never the `<N>`/`<M>` placeholders' <<<"$budget_prose"
+assert "budget.md replaces an invalid or foreign marker" grep -q 'is replaced instead' <<<"$budget_prose"
+assert "budget.md keeps a valid same-run marker authoritative" grep -q 'valid marker for this run is authoritative' <<<"$budget_prose"
+assert "budget.md counts the round before the push" grep -q 'before each fix push, never after' <<<"$budget_prose"
+assert "budget.md never infers a budget from the role marker" grep -q 'Never infer one from the role marker' <<<"$budget_prose"
+assert "budget.md uses a portable deadline poll" grep -q 'deadline=' <<<"$budget_text"
+refute "budget.md does not rely on GNU timeout" grep -q 'timeout "\$((' <<<"$budget_text"
+assert "budget.md avoids the zsh-reserved status name" grep -q 'poll_status' <<<"$budget_text"
+refute "budget.md never assigns zsh's read-only status" grep -qE '(^|[^_])status=[^$]' <<<"$budget_text"
+assert "budget.md replaces every --watch while budgeted" grep -q 'replaces \*every\* `--watch`' <<<"$budget_prose"
+assert "budget.md records a no-PR stop via the tracker COMMENT op" grep -q 'COMMENT(id, body)' <<<"$budget_prose"
+assert "budget.md clears the marker on every hand-back" grep -q 'every\*\* hand-back' <<<"$budget_prose"
+assert "budget.md recomputes the path and guards the session id in cleanup" grep -q 'CLAUDE_SESSION_ID" \] && rm -f' <<<"$budget_text"
+
+# Forwarding surfaces.
+assert "phases/epic.md points at budget.md" grep -q 'Read `budget.md`' <<<"$epic_prose"
+assert "phases/epic.md rejects a partial override before spawning" grep -q 'before spawning' <<<"$epic_prose"
+assert "phases/epic.md clears the marker via budget.md cleanup" grep -q "budget.md.*cleanup snippet" <<<"$epic_prose"
+assert "phases/epic.md keeps at most one Budget line" grep -q 'at most one' <<<"$epic_prose"
+assert "/role none guards the session id before removing" grep -q 'CLAUDE_SESSION_ID" \] &&' "$commands/role.md"
 assert "/role none clears the budget sidecar" grep -q 'CLAUDE_SESSION_ID.budget' "$commands/role.md"
-assert "phases/epic.md Step 1 guards the session id before writing" grep -q 'CLAUDE_SESSION_ID" \] && mkdir -p' "$epic"
-for tracker in github jira; do
-	assert "trackers/$tracker.md defines COMMENT(id, body)" grep -q '^## COMMENT(id, body)' "$skill_dir/trackers/$tracker.md"
-done
-assert "phases/epic.md Step 1 persists the children's budget override" grep -q 'CLAUDE_SESSION_ID.budget' "$epic"
-assert "SKILL.md START Step 7 documents the budget_exceeded clause" grep -q 'budget_exceeded' <<<"$start_text"
-assert "SKILL.md START opt-outs list the budget stop" grep -q 'Budget exhausted' <<<"$start_text"
-assert "SKILL.md SPAWN Step 2 merges a Budget: override" grep -q 'Budget:.*overrides' <<<"$spawn_text"
-assert "phases/epic.md Step 5 replaces the cap Budget: line with the effective one" grep -q "\`Budget:\` line \*\*replaced\*\* by the effective one" "$epic"
-assert "spawn-tickets accepts a Budget: override" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$commands/spawn-tickets.md"
-assert "spawn-epic accepts a Budget: override" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$commands/spawn-epic.md"
-# The profile's own prose documents the shape a spawner must reproduce.
-assert "profile documents the directive shape" grep -q 'Budget: wall_clock_min=<N> review_rounds=<M>' "$profile"
+assert "the SessionStart hook refreshes the budget sidecar" grep -q 'marker.budget' "$repo/plugins/ticket-workflow/hooks/role-session-start.sh"
+assert "AGENTS.md records the zsh 'status' hazard" grep -q "\`status\` is the same trap" "$repo/AGENTS.md"
 
 if [ "$failures" -gt 0 ]; then
 	printf '\n%d failure(s)\n' "$failures"

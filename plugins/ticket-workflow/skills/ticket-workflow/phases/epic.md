@@ -22,17 +22,7 @@ First `FETCH(epic_id)` to read the **epic's own** title/body — for briefing co
 
 **Adopt role (if spawned).** If the *briefing/arguments* carry `Role: epic-coordinator` (injected by `/spawn-epic`), read `roles/epic-coordinator.md` now and adopt it: you coordinate this epic — enumerate, spawn, stack, aggregate — and you do **not** implement a child yourself (re-spawn a blocked child rather than opening its worktree). Then **self-pin the marker immediately**, exactly as START Step 1 does (same snippet, role `epic-coordinator`; skip the write if `$CLAUDE_SESSION_ID` is unset) — an epic orchestrator is long-running, so its charter must survive compaction. No `Role:` directive → an interactive run the human is steering, unbounded.
 
-**Note the children's budget override (if directed).** A `Budget:` directive in this briefing is for the children (Step 5), not for this session — but the orchestrator is re-woken rather than long-lived, so a directive held only in context is lost by the wave that needs it. Validate it against SPAWN Step 2's grammar (malformed → stop and say so), then persist it beside the role marker with START Step 1's own guards — the session id may be unset and the directory may not exist, and an interactive `/start-epic` can carry a `Budget:` without any `Role:` directive to have created either:
-
-```bash
-roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-budget_file="$roles_dir/$CLAUDE_SESSION_ID.budget"
-effective_budget='Budget: wall_clock_min=60 review_rounds=3'   # the validated line itself, never a placeholder
-[ -n "$CLAUDE_SESSION_ID" ] && mkdir -p "$roles_dir" && [ ! -e "$budget_file" ] &&
-	printf '%s\n' "$effective_budget" >"$budget_file"
-```
-
-Write the **validated line itself** — the assignment above is a stand-in for the directive you just checked, and Step 5 re-reads this file as the override; a literal placeholder in it would either lose the budget or forward a malformed line to every child. A file whose contents don't match the grammar is unusable: treat it as absent and rewrite it. No clock line, since nothing here is timed; create-only for the same reason START's is (Step 1 re-runs on every wake). Re-read it before composing every wave, and **remove it on the way out of the run** — `rm -f "$budget_file"` at the end of Step 6's hand-back and at the end of Step 7 when a finish flag ran, since EPIC never reaches START's Step 9; otherwise a later run in this session forwards these children's budget to the next epic's. `$CLAUDE_SESSION_ID` unset → no file; keep the override in context and say in the hand-back that a compaction would lose it. No file and no directive in context → the children get the cap's default, and the hand-back says so.
+**Note the children's budget override (if directed).** A `Budget:` directive in this briefing is for the children (Step 5), not for this session. Read `budget.md` and apply it in full — including the rule that a *partial* override over a profile whose `SPAWN_CAP` omits `Budget:` is an error to reject **here**, before spawning, rather than one every child discovers at its own Step 1. Because the orchestrator is re-woken rather than long-lived, a directive held only in context is lost by the wave that needs it, so persist the validated line to the marker `budget.md` describes (using its guards — the session id may be unset and the directory may not exist, and an interactive `/start-epic` can carry a `Budget:` with no `Role:` directive to have created either), with `run:` naming this epic and no `clock:` line, since nothing here is timed. Re-read it before composing every wave. `$CLAUDE_SESSION_ID` unset → no file; keep the override in context and say in the hand-back that a compaction would lose it. No file and no directive in context → the children get the cap's default, and the hand-back says so.
 
 ## Step 2 — Build the dependency graph
 
@@ -176,7 +166,7 @@ Only if the request carries a **finish flag** (`--finish`, "merge when green", "
 
 End with FINISH's "what to watch for" note (FINISH Step 5) for the epic as a whole.
 
-**On the way out — either hand-back path** (the Step 6 stack print, or the end of this step when a finish flag ran): clear the budget marker Step 1 may have written, `rm -f "$roles_dir/$CLAUDE_SESSION_ID.budget"`. EPIC never reaches START's Step 9, so this is the only place it gets cleaned up, and a stale file would hand the next epic run in this session these children's budget.
+**On the way out — either hand-back path** (the Step 6 stack print, or the end of this step when a finish flag ran): clear the budget marker Step 1 may have written, using `budget.md`'s cleanup snippet — it recomputes the directory and guards the session id, neither of which survives from Step 1 across a re-woken turn. EPIC never reaches START's Step 9, so this is the only place it gets cleaned up, and a stale file would hand the next epic run in this session these children's budget.
 
 ## EPIC does NOT
 

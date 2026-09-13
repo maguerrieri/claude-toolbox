@@ -182,8 +182,8 @@ Check the request for these signals — if present, stop early at the indicated 
 - "setup only" / "just set up the worktree" / "don't start work" / "I'll take it from here" → stop after **Step 4** (worktree reported).
 - "stop before push" / "don't push" / "let me review the code first" / "no PR yet" → stop after **Step 6** (implementation + tests + doc check committed locally, nothing pushed).
 
-  Both of these hand back before Step 9, so each **clears the budget marker on the way out** (Step 9's `rm`) — otherwise the next run in this session reads a stale clock and round count as authoritative.
-- **Budget exhausted** — not a request signal but a `Budget:` directive from the briefing (Step 1) whose wall-clock or review-round limit Step 8's check finds spent → stop at the next safe point per that check, with the overrun recorded in the PR's Evidence block and the PR handed back as it stands — or, when the budget was spent before the first commit and no PR exists, recorded on the ticket instead (Step 8's no-PR path).
+  Both hand back before Step 9, so each **clears the budget marker on the way out** (`budget.md`'s cleanup) — otherwise the next run in this session reads a stale clock and round count as authoritative.
+- **Budget exhausted** — not a request signal but a `Budget:` directive (Step 1) whose limit is spent → stop at the next safe point and hand back as `budget.md` prescribes.
 
 ### Step 1 — Read the issue
 
@@ -191,24 +191,7 @@ Use the adapter's `FETCH` to read the issue. Read the title and description — 
 
 **Note the clock.** Record the current UTC time now (`date -u +%FT%TZ`) — Step 7's Evidence block reports the whole minutes elapsed from here to opening the PR (`wall_clock_min`).
 
-**Note your budget (if directed).** If the briefing carries a `Budget: wall_clock_min=<N> review_rounds=<M>` directive (the profile's `SPAWN_CAP` appends one to every spawned child; a spawner may override it — SPAWN Step 2), record both numbers: `<N>` is the most whole minutes this run may spend from the clock note above to hand-back, `<M>` the most fix-pushes Step 8 may make. Step 8 carries the check. A `Budget:` line that does not match that shape exactly (both keys, that order, digits with no leading zero, nothing else) is a **briefing error — stop and report it** rather than run unbounded. Then **persist it beside the role marker** — a briefing directive survives `/clear`/resume/compaction no better than `Role:` does, and a budget that evaporates is no budget — with the clock as epoch seconds (`date +%s`, portable, and what Step 8's deadline arithmetic needs):
-
-```bash
-roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-budget_file="$roles_dir/$CLAUDE_SESSION_ID.budget"
-wall_clock_min=180   # substitute the validated numbers from the directive — never the <N>/<M> placeholders
-review_rounds=5
-# Create-only: an existing file is a resumed run, whose clock and round count must survive.
-[ -n "$CLAUDE_SESSION_ID" ] && mkdir -p "$roles_dir" && [ ! -e "$budget_file" ] &&
-	printf 'clock: %s\nBudget: wall_clock_min=%s review_rounds=%s\n' \
-		"$(date +%s)" "$wall_clock_min" "$review_rounds" >"$budget_file"
-```
-
-**Substitute the real digits before running this** — the two assignments above are placeholders for the values you just validated, and Step 8 reads this file as authoritative for its deadline arithmetic and round comparison. A file whose `Budget:` line doesn't match the directive grammar (a literal `<N>` among them) is **unusable, not authoritative**: treat it as absent, take the recovery path below, and rewrite it. Read it back once after writing and confirm it holds the effective numbers.
-
-The write is **create-only on purpose**: Step 1 runs again on every resume and after each compaction, and an unconditional `>` would restart the clock and discard the `round:` lines Step 8 appended — handing a spent budget a fresh one on each context loss. An existing file is authoritative; read it and continue from it. The file is removed at Step 9 (and by `/role none`), so the next run in the same session starts clean rather than inheriting this one's spent state.
-
-Step 8 appends a `round: <k>` line after each fix push. **Recovery** on a resumed/compacted run: re-read that file first — it is the budget's provenance, the clock, and the rounds used; then the briefing's directive if still in context (clock from the branch's first commit, Step 7's fallback; rounds as the branch's commits dated after the PR opened, `gh pr view <pr> --json createdAt`, rounding **up** when unsure — an over-count stops sooner, the safe direction). Neither → the budget is **unrecoverable**: never infer one from the role marker (`/role implementer` and a generic `/spawn` write the same marker with no cap, so it proves nothing about a budget), and never invent the profile default; record `budget: unrecoverable after context loss` in the Evidence `tests` string and the hand-back, and continue. That gap opens only when `$CLAUDE_SESSION_ID` was unset at Step 1 — the same degradation `/role` documents. No directive → no budget; run to completion exactly as before.
+**Note your budget (if directed).** If the briefing carries a `Budget: wall_clock_min=<N> review_rounds=<M>` directive (the profile's `SPAWN_CAP` appends one to every spawned child; a spawner may override it — SPAWN Step 2), **read `budget.md` now** (read-on-demand, like a tracker/profile) and follow it: it carries the grammar, the durable marker this run writes beside its role marker, the recovery rule after a context loss, how Step 8 enforces both limits, and the cleanup every hand-back owes. A malformed line is a briefing error — stop and report it, never run unbounded. No directive → no budget; run to completion exactly as before.
 
 **Adopt role (if spawned).** If the *briefing/arguments* carry a `Role:` directive (e.g. `Role: implementer`, injected by a spawn edge — SPAWN Step 3 / EPIC Step 5), read `roles/<role>.md` now and treat it as governing for this session: it bounds an unattended session to its altitude (an implementer implements this one issue — it doesn't spawn work beyond it or scope-creep, though it uses subagents/helpers for its own work freely and may file follow-up tickets — file-only, plus a `filed:` ping when a `Notify:` directive is wired, never `--spawn`/`--start`). Then **self-pin the marker immediately** — a briefing directive doesn't survive `/clear`/resume/compaction, and the SessionStart hook re-injects only from the marker:
 
@@ -325,31 +308,21 @@ EOF
 
 ### Step 8 — Review-bot cycle + CI watch
 
-**With a `Budget:` directive (Step 1), read this step's budget check first, before running anything here:** substitute its **deadline poll** for this CI watch and for every `--watch` or open-ended wait the profile's `REVIEW_BOT` loop shows (the `default` profile's own `gh pr checks --watch` included) — no unbounded wait runs while a budget is set. Watch CI in parallel with any review bot:
+Watch CI in parallel with any review bot. **Unbudgeted runs only** — with a `Budget:` directive in play, do not run the command below at all: `budget.md`'s deadline poll replaces it, and every other `--watch` or open-ended wait this step and the profile's `REVIEW_BOT` loop show.
 
 ```bash
-gh pr checks <pr> --watch --fail-fast
+gh pr checks <pr> --watch --fail-fast   # no budget in play; see budget.md otherwise
 ```
 
 Run the profile's `REVIEW_BOT` step. The `default` profile: if an automated reviewer (Copilot, CodeRabbit, etc.) is configured, request a review and resolve every thread — address each with a code change + reply + resolve, or, if the bot is wrong, reply explaining why + resolve; push fixes, re-request, and loop until there are no unresolved threads AND CI is green. If there's **no** review bot, rely on CI + the user's own review.
 
 If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you can't.
 
-**Budget check (only with a `Budget:` directive from Step 1).** A **review round** is one push made in this step to address review-bot threads or a CI failure, together with the re-review / CI run it triggers — count them. Before each such push, and at every step boundary from Step 5 on, compare rounds used against `review_rounds` and whole minutes since Step 1's clock note against `wall_clock_min`. A budget is **spent** when the next push would be round `<M>+1`, or when elapsed whole minutes are at or past `<N>` (`>=`, so `wall_clock_min=0` is spent at the first check). While a budget is set, never wait unbounded — and don't reach for GNU `timeout`, which a stock macOS lacks. Use a portable **deadline poll** in place of every `--watch`: `deadline=$(( <clock epoch from the marker> + 10#<N> * 60 ))`, then
-
-```bash
-until [ "$(date +%s)" -ge "$deadline" ]; do
-	poll_status=0; gh pr checks <pr> >/dev/null 2>&1 || poll_status=$?
-	[ "$poll_status" -ne 8 ] && break
-	sleep 60
-done
-```
-
-(`gh pr checks` exits 8 while checks are pending; the same loop shape re-reads the review bot's threads). Capture the status with `|| poll_status=$?` rather than testing a bare `$?` — under `set -e` the expected pending exit would abort the loop before it could be inspected. The name matters: tool commands run under **zsh**, where `status` is a read-only special parameter (an alias for `?`), so assigning it fails outright — the same hazard the repo instructions record for `path`. `date +%s` and `sleep` are everywhere; the `10#` keeps the arithmetic base-10. A deadline reached mid-wait is itself the overrun. Append `round: <k>` to the Step 1 budget marker **before** each fix push, not after, so the count survives compaction *and* an interruption: a session compacted between a successful `git push` and a later append would leave recovery reading a stale count and granting an extra round. Counting a push that then fails is the safe direction — it can only stop sooner. Once a budget is spent, **stop instead of looping**: no further fix pushes. Finish only what is safe to finish (the commit in progress; Step 7's push and PR if the clock ran out before it, opened as a **draft** — the hold signal FINISH's gate already honors), reply on each still-open review thread that the budget is exhausted but leave it unresolved (resolving without addressing would misreport), update the Evidence block **in place** with the overrun (Step 7's `budget_exceeded` clause in `tests`, and `wall_clock_min` re-measured to the stop), ping `blocked: budget exceeded (<which>)` if a `Notify:` directive is wired, and go to Step 9. **Nothing committed yet** — the clock ran out before the first commit, so there is no diff to open a PR on: there is no PR and no Evidence block to update; skip the push, and — because a cloud child has no `Notify:` channel and no PR for a coordinator's poll to read — record the stop **durably on the ticket itself** with the tracker's `COMMENT(id, body)` op — body `blocked: budget exceeded (<which>), nothing committed` — then carry it in the `blocked:` ping where wired and the Step 9 report. Where a PR exists it is handed back as it stands — red CI or open threads included — and the report names the spent budget; re-briefing with a larger one is the spawner's call, never this session's.
+**Budget check (only with a `Budget:` directive from Step 1).** `budget.md` carries it: what counts as a review round and when to record it, when a budget is **spent**, the portable deadline poll that replaces every `--watch` above (including the profile's), and exactly what to finish and record on a stop. Follow it here rather than restating it — the enforcement and the marker format have to agree.
 
 ### Step 9 — Hand back
 
-**Clear the budget marker** if Step 1 wrote one — `rm -f "$roles_dir/$CLAUDE_SESSION_ID.budget"` — so a later, differently-budgeted (or unbudgeted) run in this same session can't inherit this ticket's spent clock and round count. The role marker stays; only the budget sidecar is per-run. This applies to **every** way this phase hands back, not just a run that reaches this step: an opt-out that stops at Step 4 or Step 6, and a budget stop itself, each clear it on the way out.
+**Clear the budget marker** if Step 1 wrote one — `budget.md`'s cleanup snippet, which recomputes the path and guards the session id. This applies to **every** way this phase hands back, not just a run that reaches this step: an opt-out that stops at Step 4 or Step 6, and a budget stop itself, each clear it on the way out.
 
 Report: PR URL, a 1–2 sentence summary, whether the review bot had non-trivial comments and how they were handled, and that `/finish-ticket <id>` is the next step after the user's review — or, on a budget stop, which budget ran out and what is left undone.
 
@@ -449,7 +422,7 @@ Extract `(id, briefing)` pairs; no per-issue briefing → just the cap from Step
 
 Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap appended to every sibling's briefing so background sessions can't over-reach (the `default` profile: implement + test, then stop at a reviewed PR and report — no prod deploy or merge unless a human steering the session asks for it mid-run). Compose each briefing by appending that cap to the per-issue briefing (just the cap alone if there's no per-issue text). This cap is the ticket layer's own bound — generic `spawn` adds none.
 
-The cap's closing `Budget: wall_clock_min=<N> review_rounds=<M>` line is the child's stop condition (START Step 8). A `Budget:` directive in the request — shared or per-issue — **overrides** it **key-wise, in the order cap → shared → per-issue**: for each key the last source naming it wins (cap 180/5, shared `review_rounds=3`, per-issue `wall_clock_min=60` → `wall_clock_min=60 review_rounds=3`), and exactly one full line, both keys, reaches each child. **Validate before launching:** an override is `Budget:` plus one or both of `wall_clock_min=<n>` / `review_rounds=<n>` — digits, no leading zero, no duplicate or unknown key, nothing else. Anything malformed (`wall_clock_min=abc`) is an error: stop and say so rather than forward it, since a child that rejects the line stops at its Step 1 and one that misses it runs unbounded. A cap with **no** `Budget:` line (a profile may omit it) has nothing to merge into: forward a full override (both keys) as-is, and treat a partial one as an error — stop and say so rather than invent the missing key. Never forward two — START defines precedence for directives, not for duplicates.
+The cap's closing `Budget:` line is the child's stop condition. When the request carries its own `Budget:` directive — shared or per-issue — **read `budget.md`** and apply its override rules: validate before launching (malformed is an error, not a dropped budget), merge key-wise cap → shared → per-issue, and forward at most one line, none when the cap omits it and no override was given.
 
 ### Step 3 — Build each sibling's prompt + name, then delegate to `spawn`
 

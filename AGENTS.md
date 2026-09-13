@@ -116,7 +116,7 @@ capturing. Use a task-specific name such as `poll_status`.
 
 ## SKILL.md size — when to split phases into their own files
 
-ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~480
+ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (482
 lines as of #98): the phases cross-reference each other's steps by number (EPIC →
 START Steps 2/3/7, FINISH's gate → START Step 6), and one file keeps full-context
 reads the default — splitting reintroduces the #22 bypass failure in a new form
@@ -133,6 +133,14 @@ one of these fires:
   standalone refactor;
 - two concurrent tickets produce a merge conflict in `SKILL.md`;
 - wording micro-tests show agents missing steps mid-file.
+
+A **mechanism** that grows phase-sized can be read-on-demand without splitting a
+phase: #98 moved the `Budget:` directive's grammar, marker format, recovery,
+enforcement, and cleanup into `budget.md` when inlining them pushed `SKILL.md`
+past 500, leaving one pointer per touchpoint. That kept START whole (its steps
+cross-reference each other, and a split mid-epic conflicts with every concurrent
+sibling) while honoring the size rule. Prefer this when the growth is one
+mechanism threaded through several steps rather than a phase in its own right.
 
 Whatever splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0,
 and a one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
