@@ -33,7 +33,12 @@ Each evaluation:
    completed without succeeding, and `pending` otherwise. No expected workflow
    (a docs-only PR) is `success`;
 6. fails the PR if `.claude/settings.json` (root, or any changed copy in a
-   subdirectory) carries a `remote.*` key (spec section 2c).
+   subdirectory) carries a `remote.*` key (spec section 2c);
+7. fails the PR if the head tree's `.claude/cloud-setup.sh` (the provisioning
+   script a factory environment runs from `origin/main`) lacks its
+   never-executes-the-checkout header or contains a build-tool, package-manager,
+   sourcing, or relative invocation, or if the PR removes a script the base
+   carries (spec section 2b).
 
 Stdlib plus PyYAML. The pure functions take plain data and are unit-tested in
 `tests/test_ci_gate.py`; `main()` is the GitHub Actions glue.
@@ -77,6 +82,8 @@ MAX_CHANGED_FILES = 300
 MAX_COMMITS = 1000
 SETTINGS_FILE = ".claude/settings.json"
 API_TIMEOUT_SECONDS = 30
+CLOUD_SETUP_FILE = ".claude/cloud-setup.sh"
+CLOUD_SETUP_HEADER = "NEVER EXECUTES ANYTHING FROM THE CHECKOUT"
 
 
 class GateError(Exception):
@@ -456,6 +463,169 @@ def settings_paths_to_lint(changed_files: list[str]) -> list[str]:
     return sorted(paths)
 
 
+# --- cloud-setup.sh lint ----------------------------------------------------
+
+# A word boundary at the start of a shell command: line start, or a separator.
+_CMD = r"(?:^|[\s;&|(`{])"
+# ... optionally followed by a path, so /usr/bin/make is the same finding as
+# make: the rule names the tool, not the spelling used to reach it.
+_PATH = r"(?:(?:[\w.~+-]*/)+)?"
+# A command word may be quoted -- `"make" all` and `"./evil"` both run.
+_Q = r"['\"]?"
+# ... and a boundary at the end: whitespace, end of line, or a closing separator.
+_END = r"(?:\s|$|[;&|)`}'\"])"
+# (regex, what it is). Each is applied to a logical line with its comments
+# removed. A screen for the invocations spec 2b names, not a sandbox: the rule
+# itself is the header line the script must carry.
+CLOUD_SETUP_FORBIDDEN = [
+    (re.compile(_CMD + _Q + r"\.{1,2}/"), "a relative path (./ or ../)"),
+    # `. file` in command position; `(. == x)` inside a jq program is not it.
+    (re.compile(_CMD + r"(?:source\s+\S|\.\s+[^\s=!<>|&)])"), "sourcing a file"),
+    (re.compile(_CMD + _Q + _PATH + r"make" + _END), "make"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:npm|npx|pnpm|yarn|bun)" + _END), "a Node package manager"),
+    (re.compile(_CMD + _Q + _PATH + r"pip3?\s+install" + _END), "pip install"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:uv|uvx|poetry|pipenv)" + _END), "a Python project tool"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:cargo|gradle|gradlew|mvn|bundle|composer|mix|swift|go)\s+(?:build|run|install|test|sync|generate|mod|package|exec)" + _END), "a build tool"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:direnv|pre-commit|terraform|docker|docker-compose|xcodegen)" + _END), "a tool that reads project files"),
+]
+
+# Interpreters whose first non-option argument is a script, with the option
+# letters that switch them to inline code (nothing from the checkout runs), the
+# option letters that consume the following token, and the long forms of both.
+# `['\"]?` consumes a closing quote, so `"bash" setup.sh` is parsed like the
+# bare form -- otherwise the lookahead lands on the quote and never matches.
+# `(?=[\s<])`: `bash<setup.sh` feeds the interpreter that file on stdin.
+_INTERPRETER = re.compile(_CMD + _Q + _PATH + r"(bash|sh|zsh|python3?|node|ruby|perl)['\"]?(?=[\s<])")
+_CODE_LETTERS = {"bash": "c", "sh": "c", "zsh": "c", "python": "cm", "python3": "cm", "node": "ep", "ruby": "e", "perl": "eE"}
+_ARG_LETTERS = {"bash": "o", "sh": "o", "zsh": "o", "python": "WXQ", "python3": "WXQ", "node": "r", "ruby": "Ir", "perl": "IM"}
+_LONG_CODE = {"node": {"--eval", "--print"}, "python": {"--command"}, "python3": {"--command"}}
+# Long options that consume the following token. An option outside both maps is
+# ambiguous -- `bash --rcfile /tmp/rc setup.sh` would otherwise read /tmp/rc as
+# the script, accept it as absolute, and never see setup.sh -- so the lint says
+# so rather than guessing.
+_LONG_ARG = {"bash": {"--rcfile", "--init-file"}, "sh": set(), "zsh": {"--rcfile"},
+             "node": {"--require", "--import"}, "python": set(), "python3": set(),
+             "ruby": set(), "perl": set()}
+
+
+def _strip_comment(line: str) -> str:
+    """Drop a trailing `#` comment, honoring single and double quotes."""
+    single = double = False
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if ch == "\\" and not single:
+            i += 2
+            continue
+        if ch == "'" and not double:
+            single = not single
+        elif ch == '"' and not single:
+            double = not double
+        elif ch == "#" and not single and not double and (i == 0 or line[i - 1].isspace()):
+            return line[:i]
+        i += 1
+    return line
+
+
+def logical_lines(text: str) -> list[tuple[int, str]]:
+    """(first line number, code) pairs: comments stripped, continuations joined.
+
+    Comments come off each *physical* line first, because a shell comment ends
+    at the newline however it ends -- `# note \\` does not continue. What is
+    left is then joined across trailing backslashes, so `ma\\` + `ke`, which the
+    shell runs as `make`, is one logical line the patterns below can see.
+    """
+    out: list[tuple[int, str]] = []
+    buf, start = "", None
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        code = _strip_comment(raw)
+        if start is None:
+            start = lineno
+        if (len(code) - len(code.rstrip("\\"))) % 2 == 1:
+            buf += code[:-1]
+            continue
+        out.append((start, buf + code))
+        buf, start = "", None
+    if start is not None:
+        out.append((start, buf))
+    return out
+
+
+def interpreter_risk(line: str) -> str | None:
+    """Why an interpreter on this line might run something from the checkout.
+
+    Walks the interpreter's options so `bash -e setup.sh` and `python3 -O
+    setup.py` are caught while `bash -euo pipefail -c "$s"` and `node -e x` are
+    not. Only a literal absolute path is accepted as the script: a variable can
+    hold a path back into the checkout (`bash "$CLAUDE_PROJECT_DIR/x.sh"`), and
+    this lint cannot know what it holds. A long option in neither map is
+    reported rather than assumed to take no argument.
+    """
+    for m in _INTERPRETER.finditer(line):
+        interp = m.group(1)
+        rest = re.split(r"[;|&)`]", line[m.end():], 1)[0]
+        # An input redirect feeds the interpreter a script on stdin, which runs
+        # it just the same. `<<`, `<<<` and `<(` are heredoc, herestring and
+        # process substitution -- none of them names a file to execute.
+        redirect = re.search(r"(?<!<)<(?![<(])\s*([^\s<>|&;]+)", rest)
+        if redirect:
+            target = redirect.group(1).strip("\"'")
+            if target and not target.startswith("/"):
+                return "an interpreter fed a script by redirect that is not a literal absolute path"
+        # Redirects handled; drop them so the option walk sees only arguments.
+        rest = re.sub(r"<+\s*[^\s<>|&;]*", " ", rest)
+        tokens = rest.split()
+        script = None
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            if tok == "--":
+                script = tokens[i + 1] if i + 1 < len(tokens) else None
+                break
+            if tok.startswith("--"):
+                if tok in _LONG_CODE.get(interp, ()):
+                    break
+                if tok in _LONG_ARG.get(interp, ()):
+                    i += 2
+                    continue
+                return f"an interpreter given a long option this lint cannot interpret ({tok}), so its script argument is unknown"
+            if tok.startswith("-") or (tok.startswith("+") and interp in ("bash", "sh", "zsh")):
+                letters = tok[1:]
+                if any(c in _CODE_LETTERS[interp] for c in letters):
+                    break
+                i += 2 if letters and letters[-1] in _ARG_LETTERS[interp] else 1
+                continue
+            script = tok
+            break
+        if script:
+            script = script.strip("\"'")
+            if script and not script.startswith("/"):
+                return "an interpreter run on a script that is not a literal absolute path"
+    return None
+
+
+def cloud_setup_lint(text: str) -> list[str]:
+    """Reasons `.claude/cloud-setup.sh` violates spec 2b's provisioning rule.
+
+    The environment runs the origin/main copy of this script, and protecting
+    the text is not enough on its own: the script must also execute nothing
+    from the checkout, since a branch can plant a Makefile, a lockfile, or a
+    postinstall hook. This lint requires the header that states that rule --
+    as a comment line, not the phrase buried in a string -- and flags the
+    invocations the spec names.
+    """
+    reasons = []
+    if not re.search(r"^[ \t]*#.*" + re.escape(CLOUD_SETUP_HEADER), text, re.M):
+        reasons.append(f"missing the header comment stating the rule ({CLOUD_SETUP_HEADER!r})")
+    for lineno, line in logical_lines(text):
+        what = next((name for pattern, name in CLOUD_SETUP_FORBIDDEN if pattern.search(line)), None)
+        if what is None:
+            what = interpreter_risk(line)
+        if what:
+            reasons.append(f"line {lineno}: {what}, which could execute something from the checkout: {line.strip()}")
+    return reasons
+
+
 # --- Evaluation over an API-shaped interface --------------------------------
 
 
@@ -604,6 +774,15 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
             continue
         if keys:
             reasons.append(f"{path}: carries {', '.join(keys)}; remote.* settings must not reach {PROTECTED_BASE}")
+
+    # cloud-setup.sh lint (spec 2b): the provisioning script the environment
+    # runs from origin/main, read from the head tree so a violation is caught
+    # before it lands there.
+    setup_text = api.raw(CLOUD_SETUP_FILE, head_sha)
+    if setup_text is not None:
+        reasons += [f"{CLOUD_SETUP_FILE}: {r}" for r in cloud_setup_lint(setup_text)]
+    elif base_sha and api.raw(CLOUD_SETUP_FILE, base_sha) is not None:
+        reasons.append(f"{CLOUD_SETUP_FILE}: removed by this PR; the factory environment provisions from {PROTECTED_BASE}'s copy, so it must stay in the tree")
 
     if reasons:
         return {"verdict": "failure", "head_sha": head_sha, "pr": number, "reasons": reasons, "rows": rows, "changed_files": len(changed)}

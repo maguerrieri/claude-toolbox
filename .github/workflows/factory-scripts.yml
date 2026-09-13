@@ -3,11 +3,14 @@ name: factory scripts
 # Unit tests for the scripts under .github/scripts, plus a self-check that this
 # repo's .github/factory-ci.yml and ci-gate.yml agree with the workflows on this
 # branch -- the same lint ci-gate runs on every PR, caught here before merge.
+# Also runs on .claude/** changes: the tests drive .claude/cloud-setup.sh (spec
+# 2b) against a throwaway origin and lint it the way ci-gate does.
 
 on:
   pull_request:
     paths:
       - ".github/**"
+      - ".claude/**"
 
 # Runs PR-controlled test code, so the token it holds must be read-only.
 permissions:

@@ -603,3 +603,182 @@ def test_repo_manifest_is_consistent():
     # Every entry evaluates without hitting an unsupported construct.
     for f, e in ci_gate.expected_set(manifest, ["README.md", ".github/workflows/x.yml"], "main"):
         assert f in manifest["workflows"] and e in ci_gate.PR_EVENTS
+
+
+# --- cloud-setup.sh lint (spec 2b) -------------------------------------------
+
+SETUP_HEADER = "#!/bin/bash\n# RULE: THIS SCRIPT NEVER EXECUTES ANYTHING FROM THE CHECKOUT.\n"
+
+
+def test_cloud_setup_lint_requires_header():
+    assert ci_gate.cloud_setup_lint("#!/bin/bash\necho hi\n") == [
+        f"missing the header comment stating the rule ({ci_gate.CLOUD_SETUP_HEADER!r})"]
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + "echo hi\n") == []
+
+
+@pytest.mark.parametrize("line", [
+    "make all", "cd x && make", "npm install", "npm ci", "npx foo", "yarn", "pnpm install",
+    "pip install -e .", "pip3 install -r requirements.txt", "uv sync", "uvx pytest", "poetry install",
+    "cargo build", "go build ./...", "./configure", "../bin/setup", "sh ./x.sh", ". ./env", ". env.sh",
+    "source .envrc", "bash setup.sh", "python3 setup.py", "terraform init", "docker build .", "direnv allow",
+    "x=$(make)", "(npm install)", "true; make", "true | npm run x",
+])
+def test_cloud_setup_lint_flags_invocations(line):
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
+    assert len(reasons) == 1 and reasons[0].startswith("line 3:"), (line, reasons)
+
+
+@pytest.mark.parametrize("line", [
+    "# make install is fine in a comment", "echo hi  # npm install",
+    'url="https://github.com/o/r.git#main"', 'market="${plugin##*@}"',
+    "bash -euo pipefail -c \"$script\"", "bash /usr/local/bin/tool", 'bash "/opt/x.sh"',
+    "python3 -c 'print(1)'", "git -C \"$repo_dir\" diff -- .claude ':(exclude).claude/worktrees'",
+    "jq -e '(. == \"remote\")' f", "jq '([keys[] | select(. != \"\")])'", "gcloud auth print-access-token",
+    "printf '%s' \"$x\" | sha256sum", "d=$(dirname \"$0\")/../..", "curl -fsS https://x/y",
+])
+def test_cloud_setup_lint_allows_provisioning_shapes(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == []
+
+
+@pytest.mark.parametrize("line", [
+    "printf '%s\\n' 'x # not a comment'; make",
+    'echo "a # b"; npm ci',
+    "echo 'it''s' ; ./run",
+    "bash -e setup.sh", "bash -x -- setup.sh", "python3 -O setup.py", "sh -u ./x.sh", "node --no-warnings app.js",
+    "ruby -w script.rb", "perl -w tool.pl", "bash -o pipefail setup.sh",
+])
+def test_cloud_setup_lint_is_shell_aware(line):
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
+    assert len(reasons) == 1 and reasons[0].startswith("line 3:"), (line, reasons)
+
+
+@pytest.mark.parametrize("line", [
+    "echo hi  # make; npm install; ./x",
+    "bash -euo pipefail -c \"$script\"", "bash -s", "bash -x -- /opt/x.sh",
+    "node -e 'process.exit()'", "node --eval x", "node -r /abs/pre.js -e x", "python3 -m json.tool", "python3 -W ignore -c pass",
+    "ruby -e puts", "perl -E say",
+    "printf 'a # b' | grep '#'",
+])
+def test_cloud_setup_lint_shell_aware_allows(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == [], line
+
+
+def test_strip_comment():
+    assert ci_gate._strip_comment("echo hi # make") == "echo hi "
+    assert ci_gate._strip_comment("echo 'a # b' # c") == "echo 'a # b' "
+    assert ci_gate._strip_comment('url="https://x/r.git#main" # ref') == 'url="https://x/r.git#main" '
+    assert ci_gate._strip_comment('x="a\\"# b" # c') == 'x="a\\"# b" '
+
+
+@pytest.mark.parametrize("line", [
+    # A variable can hold a path back into the checkout; the lint cannot know.
+    'bash "$work/setup.sh"', "bash $HOME/x.sh", 'bash "$CLAUDE_PROJECT_DIR/evil.sh"', "sh $dir/x.sh",
+    # A quoted relative literal is still a relative file in the checkout.
+    'bash "setup.sh"', "python3 'setup.py'",
+])
+def test_cloud_setup_lint_rejects_non_absolute_interpreter_scripts(line):
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
+    assert len(reasons) == 1 and "not a literal absolute path" in reasons[0], (line, reasons)
+
+
+@pytest.mark.parametrize("line", [
+    "/usr/bin/make", "/usr/local/bin/npm ci", "/opt/homebrew/bin/terraform init", "/usr/bin/pip3 install x",
+])
+def test_cloud_setup_lint_matches_a_tool_by_any_path(line):
+    """The rule names the tool, not the spelling used to reach it."""
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") != [], line
+
+
+@pytest.mark.parametrize("line,expected", [
+    # An option that takes an argument must not be mistaken for the script.
+    ("bash --rcfile /tmp/rc setup.sh", "not a literal absolute path"),
+    ("node --require /abs/pre.js app.js", "not a literal absolute path"),
+    # One this lint does not know is reported, not assumed argument-less.
+    ("bash --login /opt/x.sh", "cannot interpret (--login)"),
+    ("python3 --unknown-flag /opt/x.py", "cannot interpret (--unknown-flag)"),
+])
+def test_cloud_setup_lint_handles_long_options(line, expected):
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
+    assert len(reasons) == 1 and expected in reasons[0], (line, reasons)
+
+
+def test_cloud_setup_lint_allows_known_argument_taking_options(line=None):
+    for ok in ("node --require /abs/pre.js -e x", "bash --rcfile /tmp/rc -c \"$s\""):
+        assert ci_gate.cloud_setup_lint(SETUP_HEADER + ok + "\n") == [], ok
+
+
+@pytest.mark.parametrize("line", [
+    # A quoted command word runs the same as a bare one.
+    '"./evil"', "'../bin/setup'", '"make" all', "'npm' ci", 'bash -c \'make\'',
+    # An input redirect feeds the interpreter a script just as an argument does.
+    "bash<setup.sh", "bash < setup.sh", "python3 <setup.py", 'sh "./x.sh"',
+    # A quoted interpreter runs the same script as an unquoted one.
+    '"bash" setup.sh', "'python3' setup.py", '"bash"<setup.sh',
+])
+def test_cloud_setup_lint_sees_quoted_words_and_redirects(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") != [], line
+
+
+@pytest.mark.parametrize("line", [
+    # Herestrings, heredocs and process substitution name no file to execute.
+    'jq -r . <<<"$settings"', "done < <(jq -r . <<<\"$s\")", "bash < /opt/x.sh",
+    '"bash" /opt/x.sh', '"bash" -c "$s"',
+])
+def test_cloud_setup_lint_allows_non_file_redirects(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == [], line
+
+
+def test_cloud_setup_lint_joins_line_continuations():
+    """`ma\\` + `ke` is one command to the shell, so it is one line to the lint."""
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + "ma\\\nke\n")
+    assert len(reasons) == 1 and reasons[0].startswith("line 3:") and "make" in reasons[0], reasons
+
+
+def test_cloud_setup_lint_does_not_continue_a_comment():
+    """A shell comment ends at the newline, so the next line is still code."""
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + "# a note \\\nmake\n")
+    assert len(reasons) == 1 and "make" in reasons[0], reasons
+
+
+def test_cloud_setup_lint_requires_the_header_as_a_comment():
+    """The phrase in a string is not the rule being stated."""
+    body = 'x="NEVER EXECUTES ANYTHING FROM THE CHECKOUT"\n'
+    assert any("missing the header comment" in r for r in ci_gate.cloud_setup_lint(body))
+    assert ci_gate.cloud_setup_lint("  # NEVER EXECUTES ANYTHING FROM THE CHECKOUT\n") == []
+
+
+def test_logical_lines_pairs_code_with_its_first_line():
+    assert ci_gate.logical_lines("a\n# c\nb \\\nc\n") == [(1, "a"), (2, ""), (3, "b c")]
+
+
+def test_cloud_setup_lint_reports_every_line():
+    reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + "make\nnpm install\n")
+    assert [r.split(":")[0] for r in reasons] == ["line 3", "line 4"]
+
+
+def test_evaluate_cloud_setup_violation_fails():
+    tree = dict(TREE, **{".claude/cloud-setup.sh": SETUP_HEADER + "npm install\n"})
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
+    result = ci_gate.evaluate(api, "abc", None, "1")
+    assert result["verdict"] == "failure" and result["reasons"][0].startswith(".claude/cloud-setup.sh: line 3")
+
+
+def test_evaluate_cloud_setup_clean_passes():
+    tree = dict(TREE, **{".claude/cloud-setup.sh": SETUP_HEADER + "gcloud config list\n"})
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], tree, [run("plugin-versions.yml")])
+    assert ci_gate.evaluate(api, "abc", None, "999")["verdict"] == "success"
+
+
+def test_evaluate_cloud_setup_removed_fails():
+    base = dict(TREE, **{".claude/cloud-setup.sh": SETUP_HEADER + "gcloud config list\n"})
+    api = FakeApi([pr(1, "abc")], [".claude/cloud-setup.sh"], TREE, [run("plugin-versions.yml")], base_tree=base)
+    result = ci_gate.evaluate(api, "abc", "999", base_sha="base")
+    assert result["verdict"] == "failure" and "removed by this PR" in result["reasons"][0]
+    # Never on the base either (a repo without the script): nothing to enforce.
+    api = FakeApi([pr(1, "abc")], ["docs/a.md"], TREE, [run("plugin-versions.yml")])
+    assert ci_gate.evaluate(api, "abc", "999", base_sha="base")["verdict"] == "success"
+
+
+def test_repo_cloud_setup_passes_lint():
+    with open(os.path.join(REPO, ".claude", "cloud-setup.sh")) as f:
+        assert ci_gate.cloud_setup_lint(f.read()) == []

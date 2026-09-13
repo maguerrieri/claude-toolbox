@@ -23,7 +23,25 @@ configure it for this repo:
 ```
 Tracker: github
 Profile: default
+Implementer environment (personal): env_PENDING
+Coordinator environment (personal): env_PENDING
+Implementer environment (team): env_PENDING
+Coordinator environment (team): env_PENDING
 ```
+
+The four `… environment (<account>)` lines are the factory's environment
+selection (design spec
+`docs/superpowers/specs/2026-09-11-software-factory-design.md`, §2c): one
+implementer and one coordinator cloud environment per Claude account, labelled
+`personal` and `team`. The launcher reads them from `origin/main`, never from a
+briefing or the checkout, and determines the launching account by finding which
+label's lines contain the calling session's own `environment_id`, refusing
+unless exactly one label matches (§2d: the session record carries no account
+field). `env_PENDING` means the environment has not been created yet — it is a
+GUI-only step in each account (§2b; the steps are in the PR for #96) — and no
+session's `environment_id` can equal it, so the launcher refuses until a real
+ID replaces it. Keep the block parseable: one `Key: value` line each, no
+duplicates.
 
 (An optional `Worktree dir: <path>` line in the same block — or in project memory —
 overrides where `/start-ticket` creates worktrees; the default, `.claude/worktrees/`,
@@ -97,12 +115,85 @@ verified on Claude Code 2.1.268:
   The settings file stays the single source of truth; the hook never changes
   when the plugin set does, and is a no-op locally. Other repos run the same
   file with one hook line (`curl -fsSL <raw URL on main> | bash`; see the
-  README). Delete it once cloud sessions honor the settings natively. Alternatives that also work, outside
+  README). Delete it once cloud sessions honor the settings natively. In this
+  repo's own factory-implementer environment the plugins are already in the
+  cached snapshot (see *Cloud environment provisioning* below), so the loop
+  finds them installed and skips. It keys that check on the marketplace
+  **name**, not the source spelling: `cloud-setup.sh` registers pinned git URLs
+  (`Git (https://…git@main)`) while a hook-added marketplace shows the
+  `(owner/repo)` shorthand, so matching the source text would miss a
+  provisioned snapshot and re-add every session, replacing the pinned
+  registration with an unpinned one. Alternatives that also work, outside
   the repo: enable the marketplace on your claude.ai account (Customize ›
   Plugins › Add marketplace › from a repository) so the plugins sync into cloud
   sessions as `<name>@synced` (skills verified; `claude plugin list` shows
   nothing for them, which is expected), or run the same install from the cloud
   environment's setup script.
+
+## Cloud environment provisioning (`.claude/cloud-setup.sh`)
+
+The factory's implementer cloud environment (spec §2b, item 6) is provisioned
+by `.claude/cloud-setup.sh`, which the environment's GUI setup script runs
+**from `origin/main`**, never from the checked-out branch — the GUI holds only
+the fail-fast stub recorded verbatim in §2b (`set -euo pipefail`, fetch
+`origin/main`, `git show origin/main:.claude/cloud-setup.sh` into a variable,
+refuse if empty, run it under `bash -euo pipefail`; its `(v1)` comment is the
+rebuild trigger). The script's header states its one rule — it never executes
+anything from the checkout — and `ci-gate` lints it for `make`, package
+managers, sourcing, and relative invocations, so a branch that plants a
+`Makefile` or a `postinstall` hook cannot get it run at setup. The lint joins
+backslash continuations, strips comments quote-aware, matches a tool by any
+path (`/usr/bin/make` is still `make`), requires the rule as a comment line,
+and accepts an interpreter's script argument only as a literal absolute path,
+since a variable can hold a path back into the checkout. Three modes:
+
+- **provision** (no argument): reads `enabledPlugins` from
+  `origin/main:.claude/settings.json`, installs them from the two allowlisted
+  marketplaces pinned as git URLs at `#main`, and writes a snapshot manifest
+  (`~/.factory-setup/manifest`) holding the SHA-256 of `origin/main`'s script,
+  of `.claude/cloud-allowlist`, and of `.claude/settings.json` (the plugin
+  set). **The manifest is the claim that the snapshot realizes `origin/main`,
+  so it is written only when that holds**: a missing `claude` or `jq`, a
+  marketplace that cannot be registered or updated, a plugin that will not
+  install, or (in a repo that declares a key) a checkout whose `.claude/`
+  drift skipped the credential all end the run non-zero with no manifest, so
+  the next setup run retries instead of reporting `SETUP OK` against an
+  incomplete snapshot. The previous snapshot's manifest is removed *before*
+  provisioning changes anything, so a failed re-provision cannot leave an
+  earlier success standing: `origin/main` is unchanged in that case, so the
+  three hashes would still match and `--verify` would answer `SETUP OK` for a
+  VM the failed run may have left without plugins or the credential. This repo declares no GCP project, so it
+  materializes no credential; `toolbox`'s copy (same text, two constants
+  filled in) activates the read-only logs-viewer key from
+  `FACTORY_LOGS_VIEWER_KEY` and asserts its IAM scope (every testable
+  permission on the project the credential holds must be in
+  `roles/logging.viewer`; anything else, or a check that cannot run, drops the
+  credential from the VM and fails provisioning — note that this cannot revoke
+  the key in IAM, which is an IAM write a `logging.viewer` credential must not
+  have, so the script prints `ACTION REQUIRED` and a human rotates the key).
+- **`--verify`**: run per session by `.claude/hooks/session-start.sh` (which
+  fetches `origin/main` and runs *that* copy) and prints `SETUP STALE` when
+  `main`'s script, allowlist, or settings changed after the snapshot was built (fix: bump
+  the `(v1)` comment in the GUI stub in each account), `UNTRUSTED .claude/`
+  when the checkout's `.claude/` differs from `origin/main` (content, not
+  branch name; `.claude/worktrees/` excluded), and `PROJECT remote.* OVERRIDE
+  PRESENT` when `.claude/settings.json` carries a `remote.*` key. Nudges for
+  the session and the log, never a boundary — a hook cannot block a session
+  and the setup result is a shared snapshot (§2b explains why the boundary is
+  the credential rule instead).
+- **`--assert-iam`**: the IAM assertion (`projects.testIamPermissions`) for a
+  repo that declares a key; a no-op here.
+
+`.claude/cloud-allowlist` mirrors the environment's network allowlist
+(`level:` / `host:` lines); nothing reads it at runtime, but its hash is part
+of the staleness check, so changing the GUI allowlist means changing the file
+and bumping the stub — and provisioning refuses outright if `origin/main` has
+no such file, since an absent one would hash as empty input and read as
+current. Secrets reach the script as environment variables, which every child
+process inherits, so it captures them into shell variables and unsets the
+environment copies before any `claude plugin install` runs. `.github/scripts/tests/test_cloud_setup.py` runs the
+real script against a throwaway origin with recording stubs; the
+`factory scripts` workflow runs it on every `.claude/**` change.
 
 ## Repo permissions (`.claude/settings.json`)
 
@@ -215,8 +306,9 @@ with a `pull_request` trigger means updating three things in the same PR**:
 the workflow, its entry in `.github/factory-ci.yml` (the `pull_request` block
 copied verbatim; `push` and other triggers are not recorded), and the name in
 `ci-gate.yml`'s `workflow_run.workflows` list. The `factory scripts` workflow
-runs the evaluator's tests plus that same lint on every `.github/**` change
-(`uvx --with pyyaml pytest .github/scripts/tests -q` locally), so drift fails
+runs the evaluator's tests plus that same lint on every `.github/**` or
+`.claude/**` change (`uvx --with pyyaml pytest .github/scripts/tests -q`
+locally; the `.claude/**` half is the cloud-setup tests), so drift fails
 before merge. A PR that *adds or renames* a workflow needs one manual
 re-evaluation once that workflow has finished (re-run the last `ci-gate` run, or
 dispatch `ci-gate` with the PR's head SHA), because `workflow_run` matches by
