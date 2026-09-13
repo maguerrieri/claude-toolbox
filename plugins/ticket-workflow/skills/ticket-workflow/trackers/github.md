@@ -90,12 +90,12 @@ gh pr list --state open -L 500 --search "#<n> in:body" --json number,headRefName
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
-The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, for *any* EPIC run with a registered native stack, the `stack:` record EPIC Step 6 writes (that write happens regardless of routing mode). On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
+The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, regardless of routing mode, the two records EPIC writes on *any* run: the `stack:` record (Step 6, when a native stack is registered) and every `restacked:` record (Steps 4 and 6, whenever the orchestrator rewrites a child branch). Those two are not scoped to coordinated runs: an ordinary bg chain gets restacked too, and its fork points survive nowhere else. On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
 ```bash
 gh issue comment <epic_id> --body "claim: <session> -> <files>"   # post a marker
 gh issue view <epic_id> --json comments -q '.comments[].body'      # read existing markers
 ```
-Markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6) so siblings can grep them. Keeps coordination tracker-native and inspectable; no live agent team required.
+Markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `restacked: <branch> onto <base> @ <sha>` — the orchestrator rewrote a child's branch to linearize a chain, EPIC Step 4/6; `<sha>` is the base tip the branch now forks from, which a force-pushed base makes unrecomputable from the refs, so a session holding that branch must fetch before it pushes and must rebase from this SHA rather than a merge-base, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6) so siblings can grep them. Keeps coordination tracker-native and inspectable; no live agent team required.
 
 ## Review bot
 - The review bot is a **profile** concern, not tracker-specific — see the selected profile's `REVIEW_BOT` (the `default` profile drives Copilot via `gh`).
