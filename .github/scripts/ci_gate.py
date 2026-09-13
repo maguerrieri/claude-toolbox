@@ -167,10 +167,21 @@ def normalize_on(on) -> dict:
     if isinstance(on, str):
         return {on: {}}
     if isinstance(on, list):
-        return {str(event): {} for event in on}
+        return {event: {} for event in _event_names(on)}
     if isinstance(on, dict):
-        return {str(event): normalize_event(event, cfg) for event, cfg in on.items()}
+        return {event: normalize_event(event, cfg) for event, cfg in zip(_event_names(on), on.values())}
     raise GateError(f"unsupported `on:` block: {on!r}")
+
+
+def _event_names(on) -> list[str]:
+    """Event names exactly as written. GitHub rejects a workflow whose `on:`
+    names an event with anything but a string, and a rejected workflow never
+    runs -- coercing it here would leave the gate waiting for a run that can
+    never arrive instead of saying what is wrong."""
+    bad = [event for event in on if not isinstance(event, str)]
+    if bad:
+        raise GateError(f"`on:` must name events as strings, got {bad[0]!r}")
+    return list(on)
 
 
 def normalize_event(event: str, cfg) -> dict:
@@ -449,8 +460,17 @@ def run_belongs_to(run: dict, pr_number) -> bool:
     return not linked or pr_number in linked
 
 
-def latest_run(runs: list[dict], filename: str, event: str, own_run_id, pr_number=None) -> dict | None:
-    """The newest run of `<file>` under `<event>` on the head SHA for this PR, never ci-gate's own."""
+def run_time(run: dict) -> str:
+    return run.get("run_started_at") or run.get("created_at") or ""
+
+
+def latest_run(runs: list[dict], filename: str, event: str, own_run_id, pr_number=None, not_before=None) -> dict | None:
+    """The newest run of `<file>` under `<event>` on the head SHA for this PR, never ci-gate's own.
+
+    `not_before` discards runs that started earlier than an ISO-8601 instant:
+    a reopened PR keeps its head SHA, so its pre-close runs are still listed
+    while the reopen's own runs may not exist yet (see `reopen_freshness`).
+    """
     path = f"{WORKFLOWS_DIR}/{filename}"
     candidates = [
         r for r in runs
@@ -459,22 +479,46 @@ def latest_run(runs: list[dict], filename: str, event: str, own_run_id, pr_numbe
         and str(r.get("id")) != str(own_run_id)
         and r.get("path") != f"{WORKFLOWS_DIR}/{SELF_WORKFLOW}"
         and run_belongs_to(r, pr_number)
+        and (not_before is None or run_time(r) >= not_before)
     ]
     if not candidates:
         return None
     # A re-run updates the same run (new attempt, new run_started_at); a reopen
     # creates a new run. Newest start wins, id breaks ties.
-    return max(candidates, key=lambda r: (r.get("run_started_at") or r.get("created_at") or "", int(r.get("id", 0))))
+    return max(candidates, key=lambda r: (run_time(r), int(r.get("id", 0))))
 
 
-def aggregate(expected: list[tuple[str, str]], runs: list[dict], own_run_id, pr_number=None) -> tuple[str, list[dict]]:
+def reopen_freshness(manifest: dict, expected: list[tuple[str, str]], reopened_at: str | None) -> dict[str, str]:
+    """`{file: instant}` for expected workflows a reopen re-triggers.
+
+    Reopening a PR does not change its head SHA, so every run from before it
+    was closed is still listed for that SHA. A workflow that subscribes to the
+    `reopened` type is about to run again, and its old success is not evidence
+    for the reopened PR -- until the new run exists, that workflow is pending.
+    Workflows without the type are not re-triggered, so their runs still count.
+    """
+    if not reopened_at:
+        return {}
+    fresh = {}
+    for filename, event in expected:
+        declared = (manifest.get("workflows") or {}).get(filename)
+        cfg = normalize_on(declared if declared is not None else {}).get(event, {})
+        if "reopened" in set(cfg.get("types", DEFAULT_TYPES)):
+            fresh[filename] = reopened_at
+    return fresh
+
+
+def aggregate(expected: list[tuple[str, str]], runs: list[dict], own_run_id, pr_number=None,
+              fresh_after: dict[str, str] | None = None) -> tuple[str, list[dict]]:
     """Return (`success`|`failure`|`pending`, rows) for the expected set."""
     rows = []
     verdict = "success"
+    fresh_after = fresh_after or {}
     for filename, event in expected:
-        run = latest_run(runs, filename, event, own_run_id, pr_number)
+        run = latest_run(runs, filename, event, own_run_id, pr_number, fresh_after.get(filename))
         if run is None:
-            state, detail = "pending", "no run yet"
+            state = "pending"
+            detail = "no run since the PR was reopened" if filename in fresh_after else "no run yet"
         elif run.get("status") != "completed":
             state, detail = "pending", f"{run.get('status')} (run {run.get('id')})"
         elif run.get("conclusion") == "success":
@@ -604,12 +648,14 @@ def resolve_pr(api: Api, head_sha: str) -> tuple[str, dict | None, list[str]]:
     return "ok", candidates[0], []
 
 
-def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -> dict:
+def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None, reopened_at: str | None = None) -> dict:
     """Full evaluation. Returns a result dict; `verdict` is success|failure|pending|skip.
 
     `base_sha` is the commit the running copy of ci-gate.yml comes from; when
     given, a pending workflow whose name that copy is not subscribed to is
-    flagged, since its completion will not re-trigger this gate.
+    flagged, since its completion will not re-trigger this gate. `reopened_at`
+    is set only on the `reopened` event, where the head SHA carries runs from
+    before the PR was closed (see `reopen_freshness`).
     """
     reasons: list[str] = []
     rows: list[dict] = []
@@ -684,7 +730,8 @@ def evaluate(api: Api, head_sha: str, own_run_id, base_sha: str | None = None) -
     runs = api.runs(head_sha)
     expected = expected_set(manifest, changed, pr["base"]["ref"])
     observed = observed_unexpected(manifest, runs, expected, own_run_id, number)
-    verdict, rows = aggregate(expected + observed, runs, own_run_id, number)
+    fresh_after = reopen_freshness(manifest, expected, reopened_at)
+    verdict, rows = aggregate(expected + observed, runs, own_run_id, number, fresh_after)
     for row in rows:
         if (row["workflow"], row["event"]) in observed:
             row["detail"] += "; ran although its filters did not select this PR (GitHub diff fallback?), so it counts"
@@ -854,8 +901,13 @@ def main() -> int:
     with open(os.environ["GITHUB_EVENT_PATH"]) as fh:
         event = json.load(fh)
 
+    reopened_at = None
     if event_name == "pull_request_target":
         head_sha = event["pull_request"]["head"]["sha"]
+        if event.get("action") == "reopened":
+            # The PR's timestamp at the moment it was reopened: runs older than
+            # this are the pre-close ones on the same head SHA.
+            reopened_at = event["pull_request"].get("updated_at")
     elif event_name == "workflow_run":
         head_sha = event["workflow_run"]["head_sha"]
     elif event_name == "workflow_dispatch":
@@ -864,7 +916,7 @@ def main() -> int:
         print(f"ci-gate: unsupported event {event_name!r}", file=sys.stderr)
         return 1
 
-    result = evaluate(api, head_sha, os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_SHA"))
+    result = evaluate(api, head_sha, os.environ.get("GITHUB_RUN_ID"), os.environ.get("GITHUB_SHA"), reopened_at)
     title, summary = render(result)
     print(f"{CHECK_NAME}: {result['verdict']} — {title}\n\n{summary}")
     write_outputs(result, title, summary)

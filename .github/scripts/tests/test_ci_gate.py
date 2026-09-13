@@ -791,3 +791,53 @@ def test_summary_is_capped_for_the_check_runs_api():
     assert summary.startswith("PR #7")
     short = ci_gate.render({**result, "rows": rows[:1]})[1]
     assert ci_gate.TRUNCATED not in short and short.endswith("\n")
+
+
+def test_on_list_rejects_non_string_event_names():
+    """GitHub rejects such a workflow, so no run can ever arrive for it."""
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.workflow_on(wf(["pull_request", 7], "odd"))
+    assert set(ci_gate.workflow_on(wf(["pull_request", "push"], "fine"))) == {"pull_request", "push"}
+
+
+# --- reopened PRs ------------------------------------------------------------
+
+REOPENED_AT = "2026-01-02T00:00:00Z"
+
+
+def test_reopen_freshness_covers_only_retriggered_workflows():
+    m = copy.deepcopy(MANIFEST)
+    # gm-ci.yml keeps the default types (reopened included); this one does not.
+    m["workflows"]["plugin-versions.yml"] = {"pull_request": {"types": ["opened", "synchronize"]}}
+    fresh = ci_gate.reopen_freshness(m, EXPECTED, REOPENED_AT)
+    assert fresh == {"gm-ci.yml": REOPENED_AT}
+    assert ci_gate.reopen_freshness(m, EXPECTED, None) == {}
+
+
+def test_reopened_pr_ignores_runs_from_before_the_close():
+    """The head SHA is unchanged by a reopen, so its old runs are still listed."""
+    stale = [run("gm-ci.yml", id=1, started="2026-01-01T00:00:00Z"),
+             run("plugin-versions.yml", id=2, started="2026-01-01T00:00:00Z")]
+    fresh_after = {f: REOPENED_AT for f, _ in EXPECTED}
+    verdict, rows = ci_gate.aggregate(EXPECTED, stale, "999", fresh_after=fresh_after)
+    assert verdict == "pending"
+    assert all(r["detail"] == "no run since the PR was reopened" for r in rows)
+
+    # The run the reopen triggered is evidence; a failure from it still blocks.
+    after = stale + [run("gm-ci.yml", id=3, started="2026-01-02T00:00:01Z"),
+                     run("plugin-versions.yml", id=4, started="2026-01-02T00:00:01Z", conclusion="failure")]
+    verdict, rows = ci_gate.aggregate(EXPECTED, after, "999", fresh_after=fresh_after)
+    assert verdict == "failure"
+    assert [r["state"] for r in rows] == ["success", "failure"]
+    # Without the reopen, the same old runs are the PR's evidence as before.
+    assert ci_gate.aggregate(EXPECTED, stale, "999")[0] == "success"
+
+
+def test_evaluate_reopened_pr_is_pending_until_ci_reruns():
+    stale = [run("gm-ci.yml", id=1, started="2026-01-01T00:00:00Z"),
+             run("plugin-versions.yml", id=2, started="2026-01-01T00:00:00Z")]
+    api = FakeApi([pr(1, "a" * 40)], ["plugins/gm/x.py"], TREE, stale)
+    assert ci_gate.evaluate(api, "a" * 40, "999")["verdict"] == "success"
+    result = ci_gate.evaluate(api, "a" * 40, "999", reopened_at=REOPENED_AT)
+    assert result["verdict"] == "pending"
+    assert all("reopened" in r["detail"] for r in result["rows"])
