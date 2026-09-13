@@ -467,27 +467,30 @@ def settings_paths_to_lint(changed_files: list[str]) -> list[str]:
 
 # A word boundary at the start of a shell command: line start, or a separator.
 _CMD = r"(?:^|[\s;&|(`{])"
-# ... and at its end: whitespace, end of line, or a closing separator.
+# ... optionally followed by a path, so /usr/bin/make is the same finding as
+# make: the rule names the tool, not the spelling used to reach it.
+_PATH = r"(?:(?:[\w.~+-]*/)+)?"
+# ... and a boundary at the end: whitespace, end of line, or a closing separator.
 _END = r"(?:\s|$|[;&|)`}])"
-# (regex, what it is). Each is applied to a line with its trailing `#` comment
+# (regex, what it is). Each is applied to a logical line with its comments
 # removed. A screen for the invocations spec 2b names, not a sandbox: the rule
 # itself is the header line the script must carry.
 CLOUD_SETUP_FORBIDDEN = [
     (re.compile(_CMD + r"\.{1,2}/"), "a relative path (./ or ../)"),
     # `. file` in command position; `(. == x)` inside a jq program is not it.
     (re.compile(_CMD + r"(?:source\s+\S|\.\s+[^\s=!<>|&)])"), "sourcing a file"),
-    (re.compile(_CMD + r"make" + _END), "make"),
-    (re.compile(_CMD + r"(?:npm|npx|pnpm|yarn|bun)" + _END), "a Node package manager"),
-    (re.compile(_CMD + r"pip3?\s+install" + _END), "pip install"),
-    (re.compile(_CMD + r"(?:uv|uvx|poetry|pipenv)" + _END), "a Python project tool"),
-    (re.compile(_CMD + r"(?:cargo|gradle|gradlew|mvn|bundle|composer|mix|swift|go)\s+(?:build|run|install|test|sync|generate|mod|package|exec)" + _END), "a build tool"),
-    (re.compile(_CMD + r"(?:direnv|pre-commit|terraform|docker|docker-compose|xcodegen)" + _END), "a tool that reads project files"),
+    (re.compile(_CMD + _PATH + r"make" + _END), "make"),
+    (re.compile(_CMD + _PATH + r"(?:npm|npx|pnpm|yarn|bun)" + _END), "a Node package manager"),
+    (re.compile(_CMD + _PATH + r"pip3?\s+install" + _END), "pip install"),
+    (re.compile(_CMD + _PATH + r"(?:uv|uvx|poetry|pipenv)" + _END), "a Python project tool"),
+    (re.compile(_CMD + _PATH + r"(?:cargo|gradle|gradlew|mvn|bundle|composer|mix|swift|go)\s+(?:build|run|install|test|sync|generate|mod|package|exec)" + _END), "a build tool"),
+    (re.compile(_CMD + _PATH + r"(?:direnv|pre-commit|terraform|docker|docker-compose|xcodegen)" + _END), "a tool that reads project files"),
 ]
 
 # Interpreters whose first non-option argument is a script, with the option
 # letters that switch them to inline code (nothing from the checkout runs), the
 # option letters that consume the following token, and the long forms of both.
-_INTERPRETER = re.compile(_CMD + r"(bash|sh|zsh|python3?|node|ruby|perl)(?=\s)")
+_INTERPRETER = re.compile(_CMD + _PATH + r"(bash|sh|zsh|python3?|node|ruby|perl)(?=\s)")
 _CODE_LETTERS = {"bash": "c", "sh": "c", "zsh": "c", "python": "cm", "python3": "cm", "node": "ep", "ruby": "e", "perl": "eE"}
 _ARG_LETTERS = {"bash": "o", "sh": "o", "zsh": "o", "python": "WXQ", "python3": "WXQ", "node": "r", "ruby": "Ir", "perl": "IM"}
 _LONG_CODE = {"node": {"--eval", "--print"}, "python": {"--command"}, "python3": {"--command"}}
@@ -513,12 +516,38 @@ def _strip_comment(line: str) -> str:
     return line
 
 
+def logical_lines(text: str) -> list[tuple[int, str]]:
+    """(first line number, code) pairs: comments stripped, continuations joined.
+
+    Comments come off each *physical* line first, because a shell comment ends
+    at the newline however it ends -- `# note \\` does not continue. What is
+    left is then joined across trailing backslashes, so `ma\\` + `ke`, which the
+    shell runs as `make`, is one logical line the patterns below can see.
+    """
+    out: list[tuple[int, str]] = []
+    buf, start = "", None
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        code = _strip_comment(raw)
+        if start is None:
+            start = lineno
+        if (len(code) - len(code.rstrip("\\"))) % 2 == 1:
+            buf += code[:-1]
+            continue
+        out.append((start, buf + code))
+        buf, start = "", None
+    if start is not None:
+        out.append((start, buf))
+    return out
+
+
 def relative_interpreter_script(line: str) -> str | None:
-    """The relative script an interpreter on this line would run, if any.
+    """The script an interpreter on this line would run, unless it is absolute.
 
     Walks the interpreter's options so `bash -e setup.sh` and `python3 -O
-    setup.py` are caught while `bash -euo pipefail -c "$s"`, `node -e x`, and
-    `bash "$dir/x"` (a variable or absolute path) are not.
+    setup.py` are caught while `bash -euo pipefail -c "$s"` and `node -e x` are
+    not. Only a literal absolute path is accepted: a variable can hold a path
+    back into the checkout (`bash "$CLAUDE_PROJECT_DIR/x.sh"`), and this lint
+    cannot know what it holds.
     """
     for m in _INTERPRETER.finditer(line):
         interp = m.group(1)
@@ -544,8 +573,10 @@ def relative_interpreter_script(line: str) -> str | None:
                 continue
             script = tok
             break
-        if script and script[0] not in "$/\"'":
-            return script
+        if script:
+            script = script.strip("\"'")
+            if script and not script.startswith("/"):
+                return script
     return None
 
 
@@ -555,21 +586,19 @@ def cloud_setup_lint(text: str) -> list[str]:
     The environment runs the origin/main copy of this script, and protecting
     the text is not enough on its own: the script must also execute nothing
     from the checkout, since a branch can plant a Makefile, a lockfile, or a
-    postinstall hook. This lint requires the header that states that rule and
-    flags the invocations the spec names. Comments are ignored (a `#` at line
-    start or after whitespace, outside quotes; `#` inside a word, as in a
-    `url#ref`, or inside a string is not a comment).
+    postinstall hook. This lint requires the header that states that rule --
+    as a comment line, not the phrase buried in a string -- and flags the
+    invocations the spec names.
     """
     reasons = []
-    if CLOUD_SETUP_HEADER not in text:
-        reasons.append(f"missing the header line stating the rule ({CLOUD_SETUP_HEADER!r})")
-    for lineno, raw in enumerate(text.splitlines(), 1):
-        line = _strip_comment(raw)
+    if not re.search(r"^[ \t]*#.*" + re.escape(CLOUD_SETUP_HEADER), text, re.M):
+        reasons.append(f"missing the header comment stating the rule ({CLOUD_SETUP_HEADER!r})")
+    for lineno, line in logical_lines(text):
         what = next((name for pattern, name in CLOUD_SETUP_FORBIDDEN if pattern.search(line)), None)
         if what is None and relative_interpreter_script(line):
-            what = "an interpreter run on a relative script"
+            what = "an interpreter run on a script that is not a literal absolute path"
         if what:
-            reasons.append(f"line {lineno}: {what}, which could execute something from the checkout: {raw.strip()}")
+            reasons.append(f"line {lineno}: {what}, which could execute something from the checkout: {line.strip()}")
     return reasons
 
 
