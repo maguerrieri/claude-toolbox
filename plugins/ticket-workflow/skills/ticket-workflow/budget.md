@@ -3,9 +3,11 @@
 A stop condition for an unattended run that isn't "until it works" — wall-clock
 minutes and review rounds, from the software-factory design's item 2e. The
 profile's `SPAWN_CAP` appends one to every spawned child; a spawner may override
-it. **Read this file when a `Budget:` directive is present** (START Step 1, EPIC
-Step 1, SPAWN Step 2); a run with no directive is unbudgeted and none of this
-applies.
+it. **Read this file when a `Budget:` directive is present, or when a budget
+marker for this run already exists** (START Step 1, EPIC Step 1, SPAWN Step 2) —
+a resume or compaction drops the directive from context while the marker
+survives, so keying only off the directive is how a budgeted run quietly becomes
+unbounded. Neither → the run is unbudgeted and none of this applies.
 
 ## Grammar
 
@@ -60,7 +62,7 @@ it beside the role marker, as `<session-id>.budget`:
 
 ```
 kind: start
-run: <issue id> <branch>
+run: <owner>/<repo>#<id>
 clock: <epoch seconds, captured at the Step 1 clock note>
 Budget: wall_clock_min=180 review_rounds=5
 round: 1

@@ -142,6 +142,11 @@ assert "budget.md bounds the value width" grep -q 'at most 5 digits' <<<"$budget
 assert "budget.md gives overrides their own looser shape" grep -q 'not the full directive above' <<<"$budget_prose"
 assert "budget.md validates the merged result against the full shape" grep -q 'merged result is validated against the full directive grammar' <<<"$budget_prose"
 assert "budget.md keys the run on repo and normalized id" grep -q 'canonical repository plus the tracker ID' <<<"$budget_prose"
+# The example marker must use the documented run-key form, not a stale one: a
+# reader copies the example, not the prose.
+assert "budget.md's example marker uses the documented run key" grep -qF 'run: <owner>/<repo>#<id>' "$budget_doc"
+refute "budget.md's example marker carries no stale branch-keyed form" grep -qF 'run: <issue id> <branch>' "$budget_doc"
+assert "budget.md is read on a surviving marker, not just a directive" grep -q 'or when a budget marker for this run already exists' <<<"$budget_prose"
 assert "budget.md explains why the branch is not in the run key" grep -q 'does \*\*not\*\* name the branch' <<<"$budget_prose"
 assert "budget.md requires --draft on a clock-stop PR" grep -q 'adding `--draft`' <<<"$budget_prose"
 assert "SKILL.md Step 1 checks the marker even when the briefing looks unbudgeted" grep -q 'even when the briefing looks unbudgeted' <<<"$start_text"
@@ -151,7 +156,6 @@ assert "budget.md fails closed on a malformed line" grep -q 'briefing error' <<<
 assert "budget.md merges key-wise cap -> shared -> per-issue" grep -q 'cap → shared → per-issue' <<<"$budget_prose"
 assert "budget.md validates overrides before launching" grep -q 'before launching anything' <<<"$budget_prose"
 assert "budget.md keeps zero lines when the cap omits one" grep -q 'and \*\*none\*\* when a profile' <<<"$budget_prose"
-assert "budget.md keys the marker to a run identity" grep -q 'run: <issue id> <branch>' <<<"$budget_text"
 assert "budget.md captures the clock at the Step 1 note" grep -q 'same moment' <<<"$budget_prose"
 assert "budget.md stores validated numbers, not placeholders" grep -q 'validated numbers\*\*, never the `<N>`/`<M>` placeholders' <<<"$budget_prose"
 assert "budget.md replaces an invalid or foreign marker" grep -q 'is replaced instead' <<<"$budget_prose"
