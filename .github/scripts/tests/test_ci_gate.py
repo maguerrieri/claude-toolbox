@@ -923,3 +923,16 @@ def test_gate_workflow_bounds_its_jobs():
         gate_yaml = yaml.safe_load(fh)
     for job in gate_yaml["jobs"].values():
         assert 0 < job["timeout-minutes"] <= 30, job
+
+
+def test_reopened_pr_still_floors_the_workflows_that_have_not_rerun():
+    """The completion of the first rerun must not let the rest ride on old runs."""
+    runs = [run("gm-ci.yml", id=1, started="2026-01-01T00:00:00Z"),
+            run("plugin-versions.yml", id=2, started="2026-01-01T00:00:00Z"),
+            run("gm-ci.yml", id=3, started="2026-01-02T00:00:01Z")]
+    api = FakeApi([pr(1, "a" * 40)], ["plugins/gm/x.py"], TREE, runs, events=REOPEN_EVENT)
+    result = ci_gate.evaluate(api, "a" * 40, "999")
+    assert result["verdict"] == "pending"
+    states = {r["workflow"]: (r["state"], r["detail"]) for r in result["rows"]}
+    assert states["gm-ci.yml"][0] == "success"
+    assert states["plugin-versions.yml"] == ("pending", "no run since the PR was reopened")
