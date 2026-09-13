@@ -746,7 +746,11 @@ literal absolute path (its options walked, so `bash -e setup.sh` and `bash
 "$dir/x.sh"` are caught and `bash -c "$s"` is not). Comment stripping is
 quote-aware, backslash continuations are joined before matching (`ma\` +
 `ke` is one command to the shell and one line to the lint), a tool matches
-by any path, an interpreter's long option that the lint knows takes an
+by any path and through a quote (`"make"` and `"./evil"` run like the bare
+forms), an interpreter fed a script by an input redirect (`bash<setup.sh`)
+alongside one given it as an argument — while a herestring, heredoc, or
+process substitution names no file and passes — an interpreter's long option
+that the lint knows takes an
 argument is stepped over while one it does not know is reported rather than
 assumed argument-less (`bash --rcfile /tmp/rc setup.sh` would otherwise read
 the rc file as the script), the rule must appear as a comment line rather than

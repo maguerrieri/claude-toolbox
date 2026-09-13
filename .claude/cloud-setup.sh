@@ -121,13 +121,21 @@ marketplace_source() {
 # whose marketplace is not on the allowlist is refused by policy, not a
 # failure -- the refusal is the intended outcome.
 provision_plugins() {
-  local settings marketplaces installed plugin market src registered reregistered=" " rc=0
+  local settings wanted marketplaces installed plugin market src registered reregistered=" " rc=0
   if ! command -v claude >/dev/null || ! command -v jq >/dev/null; then
     say "claude or jq not on PATH; cannot install the plugins origin/main enables"
     return 1
   fi
   settings=$(main_blob .claude/settings.json)
   [ -n "$settings" ] || { say "no .claude/settings.json on origin/main; no plugins to install"; return 0; }
+  # Read the plugin list into a variable rather than a process substitution:
+  # jq's exit status is discarded by `while ... < <(jq ...)`, so malformed JSON
+  # or a non-object enabledPlugins would yield zero iterations, leave rc at 0,
+  # and write a manifest claiming origin/main's plugin set was realized.
+  if ! wanted=$(jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key' <<<"$settings"); then
+    say "origin/main's .claude/settings.json could not be read for enabledPlugins (invalid JSON, or enabledPlugins is not an object)"
+    return 1
+  fi
   marketplaces=$(claude plugin marketplace list 2>/dev/null || true)
   installed=$(claude plugin list 2>/dev/null || true)
   while read -r plugin; do
@@ -182,7 +190,7 @@ provision_plugins() {
       say "could not install $plugin"
       rc=1
     fi
-  done < <(jq -r '.enabledPlugins // {} | to_entries[] | select(.value == true) | .key' <<<"$settings")
+  done <<<"$wanted"
   return "$rc"
 }
 

@@ -470,27 +470,30 @@ _CMD = r"(?:^|[\s;&|(`{])"
 # ... optionally followed by a path, so /usr/bin/make is the same finding as
 # make: the rule names the tool, not the spelling used to reach it.
 _PATH = r"(?:(?:[\w.~+-]*/)+)?"
+# A command word may be quoted -- `"make" all` and `"./evil"` both run.
+_Q = r"['\"]?"
 # ... and a boundary at the end: whitespace, end of line, or a closing separator.
-_END = r"(?:\s|$|[;&|)`}])"
+_END = r"(?:\s|$|[;&|)`}'\"])"
 # (regex, what it is). Each is applied to a logical line with its comments
 # removed. A screen for the invocations spec 2b names, not a sandbox: the rule
 # itself is the header line the script must carry.
 CLOUD_SETUP_FORBIDDEN = [
-    (re.compile(_CMD + r"\.{1,2}/"), "a relative path (./ or ../)"),
+    (re.compile(_CMD + _Q + r"\.{1,2}/"), "a relative path (./ or ../)"),
     # `. file` in command position; `(. == x)` inside a jq program is not it.
     (re.compile(_CMD + r"(?:source\s+\S|\.\s+[^\s=!<>|&)])"), "sourcing a file"),
-    (re.compile(_CMD + _PATH + r"make" + _END), "make"),
-    (re.compile(_CMD + _PATH + r"(?:npm|npx|pnpm|yarn|bun)" + _END), "a Node package manager"),
-    (re.compile(_CMD + _PATH + r"pip3?\s+install" + _END), "pip install"),
-    (re.compile(_CMD + _PATH + r"(?:uv|uvx|poetry|pipenv)" + _END), "a Python project tool"),
-    (re.compile(_CMD + _PATH + r"(?:cargo|gradle|gradlew|mvn|bundle|composer|mix|swift|go)\s+(?:build|run|install|test|sync|generate|mod|package|exec)" + _END), "a build tool"),
-    (re.compile(_CMD + _PATH + r"(?:direnv|pre-commit|terraform|docker|docker-compose|xcodegen)" + _END), "a tool that reads project files"),
+    (re.compile(_CMD + _Q + _PATH + r"make" + _END), "make"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:npm|npx|pnpm|yarn|bun)" + _END), "a Node package manager"),
+    (re.compile(_CMD + _Q + _PATH + r"pip3?\s+install" + _END), "pip install"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:uv|uvx|poetry|pipenv)" + _END), "a Python project tool"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:cargo|gradle|gradlew|mvn|bundle|composer|mix|swift|go)\s+(?:build|run|install|test|sync|generate|mod|package|exec)" + _END), "a build tool"),
+    (re.compile(_CMD + _Q + _PATH + r"(?:direnv|pre-commit|terraform|docker|docker-compose|xcodegen)" + _END), "a tool that reads project files"),
 ]
 
 # Interpreters whose first non-option argument is a script, with the option
 # letters that switch them to inline code (nothing from the checkout runs), the
 # option letters that consume the following token, and the long forms of both.
-_INTERPRETER = re.compile(_CMD + _PATH + r"(bash|sh|zsh|python3?|node|ruby|perl)(?=\s)")
+# `(?=[\s<])`: `bash<setup.sh` feeds the interpreter that file on stdin.
+_INTERPRETER = re.compile(_CMD + _Q + _PATH + r"(bash|sh|zsh|python3?|node|ruby|perl)(?=[\s<])")
 _CODE_LETTERS = {"bash": "c", "sh": "c", "zsh": "c", "python": "cm", "python3": "cm", "node": "ep", "ruby": "e", "perl": "eE"}
 _ARG_LETTERS = {"bash": "o", "sh": "o", "zsh": "o", "python": "WXQ", "python3": "WXQ", "node": "r", "ruby": "Ir", "perl": "IM"}
 _LONG_CODE = {"node": {"--eval", "--print"}, "python": {"--command"}, "python3": {"--command"}}
@@ -559,6 +562,16 @@ def interpreter_risk(line: str) -> str | None:
     for m in _INTERPRETER.finditer(line):
         interp = m.group(1)
         rest = re.split(r"[;|&)`]", line[m.end():], 1)[0]
+        # An input redirect feeds the interpreter a script on stdin, which runs
+        # it just the same. `<<`, `<<<` and `<(` are heredoc, herestring and
+        # process substitution -- none of them names a file to execute.
+        redirect = re.search(r"(?<!<)<(?![<(])\s*([^\s<>|&;]+)", rest)
+        if redirect:
+            target = redirect.group(1).strip("\"'")
+            if target and not target.startswith("/"):
+                return "an interpreter fed a script by redirect that is not a literal absolute path"
+        # Redirects handled; drop them so the option walk sees only arguments.
+        rest = re.sub(r"<+\s*[^\s<>|&;]*", " ", rest)
         tokens = rest.split()
         script = None
         i = 0

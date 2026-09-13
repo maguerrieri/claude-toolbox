@@ -468,6 +468,21 @@ def test_secrets_are_not_in_the_environment_of_plugin_commands(env):
     assert (env.state / "materialized-key").read_text().startswith('{"type": "service_account"')
 
 
+@pytest.mark.parametrize("settings", [
+    "{not json",                                   # unparseable
+    '{"enabledPlugins": "defaults@maguerrieri-toolbox"}\n',   # not an object
+])
+def test_unreadable_settings_fail_provisioning(env, settings):
+    """`while ... < <(jq ...)` discarded jq's status, so this looked like zero plugins."""
+    env.commit_main(".claude/settings.json", settings)
+    git(str(env.checkout), "fetch", "-q", "origin", "+refs/heads/main:refs/remotes/origin/main")
+    r = env.run()
+    assert r.returncode == 1
+    assert "could not be read for enabledPlugins" in r.stdout
+    assert "plugin install" not in env.calls()
+    assert not (env.home / ".factory-setup" / "manifest").exists()
+
+
 def test_a_missing_allowlist_on_main_refuses_to_provision(env):
     """Its hash is part of the staleness check; absent, it would hash as empty."""
     git(str(env.seed), "rm", "-q", ".claude/cloud-allowlist")

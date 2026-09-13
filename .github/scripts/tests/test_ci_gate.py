@@ -654,7 +654,7 @@ def test_cloud_setup_lint_is_shell_aware(line):
 
 @pytest.mark.parametrize("line", [
     "echo hi  # make; npm install; ./x",
-    "bash -euo pipefail -c \"$script\"", "bash -c 'make' 2>/dev/null", "bash -s", "bash -x -- /opt/x.sh",
+    "bash -euo pipefail -c \"$script\"", "bash -s", "bash -x -- /opt/x.sh",
     "node -e 'process.exit()'", "node --eval x", "node -r /abs/pre.js -e x", "python3 -m json.tool", "python3 -W ignore -c pass",
     "ruby -e puts", "perl -E say",
     "printf 'a # b' | grep '#'",
@@ -674,7 +674,7 @@ def test_strip_comment():
     # A variable can hold a path back into the checkout; the lint cannot know.
     'bash "$work/setup.sh"', "bash $HOME/x.sh", 'bash "$CLAUDE_PROJECT_DIR/evil.sh"', "sh $dir/x.sh",
     # A quoted relative literal is still a relative file in the checkout.
-    'bash "setup.sh"', "python3 'setup.py'", 'sh "./x.sh"',
+    'bash "setup.sh"', "python3 'setup.py'",
 ])
 def test_cloud_setup_lint_rejects_non_absolute_interpreter_scripts(line):
     reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
@@ -705,6 +705,24 @@ def test_cloud_setup_lint_handles_long_options(line, expected):
 def test_cloud_setup_lint_allows_known_argument_taking_options(line=None):
     for ok in ("node --require /abs/pre.js -e x", "bash --rcfile /tmp/rc -c \"$s\""):
         assert ci_gate.cloud_setup_lint(SETUP_HEADER + ok + "\n") == [], ok
+
+
+@pytest.mark.parametrize("line", [
+    # A quoted command word runs the same as a bare one.
+    '"./evil"', "'../bin/setup'", '"make" all', "'npm' ci", 'bash -c \'make\'',
+    # An input redirect feeds the interpreter a script just as an argument does.
+    "bash<setup.sh", "bash < setup.sh", "python3 <setup.py", 'sh "./x.sh"',
+])
+def test_cloud_setup_lint_sees_quoted_words_and_redirects(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") != [], line
+
+
+@pytest.mark.parametrize("line", [
+    # Herestrings, heredocs and process substitution name no file to execute.
+    'jq -r . <<<"$settings"', "done < <(jq -r . <<<\"$s\")", "bash < /opt/x.sh",
+])
+def test_cloud_setup_lint_allows_non_file_redirects(line):
+    assert ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n") == [], line
 
 
 def test_cloud_setup_lint_joins_line_continuations():
