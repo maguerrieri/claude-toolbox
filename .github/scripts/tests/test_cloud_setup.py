@@ -35,14 +35,19 @@ case "$*" in
   "plugin marketplace remove "*)
     awk -v name="$4" '$1 == ">" { skip = ($2 == name) } !skip' "$STUB_STATE/markets" > "$STUB_STATE/markets.new" && mv "$STUB_STATE/markets.new" "$STUB_STATE/markets" ;;
   "plugin install "*) echo "  > $3" >> "$STUB_STATE/plugins" ;;
+  "plugin update "*) echo "updated $3" >> "$STUB_STATE/updated" ;;
 esac
 """,
     "gcloud": r"""#!/bin/bash
 echo "gcloud $*" >> "$STUB_LOG"
 case "$1 $2" in
-  "auth activate-service-account") cp "${4#--key-file=}" "$STUB_STATE/materialized-key" ;;
+  "auth activate-service-account") echo "$3" > "$STUB_STATE/active-account"; cp "${4#--key-file=}" "$STUB_STATE/materialized-key" ;;
+  "auth revoke") rm -f "$STUB_STATE/active-account" ;;
   "auth print-access-token") echo token ;;
+  "auth list") cat "$STUB_STATE/active-account" 2>/dev/null ;;
+  "config set") [ -n "${STUB_GCLOUD_SET_PROJECT_FAIL:-}" ] && exit 1 ;;
 esac
+exit 0
 """,
     # The three IAM endpoints the assertion uses. The testable set is the
     # role's permissions, three foreign ones, one disabled-API permission, and
@@ -139,7 +144,8 @@ def env(tmp_path):
                 "FACTORY_LOGS_VIEWER_KEY": '{"type": "service_account", "client_email": "logs-viewer@proj"}',
             }
             for k in ("OP_SERVICE_ACCOUNT_TOKEN", "STUB_IAM_EXCESS", "STUB_IAM_FAIL",
-                      "STUB_CLAUDE_FAIL", "CLOUDSDK_AUTH_ACCESS_TOKEN"):
+                      "STUB_CLAUDE_FAIL", "STUB_GCLOUD_SET_PROJECT_FAIL",
+                      "CLOUDSDK_AUTH_ACCESS_TOKEN"):
                 self.vars.pop(k, None)
             self.bin_dir = bin_dir
 
@@ -188,6 +194,40 @@ def test_provisioning_is_idempotent(env):
     calls = env.calls()
     assert "marketplace add" not in calls and "marketplace remove" not in calls and "plugin install" not in calls
     assert "claude plugin marketplace update maguerrieri-toolbox" in calls
+
+
+def test_an_already_installed_plugin_is_updated_to_the_pinned_version(env):
+    """`marketplace update` refreshes the catalog; the installed copy needs its own update.
+
+    Installs are version-gated, so a snapshot rebuilt over an older plugin
+    would otherwise keep it while the manifest claims the setup is current.
+    """
+    assert env.run().returncode == 0                      # registers and installs
+    env.log.write_text("")
+    assert env.run().returncode == 0                      # marketplace already pinned
+    calls = env.calls()
+    assert "claude plugin update defaults@maguerrieri-toolbox" in calls
+    assert "claude plugin update superpowers@claude-plugins-official" in calls
+    assert "plugin install" not in calls
+    assert "updated defaults@maguerrieri-toolbox" in (env.state / "updated").read_text()
+
+
+def test_a_plugin_installed_before_its_marketplace_was_pinned_is_reinstalled(env):
+    """An install predating this script's registration has unknown provenance."""
+    (env.state / "plugins").write_text("  > defaults@maguerrieri-toolbox\n")
+    r = env.run()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "claude plugin install defaults@maguerrieri-toolbox" in env.calls()
+    assert "plugin update" not in env.calls()
+
+
+def test_a_failed_plugin_update_withholds_the_manifest(env):
+    assert env.run().returncode == 0
+    (env.home / ".factory-setup" / "manifest").unlink()   # the first run's, not under test
+    r = env.run(STUB_CLAUDE_FAIL="plugin update")
+    assert r.returncode == 1
+    assert "could not update defaults@maguerrieri-toolbox to the pinned marketplace's version" in r.stdout
+    assert not (env.home / ".factory-setup" / "manifest").exists()
 
 
 def test_marketplace_registered_from_another_source_is_replaced(env):
@@ -280,7 +320,30 @@ def test_unprovable_iam_scope_fails_closed(env):
     assert not (env.home / ".factory-setup" / "manifest").exists()
 
 
+def test_assert_iam_checks_which_credential_it_is_testing(env):
+    """Another account with a subset of logging.viewer must not print IAM OK."""
+    assert env.run().returncode == 0
+    (env.state / "active-account").write_text("someone-else@proj.iam.gserviceaccount.com\n")
+    r = env.run("--assert-iam")
+    assert r.returncode == 2
+    assert "the active gcloud account is 'someone-else@proj.iam.gserviceaccount.com'" in r.stdout
+    assert "cannot assert" in r.stdout
+    # And with no active account at all.
+    (env.state / "active-account").unlink()
+    r = env.run("--assert-iam")
+    assert r.returncode == 2 and "is 'none'" in r.stdout
+
+
+def test_a_project_that_cannot_be_set_fails_provisioning(env):
+    r = env.run(STUB_GCLOUD_SET_PROJECT_FAIL="1")
+    assert r.returncode == 1
+    assert "could not set the gcloud project to proj" in r.stdout
+    assert "gcloud auth revoke logs-viewer@proj.iam.gserviceaccount.com --quiet" in env.calls()
+    assert not (env.home / ".factory-setup" / "manifest").exists()
+
+
 def test_assert_iam_mode(env):
+    assert env.run().returncode == 0          # activates the credential first
     ok = env.run("--assert-iam")
     assert ok.returncode == 0 and "IAM OK" in ok.stdout, ok.stdout + ok.stderr
     bad = env.run("--assert-iam", STUB_IAM_EXCESS="1")

@@ -112,7 +112,7 @@ marketplace_source() {
 # whose marketplace is not on the allowlist is refused by policy, not a
 # failure -- the refusal is the intended outcome.
 provision_plugins() {
-  local settings marketplaces installed plugin market src registered replaced=" " rc=0
+  local settings marketplaces installed plugin market src registered reregistered=" " rc=0
   if ! command -v claude >/dev/null || ! command -v jq >/dev/null; then
     say "claude or jq not on PATH; cannot install the plugins origin/main enables"
     return 1
@@ -143,19 +143,28 @@ provision_plugins() {
       fi
       if claude plugin marketplace add "$src" >/dev/null 2>&1; then
         marketplaces=$(claude plugin marketplace list 2>/dev/null || true)
-        # Plugins already installed from the old registration point at the
-        # wrong source, so the "already installed" shortcut below must not
-        # apply to this marketplace for the rest of the run.
-        replaced="$replaced$market "
+        # This marketplace was (re-)registered in this run, so any install
+        # of its plugins predates it and came from a source this script did
+        # not pin -- the "already installed" shortcut below must not apply.
+        reregistered="$reregistered$market "
       else
         say "could not add marketplace $src"
         rc=1
         continue
       fi
     fi
-    case "$replaced" in
-      *" $market "*) ;;   # re-registered from the pinned source: reinstall
-      *) grep -qF "> $plugin" <<<"$installed" && continue ;;
+    case "$reregistered" in
+      *" $market "*) ;;   # registered in this run: provenance unknown, reinstall
+      *)
+        if grep -qF "> $plugin" <<<"$installed"; then
+          # `marketplace update` refreshes the catalog only -- an installed
+          # plugin stays at the version it was installed at, and installs are
+          # version-gated (AGENTS.md, Releasing), so a rebuilt snapshot that
+          # already carries an older copy needs this to reach main's version.
+          claude plugin update "$plugin" >/dev/null 2>&1 ||
+            { say "could not update $plugin to the pinned marketplace's version"; rc=1; }
+          continue
+        fi ;;
     esac
     if claude plugin install "$plugin" >/dev/null 2>&1; then
       installed=$(claude plugin list 2>/dev/null || true)
@@ -202,7 +211,11 @@ provision_logs_key() {
     return 1
   fi
   rm -f "$key_file"
-  gcloud config set project "$GCP_PROJECT" --quiet || true
+  if ! gcloud config set project "$GCP_PROJECT" --quiet; then
+    say "could not set the gcloud project to $GCP_PROJECT; failing provisioning rather than leaving a session pointed at no project or a stale one"
+    gcloud auth revoke "$LOGS_VIEWER_SA" --quiet || true
+    return 1
+  fi
   # Fail closed on any non-zero: an unproven scope (the check could not run)
   # is as unacceptable in a shared snapshot as a proven excess.
   if ! assert_iam; then
@@ -224,7 +237,7 @@ provision_logs_key() {
 iam_get() { curl -fsS --max-time 60 -H "Authorization: Bearer $token" "$1"; }
 iam_post() { curl -fsS --max-time 60 -X POST -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d "$2" "$1"; }
 assert_iam() {
-  local token role_perms testable page_token page resp held excess missing batch n i t rc=0
+  local active token role_perms testable page_token page resp held excess missing batch n i t rc=0
   if [ -z "$GCP_PROJECT" ]; then
     say "IAM: no GCP project declared for this repo; nothing to assert"
     return 0
@@ -233,6 +246,13 @@ assert_iam() {
     command -v "$t" >/dev/null || { say "IAM: $t not on PATH; cannot assert"; return 2; }
   done
   unset CLOUDSDK_AUTH_ACCESS_TOKEN
+  # Which credential is being tested matters as much as what it holds: another
+  # account with a subset of logging.viewer would otherwise print IAM OK.
+  active=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | head -1)
+  if [ "$active" != "$LOGS_VIEWER_SA" ]; then
+    say "IAM: the active gcloud account is '${active:-none}', not $LOGS_VIEWER_SA; cannot assert"
+    return 2
+  fi
   token=$(gcloud auth print-access-token 2>/dev/null) || { say "IAM: no active gcloud credential; cannot assert"; return 2; }
   # 1. The role's own permissions: the only ones the credential may hold.
   # `|| true`: under pipefail a failed curl would otherwise abort the whole

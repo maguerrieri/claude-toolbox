@@ -673,6 +673,8 @@ def test_strip_comment():
 @pytest.mark.parametrize("line", [
     # A variable can hold a path back into the checkout; the lint cannot know.
     'bash "$work/setup.sh"', "bash $HOME/x.sh", 'bash "$CLAUDE_PROJECT_DIR/evil.sh"', "sh $dir/x.sh",
+    # A quoted relative literal is still a relative file in the checkout.
+    'bash "setup.sh"', "python3 'setup.py'", 'sh "./x.sh"',
 ])
 def test_cloud_setup_lint_rejects_non_absolute_interpreter_scripts(line):
     reasons = ci_gate.cloud_setup_lint(SETUP_HEADER + line + "\n")
