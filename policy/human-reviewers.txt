@@ -1,0 +1,13 @@
+# Human-reviewer allowlist for the ticket-workflow FINISH gate (software-factory
+# design, spec 1b rule 5). One GitHub login per line; `#` starts a comment.
+#
+# A `risk:high` PR merges only with a current APPROVED review on its head SHA
+# from a login listed here who is not the PR's author. Only accounts a person
+# controls belong on this list: `type == User` and `author_association` are not
+# the test (a machine user with a PAT is also a User), so adding a bot or a
+# machine user here is a reviewed policy change, never a convenience.
+#
+# check-evidence.sh reads this file from the repository's default branch via
+# the API, never from the ticket checkout, so a PR cannot allowlist its own
+# reviewer. When the file is absent the allowlist is the repository owner.
+maguerrieri

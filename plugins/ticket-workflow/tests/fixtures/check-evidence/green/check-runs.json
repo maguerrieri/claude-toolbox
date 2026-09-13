@@ -1,0 +1,8 @@
+{
+  "total_count": 3,
+  "check_runs": [
+    {"id": 3003, "name": "check", "status": "completed", "conclusion": "success", "started_at": "2026-09-11T21:51:22Z", "app": {"slug": "github-actions"}, "check_suite": {"id": 93}},
+    {"id": 3002, "name": "test", "status": "completed", "conclusion": "success", "started_at": "2026-09-11T21:51:20Z", "app": {"slug": "github-actions"}, "check_suite": {"id": 92}},
+    {"id": 3001, "name": "test", "status": "completed", "conclusion": "success", "started_at": "2026-09-11T21:51:20Z", "app": {"slug": "github-actions"}, "check_suite": {"id": 91}}
+  ]
+}

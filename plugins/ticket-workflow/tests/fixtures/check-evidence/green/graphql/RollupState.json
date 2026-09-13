@@ -1,0 +1,4 @@
+{"data": {"repository": {"pullRequest": {"commits": {"nodes": [{"commit": {
+  "oid": "0123456789abcdef0123456789abcdef01234567",
+  "statusCheckRollup": {"state": "SUCCESS"}
+}}]}}}}}

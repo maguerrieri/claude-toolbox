@@ -1,0 +1,13 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "headRefOid": "0123456789abcdef0123456789abcdef01234567",
+        "author": {
+          "login": "author"
+        },
+        "reviewDecision": null
+      }
+    }
+  }
+}
