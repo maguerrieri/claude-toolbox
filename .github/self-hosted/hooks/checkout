@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Runner `checkout` lifecycle hook: clone with a token minted for this session.
+exec /opt/factory/factory-session-wrapper checkout "$@"

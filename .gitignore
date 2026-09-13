@@ -1,1 +1,3 @@
 __pycache__/
+# Self-hosted runner environment key, if someone saves it next to compose.yml.
+.github/self-hosted/environment-secret

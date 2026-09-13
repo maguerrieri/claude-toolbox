@@ -931,10 +931,143 @@ pushing actor is the user too. Therefore:
    GitHub App connection Auto-fix depends on. The spike (item 8)
    evaluates the App on one personal repo and one org repo, alongside the
    Action backend; none of these needs a runner or an Anthropic API key.
-5. **Team-account option:** a self-hosted environment with a wrapper script
-   that mints a short-lived, least-scoped GitHub App installation token per
-   session (`--capacity 1`, ephemeral container). This is the cleanest least-
+5. **Team-account option (item 14, implemented in
+   `.github/scripts/factory-session-wrapper` and `.github/self-hosted/`):**
+   a self-hosted environment whose runner wrapper mints a short-lived,
+   least-scoped GitHub App installation token per session (`--capacity 1`,
+   one ephemeral container per session). This is the cleanest least-
    privilege story and is the one path that gives true per-session tokens.
+
+   *Mechanism.* The runner starts every session with a signed JWT in
+   `CLAUDE_CODE_SESSION_ACCESS_TOKEN` (`sk-ant-cc-…`, `iss` `ccr`, `aud`
+   containing the environment's `ccpool_…` ID, `ccr:role` `session_worker`,
+   `act.sub` the creating user, four-hour default lifetime, refreshed by the
+   runner into `CLAUDE_SESSION_INGRESS_TOKEN_FILE`). Two runner lifecycle
+   hooks, both one-line shims into the wrapper, use that JWT as the
+   session's only credential: `checkout` clones the repository the
+   environment is bound to (`FACTORY_REPO`, never the URL the session asked
+   for, which is only compared and refused on mismatch) through the
+   wrapper's git credential helper; `command` verifies the claims with the
+   runner binary's `decode-token` (signature and expiry there; `iss`,
+   `aud`, `ccr:pool_id` = `FACTORY_POOL_ID`, `ccr:role`, and a `user:`
+   subject in the wrapper, so agent-created sessions are refused), checks
+   that the checkout in front of it is `FACTORY_REPO`, exports the session's
+   token as `GH_TOKEN`, wires git to the helper through `GIT_CONFIG_*`
+   environment entries (helper list reset first, `credential.useHttpPath`
+   on, `user.email` set to the App's noreply address per fact 5), and
+   `exec`s the runner's pinned binary so stdin and fd 3 stay attached. The
+   helper answers only `github.com` requests for that repository and
+   re-mints when the cached token has under five minutes left, reading the
+   refreshed JWT from the ingress file, so pushes after the first hour keep
+   working; `gh` past the first hour re-exports with
+   `GH_TOKEN=$("$FACTORY_SESSION_WRAPPER" token)` — the wrapper exports its
+   own absolute path in that variable, since `/opt/factory` is not on the
+   session's `PATH` (the `factory-token` helper of 8b does this on hosted
+   environments too). Every failure — a JWT for
+   another environment, a broker error, a token minted for another
+   repository, no checkout or the wrong one — exits before Claude starts,
+   so a session never runs credential-less; the tests in
+   `.github/scripts/tests/test_factory_session_wrapper.py` pin each refusal
+   and that no token reaches the wrapper's own output.
+
+   *The token broker gains a second mode.* Option 4's broker authenticates
+   hosted environments by a per-environment bearer the agent proxy attaches.
+   For self-hosted environments the bearer is the **session JWT itself**:
+   `POST /v1/session-token` with `Authorization: Bearer <JWT>` and
+   `{"repository": "<owner>/<repo>"}`; the broker verifies the JWT against
+   `https://api.anthropic.com/v1/code/.well-known/jwks.json` (ES256, `iss`
+   `ccr`, `ccr:role` `session_worker`, unexpired), looks `ccr:pool_id` up in
+   its pool→repository table, refuses when the requested repository differs
+   from the mapped one, and returns `{"token", "expires_at",
+   "repository"}` — an installation token with `repositories: [<repo>]`,
+   `contents: write`, `pull_requests: write`, one hour. The JWT is the
+   per-session credential 2b's rule asks for: nothing in the VM mints
+   without limit, no bearer is shared across sessions, and what a
+   compromised branch can obtain is a token for its own repository for the
+   remaining life of its own session token — the same bound as option 4,
+   reached without any credential in the environment's variables. That
+   closes **M3** for self-hosted pools (Team implementers need neither API
+   credentials nor a 2b exception); the App key never leaves the broker.
+   Putting the App key on the runner host instead was rejected: hooks and
+   the wrapper share the session's uid, so the key would be readable by the
+   session and would mint for every installation of the App.
+
+   *Which repos use it and how the launcher selects it.* Organization repos
+   under `sprue.works`, launched from the Team account, each get one
+   self-hosted environment `factory-implementer-<repo>` whose runners carry
+   `FACTORY_REPO=<org>/<repo>` and `FACTORY_POOL_ID=<that environment>`. In
+   2c's AGENTS.md block that environment's `ccpool_…` ID is the value of the
+   repo's `Implementer environment (team):` line; the launcher's per-account
+   membership test compares ID strings, so a self-hosted ID needs no launcher
+   change, and because the block is read from `origin/main` an unreviewed
+   branch cannot redirect a launch to another environment. `Coordinator
+   environment (team):` stays an Anthropic-hosted `env_…` (coordinators hold
+   no repository credential). Personal repos keep the personal path: the
+   block lists no `(team)` implementer line for them, so a Team launch on a
+   personal repo is refused by 2c, and a personal-account launch is unchanged
+   by any of this. The `spawn` skill's cloud backend passes the resolved
+   `environment_id` explicitly either way.
+
+   *Provisioning reuses the hosted definitions.* The runner image
+   (`.github/self-hosted/Dockerfile`, context `.github`) pins the `claude`
+   binary, bakes the wrapper and hooks in root-owned and read-only, runs as
+   an unprivileged `runner` user, and runs `.claude/cloud-setup.sh` from a
+   pinned **commit SHA** of this repository **at image build** (the build
+   refuses a branch or tag name and records the SHA in the image), never
+   from a session's checkout.
+
+   Item 6's script is written for a cloud session, so it reads its inputs
+   from a *checkout*: `repo_dir` is `$CLAUDE_PROJECT_DIR`, which must contain
+   `.git`, and the script fetches `origin/main` and reads `settings.json`,
+   the allowlist and its own copy out of that ref. The build therefore
+   constructs one (`.github/self-hosted/provision-from-ref.sh`): the pinned
+   commit is fetched into a fresh repository, a local `main` is pointed at
+   it, and `origin` is that same repository over `file://`, so the script's
+   own fetch succeeds with **no network** and `origin/main` resolves to the
+   pinned SHA and never to whatever `main` has since become. HEAD sits on
+   that commit, so the script's `.claude/` drift check is clean and the
+   snapshot is provisioned as a trusted one. The root-owned installed copy
+   is what runs, as the `runner` user with `PATH` passed through (`su`
+   resets it, and the script silently skips the plugin install when `claude`
+   is absent from `PATH`); the writable context is deleted before the layer
+   ends, leaving the reviewed copy, the SHA record, and the plugins and
+   manifest in the provisioning user's home. The contract is covered by
+   `.github/scripts/tests/test_provision_from_ref.py`, which provisions
+   against a throwaway upstream whose `main` has moved past the pinned
+   commit and runs the repository's own `cloud-setup.sh` once item 6 lands
+   it — the self-hosted analogue of 2b's protected-copy stub, and the
+   cache-staleness gap of 2b does not exist here because every session gets
+   a freshly built image's filesystem. Until item 6 lands the build warns
+   that the file is absent rather than pretending the image is provisioned.
+   The runner starts with `--capacity 1`, the default `--drain-grace-sec 0`,
+   `--hooks-dir /opt/factory/hooks`, and `--base-dir /workspace`; in
+   production a `spawn-runner` orchestrator hook submits one container per
+   session so the environment secret never sits on a session host, and
+   `.github/self-hosted/compose.yml` is the evaluation recipe. The image
+   carries no git credential, no App key, and no broker bearer.
+
+   *Acceptance (the one line in the issue, unpacked).* A Team-launched
+   implementer on an org repo receives a token scoped to that session only;
+   the personal path is unaffected. Concretely: (1) from a session in
+   `factory-implementer-<A>`, `gh api /installation/repositories` lists only
+   `A`, and the token's expiry is at most an hour after the session's start;
+   (2) a second session in the same environment holds a different token
+   (different `jti` on the JWT, different `ghs_` value), and neither token's
+   life exceeds its own session's JWT `exp`; (3) from `A`'s environment, a
+   hand-built broker request for repo `B`, a replay of the helper, and a
+   read of the environment each yield only an `A` token or a refusal, and an
+   `A` token is rejected by the API for `B` (8b's isolation test, rerun on
+   this path); (4) a session for repo `B` dispatched to `A`'s environment
+   fails at checkout with the message naming both repositories, and a
+   session whose JWT names another pool fails before Claude starts; (5) a
+   personal-account launch of the same org repo still lands in the personal
+   account's `env_…` implementer environment and its PR flow is unchanged;
+   (6) an App-authored PR from a self-hosted session is approvable by the
+   user with `main-review` on (M4 on this path). A replayed JWT taken out of
+   the session keeps minting `A` tokens until its `exp` — the accepted,
+   bounded residual, the same one option 4's isolation test accepts for a
+   leaked installation token.
+
    It's an optional rung-2 upgrade for repos that live under the Team org; it
    cannot serve personal repos, so the personal path above remains primary.
 
@@ -1486,7 +1619,7 @@ must cite both numbers and the independent signal the new class relies on
 | 11b | `factory-shadow` workflow (`pull_request_target: closed` on `main`, merged only, `checks: write` only) with per-class candidate predicates in the policy file; posts `mode: shadow` records for every merged PR of a shadow class | 3c | 11 |
 | 12 | Metrics routine (keyed by `factory/merge-record`, reconciling enrolled merges against records, unattributed reverts, and shadow samples per class) | 3c | 1, 11, 11b |
 | 13 | Planner spec-drafting flow | 4 | 11, 12 |
-| 14 | *(optional, Team)* self-hosted environment with per-session tokens | 2d | 4 |
+| 14 | *(optional, Team)* self-hosted environment with per-session tokens: `factory-session-wrapper` (`checkout` + `command` hooks, git credential helper, `GH_TOKEN` export, claim checks) + tests; runner image that reuses `cloud-setup.sh` at build; the broker's session-JWT mode (pool→repo table); per-org-repo `ccpool_…` lines in the AGENTS.md block | 2d | 4, 6, 8b |
 | 15 | *(follow-up)* Jira: `RISK_OF` / `RISK_SET` tracker ops and a merge-workflow contract so rungs 1–3 work on `Tracker: jira` | 1–3 | 2, 11 |
 | 16 | *(optional)* `factory-auto-merge` App subscribes to the `pull_request_review_thread` webhook and fires `repository_dispatch`, closing the one-hour sweep latency | 3b | 11 |
 

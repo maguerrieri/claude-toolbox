@@ -1,0 +1,359 @@
+#!/usr/bin/env bash
+# Per-session GitHub credentials for factory implementers on a self-hosted
+# Claude Code environment (spec section 2d option 5, work item 14).
+#
+# One script, four entry points, selected by the first argument:
+#
+#   checkout    `checkout` lifecycle hook: clone the session's repository with
+#               a token minted for this session, leaving the working tree at
+#               $CLAUDE_RUNNER_CHECKOUT_PATH.
+#   command     `command` lifecycle hook / `--exec-path` wrapper: verify the
+#               session token, mint the session's GitHub token, export it as
+#               GH_TOKEN, wire git to the credential helper below, and exec
+#               into $CLAUDE_RUNNER_CLAUDE_BIN with the runner's arguments.
+#   credential  git credential helper (`credential get`): answer github.com
+#               requests for the one repository this environment serves with a
+#               fresh token, re-minting when the cached one is near expiry.
+#   token       print a fresh token to stdout, for renewing GH_TOKEN inside
+#               the session: `export GH_TOKEN=$("$FACTORY_SESSION_WRAPPER" token)`
+#               (`command` exports this script's absolute path in that
+#               variable; the install location is not on PATH).
+#
+# How the token is minted. The runner gives every session a signed JWT in
+# CLAUDE_CODE_SESSION_ACCESS_TOKEN whose audience is this environment's ID and
+# whose `act` claim names the session creator. This script never holds a
+# GitHub App key: it presents that JWT to the factory token broker (2d option
+# 4's Cloud Run service), which verifies it against Anthropic's JWKS, maps the
+# environment ID to exactly one repository, and returns a one-hour installation
+# token scoped to that repository (`contents: write`, `pull_requests: write`).
+# So the only credential a session can obtain is one for its own repository,
+# for the remaining life of its own session token, and a broker outage or a
+# rejected JWT fails the session instead of starting it without credentials.
+#
+# Broker contract (POST $FACTORY_TOKEN_BROKER_URL/v1/session-token):
+#   request:  Authorization: Bearer <session JWT>
+#             {"repository": "<owner>/<repo>"}
+#   response: 200 {"token": "ghs_...", "expires_at": "<RFC 3339>",
+#                  "repository": "<owner>/<repo>"}
+#             any other status: refuse (the body is a message, not a token).
+#
+# Runner-side configuration (set on the runner process; sessions inherit it):
+#   FACTORY_TOKEN_BROKER_URL  broker base URL, https, no trailing slash
+#   FACTORY_POOL_ID           this environment's ID (ccpool_...), compared
+#                             against the token's audience and ccr:pool_id
+#   FACTORY_REPO              the one repository this environment serves
+#                             (owner/repo); anything else is refused
+#   FACTORY_APP_BOT_EMAIL     optional; the App's `<id>+<slug>[bot]@users.
+#                             noreply.github.com` address, set as user.email
+#                             so commits carry the App identity (2d fact 5)
+#   FACTORY_GITHUB_URL        optional; default https://github.com. Must be
+#                             https:// (GHES); file:// is accepted only so the
+#                             tests can clone a local bare repo, and never
+#                             yields a credential
+#   FACTORY_TOKEN_CACHE_DIR   optional; default ${XDG_RUNTIME_DIR:-/tmp}
+#
+# Never prints a token to stdout or stderr except from `credential get` (to git,
+# on stdout, as the protocol requires) and `token` (its whole purpose).
+set -euo pipefail
+# errexit does not reach into $(...) by default; every helper below is called
+# through one, so make a failing helper abort the caller too.
+shopt -s inherit_errexit
+
+self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
+github_url=${FACTORY_GITHUB_URL:-https://github.com}
+case "$github_url" in
+  https://*|file://*) ;;
+  *) echo "factory-session-wrapper: FACTORY_GITHUB_URL must be https:// (got ${github_url%%://*}://)" >&2; exit 1 ;;
+esac
+
+die() {
+  echo "factory-session-wrapper: $*" >&2
+  exit 1
+}
+
+require_env() {
+  local name
+  for name in "$@"; do
+    [ -n "${!name:-}" ] || die "$name is not set"
+  done
+}
+
+require_tools() {
+  local tool
+  for tool in "$@"; do
+    command -v "$tool" >/dev/null 2>&1 || die "$tool not found on PATH"
+  done
+}
+
+# owner/repo from an https://host/owner/repo(.git), git@host:owner/repo(.git),
+# or ssh://git@host/owner/repo(.git) URL; empty when it does not parse.
+repo_from_url() {
+  local url=$1 rest
+  case "$url" in
+    *://*) rest=${url#*://}; rest=${rest#*@}; rest=${rest#*/} ;;
+    *@*:*) rest=${url#*:} ;;
+    *) rest=$url ;;
+  esac
+  rest=${rest%/}
+  rest=${rest%.git}
+  case "$rest" in
+    */*/*|"" ) echo "" ;;
+    */*) echo "$rest" ;;
+    *) echo "" ;;
+  esac
+}
+
+same_repo() {
+  [ "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" = \
+    "$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')" ]
+}
+
+session_uuid() {
+  echo "${CLAUDE_CODE_REMOTE_SESSION_UUID:-${CLAUDE_RUNNER_SESSION_UUID:-}}"
+}
+
+cache_file() {
+  local uuid
+  uuid=$(session_uuid)
+  [ -n "$uuid" ] || die "no session UUID in the environment"
+  case "$uuid" in
+    *[!A-Za-z0-9_-]*) die "session UUID has unexpected characters" ;;
+  esac
+  echo "${FACTORY_TOKEN_CACHE_DIR:-${XDG_RUNTIME_DIR:-/tmp}}/factory-token-$uuid.json"
+}
+
+# The current session JWT: the runner keeps the file fresh across refreshes,
+# so prefer it over the (spawn-time) environment variable.
+session_jwt() {
+  if [ -n "${CLAUDE_SESSION_INGRESS_TOKEN_FILE:-}" ] && [ -r "$CLAUDE_SESSION_INGRESS_TOKEN_FILE" ]; then
+    tr -d '[:space:]' <"$CLAUDE_SESSION_INGRESS_TOKEN_FILE"
+  else
+    echo "${CLAUDE_CODE_SESSION_ACCESS_TOKEN:-}"
+  fi
+}
+
+# The claim predicate every path enforces before a token is minted: issued by
+# ccr for this environment, a session_worker token, created by a human user.
+CLAIM_FILTER='
+  .iss == "ccr"
+  and (.aud | type == "array" and index($pool) != null)
+  and ."ccr:pool_id" == $pool
+  and ."ccr:role" == "session_worker"
+  and (.act.sub | type == "string" and startswith("user:"))
+'
+
+check_claims() {
+  require_env FACTORY_POOL_ID
+  printf '%s' "$1" | jq -e --arg pool "$FACTORY_POOL_ID" "$CLAIM_FILTER" >/dev/null 2>&1
+}
+
+# Decode the JWT payload without verifying the signature. The broker does the
+# cryptographic check; this gate keeps a token for another environment or an
+# agent-created session from ever reaching the broker (the checkout hook runs
+# without the runner binary, so decode-token is not available there).
+jwt_payload() {
+  local body=${1#sk-ant-cc-} payload
+  payload=${body#*.}
+  payload=${payload%%.*}
+  [ -n "$payload" ] && [ "$payload" != "$body" ] || return 1
+  payload=$(printf '%s' "$payload" | tr '_-' '/+')
+  case $(( ${#payload} % 4 )) in
+    2) payload="$payload==" ;;
+    3) payload="$payload=" ;;
+    1) return 1 ;;
+  esac
+  printf '%s' "$payload" | base64 -d 2>/dev/null || printf '%s' "$payload" | base64 -D 2>/dev/null
+}
+
+# Print the current session JWT after gating it on shape and claims; every
+# entry point calls this before it touches the network.
+gated_session_jwt() {
+  require_tools jq
+  local jwt claims
+  jwt=$(session_jwt)
+  [ -n "$jwt" ] || die "no session token (CLAUDE_CODE_SESSION_ACCESS_TOKEN)"
+  case "$jwt" in
+    sk-ant-cc-*) ;;
+    *) die "session token is not a self-hosted session token (expected sk-ant-cc- prefix)" ;;
+  esac
+  claims=$(jwt_payload "$jwt") || die "session token payload does not decode"
+  check_claims "$claims" \
+    || die "session token is not a session_worker token for $FACTORY_POOL_ID created by a user; not contacting the broker"
+  printf '%s' "$jwt"
+}
+
+# Exchange the session JWT for a repository token at the broker. Writes the
+# response to the cache file (mode 0600) and prints nothing.
+mint_token() {
+  require_env FACTORY_TOKEN_BROKER_URL FACTORY_POOL_ID FACTORY_REPO
+  require_tools curl jq
+  local jwt file tmp status
+  jwt=$(gated_session_jwt) || exit 1
+  case "$FACTORY_TOKEN_BROKER_URL" in
+    https://*) ;;
+    *) die "FACTORY_TOKEN_BROKER_URL must be https" ;;
+  esac
+  file=$(cache_file)
+  mkdir -p "$(dirname "$file")"
+  tmp=$(umask 077 && mktemp "$file.XXXXXX")
+  # The bearer travels in a header file so it never appears in a process list.
+  local hdr
+  hdr=$(umask 077 && mktemp "$file.hdr.XXXXXX")
+  printf 'Authorization: Bearer %s\n' "$jwt" >"$hdr"
+  status=$(curl -sS -o "$tmp" -w '%{http_code}' \
+    -H @"$hdr" -H 'Content-Type: application/json' -H 'Accept: application/json' \
+    --max-time 30 \
+    --data "$(jq -cn --arg repo "$FACTORY_REPO" '{repository: $repo}')" \
+    "$FACTORY_TOKEN_BROKER_URL/v1/session-token") || { rm -f "$hdr" "$tmp"; die "token broker unreachable"; }
+  rm -f "$hdr"
+  if [ "$status" != 200 ]; then
+    # Status only: an error body is never echoed, in case it carries a secret.
+    rm -f "$tmp"
+    die "token broker refused (HTTP $status)"
+  fi
+  jq -e --arg repo "$FACTORY_REPO" '
+    (.token | type == "string" and length > 0)
+    and (.expires_at | type == "string")
+    and ((.repository | ascii_downcase) == ($repo | ascii_downcase))
+  ' "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; die "token broker response is not a token for $FACTORY_REPO"; }
+  mv "$tmp" "$file"
+}
+
+# Seconds until the cached token expires; 0 when there is no usable cache.
+cache_ttl() {
+  local file exp now
+  file=$(cache_file)
+  [ -r "$file" ] || { echo 0; return; }
+  exp=$(jq -r '.expires_at // empty' "$file" 2>/dev/null) || { echo 0; return; }
+  [ -n "$exp" ] || { echo 0; return; }
+  # GNU date first; BSD date (macOS runner hosts) second.
+  exp=$(date -u -d "$exp" +%s 2>/dev/null \
+    || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$exp" +%s 2>/dev/null) || { echo 0; return; }
+  now=$(date -u +%s)
+  echo $(( exp - now ))
+}
+
+# Print a token with at least five minutes of life left, minting if needed.
+fresh_token() {
+  if [ "$(cache_ttl)" -lt 300 ]; then
+    mint_token
+  fi
+  jq -re '.token' "$(cache_file)"
+}
+
+# Verify the session token's claims with the runner binary (signature and
+# expiry are checked by decode-token; the rest here) and require a human
+# creator. Only possible in `command` mode, where CLAUDE_RUNNER_CLAUDE_BIN is set.
+verify_session_claims() {
+  require_env CLAUDE_RUNNER_CLAUDE_BIN FACTORY_POOL_ID
+  require_tools jq
+  local claims
+  claims=$("$CLAUDE_RUNNER_CLAUDE_BIN" self-hosted-runner decode-token) \
+    || die "decode-token failed: session token did not verify"
+  check_claims "$claims" \
+    || die "session token is not a session_worker token for $FACTORY_POOL_ID created by a user"
+}
+
+# Append git config to the GIT_CONFIG_{COUNT,KEY_n,VALUE_n} environment (git
+# 2.31+), so the settings ride the exec into the session without touching any
+# file the session could have planted config in.
+add_git_config() {
+  local n=${GIT_CONFIG_COUNT:-0}
+  export "GIT_CONFIG_KEY_$n=$1" "GIT_CONFIG_VALUE_$n=$2"
+  export GIT_CONFIG_COUNT=$(( n + 1 ))
+}
+
+cmd_checkout() {
+  require_env CLAUDE_RUNNER_REPO_URL CLAUDE_RUNNER_CHECKOUT_PATH FACTORY_POOL_ID FACTORY_REPO
+  require_tools git jq
+  local requested depth
+  requested=$(repo_from_url "$CLAUDE_RUNNER_REPO_URL")
+  [ -n "$requested" ] || die "cannot parse repository from $CLAUDE_RUNNER_REPO_URL"
+  same_repo "$requested" "$FACTORY_REPO" \
+    || die "this environment serves $FACTORY_REPO; refusing to check out $requested"
+  # Gate the session token here, before the clone: the helper gates again
+  # before every exchange, but a refused session should not reach the network.
+  gated_session_jwt >/dev/null || exit 1
+  export GIT_TERMINAL_PROMPT=0
+  depth=()
+  case "${CLAUDE_RUNNER_FETCH_DEPTH:-50}" in
+    full|0) ;;
+    *[!0-9]*) die "CLAUDE_RUNNER_FETCH_DEPTH must be a number, full, or 0" ;;
+    *) depth=(--depth "${CLAUDE_RUNNER_FETCH_DEPTH:-50}") ;;
+  esac
+  # The clone URL is built from FACTORY_REPO, never from the session's
+  # request, and the helper list is reset before ours is added.
+  local g=(git -c credential.helper= -c "credential.helper=$self credential" -c credential.useHttpPath=true)
+  "${g[@]}" clone --no-checkout "${depth[@]}" "$github_url/$FACTORY_REPO.git" "$CLAUDE_RUNNER_CHECKOUT_PATH"
+  if [ -n "${CLAUDE_RUNNER_REPO_REF:-}" ]; then
+    "${g[@]}" -C "$CLAUDE_RUNNER_CHECKOUT_PATH" fetch "${depth[@]}" origin "$CLAUDE_RUNNER_REPO_REF"
+    git -C "$CLAUDE_RUNNER_CHECKOUT_PATH" checkout --detach FETCH_HEAD
+  else
+    git -C "$CLAUDE_RUNNER_CHECKOUT_PATH" checkout --detach HEAD
+  fi
+}
+
+cmd_command() {
+  require_env CLAUDE_RUNNER_CLAUDE_BIN FACTORY_POOL_ID FACTORY_REPO
+  require_tools git jq
+  verify_session_claims
+  # The checkout in front of the session must be the repository this
+  # environment serves; a session for any other repository gets no token.
+  local origin actual
+  origin=$(git -C "${FACTORY_CHECKOUT_DIR:-$PWD}" remote get-url origin 2>/dev/null) \
+    || die "no git checkout with an origin remote at ${FACTORY_CHECKOUT_DIR:-$PWD}"
+  actual=$(repo_from_url "$origin")
+  same_repo "$actual" "$FACTORY_REPO" \
+    || die "this environment serves $FACTORY_REPO; the checkout is ${actual:-unparseable}"
+  GH_TOKEN=$(fresh_token)
+  export GH_TOKEN
+  add_git_config credential.helper ""
+  add_git_config credential.helper "$self credential"
+  add_git_config credential.useHttpPath true
+  if [ -n "${FACTORY_APP_BOT_EMAIL:-}" ]; then
+    add_git_config user.email "$FACTORY_APP_BOT_EMAIL"
+  fi
+  export FACTORY_SESSION_WRAPPER=$self
+  # Plain exec keeps stdin (the runner's control channel) and fd 3 attached.
+  exec "$CLAUDE_RUNNER_CLAUDE_BIN" "$@"
+}
+
+cmd_credential() {
+  [ "${1:-}" = get ] || exit 0   # store and erase are no-ops
+  require_env FACTORY_REPO
+  local key value protocol="" host="" path=""
+  while IFS= read -r line; do
+    [ -n "$line" ] || break
+    key=${line%%=*}; value=${line#*=}
+    case "$key" in
+      protocol) protocol=$value ;;
+      host) host=$value ;;
+      path) path=$value ;;
+    esac
+  done
+  # Answer only https requests for the bound repository. A request with no
+  # path (credential.useHttpPath off) is refused rather than treated as a
+  # wildcard for the host.
+  local want_host
+  want_host=${github_url#*://}; want_host=${want_host%%/*}
+  [ "$protocol" = https ] || exit 0
+  [ "$host" = "$want_host" ] || exit 0
+  [ -n "$path" ] || exit 0
+  path=${path%/}; path=${path%.git}
+  same_repo "$path" "$FACTORY_REPO" || exit 0
+  local token
+  token=$(fresh_token) || exit 1
+  printf 'username=x-access-token\npassword=%s\n' "$token"
+}
+
+cmd_token() {
+  fresh_token
+}
+
+case "${1:-}" in
+  checkout) shift; cmd_checkout "$@" ;;
+  command) shift; cmd_command "$@" ;;
+  credential) shift; cmd_credential "$@" ;;
+  token) shift; cmd_token "$@" ;;
+  *) die "usage: $0 checkout|command|credential|token" ;;
+esac
