@@ -22,7 +22,16 @@ First `FETCH(epic_id)` to read the **epic's own** title/body — for briefing co
 
 **Adopt role (if spawned).** If the *briefing/arguments* carry `Role: epic-coordinator` (injected by `/spawn-epic`), read `roles/epic-coordinator.md` now and adopt it: you coordinate this epic — enumerate, spawn, stack, aggregate — and you do **not** implement a child yourself (re-spawn a blocked child rather than opening its worktree). Then **self-pin the marker immediately**, exactly as START Step 1 does (same snippet, role `epic-coordinator`; skip the write if `$CLAUDE_SESSION_ID` is unset) — an epic orchestrator is long-running, so its charter must survive compaction. No `Role:` directive → an interactive run the human is steering, unbounded.
 
-**Note the children's budget override (if directed).** A `Budget:` directive in this briefing is for the children (Step 5), not for this session — but the orchestrator is re-woken rather than long-lived, so a directive held only in context is lost by the wave that needs it. Validate it against SPAWN Step 2's grammar (malformed → stop and say so), then persist it beside the role marker exactly as START Step 1 does — `printf 'Budget: <the line>\n' >"$roles_dir/$CLAUDE_SESSION_ID.budget"`, no clock line, since nothing here is timed — and re-read that file before composing every wave. No file and no directive in context → the children get the cap's default, and the hand-back says so.
+**Note the children's budget override (if directed).** A `Budget:` directive in this briefing is for the children (Step 5), not for this session — but the orchestrator is re-woken rather than long-lived, so a directive held only in context is lost by the wave that needs it. Validate it against SPAWN Step 2's grammar (malformed → stop and say so), then persist it beside the role marker with START Step 1's own guards — the session id may be unset and the directory may not exist, and an interactive `/start-epic` can carry a `Budget:` without any `Role:` directive to have created either:
+
+```bash
+roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+budget_file="$roles_dir/$CLAUDE_SESSION_ID.budget"
+[ -n "$CLAUDE_SESSION_ID" ] && mkdir -p "$roles_dir" && [ ! -e "$budget_file" ] &&
+	printf 'Budget: <the line>\n' >"$budget_file"
+```
+
+No clock line, since nothing here is timed; create-only for the same reason START's is (Step 1 re-runs on every wake). Re-read that file before composing every wave, and remove it when the run ends. `$CLAUDE_SESSION_ID` unset → no file; keep the override in context and say in the hand-back that a compaction would lose it. No file and no directive in context → the children get the cap's default, and the hand-back says so.
 
 ## Step 2 — Build the dependency graph
 

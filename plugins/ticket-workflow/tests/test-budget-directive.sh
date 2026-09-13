@@ -119,6 +119,15 @@ assert "SKILL.md START Step 8 uses a portable deadline poll, not timeout" grep -
 refute "SKILL.md START Step 8 no longer relies on GNU timeout" grep -q 'timeout "\$((' <<<"$start_text"
 assert "SKILL.md START Step 8 records the no-PR stop through the tracker COMMENT op" grep -q 'COMMENT(id, body)' <<<"$start_text"
 assert "SKILL.md START recovery never infers a budget from the role marker" grep -q 'never infer one from the role marker' <<<"$start_text"
+assert "SKILL.md START Step 1 writes the budget marker create-only" grep -q 'create-only on purpose' <<<"$start_text"
+assert "SKILL.md START Step 8 captures the poll status errexit-safely" grep -q 'status=\$?' <<<"$start_text"
+refute "SKILL.md START Step 8 does not test a bare \$? after the poll" grep -q 'gh pr checks <pr> >/dev/null 2>&1; \[ \$? ' <<<"$start_text"
+assert "SKILL.md START Step 9 clears the budget marker" grep -q 'Clear the budget marker' <<<"$start_text"
+assert "SKILL.md opt-outs name the no-PR recording path" grep -q 'no PR exists, recorded on the ticket' <<<"$start_text"
+assert "profile qualifies the Evidence promise with the no-PR path" grep -q "no-PR path" "$profile"
+assert "the SessionStart hook refreshes the budget sidecar" grep -q 'marker.budget' "$repo/plugins/ticket-workflow/hooks/role-session-start.sh"
+assert "/role none clears the budget sidecar" grep -q 'CLAUDE_SESSION_ID.budget' "$commands/role.md"
+assert "phases/epic.md Step 1 guards the session id before writing" grep -q 'CLAUDE_SESSION_ID" \] && mkdir -p' "$epic"
 for tracker in github jira; do
 	assert "trackers/$tracker.md defines COMMENT(id, body)" grep -q '^## COMMENT(id, body)' "$skill_dir/trackers/$tracker.md"
 done

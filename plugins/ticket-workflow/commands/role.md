@@ -32,8 +32,12 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 3. **`none` — unpin:**
 
    ```bash
-   rm -f "$roles_dir/$CLAUDE_SESSION_ID"
+   rm -f "$roles_dir/$CLAUDE_SESSION_ID" "$roles_dir/$CLAUDE_SESSION_ID.budget"
    ```
+
+   The `.budget` sidecar goes with it: START Step 1 writes one beside the
+   marker for a budgeted run, and leaving it behind would let a later run in
+   this session inherit a spent clock and round count.
 
    State that the role is dropped and no charter governs the session; stop.
 

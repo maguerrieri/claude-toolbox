@@ -161,8 +161,9 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   review/CI loop (START Step 8 defines a round and carries the check). Shape:
   `Budget: wall_clock_min=<N> review_rounds=<M>` — both keys always present, in that order,
   non-negative integers with no leading zero (`0` itself is fine), nothing else on the line. A child that exceeds either stops at the next
-  safe point, records the overrun in its PR's Evidence block, and hands back with the PR as it
-  stands instead of looping; the spawner decides whether to re-brief with a larger budget.
+  safe point, records the overrun in its PR's Evidence block — or, when the budget was spent before
+  the first commit and no PR exists, on the ticket itself (START Step 8's no-PR path) — and hands
+  back with the PR as it stands instead of looping; the spawner decides whether to re-brief with a larger budget.
   **Override:** a `Budget:` line in the spawn request (shared or per-issue) replaces this default —
   SPAWN Step 2 merges the two so exactly one line, with both keys, reaches each child; a partial
   override (`Budget: review_rounds=1`) keeps this default for the other key. A profile that
