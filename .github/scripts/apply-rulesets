@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Apply (or update in place) the branch rulesets recorded in .github/rulesets/
+# on a repository. Manual, one-time, run by a human with admin on the repo
+# (spec section 1d, item 4); re-runnable.
+#
+#   .github/scripts/apply-rulesets <owner/repo> <factory-ci App id>
+#
+# The App id is substituted into main-integrity's required status check so the
+# `factory/ci-gate` check is required *from the factory-ci App*, never by name
+# alone. Find it on the App's settings page (the numeric "App ID").
+# Requires gh (authenticated with repo admin) and jq.
+set -euo pipefail
+
+if [ $# -ne 2 ]; then
+  sed -n '2,10p' "$0" >&2
+  exit 2
+fi
+repo=$1
+app_id=$2
+case "$app_id" in
+  ''|*[!0-9]*) echo "App id must be numeric, got '$app_id'" >&2; exit 2 ;;
+esac
+if [ "$app_id" -eq 0 ]; then
+  # 0 is the placeholder recorded in main-integrity.json; applying it would
+  # require factory/ci-gate by name alone, exactly what the source pin exists
+  # to prevent.
+  echo "App id 0 is the recorded placeholder, not a real factory-ci App id" >&2
+  exit 2
+fi
+dir=$(cd "$(dirname "$0")/../rulesets" && pwd)
+names=(main-integrity agent-branches)
+staged=$(mktemp -d)
+trap 'rm -rf "$staged"' EXIT
+
+# Phase 1: validate and build every ruleset body before any API call, so a
+# malformed later ruleset cannot leave the repository half applied.
+#
+# The App-id substitution is a no-op on a ruleset that does not require
+# factory/ci-gate, and a silent no-op would apply the recorded placeholder --
+# requiring the check by name alone. So assert the check is there and pinned,
+# on every ruleset that requires status checks at all.
+for name in "${names[@]}"; do
+  jq --argjson id "$app_id" --arg name "$name" '
+    def gate: [.rules[]? | select(.type == "required_status_checks")
+                 | .parameters.required_status_checks[]
+                 | select(.context == "factory/ci-gate")];
+    def requires_checks: any(.rules[]?; .type == "required_status_checks");
+    if requires_checks and (gate | length) != 1 then
+      error("\($name): expected exactly one factory/ci-gate required status check, found \(gate | length)")
+    else . end
+    | (.rules[]? | select(.type == "required_status_checks")
+        | .parameters.required_status_checks[]
+        | select(.context == "factory/ci-gate") | .integration_id) = $id
+    | if requires_checks and (gate | map(select(.integration_id == $id)) | length) != 1 then
+        error("\($name): factory/ci-gate integration_id was not pinned to \($id)")
+      else . end
+  ' "$dir/$name.json" > "$staged/$name.json"
+done
+
+# Phase 2: apply.
+for name in "${names[@]}"; do
+  existing=$(gh api "repos/$repo/rulesets" --paginate --jq ".[] | select(.name == \"$name\") | .id" | head -n1)
+  if [ -n "$existing" ]; then
+    gh api -X PUT "repos/$repo/rulesets/$existing" --input "$staged/$name.json" --jq '"updated \(.name) (#\(.id))"'
+  else
+    gh api -X POST "repos/$repo/rulesets" --input "$staged/$name.json" --jq '"created \(.name) (#\(.id))"'
+  fi
+done
