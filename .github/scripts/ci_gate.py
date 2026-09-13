@@ -74,6 +74,17 @@ CLOSE_TYPES = {"closed"}
 # GitHub evaluates path filters against at most 300 changed files, and runs
 # every path-filtered workflow regardless when it cannot compute the diff at
 # all (documented for pushes of more than 1000 commits, or a diff timeout).
+# A filter pattern comes from the PR's head tree and is matched against the
+# PR's own file names, so both sides are PR-controlled. Python's `re` is a
+# backtracking engine with no time limit, and a pattern stacking many
+# variable-width wildcards (`a*a*a*...b`) can take exponential time on a
+# crafted name. These bounds reject the absurd ones during translation; the
+# `evaluate` job's `timeout-minutes` is the backstop that turns any remaining
+# slow match into a red gate rather than a run that never posts (the gate can
+# never go green that way -- see spec 1d).
+MAX_PATTERN_LENGTH = 200
+MAX_PATTERN_WILDCARDS = 6
+
 MAX_CHANGED_FILES = 300
 MAX_COMMITS = 1000
 SETTINGS_FILE = ".claude/settings.json"
@@ -94,11 +105,29 @@ def pattern_to_regex(pattern: str) -> re.Pattern:
     `+` quantify the preceding character; `[...]` is a character class; a
     backslash escapes the next character. Anything else is literal. Anchored at
     both ends.
+
+    A pattern longer than `MAX_PATTERN_LENGTH` or carrying more than
+    `MAX_PATTERN_WILDCARDS` variable-width constructs is refused rather than
+    compiled: nothing GitHub's own filters need comes close, and the refusal
+    keeps a crafted pattern from making the match exponential.
     """
+    if len(pattern) > MAX_PATTERN_LENGTH:
+        raise GateError(f"filter pattern is {len(pattern)} characters, over ci-gate's limit of {MAX_PATTERN_LENGTH}")
     out = []
+    wildcards = 0
     i, n = 0, len(pattern)
     while i < n:
         c = pattern[i]
+        if c in "*?+":
+            # An escaped wildcard is consumed by the branch below and never
+            # reaches this line, so only real quantifiers are counted (a
+            # literal one inside a character class is counted too, harmlessly).
+            wildcards += 1
+            if wildcards > MAX_PATTERN_WILDCARDS:
+                raise GateError(
+                    f"filter pattern {pattern!r} uses more than {MAX_PATTERN_WILDCARDS} wildcards, "
+                    "which ci-gate refuses to match"
+                )
         if c == "\\" and i + 1 < n:
             out.append(re.escape(pattern[i + 1]))
             i += 2

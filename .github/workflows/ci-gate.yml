@@ -48,6 +48,12 @@ jobs:
     # main-only regardless).
     if: ${{ github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    # Both sides of a filter match (the head tree's patterns, the PR's file
+    # names) are PR-controlled, and Python's regex engine has no time limit of
+    # its own: this bound is what turns any pathological match into a red gate
+    # within ten minutes instead of a check that is never posted. Nothing else
+    # here comes near a minute.
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: read
@@ -104,6 +110,7 @@ jobs:
     # was skipped (a dispatch off main), and not when there is nothing to report.
     if: ${{ !cancelled() && needs.evaluate.result != 'skipped' && needs.evaluate.outputs.verdict != 'skip' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     environment: factory-ci
     permissions: {}
     steps:

@@ -693,7 +693,7 @@ def _apply_rulesets(tmp_path, rulesets, app_id="12345"):
     shutil.copy(os.path.join(REPO, ".github", "scripts", "apply-rulesets"), scripts / "apply-rulesets")
     for name, body in rulesets.items():
         (rules / f"{name}.json").write_text(body if isinstance(body, str) else json.dumps(body))
-    for tool in ("jq", "dirname", "head", "sed"):
+    for tool in ("jq", "dirname", "head", "sed", "mktemp", "rm"):
         found = shutil.which(tool)
         if found:
             os.symlink(found, bin_dir / tool)
@@ -884,3 +884,42 @@ def test_evaluator_dependency_is_hash_pinned():
     assert len(install) == 1, install
     for flag in ("--require-hashes", "--no-deps", "--only-binary=:all:", "-r requirements.txt"):
         assert flag in install[0], (flag, install[0])
+
+
+def test_apply_rulesets_validates_every_ruleset_before_applying_any(tmp_path):
+    """A malformed later ruleset must not leave the repo half applied."""
+    rulesets = _recorded_rulesets()
+    rulesets["agent-branches"]["rules"].append(
+        {"type": "required_status_checks",
+         "parameters": {"strict_required_status_checks_policy": True, "required_status_checks": []}})
+    proc = _apply_rulesets(tmp_path, rulesets)
+    assert proc.returncode != 0, proc
+    # It fails on agent-branches, and never reaches the gh call for either.
+    assert "agent-branches: expected exactly one factory/ci-gate" in proc.stderr, proc.stderr
+    assert "gh" not in proc.stderr.replace("factory/ci-gate", ""), proc.stderr
+
+
+# --- filter-pattern bounds ---------------------------------------------------
+
+def test_pattern_bounds_reject_matching_this_evaluator_cannot_afford():
+    """Both sides of a match are PR-controlled and `re` has no time limit."""
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.pattern_to_regex("a" + "*a" * 10 + "b")
+    with pytest.raises(ci_gate.GateError):
+        ci_gate.pattern_to_regex("x" * (ci_gate.MAX_PATTERN_LENGTH + 1))
+    # Everything GitHub's own filters need still compiles.
+    for pattern in ("plugins/gm/**", ".github/**", "**/*.md", "docs/*", "v[0-9]+", "releases/**/*.yml"):
+        assert ci_gate.pattern_to_regex(pattern)
+    # And the bound is a lint error on the manifest, not a crash.
+    m = copy.deepcopy(MANIFEST)
+    m["workflows"]["gm-ci.yml"] = {"pull_request": {"paths": ["a" + "*a" * 10 + "b"]}}
+    w = dict(WORKFLOWS, **{"gm-ci.yml": wf({"pull_request": {"paths": ["a" + "*a" * 10 + "b"]}}, "gm CI")})
+    assert any("wildcards" in e for e in ci_gate.lint(m, w, w["ci-gate.yml"]))
+
+
+def test_gate_workflow_bounds_its_jobs():
+    """The timeout is what turns a pathological match into a red gate."""
+    with open(os.path.join(REPO, ".github", "workflows", "ci-gate.yml")) as fh:
+        gate_yaml = yaml.safe_load(fh)
+    for job in gate_yaml["jobs"].values():
+        assert 0 < job["timeout-minutes"] <= 30, job

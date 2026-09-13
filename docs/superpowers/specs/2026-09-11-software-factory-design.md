@@ -439,7 +439,13 @@ settled, all consistent with the paragraphs above:
   `synchronize`, e.g. `closed`, is never expected). Two documented gaps: a
   rename is matched on its new path only, and a PR with more than 300
   changed files fails the gate, because GitHub evaluates path filters on at
-  most 300 files in an order the evaluator cannot reproduce.
+  most 300 files in an order the evaluator cannot reproduce. Both sides of a
+  match are PR-controlled (the head tree's patterns, the PR's file names) and
+  Python's regex engine has no time limit, so a pattern stacking wildcards can
+  be made slow on a crafted name: patterns over 200 characters or with more
+  than six wildcards are refused during translation, and the `evaluate` job's
+  ten-minute timeout bounds whatever remains. The failure is closed either way
+  -- a timed-out job posts `failure`, never `success`.
 - **Verdict:** per expected `(workflow, event)` the newest run on the head
   SHA (by start time, so a re-run's latest attempt supersedes an older
   attempt and a reopen's new run supersedes an older run) must be

@@ -28,13 +28,19 @@ if [ "$app_id" -eq 0 ]; then
   exit 2
 fi
 dir=$(cd "$(dirname "$0")/../rulesets" && pwd)
+names=(main-integrity agent-branches)
+staged=$(mktemp -d)
+trap 'rm -rf "$staged"' EXIT
 
-for name in main-integrity agent-branches; do
-  # The substitution is a no-op on a ruleset that does not require
-  # factory/ci-gate, and a silent no-op would apply the recorded placeholder --
-  # requiring the check by name alone. So assert the check is there and pinned,
-  # on every ruleset that requires status checks at all.
-  body=$(jq --argjson id "$app_id" --arg name "$name" '
+# Phase 1: validate and build every ruleset body before any API call, so a
+# malformed later ruleset cannot leave the repository half applied.
+#
+# The App-id substitution is a no-op on a ruleset that does not require
+# factory/ci-gate, and a silent no-op would apply the recorded placeholder --
+# requiring the check by name alone. So assert the check is there and pinned,
+# on every ruleset that requires status checks at all.
+for name in "${names[@]}"; do
+  jq --argjson id "$app_id" --arg name "$name" '
     def gate: [.rules[]? | select(.type == "required_status_checks")
                  | .parameters.required_status_checks[]
                  | select(.context == "factory/ci-gate")];
@@ -48,11 +54,15 @@ for name in main-integrity agent-branches; do
     | if requires_checks and (gate | map(select(.integration_id == $id)) | length) != 1 then
         error("\($name): factory/ci-gate integration_id was not pinned to \($id)")
       else . end
-  ' "$dir/$name.json")
+  ' "$dir/$name.json" > "$staged/$name.json"
+done
+
+# Phase 2: apply.
+for name in "${names[@]}"; do
   existing=$(gh api "repos/$repo/rulesets" --paginate --jq ".[] | select(.name == \"$name\") | .id" | head -n1)
   if [ -n "$existing" ]; then
-    printf '%s' "$body" | gh api -X PUT "repos/$repo/rulesets/$existing" --input - --jq '"updated \(.name) (#\(.id))"'
+    gh api -X PUT "repos/$repo/rulesets/$existing" --input "$staged/$name.json" --jq '"updated \(.name) (#\(.id))"'
   else
-    printf '%s' "$body" | gh api -X POST "repos/$repo/rulesets" --input - --jq '"created \(.name) (#\(.id))"'
+    gh api -X POST "repos/$repo/rulesets" --input "$staged/$name.json" --jq '"created \(.name) (#\(.id))"'
   fi
 done
