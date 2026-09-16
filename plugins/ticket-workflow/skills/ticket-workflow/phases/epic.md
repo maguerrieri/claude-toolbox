@@ -165,14 +165,20 @@ Spawn in dependency waves, maximizing parallelism *within* each wave. **Compose 
 # The MAIN checkout of the repo REPO_SELECT chose — not necessarily the one you are standing in.
 # If that repo has no local clone, it cannot be launched locally: clone it first or use the cloud backend.
 # Resolve a REAL checkout path for "$repo" — an unquoted <…> would be shell redirection, and a
-# placeholder left in place fails at `git -C`. Take the first clone whose origin is that repo:
-repo_checkout=$(for c in ~/src/* ~/code/* ./*; do
-    [ -d "$c/.git" ] || continue
-    case "$(git -C "$c" remote get-url origin 2>/dev/null)" in *"$repo"*) echo "$c"; break;; esac
-  done)
-# (The search roots are an example — use wherever this machine keeps clones. If nothing matches,
-#  there is no local clone of the selected repo: clone it, or use the cloud backend.)
-[ -n "$repo_checkout" ] || { echo "no local clone of $repo — clone it or use the cloud backend"; exit 1; }
+# placeholder left in place fails at `git -C`. Don't guess by globbing well-known directories:
+# whether it finds anything depends on where this machine keeps clones, and a SUBSTRING match on
+# the remote URL happily accepts "<owner>/<repo>-fork". Ask git, and compare EXACTLY.
+repo_of() {   # normalise any remote URL (ssh, ssh://, https, ±.git) to owner/repo
+  git -C "$1" remote get-url origin 2>/dev/null \
+    | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##'
+}
+if [ "$(repo_of .)" = "$repo" ]; then
+  repo_checkout=$(git rev-parse --show-toplevel)         # you are standing in it — the common case
+else
+  repo_checkout=<the path the profile or briefing names for "$repo">   # REPO_SELECT chose elsewhere
+  [ "$(repo_of "$repo_checkout")" = "$repo" ] || {
+    echo "no local clone of $repo — clone it, name one, or use the cloud backend"; exit 1; }
+fi
 launch_dir=$(git -C "$repo_checkout" worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //')
 [ -n "$launch_dir" ] || { echo "no local clone of $repo — use the cloud backend"; exit 1; }
 briefing_file=$(mktemp)                      # a real file; remove it after the launch
