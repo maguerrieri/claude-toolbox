@@ -92,13 +92,13 @@ Return the match only when there is **exactly one**; zero or multiple is ambiguo
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
 The shared, durable channel sibling sessions use for file **claims** and **"branch pushed" / "done"** markers when EPIC Step 3 routes a cluster to *coordinated* mode — **and**, regardless of routing mode, the two records EPIC writes on *any* run: the `stack:` record (Step 6, when a native stack is registered) and every `restacked:` record (Steps 4 and 6, whenever the orchestrator rewrites a child branch). Those two are not scoped to coordinated runs: an ordinary bg chain gets restacked too, and its fork points survive nowhere else. On GitHub the epic is itself an issue, so `<epic_id>` here is its **number** (the same numeric `<n>` form as any issue, `#` stripped). Use the **epic issue's comments**:
 ```bash
-gh issue comment <epic_id> --body "claim: <session> -> <files>"   # post a marker
+gh issue comment <epic_id> -R <owner>/<repo> --body "claim: <session> -> <files>"   # post a marker
 # Read markers WITH their author and timestamp — both are load-bearing (EPIC's fork-point rules
 # authenticate a `restacked:` marker by author and take the newest), and this endpoint paginates:
-gh api --paginate repos/{owner}/{repo}/issues/<epic_id>/comments \
+gh api --paginate repos/<owner>/<repo>/issues/<epic_id>/comments \
   -q '.[] | "\(.created_at)\t\(.user.login)\t\(.body)"'
 ```
-`gh issue view --json comments` is fine for a quick human read, but **don't** use it where the author or ordering matters: it returns bodies without a dependable author field and does not page, so on a long-running epic the newest markers are exactly the ones it drops.
+`<owner>/<repo>` is the repository `REPO_SELECT` chose, spelled out rather than left to cwd detection — the note at the top of this adapter applies here as much as anywhere, and an unbound read silently returns another repository's comments (or none), which for fork-point markers means a cascade that cannot find the SHA it needs. `gh issue view --json comments` is fine for a quick human read, but **don't** use it where the author or ordering matters: it returns bodies without a dependable author field and does not page, so on a long-running epic the newest markers are exactly the ones it drops.
 Markers are plain prefixed lines (`claim:`, `pushed:`, `done:`, `restacked: <branch> onto <base> @ <sha>` — the orchestrator rewrote a child's branch to linearize a chain, EPIC Step 4/6; `<sha>` is the base tip the branch now forks from, which a force-pushed base makes unrecomputable from the refs, so a session holding that branch must fetch before it pushes and must rebase from this SHA rather than a merge-base, `stack: <s> <bottom-pr>..<top-pr>` — a registered native stack's bare number plus its PR range, EPIC Step 6) so siblings can grep them. Keeps coordination tracker-native and inspectable; no live agent team required.
 
 ## Review bot
