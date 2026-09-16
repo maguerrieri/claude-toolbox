@@ -164,8 +164,15 @@ Spawn in dependency waves, maximizing parallelism *within* each wave. **Compose 
 ```bash
 # The MAIN checkout of the repo REPO_SELECT chose — not necessarily the one you are standing in.
 # If that repo has no local clone, it cannot be launched locally: clone it first or use the cloud backend.
-# repo_checkout is a REAL PATH you resolved, not a placeholder: an unquoted <…> is shell redirection.
-repo_checkout=/path/to/a/checkout/of/"$repo"
+# Resolve a REAL checkout path for "$repo" — an unquoted <…> would be shell redirection, and a
+# placeholder left in place fails at `git -C`. Take the first clone whose origin is that repo:
+repo_checkout=$(for c in ~/src/* ~/code/* ./*; do
+    [ -d "$c/.git" ] || continue
+    case "$(git -C "$c" remote get-url origin 2>/dev/null)" in *"$repo"*) echo "$c"; break;; esac
+  done)
+# (The search roots are an example — use wherever this machine keeps clones. If nothing matches,
+#  there is no local clone of the selected repo: clone it, or use the cloud backend.)
+[ -n "$repo_checkout" ] || { echo "no local clone of $repo — clone it or use the cloud backend"; exit 1; }
 launch_dir=$(git -C "$repo_checkout" worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //')
 [ -n "$launch_dir" ] || { echo "no local clone of $repo — use the cloud backend"; exit 1; }
 briefing_file=$(mktemp)                      # a real file; remove it after the launch
@@ -239,7 +246,8 @@ A child is done when its PR is open, CI is green, its review is clean — the ST
 **Restack action.** Same two preconditions as Step 4's cascade, for the same reasons. **First, confirm the tracker's `COORD` channel is writable** — this cascade produces a new fork point per moved layer, and a cascade you cannot record leaves the next wake with no way to rebase an unregistered layer safely; if it isn't writable, don't restack, report the layer as needing linearization and leave it. **Second, make sure no affected child session is live** — the same discipline Step 4's gate enforces, and it applies to the registered cascade exactly as much as the manual one: an active child can hold local commits on the old tip, and cascading under it either loses those commits or leaves its next push rejected. Affected children idle or ended (the usual case after START-complete) → the orchestrator restacks directly. Any of them still active → **redirect first** (on the local backend the documented coordinator→child redirect in `messaging.md`, whose form for this is `blocked: parent restacked, rebase onto <base>` — there is no separate `restack:` prefix. **Put the new fork point in the redirect itself** (`… rebase onto <base>  Fork point: <the base tip at the move>`), **and tell the child its own branch was rewritten**, because a fork point alone is not actionable for it: when the cascade moved the child's *own* layer, its local branch still points at the pre-rewrite head, and the new fork point is not an ancestor of that, so `git rebase --onto … <Fork point>` fails outright. The redirect's instruction is therefore *fetch first, then reconcile*: `git fetch origin <branch>` (the child's own clone, so `origin` is right here), then **check the worktree is clean before resetting** — `git status --porcelain`: uncommitted and untracked work is invisible to a commit comparison, and `reset --hard` destroys it, so commit or stash it, or stop and report, first. Clean, with no local commits the remote lacks (the quiesced case, which the gate makes the normal one) → `git reset --hard origin/<branch>`; with local work, **replay only the genuinely new commits — you must name that range, not infer it from the divergence.** After a force-push, `origin/<branch>..HEAD` lists your *entire* pre-restack history as "commits the remote lacks", because the orchestrator rewrote the same work onto a new base; rebasing that range replays commits the restack already incorporated. The range you want is bounded by the remote head as it was **before** you fetched, so capture it first:
 
     ```bash
-    prev=$(git rev-parse origin/<branch>)         # BEFORE the fetch — your last-known remote head
+    prev=$(git rev-parse origin/<branch> 2>/dev/null)   # BEFORE the fetch — your last-known remote head
+    [ -n "$prev" ] || { echo "no local tracking ref: cannot tell your work from the rewrite — stop and report"; exit 1; }
     git fetch origin <branch>
     git merge-base --is-ancestor "$prev" HEAD || { echo "cannot identify new work — stop and report"; exit 1; }
     git rebase --onto origin/<branch> "$prev"                 # replays exactly $prev..HEAD
@@ -313,10 +321,14 @@ Smoke-test that revision, never the base checkout; the unregistered restack path
 
   ```bash
   gh api repos/{owner}/{repo}/stacks/<s> -q '.pull_requests[] | select(.merged_at==null) | .number' | head -1   # the bottommost unmerged layer
-  # Re-read the head and confirm it is still the one FINISH Step 1 gated, IMMEDIATELY before submitting:
-# the gate is a separate read, so a push landing in between would merge an unreviewed, untested head.
-[ "$(gh api repos/<owner>/<repo>/pulls/<pr> -q .head.sha)" = "<the SHA the gate passed>" ] || { echo "head moved since the gate — re-run FINISH Step 1"; exit 1; }
-gh api -X PUT repos/<owner>/<repo>/pulls/<pr>/merge-async -f merge_action=direct_merge -f merge_method=rebase
+  # PIN THE HEAD to the SHA FINISH Step 1 gated. The gate is a separate read, so without this a push
+# landing in between merges an unreviewed, untested head. `sha` is a server-side pin, not a re-check:
+# per the REST docs it is the "SHA that pull request head must match to allow merge … if the PR is
+# pushed in between the merge being requested and being executed, the merge will be cancelled."
+gh api -X PUT repos/<owner>/<repo>/pulls/<pr>/merge-async \
+  -f sha=<the SHA FINISH Step 1 gated> -f merge_action=direct_merge -f merge_method=rebase
+# A rejection/cancellation here is a FAILED GATE, not a retry: the head moved, so re-run FINISH Step 1
+# against the new SHA before attempting the merge again.
 gh api repos/<owner>/<repo>/pulls/<pr>/merge-async/<uuid> -q .status   # only for status=pending; <uuid> comes from details
   ```
 
