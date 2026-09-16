@@ -219,10 +219,13 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   git fetch origin <base_branch>
   git worktree add <worktree_dir>/<branch> -b <branch> origin/<base_branch>
   # …or, when the briefing carries `Cut from: <sha>`, from that exact commit instead:
+  git fetch origin <base_branch> && git fetch origin <sha>   # fetch the SHA itself, not just the branch
   git worktree add <worktree_dir>/<branch> -b <branch> <sha>
   ```
 
   **`Cut from:` beats the branch name when present.** An EPIC orchestrator resolves the base to a SHA at launch and records it as your `Fork point:`; re-resolving `origin/<base_branch>` here would reopen the race it closed, since a push landing in between starts you somewhere other than the fork point you were told you have. No `Cut from:` (a solo run) → `origin/<base_branch>` as above.
+
+  **Fetch the SHA, not only the branch.** If the base was force-pushed between the orchestrator's lookup and this checkout, the recorded commit is no longer reachable through `origin/<base_branch>` and `git worktree add … <sha>` fails on a missing object. `git fetch origin <sha>` asks for it directly (servers allow this by default for a reachable-history commit). If it still can't be fetched — the commit was rewritten away entirely — **stop and report** rather than silently falling back to the branch tip: you would be starting somewhere other than the fork point your briefing claims, which is the failure the pin exists to prevent.
 
   Then, if the harness provides the **`EnterWorktree` tool**, switch the session into it with `EnterWorktree(path: <worktree_dir>/<branch>)` — the `path` form, so the branch name stays exactly `<branch>` (the `name` form invents its own `worktree-…` branch name, which would break a `Worktree:` directive's deterministic naming). No `EnterWorktree` tool → just `cd` into the worktree; the location under `.claude/worktrees/` is what avoids the approval prompt either way. Then run the profile's `SUBMODULES` step in the worktree. The `default` profile: if the repo has submodules, initialize them (builds fail otherwise):
 
