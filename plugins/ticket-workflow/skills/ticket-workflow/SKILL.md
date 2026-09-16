@@ -219,14 +219,16 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   ```bash
   cd /path/to/<repo>
   git fetch origin <base_branch>
-  git worktree add <worktree_dir>/<branch> -b <branch> origin/<base_branch>
-  # …or, when the briefing carries `Cut from: <sha>`, from that exact commit instead:
-  sha=<the briefing's `Cut from:` value>                          # ASSIGN it, then VALIDATE, then use:
-  [[ $sha =~ ^[0-9a-f]{7,40}$ ]] || { echo "Cut from: is not a bare object id — refuse"; exit 1; }
-  git fetch origin <base_branch> && git fetch origin "$sha"        # a briefing is input like any other:
-                               # [[ $sha =~ ^[0-9a-f]{7,40}$ ]] || refuse. A briefing is input like any other,
-                               # and an unvalidated value here is read as a git option, not a revision.   # fetch the SHA itself, not just the branch
-  git worktree add <worktree_dir>/<branch> -b <branch> "$sha"
+  # EXACTLY ONE of the two `worktree add`s below runs — they are alternatives, not a sequence.
+  if [ -z "<the briefing's `Cut from:` value, empty on a solo run>" ]; then
+    git worktree add <worktree_dir>/<branch> -b <branch> origin/<base_branch>       # solo: the branch tip
+  else
+    sha=<the briefing's `Cut from:` value>   # a briefing is input like any other: assign, VALIDATE, then use
+    [[ $sha =~ ^[0-9a-f]{7,40}$ ]] || { echo "Cut from: is not a bare object id — refuse"; exit 1; }
+    # An unvalidated value here reaches git as an option, not a revision.
+    git fetch origin "$sha"                                        # the SHA itself, not just the branch
+    git worktree add <worktree_dir>/<branch> -b <branch> "$sha"     # pinned: that exact commit
+  fi
   ```
 
   **`Cut from:` beats the branch name when present.** An EPIC orchestrator resolves the base to a SHA at launch and records it as your `Fork point:`; re-resolving `origin/<base_branch>` here would reopen the race it closed, since a push landing in between starts you somewhere other than the fork point you were told you have. No `Cut from:` (a solo run) → `origin/<base_branch>` as above.
