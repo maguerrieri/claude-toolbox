@@ -42,8 +42,9 @@ receivers and greps treat the two channels uniformly:
 
 - **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks
   a dependent's spawn), `rebased: <branch> onto <base> @ <sha>` (this branch was
-  rebased and its fork point moved — the coordinator posts the durable
-  `restacked:` `COORD` marker, since a marker a child authors fails the author
+  rebased and its fork point moved — send it *right after* the push, since the
+  SHA cannot be validated until it is on origin, and the coordinator posts the
+  durable `restacked:` `COORD` marker, a child-authored one failing the author
   check every reader applies), `done:` (START-complete: CI green, review clean),
   `blocked:` (stuck; say on what), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my

@@ -45,7 +45,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
 - If your briefing carries a `Notify: <session name>` directive, follow the
   skill's `messaging.md`: ping that session via SendMessage on the state
   changes it lists — branch `pushed:`, a rebase that moved your fork point
-  `rebased:` (send it *before* you push), START-complete `done:`, `blocked:`,
+  `rebased:` (send it *right after* you push — a marker cannot validate until the SHA is on origin), START-complete `done:`, `blocked:`,
   follow-up `filed:`. One line per state change; detail belongs in the
   PR/tracker.
 
