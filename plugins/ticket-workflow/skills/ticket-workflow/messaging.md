@@ -56,8 +56,14 @@ receivers and greps treat the two channels uniformly:
   `roles/implementer.md`); the receiver dedups, prioritizes, and decides
   whether/when to spawn.
 - **Coordinator → child:** rare — a redirect the child should see before its
-  next natural checkpoint (e.g. `blocked: parent restacked, rebase onto
-  <base>`), sent to the name the coordinator assigned at spawn. A redirect is
+  next natural checkpoint, sent to the name the coordinator assigned at spawn.
+  A restack is **two** of them, and the wording is the protocol: first
+  `blocked: stand by — <branch> is being restacked; do not push or rebase
+  until I send the fork point`, then, once the coordinator has moved and
+  recorded that layer, `blocked: parent restacked, rebase onto <base>
+  Fork point: <sha>`. A stop message that says "rebase" makes the child
+  race the force-push it was sent to prevent, and the fork point it would
+  need does not exist until the move happens (EPIC Step 6). A redirect is
   *about the child's own issue*: a base-branch change, a scope clarification,
   "stop" / "restack" / "rebase". It is **never a new issue ID** — a live
   session's branch, worktree, PR footer, name, and notify wiring are all keyed
