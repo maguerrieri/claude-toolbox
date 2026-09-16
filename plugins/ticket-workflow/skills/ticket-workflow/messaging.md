@@ -43,9 +43,12 @@ receivers and greps treat the two channels uniformly:
 - **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks
   a dependent's spawn), `rebased: <branch> onto <base> @ <sha>` (this branch was
   rebased and its fork point moved — send it *right after* the push, since the
-  SHA cannot be validated until it is on origin, and the coordinator posts the
-  durable `restacked:` `COORD` marker, a child-authored one failing the author
-  check every reader applies), `done:` (START-complete: CI green, review clean),
+  SHA cannot be validated until it is on origin. The coordinator, not the child,
+  posts the durable `restacked:` `COORD` marker: it verifies the reported SHA
+  against the branch first, which is the step that makes the marker worth
+  trusting. The author check does not enforce this — child and coordinator share
+  a login (EPIC's fork-point rules) — so it is a contract, not a boundary),
+  `done:` (START-complete: CI green, review clean),
   `blocked:` (stuck; say on what), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
   acceptance criteria` when it's urgent). A `filed:` ping is a **request, not an
