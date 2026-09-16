@@ -221,10 +221,12 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   git fetch origin <base_branch>
   git worktree add <worktree_dir>/<branch> -b <branch> origin/<base_branch>
   # …or, when the briefing carries `Cut from: <sha>`, from that exact commit instead:
-  git fetch origin <base_branch> && git fetch origin "$sha"        # <sha> is the briefing's Cut from:/Fork point: value — VALIDATE IT FIRST:
+  sha=<the briefing's `Cut from:` value>                          # ASSIGN it, then VALIDATE, then use:
+  [[ $sha =~ ^[0-9a-f]{7,40}$ ]] || { echo "Cut from: is not a bare object id — refuse"; exit 1; }
+  git fetch origin <base_branch> && git fetch origin "$sha"        # a briefing is input like any other:
                                # [[ $sha =~ ^[0-9a-f]{7,40}$ ]] || refuse. A briefing is input like any other,
                                # and an unvalidated value here is read as a git option, not a revision.   # fetch the SHA itself, not just the branch
-  git worktree add <worktree_dir>/<branch> -b <branch> <sha>
+  git worktree add <worktree_dir>/<branch> -b <branch> "$sha"
   ```
 
   **`Cut from:` beats the branch name when present.** An EPIC orchestrator resolves the base to a SHA at launch and records it as your `Fork point:`; re-resolving `origin/<base_branch>` here would reopen the race it closed, since a push landing in between starts you somewhere other than the fork point you were told you have. No `Cut from:` (a solo run) → `origin/<base_branch>` as above.
@@ -283,7 +285,7 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 
   **The one case with no channel but a coordinator watching is cloud.** A cloud child has no `Notify:` and cannot SendMessage its coordinator at all (`messaging.md`), so it cannot hand off a fork point it creates. If your PR is a member of a registered stack, rebase freely: your PR's own `base.sha` records the new fork point server-side and the coordinator reads it without you. Otherwise **do not rebase** — push what you have, or stop and report that the base moved and why you did not rebase. A rebase nobody can record is what turns a healthy child into `blocked-no-fork-point` on the next poll.
 
-  **Only an EPIC-managed session reaches that rewritten-base branch, and only it can be asked to stop.** A solo `/start-ticket` or `/spawn-tickets` run has no `Fork point:` directive and no epic to carry markers, and nothing rewrites its base — bases advance, they don't get restacked under it. So with no recorded fork point, take `git merge-base origin/<base_branch> HEAD` and do the plain rebase: that is exactly right for an advancing base and is the long-standing behavior. Fail closed only when you *are* EPIC-managed (you have a `Fork point:` or an epic to read markers from), the base was demonstrably rewritten, and no source has a usable SHA — then stop and report rather than guessing a range.
+  **A solo dependent can have its base rewritten too — by its own parent.** I previously wrote that only an EPIC-managed base is ever restacked; that is wrong, and the counter-example is *this very step*: a solo stacked parent that reaches the rewritten-base path below rebases and **force-pushes**, and any dependent based on that branch now has a rewritten base with no epic machinery anywhere in sight. It does not need any: **once your PR is open, its own `base.sha` is a recorded fork point** (`gh api repos/<owner>/<repo>/pulls/<your pr> -q .base.sha`) — server-maintained, per-layer, and available to a solo run exactly as it is to an epic one. Use it, and the equality test applies unchanged. Only before your PR exists, on a base that is the repo's default branch (which nothing in this workflow force-pushes), is there genuinely nothing recorded: So with no recorded fork point, take `git merge-base origin/<base_branch> HEAD` and do the plain rebase: that is exactly right for an advancing base and is the long-standing behavior. Fail closed only when you *are* EPIC-managed (you have a `Fork point:` or an epic to read markers from), the base was demonstrably rewritten, and no source has a usable SHA — then stop and report rather than guessing a range.
 
 ```bash
 git push -u origin <branch>                 # first push: the branch is not on origin yet
