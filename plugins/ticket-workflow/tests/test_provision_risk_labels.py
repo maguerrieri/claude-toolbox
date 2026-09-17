@@ -39,6 +39,20 @@ def test_creates_every_missing_label_and_leaves_existing_alone(provision_path, f
         assert c["body"]["color"] and c["body"]["description"]
 
 
+def test_no_backfill_never_touches_issues(provision_path, fake_gh):
+    # The --no-backfill assertion in the label test above is vacuous: it seeds no issues, so it
+    # passes whether or not the backfill runs. Seed an issue that WOULD be remediated and assert
+    # the issue listing is never even requested (Copilot review on #113).
+    fake_gh.seed({"o/r": {"labels": DEFAULT_LABELS, "issues": [issue(1)]}})
+    p = run(provision_path, "--no-backfill", "o/r")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert labels_of(fake_gh, "o/r", 1) == [], "issue was labelled despite --no-backfill"
+    assert not any("/issues" in c["path"] for c in fake_gh.state()["log"]), "issues endpoint was called"
+    assert "enumerated" not in p.stdout, p.stdout
+    # the labels themselves are still provisioned
+    assert sorted(fake_gh.state()["repos"]["o/r"]["labels"]) == sorted(DEFAULT_LABELS + ALL_LABELS)
+
+
 def test_second_run_is_a_no_op(provision_path, fake_gh):
     fake_gh.seed({"o/r": {"labels": DEFAULT_LABELS + ALL_LABELS, "issues": []}})
     p = run(provision_path, "o/r")
