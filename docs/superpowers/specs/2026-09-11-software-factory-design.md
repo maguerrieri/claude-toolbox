@@ -168,8 +168,10 @@ head**, not the body:
    `statusCheckRollup` as a cross-check. 3b applies the identical rule;
 2. the paginated `reviewThreads` GraphQL query (the one `REVIEW_BOT` already
    uses) returns any unresolved thread — or, the other half of `REVIEW_BOT`'s
-   review gate since #130, waived only when the profile's no-bot fallback
-   comment is on the PR (an unresolved thread still fails regardless):
+   review gate since #130, applying only when Copilot is the engaged reviewer
+   (a CodeRabbit-only or bot-less PR is judged on threads alone) and waived
+   when the profile's no-bot fallback comment is on the PR (an unresolved
+   thread still fails regardless):
    Copilot's newest review on the head is neither an approval nor answered
    finding-by-finding in a PR comment posted after it (Copilot files most
    findings as "suppressed comments" in the review body, with no thread; a
