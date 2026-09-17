@@ -71,23 +71,33 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
   on; never invent docs that didn't exist.
 
 ## REVIEW_BOT
-Driven entirely by `gh` + the GitHub GraphQL API — no external tooling required. Copilot is the
-default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
+Driven by `gh` + the GitHub GraphQL API, plus standalone `jq` for the two body-gate reads below
+(`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp`, run the filter
+via `--jq` on one `per_page=100` page, and start it with `.[]` instead of `.[][]` — a single page is
+a flat array, not `--slurp`'s array of pages — exact until the PR passes 100 reviews, 100 PR
+comments, *or* 100 timeline events, the three collections it reads; past any, walk `?page=N` by
+hand until a short page). Copilot
+is the default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
 
 - **Detect, don't guess.** Copilot-review availability is *not* visible in the repo tree — an
   absent `.github/` means no Actions/CI, **not** no review bot. After opening the PR, check whether
   Copilot is already engaged — and note `requested_reviewers` lists only *pending* reviewers, so a
   bot that already **submitted** drops off it; check existing reviews too:
   - `gh api repos/OWNER/REPO/pulls/<pr> --jq '[.requested_reviewers[].login]'` — review pending
+  - `gh pr checks <pr>` — a `copilot-pull-request-reviewer` check run still in progress is also
+    "pending": Copilot drops off `requested_reviewers` once its run starts (observed on #131), so
+    "pending" below means *either* signal.
   - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
-    it). Don't re-request — just wait, then read its threads (below).
+    it). Don't re-request — just wait, then read its threads **and its review body** (below). A
+    submitted review whose body is the *unable to review* sentence is not a review: take the last
+    bullet's one-retry / fallback path instead of waiting on it.
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
     "no bot" if the request fails (Copilot disabled for the repo).
 
 - **Request a review** (when not already engaged): `gh pr edit <pr> --add-reviewer "@copilot"`.
-  Best-effort — if it errors (Copilot review not enabled for the repo/account), skip to "no bot" and
-  rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
+  Best-effort — if it errors (Copilot review not enabled for the repo/account), post the no-bot
+  fallback comment (last bullet; the gates read that marker) and rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
   they need no explicit request.)
 
 - **Read the unresolved threads** (authoritative — works on any repo, no extra tooling). Each thread
@@ -106,6 +116,49 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
     --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)"
   ```
 
+- **Then read the bot's newest review body.** Copilot files most findings as *suppressed comments*
+  in the review body, not as threads: a 🔵 *Needs a closer look* review has **zero** threads, a 🟡
+  *Changes recommended* review has body findings on top of its inline ones. This step and gate (2)
+  below are Copilot-specific: with another bot (CodeRabbit, a CI action) or none, the query returns
+  no review and gate (2) is vacuously met — those bots' findings are threads. Fetch the latest review
+  (last by `submitted_at`; `--slurp` so `last` spans all pages — a review cycle passes 30 easily —
+  piped to standalone `jq`, since `gh` rejects `--slurp` together with `--jq`):
+  ```bash
+  gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
+    | jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
+           | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
+  ```
+  No output (`// empty` keeps an empty array from printing a null record) → read the detect step's
+  two pending signals **fresh** (a snapshot taken before a request you just made is stale): Copilot
+  requested, or its check run in progress → the review is pending, wait. Neither → still pending if
+  Copilot was **ever** requested on this PR (by you, or auto-requested — GitHub can show neither
+  signal for a moment while it schedules the run). That fact is durable on the PR itself, so read
+  it there, never from memory — a later turn or a fresh coordinator sees the same answer:
+  ```bash
+  gh api "repos/OWNER/REPO/issues/<pr>/timeline?per_page=100" --paginate --slurp \
+    | jq '[.[][] | select(.event=="review_requested" and .requested_reviewer.login=="Copilot")] | length'
+  ```
+  Non-zero → keep waiting until a review, an explicit request failure, or the fallback comment
+  exists. Zero → Copilot was never requested (the other-bot / no-bot case) and has no review; only
+  for such a PR is gate (2) below vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
+  previous round's — never gate on it — and only for that stale case: Copilot pending (either
+  signal) → wait; neither (the push didn't auto-request) → re-request now and record it with a
+  one-line PR comment (`Copilot re-requested on <head sha>`), so a later pass that finds the same
+  stale review with the signals transiently absent doesn't request again — with that comment on
+  the PR for the current head, wait; if the request fails, take the no-bot fallback (last bullet).
+  A current-head review never triggers a re-request here, with one exception: an *unable to
+  review* body on the head takes the last bullet's one retry.
+  Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
+  - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
+    `### 🔵 Needs a closer look`.
+  - **Findings** — under `### Suppressed comments (N)` inside the `Review details` block: each is a
+    bold **`path:line`** line, a `* ` bullet, and usually a fenced quote of the anchored lines
+    (context, not finding). `N` counts entries; the same `path:line` can appear twice, and a bold
+    **`Previously missed (k)`** line is a sub-label, not an entry. No heading (🟢) → no findings. The
+    *File summaries* table's "Critical / Nit (k votes)" phrases summarize these same findings.
+  - **Not a review** — a body that is only *"Copilot was unable to review this pull request …"*
+    (see the last bullet).
+
 - **Address each thread, then resolve it.** Either fix the code (commit + push) and reply, or — if the
   bot is wrong — reply explaining why. Then resolve. Reply and resolve are two GraphQL mutations keyed
   on the thread's node `id`:
@@ -119,12 +172,48 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
     mutation($threadId:ID!){ resolveReviewThread(input:{threadId:$threadId}){ thread{ isResolved } } }'
   ```
 
-- **Loop** until the unresolved-threads query returns nothing **and** CI is green (`gh pr checks <pr>
-  --watch`). Push fixes, let the bot re-review (a new push re-triggers Copilot/CodeRabbit), re-read
-  threads, repeat. If the bot is wrong, the reply-why-then-resolve above closes the thread.
+- **Address each body finding the same way — fix or explain — in one PR comment.** There is no
+  thread to reply on or resolve, so post a **single** comment after the review, one line per entry (a repeated `path:line` gets
+  one line per finding):
+  `path:line` — `fixed in <sha> — …` or `not changing — …`. Push fixes first so the lines can cite
+  SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
+  re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
+
+- **Loop** until **all three** hold — the completion gate:
+  1. the unresolved-threads query returns nothing;
+  2. for Copilot, the **newest** review — on the PR head, and not an *unable to review* body — is
+     🟢 *Approval recommended*, **or** every entry in its `Suppressed comments` has its own line in
+     a PR comment posted **after** it (an anchor two entries share needs two lines) — an answer to
+     an earlier review doesn't carry over; after each push, answer the newest review's list (repeats
+     included). Also met when the engaged bot isn't Copilot, or the no-bot fallback comment (last
+     bullet) is already on the PR;
+  3. CI is green (`gh pr checks <pr> --watch`).
+
+  For (2), list comments newer than the review (ISO-8601 `Z` timestamps compare as strings):
+  ```bash
+  gh api "repos/OWNER/REPO/issues/<pr>/comments?per_page=100" --paginate --slurp \
+    | jq '[.[][] | select(.created_at > "<submitted_at>")] | map(.body)'
+  ```
+  Push fixes, let the bot re-review (a push re-triggers Copilot/CodeRabbit), re-read threads and the
+  newest body, repeat.
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
-- **Genuinely no bot available** (the review request failed — Copilot disabled for the repo): rely on
-  `gh pr checks <pr> --watch` + the user's review.
+- **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
+  review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
+  (`gh pr edit <pr> --add-reviewer "@copilot"`) and record the retry in the same step with a
+  one-line PR comment (`Copilot could not review <review id>; re-requested once`) — a later turn
+  that finds the same unable review newest then knows the retry was issued and doesn't request
+  again. Wait for a **newer** review (a later `submitted_at`; the same body stays newest while the
+  retry is in flight). Fall back — treat the PR as "no bot" and **say so in one PR comment**
+  (`No Copilot review for this PR — <request failed | unable to review twice | retry never
+  answered>; handing back on CI + the user's review`) — when the
+  newer review is also unable, when the re-request fails (Copilot disabled), or when a later
+  pass finds the retry comment on the PR **older than 15 minutes** (its `created_at`; Copilot's
+  runs finish in about five, and GitHub can show neither signal for a moment while it schedules
+  one — hence a bounded wait, not a single look), nothing pending (either signal), and no newer
+  review. That fallback
+  comment is the durable marker the gates read: if the PR already carries it, don't re-request.
+- **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
+  fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
 
 ## SMOKE_DEPLOY
 - If the project has a way to run or deploy, smoke test before merging (start it / deploy

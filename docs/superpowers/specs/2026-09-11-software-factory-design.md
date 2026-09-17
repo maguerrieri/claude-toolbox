@@ -167,7 +167,18 @@ head**, not the body:
    real PR before anything relies on it, and the gate reads the PR's
    `statusCheckRollup` as a cross-check. 3b applies the identical rule;
 2. the paginated `reviewThreads` GraphQL query (the one `REVIEW_BOT` already
-   uses) returns any unresolved thread;
+   uses) returns any unresolved thread — or, the other half of `REVIEW_BOT`'s
+   review gate since #130, applying only when Copilot is the engaged reviewer
+   (a CodeRabbit-only or bot-less PR is judged on threads alone) and waived
+   when the profile's no-bot fallback comment is on the PR (an unresolved
+   thread still fails regardless):
+   Copilot's newest review on the head neither opens with the body verdict
+   `### 🟢 Approval recommended` (its REST `state` is always `COMMENTED`,
+   so GitHub's `APPROVED` is never the test) nor is answered
+   finding-by-finding in a PR comment posted after it (Copilot files most
+   findings as "suppressed comments" in the review body, with no thread; a
+   body saying Copilot was *unable to review* is not a review and fails this
+   clause until the profile's retry/fallback has run);
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
    exactly `[<issue>]` — zero, a different issue, or more than one all fail;
 4. `<issue>` does not carry **exactly one** label matching `risk:*`, or that
