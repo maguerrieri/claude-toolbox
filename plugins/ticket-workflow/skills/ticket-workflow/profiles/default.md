@@ -73,7 +73,8 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
 ## REVIEW_BOT
 Driven by `gh` + the GitHub GraphQL API, plus standalone `jq` for the two body-gate reads below
 (`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp` and run the same
-filter via `--jq` on one `per_page=100` page — exact until a PR passes 100 Copilot reviews). Copilot
+filter via `--jq` on one `per_page=100` page — exact until the PR passes 100 reviews *or* 100 PR
+comments, the two collections it reads; past either, walk `?page=N` by hand until a short page). Copilot
 is the default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
 
 - **Detect, don't guess.** Copilot-review availability is *not* visible in the repo tree — an
@@ -127,9 +128,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   ```
   No output (`// empty` keeps an empty array from printing a null record) → read the detect step's
   two pending signals **fresh** (a snapshot taken before a request you just made is stale): Copilot
-  requested, or its check run in progress → the review is pending, wait; neither, and no request
-  succeeded this pass → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
-  vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
+  requested, or its check run in progress → the review is pending, wait. Neither → still pending if
+  Copilot was **ever** requested or seen pending on this PR (by you, or auto-requested — GitHub can
+  show neither signal for a moment while it schedules the run): keep waiting until a review, an
+  explicit request failure, or the fallback comment exists. Only a PR on which Copilot was never
+  requested nor pending has no Copilot review (the other-bot / no-bot case), and there gate (2)
+  below is vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
   previous round's — never gate on it — and only for that stale case: Copilot pending (either
   signal) → wait; neither (the push didn't auto-request) → re-request now and record it with a
   one-line PR comment (`Copilot re-requested on <head sha>`), so a later pass that finds the same
