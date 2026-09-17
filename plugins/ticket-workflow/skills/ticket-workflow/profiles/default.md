@@ -91,8 +91,8 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
     "no bot" if the request fails (Copilot disabled for the repo).
 
 - **Request a review** (when not already engaged): `gh pr edit <pr> --add-reviewer "@copilot"`.
-  Best-effort — if it errors (Copilot review not enabled for the repo/account), skip to "no bot" and
-  rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
+  Best-effort — if it errors (Copilot review not enabled for the repo/account), post the no-bot
+  fallback comment (last bullet; the gates read that marker) and rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
   they need no explicit request.)
 
 - **Read the unresolved threads** (authoritative — works on any repo, no extra tooling). Each thread
@@ -122,12 +122,14 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
     --jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
            | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
   ```
-  No output (`// empty` keeps an empty array from printing a null record) means one of two things —
-  the detect step's two pending signals: Copilot requested, or its check run in progress → the
-  review is pending, wait; neither → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
-  vacuous. Otherwise its `commit_id` must be the PR head: an older one is a previous round's review — never
-  gate on it. Copilot pending (either signal) → wait; neither (the push didn't auto-request) →
-  re-request now, and if that request fails take the no-bot fallback (last bullet).
+  No output (`// empty` keeps an empty array from printing a null record) → read the detect step's
+  two pending signals **fresh** (a snapshot taken before a request you just made is stale): Copilot
+  requested, or its check run in progress → the review is pending, wait; neither, and no request
+  succeeded this pass → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
+  vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
+  previous round's — never gate on it — and only for that stale case: Copilot pending (either
+  signal) → wait; neither (the push didn't auto-request) → re-request now, and if that request
+  fails take the no-bot fallback (last bullet). A current-head review never triggers a re-request.
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
   - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
     `### 🔵 Needs a closer look`.
@@ -179,12 +181,15 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
 - **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
   review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
-  (`gh pr edit <pr> --add-reviewer "@copilot"`) and wait for a **newer** review (a later
-  `submitted_at` — the same unable body is still the newest while the retry is in flight). If that
-  newer review is also unable, or the re-request itself fails (Copilot disabled), treat the PR as
-  "no bot" and **say so in one PR comment**, so the hand-back doesn't read as review-clean. That
-  comment is the durable "once" marker across turns: if the PR already carries it, don't re-request
-  again.
+  (`gh pr edit <pr> --add-reviewer "@copilot"`) and record the retry in the same step with a
+  one-line PR comment (`Copilot could not review <review id>; re-requested once`) — a later turn
+  that finds the same unable review newest then knows the retry was issued and doesn't request
+  again. Wait for a **newer** review (a later `submitted_at`; the same body stays newest while the
+  retry is in flight). Fall back — treat the PR as "no bot" and **say so in one PR comment**
+  (`Copilot could not review this PR twice; handing back on CI + the user's review`) — when the
+  newer review is also unable, when the re-request fails (Copilot disabled), or when the retry
+  comment is on the PR with nothing pending (either signal) and no newer review. That fallback
+  comment is the durable marker the gates read: if the PR already carries it, don't re-request.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
   fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
 
