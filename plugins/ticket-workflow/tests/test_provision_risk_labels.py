@@ -185,3 +185,33 @@ def test_token_transport_wraps_connection_failures(provision_path, tmp_path, mon
         assert "connection refused" in str(exc)
     else:
         raise AssertionError("URLError was not wrapped in ApiError")
+
+
+def test_token_transport_surfaces_http_error_details(provision_path, tmp_path, monkeypatch):
+    # The HTTPS transport promises to normalize HTTPError into ApiError with the status and
+    # body; only the URLError branch was covered before (Copilot review on #113).
+    import io
+    import urllib.error
+    import urllib.request
+
+    monkeypatch.setenv("PATH", str(tmp_path))
+    monkeypatch.setenv("GH_TOKEN", "dummy")
+    module = type(sys)("provision_risk_labels")
+    with open(provision_path) as f:
+        exec(compile(f.read(), provision_path, "exec"), module.__dict__)
+
+    def forbid(request):
+        raise urllib.error.HTTPError(
+            request.full_url, 403, "Forbidden", {}, io.BytesIO(b'{"message":"Resource not accessible"}')
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", forbid)
+    api = module.Api(dry_run=False)
+    assert api.gh is None
+    try:
+        api.call("GET", "repos/o/r/labels")
+    except module.ApiError as exc:
+        assert "HTTP 403" in str(exc), exc
+        assert "Resource not accessible" in str(exc), exc
+    else:
+        raise AssertionError("HTTPError was not wrapped in ApiError")
