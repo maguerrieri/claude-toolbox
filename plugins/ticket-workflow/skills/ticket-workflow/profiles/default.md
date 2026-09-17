@@ -71,8 +71,10 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
   on; never invent docs that didn't exist.
 
 ## REVIEW_BOT
-Driven entirely by `gh` + the GitHub GraphQL API — no external tooling required. Copilot is the
-default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
+Driven by `gh` + the GitHub GraphQL API, plus standalone `jq` for the two body-gate reads below
+(`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp` and run the same
+filter via `--jq` on one `per_page=100` page — exact until a PR passes 100 Copilot reviews). Copilot
+is the default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
 
 - **Detect, don't guess.** Copilot-review availability is *not* visible in the repo tree — an
   absent `.github/` means no Actions/CI, **not** no review bot. After opening the PR, check whether
@@ -193,8 +195,10 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   retry is in flight). Fall back — treat the PR as "no bot" and **say so in one PR comment**
   (`No Copilot review for this PR — <request failed | unable to review twice | retry never
   answered>; handing back on CI + the user's review`) — when the
-  newer review is also unable, when the re-request fails (Copilot disabled), or when the retry
-  comment is on the PR with nothing pending (either signal) and no newer review. That fallback
+  newer review is also unable, when the re-request fails (Copilot disabled), or when a **later**
+  pass (never the one that issued the retry — GitHub can show neither signal for a moment while
+  it schedules the run) finds the retry comment on the PR, nothing pending (either signal), and
+  no newer review. That fallback
   comment is the durable marker the gates read: if the PR already carries it, don't re-request.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
   fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
