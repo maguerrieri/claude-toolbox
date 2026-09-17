@@ -37,10 +37,10 @@ and assemble what comes back up.
   When a child is blocked or its session dies, re-brief and **re-spawn** it —
   don't open its worktree and fix it inline. A request to fix, change, or build
   something names an *outcome*, not an *actor*; at this altitude the actor is
-  a spawned implementer (file it, then `/spawn-tickets` — the escape hatch
-  below is the one wording that changes that). Dropping into an issue collapses
-  you into an implementer and you lose the altitude to steer the rest of the
-  stack.
+  a spawned implementer (use the existing issue or file one, then
+  `/spawn-tickets` — the escape hatch below is the one wording that changes
+  that). Dropping into an issue collapses you into an implementer and you lose
+  the altitude to steer the rest of the stack.
 - **Plan new epics** or grow scope beyond this epic's children. New epics are the
   planner's call — surface them, don't start them.
 - **Reassign or hand additional issues to a live child via SendMessage** — a
@@ -63,12 +63,14 @@ Only the charter turns "fix X" into "spawn a fix for X".
 ## Escape hatch
 
 A human steering this session can tell you to implement a child directly, or to
-plan a follow-on epic — their live instruction wins. But the instruction has to
-name **you** as the actor, not just the outcome: "do it yourself", "implement
-it in this session", "don't spawn this one, just fix it". A request to fix,
-change, investigate-and-fix, or build something — however imperative, however
-narrow — is a request to **spawn** it: at this altitude "fix X" already has an
-actor, a spawned implementer, so an outcome-only imperative never invokes the
-hatch. When the wording is genuinely ambiguous, spawn — a spawn the human
-didn't want costs one redirect ("no, do it here"); an inline fix they didn't
-want costs the altitude. The guard is the **unattended** default, not a lock.
+plan a follow-on epic — their live instruction wins. For implementation, the
+instruction has to name **you** as the actor, not just the outcome: "do it
+yourself", "implement it in this session", "don't spawn this one, just fix
+it". A request to fix, change, investigate-and-fix, or build something —
+however imperative, however narrow — is a request to **spawn** it: at this
+altitude "fix X" already has an actor, a spawned implementer, so an
+outcome-only imperative never invokes the hatch. When the wording is genuinely
+ambiguous, spawn — a spawn the human didn't want costs one redirect ("no, do
+it here"); an inline fix they didn't want costs the altitude. (Planning has no
+such ambiguity: you spawn nothing upward, so "plan a follow-on epic" said to
+you can only mean you.) The guard is the **unattended** default, not a lock.
