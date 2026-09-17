@@ -116,9 +116,10 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     --jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
-           | sort_by(.submitted_at) | last | {id, submitted_at, commit_id, body}'
+           | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
   ```
-  Its `commit_id` must be the PR head: an older one is a previous round's review, and Copilot is
+  No output → no Copilot review (the other-bot / no-bot case above; `// empty` keeps an empty array
+  from printing a null record). Otherwise its `commit_id` must be the PR head: an older one is a previous round's review, and Copilot is
   still pending on the push (or needs a re-request) — wait for it; never gate on a stale review.
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
   - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or

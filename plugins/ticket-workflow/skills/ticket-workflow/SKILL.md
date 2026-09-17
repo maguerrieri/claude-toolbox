@@ -168,7 +168,7 @@ START is **only complete** when ALL of these are true (or an opt-out applies):
 - [ ] Branch is pushed to origin
 - [ ] PR is open and references the issue (adapter `PR_REF`)
 - [ ] CI checks are green
-- [ ] Review bot (if the repo has one) is clean: zero unresolved threads, **and** — for Copilot — its newest review is either an approval or has every finding in its body answered in a PR comment posted after it, unless the profile's no-bot fallback is recorded on the PR (`REVIEW_BOT`)
+- [ ] Review bot (if the repo has one) is clean: zero unresolved threads, **and** for Copilot, a newest review on the PR head that is not an *unable to review* body and is either an approval or has every body finding answered in a PR comment posted after it — or the no-bot fallback recorded on the PR (profile `REVIEW_BOT`)
 - [ ] PR URL + change summary reported to the user
 
 Keep working across turns until every box is checked. Don't hand back until then — except when an opt-out applies. CI failures and review rounds are normal; address them and keep going.
