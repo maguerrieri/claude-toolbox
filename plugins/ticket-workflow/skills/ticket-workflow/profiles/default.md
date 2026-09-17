@@ -82,7 +82,8 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
     it). Don't re-request — just wait, then read its threads **and its review body** (below). A
-    submitted review whose body is the *unable to review* sentence doesn't count (last bullet).
+    submitted review whose body is the *unable to review* sentence is not a review: take the last
+    bullet's one-retry / fallback path instead of waiting on it.
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
     "no bot" if the request fails (Copilot disabled for the repo).
 
@@ -121,8 +122,9 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   No output (`// empty` keeps an empty array from printing a null record) means one of two things —
   check `requested_reviewers` from the detect step: Copilot listed → the review is pending, wait;
   not listed → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
-  vacuous. Otherwise its `commit_id` must be the PR head: an older one is a previous round's review, and Copilot is
-  still pending on the push (or needs a re-request) — wait for it; never gate on a stale review.
+  vacuous. Otherwise its `commit_id` must be the PR head: an older one is a previous round's review — never
+  gate on it. Copilot in `requested_reviewers` → wait; not listed (the push didn't auto-request) →
+  re-request now, and if that request fails take the no-bot fallback (last bullet).
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
   - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
     `### 🔵 Needs a closer look`.
@@ -174,9 +176,12 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
 - **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
   review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
-  (`gh pr edit <pr> --add-reviewer "@copilot"`); if it repeats, treat the PR as "no bot" and **say so
-  in one PR comment**, so the hand-back doesn't read as review-clean. That comment is the durable
-  "once" marker across turns: if the PR already carries it, don't re-request again.
+  (`gh pr edit <pr> --add-reviewer "@copilot"`) and wait for a **newer** review (a later
+  `submitted_at` — the same unable body is still the newest while the retry is in flight). If that
+  newer review is also unable, or the re-request itself fails (Copilot disabled), treat the PR as
+  "no bot" and **say so in one PR comment**, so the hand-back doesn't read as review-clean. That
+  comment is the durable "once" marker across turns: if the PR already carries it, don't re-request
+  again.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
   fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
 
