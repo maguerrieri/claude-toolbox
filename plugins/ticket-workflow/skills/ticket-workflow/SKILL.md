@@ -168,7 +168,7 @@ START is **only complete** when ALL of these are true (or an opt-out applies):
 - [ ] Branch is pushed to origin
 - [ ] PR is open and references the issue (adapter `PR_REF`)
 - [ ] CI checks are green
-- [ ] Review bot (if the repo has one) has zero unresolved threads
+- [ ] Review bot (if the repo has one) is clean: zero unresolved threads, **and** its newest review is either an approval or has every finding in its body answered in a PR comment posted after it (profile `REVIEW_BOT`)
 - [ ] PR URL + change summary reported to the user
 
 Keep working across turns until every box is checked. Don't hand back until then — except when an opt-out applies. CI failures and review rounds are normal; address them and keep going.
@@ -281,7 +281,7 @@ Watch CI in parallel with any review bot:
 gh pr checks <pr> --watch --fail-fast
 ```
 
-Run the profile's `REVIEW_BOT` step. The `default` profile: if an automated reviewer (Copilot, CodeRabbit, etc.) is configured, request a review and resolve every thread — address each with a code change + reply + resolve, or, if the bot is wrong, reply explaining why + resolve; push fixes, re-request, and loop until there are no unresolved threads AND CI is green. If there's **no** review bot, rely on CI + the user's own review.
+Run the profile's `REVIEW_BOT` step. The `default` profile: if an automated reviewer (Copilot, CodeRabbit, etc.) is configured, request a review and resolve every thread — address each with a code change + reply + resolve, or, if the bot is wrong, reply explaining why + resolve — **and** answer every finding the bot's newest review *body* carries (Copilot files most of its findings as "suppressed comments" there, with no thread to resolve): the same fix-or-explain per finding, answered together in one PR comment posted after that review. Push fixes, re-request, and loop until there are no unresolved threads AND the newest bot review is an approval or has every body finding answered in a comment posted after it AND CI is green. A review body saying the bot was *unable to review* is not a review: re-request once, then fall back to no-bot and say so in the PR. If there's **no** review bot, rely on CI + the user's own review.
 
 If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you can't.
 
