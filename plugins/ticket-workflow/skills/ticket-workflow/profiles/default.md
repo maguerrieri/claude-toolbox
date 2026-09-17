@@ -109,13 +109,17 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 
 - **Then read the bot's newest review body.** Copilot files most findings as *suppressed comments*
   in the review body, not as threads: a 🔵 *Needs a closer look* review has **zero** threads, a 🟡
-  *Changes recommended* review has body findings on top of its inline ones. Fetch the latest review
+  *Changes recommended* review has body findings on top of its inline ones. This step and gate (2)
+  below are Copilot-specific: with another bot (CodeRabbit, a CI action) or none, the query returns
+  no review and gate (2) is vacuously met — those bots' findings are threads. Fetch the latest review
   (last by `submitted_at`; `--slurp` so `last` spans all pages — a review cycle passes 30 easily):
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     --jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
-           | sort_by(.submitted_at) | last | {id, submitted_at, body}'
+           | sort_by(.submitted_at) | last | {id, submitted_at, commit_id, body}'
   ```
+  Its `commit_id` must be the PR head: an older one is a previous round's review, and Copilot is
+  still pending on the push (or needs a re-request) — wait for it; never gate on a stale review.
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
   - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
     `### 🔵 Needs a closer look`.
@@ -141,7 +145,8 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   ```
 
 - **Address each body finding the same way — fix or explain — in one PR comment.** There is no
-  thread to reply on or resolve, so post a **single** comment after the review, one line per entry:
+  thread to reply on or resolve, so post a **single** comment after the review, one line per entry (a repeated `path:line` gets
+  one line per finding):
   `path:line` — `fixed in <sha> — …` or `not changing — …`. Push fixes first so the lines can cite
   SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
@@ -149,7 +154,8 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 - **Loop** until **all three** hold — the completion gate:
   1. the unresolved-threads query returns nothing;
   2. the bot's **newest** review is 🟢 *Approval recommended*, **or** every entry in its
-     `Suppressed comments` appears in a PR comment posted **after** it — an answer to an earlier
+     `Suppressed comments` has its own line in a PR comment posted **after** it (an anchor two
+     entries share needs two lines) — an answer to an earlier
      review doesn't carry over; after each push, answer the newest review's list (repeats included);
   3. CI is green (`gh pr checks <pr> --watch`).
 
@@ -164,7 +170,8 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 - **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
   review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
   (`gh pr edit <pr> --add-reviewer "@copilot"`); if it repeats, treat the PR as "no bot" and **say so
-  in one PR comment**, so the hand-back doesn't read as review-clean.
+  in one PR comment**, so the hand-back doesn't read as review-clean. That comment is the durable
+  "once" marker across turns: if the PR already carries it, don't re-request again.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
   fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
 
