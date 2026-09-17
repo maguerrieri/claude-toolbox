@@ -81,9 +81,8 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   - `gh api repos/OWNER/REPO/pulls/<pr> --jq '[.requested_reviewers[].login]'` — review pending
   - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
-    it). Don't re-request — just wait, then read its threads **and its review body** (below). One
-    exception: a submitted "review" whose body is the *unable to review* sentence (the last bullet)
-    is not a review and does not count as "already reviewed."
+    it). Don't re-request — just wait, then read its threads **and its review body** (below). A
+    submitted review whose body is the *unable to review* sentence doesn't count (last bullet).
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
     "no bot" if the request fails (Copilot disabled for the repo).
 
@@ -108,34 +107,25 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
     --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)"
   ```
 
-- **Then read the bot's newest review body — threads alone under-count.** Copilot files most of
-  its findings as *"suppressed comments"* in the review body rather than as inline threads: a
-  🔵 *Needs a closer look* review posts **zero** threads and carries every finding in its body, and a
-  🟡 *Changes recommended* review carries body findings on top of its inline ones. The thread query
-  above returns nothing for those, so gating on threads alone hands back a PR with findings nobody
-  addressed. Fetch the bot's **latest** review (last by `submitted_at`; paginate — a long review
-  cycle passes 30 reviews easily — and `--slurp` so `last` sees every page, not the last page alone):
+- **Then read the bot's newest review body.** Copilot files most findings as *suppressed comments*
+  in the review body, not as threads: a 🔵 *Needs a closer look* review has **zero** threads, a 🟡
+  *Changes recommended* review has body findings on top of its inline ones. Fetch the latest review
+  (last by `submitted_at`; `--slurp` so `last` spans all pages — a review cycle passes 30 easily):
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     --jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
            | sort_by(.submitted_at) | last | {id, submitted_at, body}'
   ```
-  Read the `body` by its shape (verified against real reviews; the REST `state` is `COMMENTED` on
-  every Copilot review whatever its verdict, so the state field tells you nothing):
-  - **Verdict** — the first line: `### 🟢 Approval recommended` (no findings), `### 🟡 Changes
-    recommended`, or `### 🔵 Needs a closer look`.
-  - **Body findings** — inside the `<details>` block whose summary is `Review details`, a heading
-    `### Suppressed comments (N)`. Each entry is a bold **`path:line`** line, a `* ` bullet holding
-    the finding, and usually a fenced code block quoting the lines it anchors to (context — not part
-    of the finding). `N` is the entry count to check your list against. A bold **`Previously missed
-    (k)`** line (no `:line`) may subdivide the section — a label, not a finding. The same `path:line`
-    can carry two entries (two findings on one line) — count entries, not distinct anchors. No such
-    heading (the 🟢 body) → no body findings. A *File summaries* table above it may carry per-file
-    "Critical / Moderate / Nit (k votes)" phrases — those summarize the inline + suppressed findings
-    already counted, not extra ones; the `Suppressed comments` list is what you work.
-  - **Not a review** — a body that is only the sentence *"Copilot was unable to review this pull
-    request …"* (quota limit, etc.; no heading, no findings). Handle per the last bullet — never
-    treat it as "reviewed."
+  Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
+  - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
+    `### 🔵 Needs a closer look`.
+  - **Findings** — under `### Suppressed comments (N)` inside the `Review details` block: each is a
+    bold **`path:line`** line, a `* ` bullet, and usually a fenced quote of the anchored lines
+    (context, not finding). `N` counts entries; the same `path:line` can appear twice, and a bold
+    **`Previously missed (k)`** line is a sub-label, not an entry. No heading (🟢) → no findings. The
+    *File summaries* table's "Critical / Nit (k votes)" phrases summarize these same findings.
+  - **Not a review** — a body that is only *"Copilot was unable to review this pull request …"*
+    (see the last bullet).
 
 - **Address each thread, then resolve it.** Either fix the code (commit + push) and reply, or — if the
   bot is wrong — reply explaining why. Then resolve. Reply and resolve are two GraphQL mutations keyed
@@ -150,46 +140,33 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
     mutation($threadId:ID!){ resolveReviewThread(input:{threadId:$threadId}){ thread{ isResolved } } }'
   ```
 
-- **Address each body finding the same way — fix or explain — and answer them all in one PR
-  comment.** A body finding has no thread to reply on or resolve, so its disposition lives in a
-  **single PR comment** posted *after* that review: one line per finding, `path:line` first, then
-  what you did (`fixed in <sha> — …`) or why not (`not changing — …`); every entry the review lists,
-  none skipped. (One comment, not one per finding — it is the record the gate below reads, and a
-  human skims it.) Write it to a file and post it with `gh pr comment <pr> --body-file <file>`.
-  Fix commits go out first so the comment can cite their SHAs, and a push re-triggers or lets you
-  re-request the bot as usual. A round whose findings were *all* "not changing" involves no push —
-  don't re-request one just for a fresh verdict: Copilot restates unchanged findings, which would
-  only re-open the gate you just closed.
+- **Address each body finding the same way — fix or explain — in one PR comment.** There is no
+  thread to reply on or resolve, so post a **single** comment after the review, one line per entry:
+  `path:line` — `fixed in <sha> — …` or `not changing — …`. Push fixes first so the lines can cite
+  SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
+  re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
-- **Loop** until **all three** hold — this is the completion gate:
+- **Loop** until **all three** hold — the completion gate:
   1. the unresolved-threads query returns nothing;
-  2. the bot's **newest** review is either 🟢 *Approval recommended* **or** has every one of its body
-     findings answered in a PR comment posted **after** it (a comment that predates the review
-     answered an earlier one — after each push read the newest review again and answer *its* list;
-     unchanged entries may repeat, as `Previously missed` rows, and an earlier answer still counts
-     only if you restate it after the new review);
+  2. the bot's **newest** review is 🟢 *Approval recommended*, **or** every entry in its
+     `Suppressed comments` appears in a PR comment posted **after** it — an answer to an earlier
+     review doesn't carry over; after each push, answer the newest review's list (repeats included);
   3. CI is green (`gh pr checks <pr> --watch`).
 
-  To check (2), list the PR comments newer than the review's `submitted_at` (ISO-8601 `Z`
-  timestamps compare as strings):
+  For (2), list comments newer than the review (ISO-8601 `Z` timestamps compare as strings):
   ```bash
   gh api "repos/OWNER/REPO/issues/<pr>/comments?per_page=100" --paginate --slurp \
     --jq '[.[][] | select(.created_at > "<submitted_at>")] | map(.body)'
   ```
-  and confirm every `path:line` from the review's `Suppressed comments` appears in one of them.
-  Push fixes, let the bot re-review (a new push re-triggers Copilot/CodeRabbit), re-read threads
-  **and** the newest body, repeat. If the bot is wrong, the reply-why-then-resolve above closes a
-  thread and a "not changing" line in the disposition comment closes a body finding.
+  Push fixes, let the bot re-review (a push re-triggers Copilot/CodeRabbit), re-read threads and the
+  newest body, repeat.
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
 - **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
-  review this pull request …"* (e.g. the requester's quota limit) neither satisfies nor fails gate (2)
-  — it means no review happened. Re-request **once** (`gh pr edit <pr> --add-reviewer "@copilot"`)
-  and read the newest review again. If that also comes back unable, fall back to "no bot" for this
-  PR — and **say so in the PR** (one comment: the bot could not review, twice, and the PR is handed
-  back on CI + the user's review) so the hand-back doesn't read as review-clean. Don't wait on it
-  and don't keep re-requesting.
-- **Genuinely no bot available** (the review request failed — Copilot disabled for the repo; or the
-  unable-to-review fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
+  review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
+  (`gh pr edit <pr> --add-reviewer "@copilot"`); if it repeats, treat the PR as "no bot" and **say so
+  in one PR comment**, so the hand-back doesn't read as review-clean.
+- **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
+  fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
 
 ## SMOKE_DEPLOY
 - If the project has a way to run or deploy, smoke test before merging (start it / deploy
