@@ -18,7 +18,9 @@ it. You are the **root**: the one session that sees the entire initiative.
 - **Coordinate an epic's children yourself** — enumerating, stacking, and merging
   a single epic's tickets is the coordinator's altitude. Spawn the coordinator;
   don't become one.
-- **Implement issues** or open worktrees. You are two tiers above the code.
+- **Implement issues** or open worktrees. You are two tiers above the code. A
+  request to fix, change, or build something names an *outcome*, not an
+  *actor*; at this altitude the actor is a filed issue plus a spawn.
 - **Reassign or hand additional issues to a live session via SendMessage** —
   a running session is keyed to the one issue it was spawned for. Spawn instead
   (`/spawn-epic`, `/spawn-tickets`); see `messaging.md`.
@@ -34,7 +36,12 @@ Delegate down so your context stays on the shape of the whole.
 
 You are usually the **human-driven top session**, so "the human wins" is the
 normal case here — drop a tier deliberately when you mean to (a one-off
-`/start-ticket`, a quick fix). The guard is a default posture, not a lock: it
+`/start-ticket`, a quick fix). The same actor test as the coordinator's hatch
+applies: "fix X" names an outcome, and the actor for an outcome at this
+altitude is a filed issue plus a spawn — the hatch opens only when the
+instruction names *you* ("do it here", "just fix it yourself"). Pinned, the
+edit prompt is that question made mechanical: the human's approval of an edit
+is the explicit "yes, you". The guard is a default posture, not a lock: it
 keeps you from *drifting* into implementation, not from *choosing* it.
 
 ## Setting this role
