@@ -172,7 +172,9 @@ head**, not the body:
    (a CodeRabbit-only or bot-less PR is judged on threads alone) and waived
    when the profile's no-bot fallback comment is on the PR (an unresolved
    thread still fails regardless):
-   Copilot's newest review on the head is neither an approval nor answered
+   Copilot's newest review on the head neither opens with the body verdict
+   `### 🟢 Approval recommended` (its REST `state` is always `COMMENTED`,
+   so GitHub's `APPROVED` is never the test) nor is answered
    finding-by-finding in a PR comment posted after it (Copilot files most
    findings as "suppressed comments" in the review body, with no thread; a
    body saying Copilot was *unable to review* is not a review and fails this
