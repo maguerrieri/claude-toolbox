@@ -74,8 +74,9 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
 Driven by `gh` + the GitHub GraphQL API, plus standalone `jq` for the two body-gate reads below
 (`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp`, run the filter
 via `--jq` on one `per_page=100` page, and start it with `.[]` instead of `.[][]` — a single page is
-a flat array, not `--slurp`'s array of pages — exact until the PR passes 100 reviews *or* 100 PR
-comments, the two collections it reads; past either, walk `?page=N` by hand until a short page). Copilot
+a flat array, not `--slurp`'s array of pages — exact until the PR passes 100 reviews, 100 PR
+comments, *or* 100 timeline events, the three collections it reads; past any, walk `?page=N` by
+hand until a short page). Copilot
 is the default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
 
 - **Detect, don't guess.** Copilot-review availability is *not* visible in the repo tree — an
