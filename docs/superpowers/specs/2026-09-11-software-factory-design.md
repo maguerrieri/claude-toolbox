@@ -167,13 +167,14 @@ head**, not the body:
    real PR before anything relies on it, and the gate reads the PR's
    `statusCheckRollup` as a cross-check. 3b applies the identical rule;
 2. the paginated `reviewThreads` GraphQL query (the one `REVIEW_BOT` already
-   uses) returns any unresolved thread, or — the other half of `REVIEW_BOT`'s
-   review gate since #130 — Copilot's newest review on the head is neither an
-   approval nor answered finding-by-finding in a PR comment posted after it
-   (Copilot files most findings as "suppressed comments" in the review body,
-   with no thread; a body saying Copilot was *unable to review* is not a
-   review and fails this item until the profile's retry/fallback has run),
-   unless the profile's no-bot fallback comment is on the PR;
+   uses) returns any unresolved thread — or, the other half of `REVIEW_BOT`'s
+   review gate since #130, waived only when the profile's no-bot fallback
+   comment is on the PR (an unresolved thread still fails regardless):
+   Copilot's newest review on the head is neither an approval nor answered
+   finding-by-finding in a PR comment posted after it (Copilot files most
+   findings as "suppressed comments" in the review body, with no thread; a
+   body saying Copilot was *unable to review* is not a review and fails this
+   clause until the profile's retry/fallback has run);
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
    exactly `[<issue>]` — zero, a different issue, or more than one all fail;
 4. `<issue>` does not carry **exactly one** label matching `risk:*`, or that

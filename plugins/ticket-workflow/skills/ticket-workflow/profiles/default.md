@@ -191,7 +191,8 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   that finds the same unable review newest then knows the retry was issued and doesn't request
   again. Wait for a **newer** review (a later `submitted_at`; the same body stays newest while the
   retry is in flight). Fall back — treat the PR as "no bot" and **say so in one PR comment**
-  (`Copilot could not review this PR twice; handing back on CI + the user's review`) — when the
+  (`No Copilot review for this PR — <request failed | unable to review twice | retry never
+  answered>; handing back on CI + the user's review`) — when the
   newer review is also unable, when the re-request fails (Copilot disabled), or when the retry
   comment is on the PR with nothing pending (either signal) and no newer review. That fallback
   comment is the durable marker the gates read: if the PR already carries it, don't re-request.
