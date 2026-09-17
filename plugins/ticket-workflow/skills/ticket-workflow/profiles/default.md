@@ -118,8 +118,10 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
     --jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
            | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
   ```
-  No output → no Copilot review (the other-bot / no-bot case above; `// empty` keeps an empty array
-  from printing a null record). Otherwise its `commit_id` must be the PR head: an older one is a previous round's review, and Copilot is
+  No output (`// empty` keeps an empty array from printing a null record) means one of two things —
+  check `requested_reviewers` from the detect step: Copilot listed → the review is pending, wait;
+  not listed → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
+  vacuous. Otherwise its `commit_id` must be the PR head: an older one is a previous round's review, and Copilot is
   still pending on the push (or needs a re-request) — wait for it; never gate on a stale review.
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
   - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
@@ -154,10 +156,12 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
 
 - **Loop** until **all three** hold — the completion gate:
   1. the unresolved-threads query returns nothing;
-  2. the bot's **newest** review is 🟢 *Approval recommended*, **or** every entry in its
-     `Suppressed comments` has its own line in a PR comment posted **after** it (an anchor two
-     entries share needs two lines) — an answer to an earlier
-     review doesn't carry over; after each push, answer the newest review's list (repeats included);
+  2. for Copilot, the **newest** review — on the PR head, and not an *unable to review* body — is
+     🟢 *Approval recommended*, **or** every entry in its `Suppressed comments` has its own line in
+     a PR comment posted **after** it (an anchor two entries share needs two lines) — an answer to
+     an earlier review doesn't carry over; after each push, answer the newest review's list (repeats
+     included). Also met when the engaged bot isn't Copilot, or the no-bot fallback comment (last
+     bullet) is already on the PR;
   3. CI is green (`gh pr checks <pr> --watch`).
 
   For (2), list comments newer than the review (ISO-8601 `Z` timestamps compare as strings):
