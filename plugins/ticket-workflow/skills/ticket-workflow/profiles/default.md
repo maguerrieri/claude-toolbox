@@ -72,8 +72,9 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
 
 ## REVIEW_BOT
 Driven by `gh` + the GitHub GraphQL API, plus standalone `jq` for the two body-gate reads below
-(`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp` and run the same
-filter via `--jq` on one `per_page=100` page — exact until the PR passes 100 reviews *or* 100 PR
+(`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp`, run the filter
+via `--jq` on one `per_page=100` page, and start it with `.[]` instead of `.[][]` — a single page is
+a flat array, not `--slurp`'s array of pages — exact until the PR passes 100 reviews *or* 100 PR
 comments, the two collections it reads; past either, walk `?page=N` by hand until a short page). Copilot
 is the default bot; CodeRabbit or a CI review action are handled the same way (resolve their threads).
 
@@ -132,8 +133,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   Copilot was **ever** requested or seen pending on this PR (by you, or auto-requested — GitHub can
   show neither signal for a moment while it schedules the run): keep waiting until a review, an
   explicit request failure, or the fallback comment exists. Only a PR on which Copilot was never
-  requested nor pending has no Copilot review (the other-bot / no-bot case), and there gate (2)
-  below is vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
+  requested nor pending has no Copilot review (the other-bot / no-bot case); only for such a PR is
+  gate (2) below vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
   previous round's — never gate on it — and only for that stale case: Copilot pending (either
   signal) → wait; neither (the push didn't auto-request) → re-request now and record it with a
   one-line PR comment (`Copilot re-requested on <head sha>`), so a later pass that finds the same
