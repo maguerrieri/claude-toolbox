@@ -167,7 +167,11 @@ head**, not the body:
    real PR before anything relies on it, and the gate reads the PR's
    `statusCheckRollup` as a cross-check. 3b applies the identical rule;
 2. the paginated `reviewThreads` GraphQL query (the one `REVIEW_BOT` already
-   uses) returns any unresolved thread;
+   uses) returns any unresolved thread, or — the other half of `REVIEW_BOT`'s
+   review gate since #130 — Copilot's newest review on the head is neither an
+   approval nor answered finding-by-finding in a PR comment posted after it
+   (Copilot files most findings as "suppressed comments" in the review body,
+   with no thread), unless the profile's no-bot fallback comment is on the PR;
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
    exactly `[<issue>]` — zero, a different issue, or more than one all fail;
 4. `<issue>` does not carry **exactly one** label matching `risk:*`, or that
