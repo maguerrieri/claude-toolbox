@@ -79,6 +79,9 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   Copilot is already engaged — and note `requested_reviewers` lists only *pending* reviewers, so a
   bot that already **submitted** drops off it; check existing reviews too:
   - `gh api repos/OWNER/REPO/pulls/<pr> --jq '[.requested_reviewers[].login]'` — review pending
+  - `gh pr checks <pr>` — a `copilot-pull-request-reviewer` check run still in progress is also
+    "pending": Copilot drops off `requested_reviewers` once its run starts (observed on #131), so
+    "pending" below means *either* signal.
   - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
     it). Don't re-request — just wait, then read its threads **and its review body** (below). A
@@ -120,10 +123,10 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
            | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
   ```
   No output (`// empty` keeps an empty array from printing a null record) means one of two things —
-  check `requested_reviewers` from the detect step: Copilot listed → the review is pending, wait;
-  not listed → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
+  the detect step's two pending signals: Copilot requested, or its check run in progress → the
+  review is pending, wait; neither → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
   vacuous. Otherwise its `commit_id` must be the PR head: an older one is a previous round's review — never
-  gate on it. Copilot in `requested_reviewers` → wait; not listed (the push didn't auto-request) →
+  gate on it. Copilot pending (either signal) → wait; neither (the push didn't auto-request) →
   re-request now, and if that request fails take the no-bot fallback (last bullet).
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
   - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
