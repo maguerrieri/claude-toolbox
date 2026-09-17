@@ -116,10 +116,11 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   *Changes recommended* review has body findings on top of its inline ones. This step and gate (2)
   below are Copilot-specific: with another bot (CodeRabbit, a CI action) or none, the query returns
   no review and gate (2) is vacuously met — those bots' findings are threads. Fetch the latest review
-  (last by `submitted_at`; `--slurp` so `last` spans all pages — a review cycle passes 30 easily):
+  (last by `submitted_at`; `--slurp` so `last` spans all pages — a review cycle passes 30 easily —
+  piped to standalone `jq`, since `gh` rejects `--slurp` together with `--jq`):
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
-    --jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
+    | jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
            | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
   ```
   No output (`// empty` keeps an empty array from printing a null record) → read the detect step's
@@ -128,8 +129,12 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   succeeded this pass → no Copilot review exists (the other-bot / no-bot case) and gate (2) below is
   vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
   previous round's — never gate on it — and only for that stale case: Copilot pending (either
-  signal) → wait; neither (the push didn't auto-request) → re-request now, and if that request
-  fails take the no-bot fallback (last bullet). A current-head review never triggers a re-request.
+  signal) → wait; neither (the push didn't auto-request) → re-request now and record it with a
+  one-line PR comment (`Copilot re-requested on <head sha>`), so a later pass that finds the same
+  stale review with the signals transiently absent doesn't request again — with that comment on
+  the PR for the current head, wait; if the request fails, take the no-bot fallback (last bullet).
+  A current-head review never triggers a re-request here, with one exception: an *unable to
+  review* body on the head takes the last bullet's one retry.
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
   - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
     `### 🔵 Needs a closer look`.
@@ -174,7 +179,7 @@ default bot; CodeRabbit or a CI review action are handled the same way (resolve 
   For (2), list comments newer than the review (ISO-8601 `Z` timestamps compare as strings):
   ```bash
   gh api "repos/OWNER/REPO/issues/<pr>/comments?per_page=100" --paginate --slurp \
-    --jq '[.[][] | select(.created_at > "<submitted_at>")] | map(.body)'
+    | jq '[.[][] | select(.created_at > "<submitted_at>")] | map(.body)'
   ```
   Push fixes, let the bot re-review (a push re-triggers Copilot/CodeRabbit), re-read threads and the
   newest body, repeat.
