@@ -130,11 +130,16 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   No output (`// empty` keeps an empty array from printing a null record) → read the detect step's
   two pending signals **fresh** (a snapshot taken before a request you just made is stale): Copilot
   requested, or its check run in progress → the review is pending, wait. Neither → still pending if
-  Copilot was **ever** requested or seen pending on this PR (by you, or auto-requested — GitHub can
-  show neither signal for a moment while it schedules the run): keep waiting until a review, an
-  explicit request failure, or the fallback comment exists. Only a PR on which Copilot was never
-  requested nor pending has no Copilot review (the other-bot / no-bot case); only for such a PR is
-  gate (2) below vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
+  Copilot was **ever** requested on this PR (by you, or auto-requested — GitHub can show neither
+  signal for a moment while it schedules the run). That fact is durable on the PR itself, so read
+  it there, never from memory — a later turn or a fresh coordinator sees the same answer:
+  ```bash
+  gh api "repos/OWNER/REPO/issues/<pr>/timeline?per_page=100" --paginate --slurp \
+    | jq '[.[][] | select(.event=="review_requested" and .requested_reviewer.login=="Copilot")] | length'
+  ```
+  Non-zero → keep waiting until a review, an explicit request failure, or the fallback comment
+  exists. Zero → Copilot was never requested (the other-bot / no-bot case) and has no review; only
+  for such a PR is gate (2) below vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
   previous round's — never gate on it — and only for that stale case: Copilot pending (either
   signal) → wait; neither (the push didn't auto-request) → re-request now and record it with a
   one-line PR comment (`Copilot re-requested on <head sha>`), so a later pass that finds the same
@@ -200,10 +205,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   retry is in flight). Fall back — treat the PR as "no bot" and **say so in one PR comment**
   (`No Copilot review for this PR — <request failed | unable to review twice | retry never
   answered>; handing back on CI + the user's review`) — when the
-  newer review is also unable, when the re-request fails (Copilot disabled), or when a **later**
-  pass (never the one that issued the retry — GitHub can show neither signal for a moment while
-  it schedules the run) finds the retry comment on the PR, nothing pending (either signal), and
-  no newer review. That fallback
+  newer review is also unable, when the re-request fails (Copilot disabled), or when a later
+  pass finds the retry comment on the PR **older than 15 minutes** (its `created_at`; Copilot's
+  runs finish in about five, and GitHub can show neither signal for a moment while it schedules
+  one — hence a bounded wait, not a single look), nothing pending (either signal), and no newer
+  review. That fallback
   comment is the durable marker the gates read: if the PR already carries it, don't re-request.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
   fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
