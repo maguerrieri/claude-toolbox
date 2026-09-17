@@ -25,10 +25,12 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   adapter** (`inline` / `github-issue` / `adr`, or point it at your own).
 - **ticket-workflow** — end-to-end issue workflow: the `ticket-workflow` skill
   plus `/make-ticket`, `/start-ticket`, `/finish-ticket`, `/spawn-tickets`,
-  `/start-epic`, and `/spawn-epic`. Files an issue from conversation context and
+  `/start-epic`, and `/spawn-epic`. Files an issue from conversation context
+  (with a `--risk docs|low|normal|high` class label, default `normal`) and
   takes it from open to a reviewed PR and on to merged, with a pluggable
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
-  parallel fan-out.
+  parallel fan-out. Its `scripts/provision-risk-labels` sets up the `risk:*`
+  labels a repo needs and backfills existing open issues.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —

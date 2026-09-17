@@ -123,6 +123,17 @@ Draft the title + body from the **conversation context** — the discussion that
 
 Quality bar: a reader with zero conversation context can start the work from the body alone. If the request really is a bare one-liner with no surrounding discussion, keep the body honest and short — don't invent detail; ask only if genuinely ambiguous. Title: concise and scoped (`<area>: <what>`), per the repo's issue style.
 
+**Risk class.** Every issue carries exactly one **risk label**, `risk:<class>`, which the later gates key on (FINISH's evidence gate, docs-only auto-merge, the high-risk approval requirement) — so it is set here, at filing time, never inferred later. Resolve the class from the `--risk` flag:
+
+| `--risk` | Meaning |
+|---|---|
+| `docs` | documentation-only change (the class eligible for unattended merge) |
+| `low` | tests, tooling, non-product code |
+| `normal` | **default when the flag is omitted** — ordinary change, human-merged after review |
+| `high` | FINISH requires a current human approval on the PR |
+
+Any other value (`--risk critical`, `--risk medium`) is a **hard error**: stop and report before Step 2 — don't map it to a nearby class and don't fall back to `normal`, since the whole point is that the class was chosen. The resolved label is `risk:<class>`; it is passed to `CREATE` as a *required* label in Step 3, so an omitted flag still files a classified (`risk:normal`) issue and never an unclassified one. The Jira tracker accepts the same flag and applies the label verbatim, but only the GitHub gates read it today (Jira support for the gates is a follow-up).
+
 ### Step 2 — Search for duplicates
 
 Before creating anything, check whether an **open** issue already covers this work. Derive 2–4 distinctive keywords from the composed title/scope (the area/component name plus the most specific noun of the change — not generic words like "fix" or "add"), run the tracker's `SEARCH(query)`, and **judge the hits** — keyword search returns near-misses, so read each candidate's title (and body, when the title alone can't settle it) and decide whether it's the *same work*, not merely the same area.
@@ -131,13 +142,18 @@ What a hit means depends on who's driving:
 
 - **Interactive session** — surface the candidate duplicates (ID, title, URL) and ask before filing. The human has the context to judge; a duplicate they confirm means point at the existing issue instead of creating a new one.
 - **Unattended / spawned session** (`--spawn`, `--start` in a non-interactive run, or a session bound by a pinned role charter) — **neither silently skip nor silently file.** File anyway, but note the suspected duplicate explicitly: add a `Possible duplicate of <ID>` line (with the URL) to the new issue's body, and repeat it in your report/ping so a human can merge or close. A silent skip loses the composed context; a silent duplicate wastes a worktree and a PR downstream — filing-with-a-note fails safe in both directions.
-- **Search failure** (no network, tracker error, `SEARCH` not wired for this tracker) — **non-fatal.** Degrade to filing normally, same as `CREATE` treats `--label` as best-effort; mention that the dup check was skipped.
+- **Search failure** (no network, tracker error, `SEARCH` not wired for this tracker) — **non-fatal.** Degrade to filing normally, same as `CREATE` treats its optional `labels` as best-effort (the required risk label is never degraded); mention that the dup check was skipped.
 
 No hits, or hits judged unrelated → proceed to Step 3 without comment.
 
 ### Step 3 — Create it
 
-Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. Labels only when they clearly apply in the target repo — CREATE treats them as best-effort.
+Run the tracker's `CREATE(title, body, labels?, required_labels)` and capture the returned ID. Two kinds of label, deliberately different:
+
+- **`required_labels`** — exactly `["risk:<class>"]` from Step 1, **always** (whether the flag was explicit or the default `normal` resolved it). A required label that doesn't exist in the target repo is a **hard error surfaced to the user** — the tracker must not retry without it, must not create the issue unlabelled, and must not create the label on the fly; report which label is missing and point at the provisioning step (`${CLAUDE_PLUGIN_ROOT}/scripts/provision-risk-labels OWNER/REPO` — the script ships in this plugin, not on PATH; see the GitHub tracker's *Labels* section). Never pass a second `risk:*` name here or in `labels` — *exactly one* risk label per issue is the invariant the gates enforce, and FILE is where it's established.
+- **`labels`** (optional) — any other labels, only when they clearly apply in the target repo; CREATE treats these as best-effort (drops them if the repo lacks them) exactly as before.
+
+After a successful CREATE the issue carries exactly one `risk:*` label; if the tracker shows anything else (a pre-existing automation added a second one), report it rather than silently continuing.
 
 ### Step 4 — Route by flag
 

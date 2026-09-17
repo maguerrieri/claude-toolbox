@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Provision the risk:* labels in a GitHub repo and backfill open issues.
+
+The ticket-workflow FILE mini-phase files every issue with exactly one
+`risk:<class>` label (`/make-ticket --risk docs|low|normal|high`, default
+`normal`), and the GitHub tracker's CREATE treats a missing label as a hard
+error. So each repo needs the labels provisioned once, and issues filed before
+the flag existed need a one-time backfill. This script does both, idempotently:
+
+  1. Labels -- create any of `risk:docs`, `risk:low`, `risk:normal`,
+     `risk:high`, and `auto-merge: requested` that the repo lacks. Existing
+     labels are left untouched (their colour/description is not rewritten).
+  2. Backfill -- enumerate every OPEN issue with explicit full pagination
+     (`gh issue list` silently caps at 30; this walks pages until one comes
+     back short), skipping pull requests. An issue with NO `risk:*` label
+     gets `risk:normal`. An issue with exactly one known class is left alone.
+     An issue with two or more `risk:*` labels, or an unknown `risk:` name
+     (`risk:critical`), is PRINTED for manual remediation and never edited --
+     "exactly one known risk label" is the invariant the FINISH gate enforces,
+     and guessing which one to keep would silently downgrade it. Closed issues
+     are never touched (they're never even fetched).
+
+Prints the enumerated / remediated / untouched / flagged counts per repo.
+
+Usage (the script is not on PATH; run it by path -- from this repo's root, or
+from the installed plugin as `${CLAUDE_PLUGIN_ROOT}/scripts/provision-risk-labels`):
+  plugins/ticket-workflow/scripts/provision-risk-labels [--dry-run] [--no-backfill] OWNER/REPO [OWNER/REPO ...]
+
+  --dry-run       show what would be created/labelled; write nothing. Running
+                  it a second time with --dry-run is the verification step:
+                  "remediated 0, flagged 0" means every open issue carries
+                  exactly one known risk label.
+  --no-backfill   provision the labels only.
+
+Transport: `gh api` when the gh CLI is on PATH (its keyring auth); otherwise
+plain HTTPS with GH_TOKEN / GITHUB_TOKEN (cloud sessions without gh). Stdlib
+only, no dependencies.
+
+Exit status: 0 when every open issue ends up with exactly one known risk label;
+1 if any issue was flagged for manual remediation (so a CI-style invocation
+notices); 2 on usage or API errors.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+RISK_CLASSES = ("docs", "low", "normal", "high")
+DEFAULT_CLASS = "normal"
+KNOWN_RISK_LABELS = tuple(f"risk:{c}" for c in RISK_CLASSES)
+
+# name -> (colour, description). Colours are hex without '#', as the API wants.
+LABELS = {
+    "risk:docs": ("0e8a16", "Risk class: documentation-only change (eligible for unattended merge)"),
+    "risk:low": ("c2e0c6", "Risk class: low (tests, tooling, non-product code)"),
+    "risk:normal": ("fbca04", "Risk class: normal (default; human-merged after review)"),
+    "risk:high": ("d93f0b", "Risk class: high (FINISH requires a current human approval)"),
+    "auto-merge: requested": (
+        "5319e7",
+        "Opt-in: request unattended merge of an eligible (risk:docs) PR",
+    ),
+}
+
+PER_PAGE = 100
+
+
+class ApiError(Exception):
+    pass
+
+
+class Api:
+    """Minimal GitHub REST client: `gh api` if available, else urllib + token."""
+
+    def __init__(self, dry_run):
+        self.dry_run = dry_run
+        self.gh = shutil.which("gh")
+        self.token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if not self.gh and not self.token:
+            raise ApiError("neither `gh` on PATH nor GH_TOKEN/GITHUB_TOKEN set")
+
+    def call(self, method, api_path, body=None):
+        """Return the decoded JSON response (or None for an empty body)."""
+        if self.gh:
+            return self._call_gh(method, api_path, body)
+        return self._call_http(method, api_path, body)
+
+    def _call_gh(self, method, api_path, body):
+        cmd = [self.gh, "api", "-X", method, api_path]
+        stdin = None
+        if body is not None:
+            cmd += ["--input", "-"]
+            stdin = json.dumps(body)
+        result = subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ApiError(f"gh api {method} {api_path}: {result.stderr.strip() or result.stdout.strip()}")
+        return json.loads(result.stdout) if result.stdout.strip() else None
+
+    def _call_http(self, method, api_path, body):
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(
+            f"https://api.github.com/{api_path}",
+            data=data,
+            method=method,
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                **({"Content-Type": "application/json"} if data is not None else {}),
+            },
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                payload = response.read()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode(errors="replace").strip()
+            raise ApiError(f"{method} {api_path}: HTTP {exc.code} {detail}") from None
+        except urllib.error.URLError as exc:  # DNS, TLS, connection refused, ...
+            raise ApiError(f"{method} {api_path}: {exc.reason}") from None
+        return json.loads(payload) if payload.strip() else None
+
+    def paginate(self, api_path):
+        """Every item of a list endpoint, walking pages until one comes back short."""
+        items = []
+        page = 1
+        while True:
+            sep = "&" if "?" in api_path else "?"
+            chunk = self.call("GET", f"{api_path}{sep}per_page={PER_PAGE}&page={page}")
+            if not isinstance(chunk, list):
+                raise ApiError(f"GET {api_path}: expected a JSON array, got {type(chunk).__name__}")
+            items.extend(chunk)
+            if len(chunk) < PER_PAGE:
+                return items
+            page += 1
+
+    def write(self, method, api_path, body):
+        """A mutating call, skipped under --dry-run."""
+        if self.dry_run:
+            return None
+        return self.call(method, api_path, body)
+
+
+def provision_labels(api, repo):
+    existing = {label["name"] for label in api.paginate(f"repos/{repo}/labels")}
+    created = []
+    for name, (color, description) in LABELS.items():
+        if name in existing:
+            print(f"  label {name!r}: exists")
+            continue
+        api.write("POST", f"repos/{repo}/labels", {"name": name, "color": color, "description": description})
+        created.append(name)
+        print(f"  label {name!r}: {'would create' if api.dry_run else 'created'}")
+    return created
+
+
+def classify(issue):
+    """('none' | 'ok' | 'flag', [risk labels]) for one issue."""
+    risk = sorted(label["name"] for label in issue.get("labels", []) if label["name"].startswith("risk:"))
+    if not risk:
+        return "none", risk
+    if len(risk) == 1 and risk[0] in KNOWN_RISK_LABELS:
+        return "ok", risk
+    return "flag", risk
+
+
+def backfill(api, repo):
+    # The issues endpoint returns pull requests too; they carry a `pull_request` key.
+    issues = [i for i in api.paginate(f"repos/{repo}/issues?state=open") if "pull_request" not in i]
+    counts = {"enumerated": len(issues), "remediated": 0, "untouched": 0, "flagged": 0}
+    for issue in sorted(issues, key=lambda i: i["number"]):
+        state, risk = classify(issue)
+        if state == "ok":
+            counts["untouched"] += 1
+        elif state == "none":
+            api.write("POST", f"repos/{repo}/issues/{issue['number']}/labels", {"labels": [f"risk:{DEFAULT_CLASS}"]})
+            counts["remediated"] += 1
+            print(f"  #{issue['number']}: {'would add' if api.dry_run else 'added'} risk:{DEFAULT_CLASS}")
+        else:
+            counts["flagged"] += 1
+            print(f"  #{issue['number']}: MANUAL -- {', '.join(risk)} (need exactly one of {', '.join(KNOWN_RISK_LABELS)})")
+    print(
+        f"  open issues enumerated {counts['enumerated']}, remediated {counts['remediated']},"
+        f" untouched {counts['untouched']}, flagged {counts['flagged']}"
+    )
+    return counts
+
+
+def main(argv):
+    dry_run = "--dry-run" in argv
+    do_backfill = "--no-backfill" not in argv
+    repos = [a for a in argv[1:] if not a.startswith("--")]
+    unknown = [a for a in argv[1:] if a.startswith("--") and a not in ("--dry-run", "--no-backfill")]
+    if unknown or not repos or any(r.count("/") != 1 for r in repos):
+        sys.stderr.write(__doc__)
+        return 2
+    try:
+        api = Api(dry_run)
+        flagged = 0
+        for repo in repos:
+            print(f"{repo}{' (dry run)' if dry_run else ''}")
+            provision_labels(api, repo)
+            if do_backfill:
+                flagged += backfill(api, repo)["flagged"]
+    except ApiError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if flagged:
+        print(f"{flagged} issue(s) need manual remediation (see MANUAL lines above)")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

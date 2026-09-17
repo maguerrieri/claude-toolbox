@@ -33,6 +33,16 @@ Work is tracked in **GitHub Issues**. Commits and PRs follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
 brackets, AI-assistance flags in the subject parens.
 
+Every issue carries **exactly one `risk:*` label** (`risk:docs` / `risk:low` /
+`risk:normal` / `risk:high`), set at filing time by `/make-ticket --risk`
+(default `normal`); the later gates in the software-factory design
+(`docs/superpowers/specs/2026-09-11-software-factory-design.md`, §1c) key on it
+and treat a missing, doubled, or unknown label as a stop. The labels (plus
+`auto-merge: requested`) are provisioned in this repo and in `maguerrieri/toolbox`
+by `plugins/ticket-workflow/scripts/provision-risk-labels`, which also backfills
+`risk:normal` onto open issues that predate the flag; rerun it with `--dry-run`
+to verify a repo is clean.
+
 A session can also carry a **role** (`planner` / `epic-coordinator` /
 `implementer`) that pins its altitude and propagates down the spawn edges as a
 `Role:` briefing directive — see the skill's `roles/`. Set only the top planner
