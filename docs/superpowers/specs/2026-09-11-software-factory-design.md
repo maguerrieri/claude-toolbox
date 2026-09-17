@@ -171,7 +171,9 @@ head**, not the body:
    review gate since #130 — Copilot's newest review on the head is neither an
    approval nor answered finding-by-finding in a PR comment posted after it
    (Copilot files most findings as "suppressed comments" in the review body,
-   with no thread), unless the profile's no-bot fallback comment is on the PR;
+   with no thread; a body saying Copilot was *unable to review* is not a
+   review and fails this item until the profile's retry/fallback has run),
+   unless the profile's no-bot fallback comment is on the PR;
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
    exactly `[<issue>]` — zero, a different issue, or more than one all fail;
 4. `<issue>` does not carry **exactly one** label matching `risk:*`, or that
