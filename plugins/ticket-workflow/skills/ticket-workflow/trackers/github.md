@@ -17,7 +17,7 @@ Read `title` and `body`. Look in `body` for a base-branch directive (e.g. "Base 
 
 ## SEARCH(query)  — find existing open issues (FILE phase dup check)
 ```bash
-gh issue list --search "<query>" --state open --json number,title,url -L 50
+gh issue list -R <owner>/<repo> --search "<query>" --state open --json number,title,url -L 50
 ```
 - Set `-L`/`--limit` explicitly — `gh issue list` silently defaults to **30** (the same footgun `EPIC_CHILDREN` calls out); 50 is plenty for a keyword dup check.
 - `<query>` is plain keywords (GitHub search syntax is accepted but not required). Keep it to the 2–4 distinctive terms FILE Step 2 derived — an over-specific query returns nothing and under-checks.
@@ -34,9 +34,9 @@ gh issue create --title "<title>" --body-file <path>  [--label "<label>"]
 
 ## START(id)  — mark in-progress (optional, light)
 ```bash
-gh issue edit <n> --add-assignee @me
+gh issue edit <n> -R <owner>/<repo> --add-assignee @me
 # optional, only if the repo uses such a label:
-gh issue edit <n> --add-label "in progress"
+gh issue edit <n> -R <owner>/<repo> --add-label "in progress"
 ```
 Skip silently if it errors (e.g. label doesn't exist) — START is best-effort.
 
@@ -71,7 +71,7 @@ gh api graphql --paginate -f query='query($owner:String!,$repo:String!,$num:Int!
 ```
   `--paginate` auto-follows pages via the `$endCursor`/`pageInfo` pairing (verified on gh 2.88.1), so an epic with **>100** children isn't silently truncated — keep the `$endCursor` var, the `after:$endCursor` arg, and `pageInfo` intact.
 - **Task-list / tracking issue:** the epic's body has a checklist that references child issues (`- [ ] #123`). Parse `#<n>` refs from the body — use `-q .body` so you get raw text, not a JSON object with escaped newlines: `gh issue view <n> -R <owner>/<repo> --json body -q .body`.
-- **Shared label or milestone:** `gh issue list --label "epic:<name>" --json number,title,state,labels -L 500` (or `--milestone "<name>"`) — set `-L`/`--limit` explicitly; `gh issue list` defaults to **30**, which would silently cap a large epic.
+- **Shared label or milestone:** `gh issue list -R <owner>/<repo> --label "epic:<name>" --json number,title,state,labels -L 500` (or `--milestone "<name>"`) — set `-L`/`--limit` explicitly; `gh issue list` defaults to **30**, which would silently cap a large epic.
 
 Return `(number, title, labels)` for each child — the labels feed the EPIC coupling router (`phases/epic.md` Step 3). If none of these apply, ask the user for the child IDs.
 
