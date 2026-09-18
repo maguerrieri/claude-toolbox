@@ -105,6 +105,11 @@ rm -f "$body"
 # in its place records nothing a second coordinator can use.
 body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s)\n' "$branch" "$session" "$child_id" "$epic_id" > "$body"
+# …and AFTER the child launches, a SECOND record naming it. EPIC Step 5's takeover rule decides on
+# the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
+# launch cannot answer the question a later run asks. One more comment, same discipline:
+#   claim: <branch> -> <session> for <child id> (epic <epic_id>) child=<child session id>
+# Readers take the newest non-spent claim for a branch, so the second record supersedes the first.
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
 rm -f "$body"
 # Read markers WITH their id, author and timestamp — all three are load-bearing (EPIC's fork-point
