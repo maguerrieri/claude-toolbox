@@ -84,7 +84,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   Copilot is already engaged — and note `requested_reviewers` lists only *pending* reviewers, so a
   bot that already **submitted** drops off it; check existing reviews too:
   - `gh api repos/OWNER/REPO/pulls/<pr> --jq '[.requested_reviewers[].login]'` — review pending
-  - `gh pr checks <pr>` — a `copilot-pull-request-reviewer` check run still in progress is also
+  - `gh pr checks <pr> -R "$repo"` — a `copilot-pull-request-reviewer` check run still in progress is also
     "pending": Copilot drops off `requested_reviewers` once its run starts (observed on #131), so
     "pending" below means *either* signal.
   - `gh pr view <pr> -R "$repo" --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
@@ -95,7 +95,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
     "no bot" if the request fails (Copilot disabled for the repo).
 
-**Every `gh` call in this profile takes `-R "$repo"`, the repository the calling phase selected.** A profile op is invoked *by* a phase, so it inherits that phase's binding rather than resolving its own from the cwd — and this one both **reads** a gate signal and **mutates** the PR, so unbound it can gate on one repository and request a review on another. Where a caller has no `$repo` in scope, that is the caller's bug to fix, not a licence to fall back to the cwd.
+**Every `gh` call in this profile takes `-R "$repo"`, the repository the calling phase selected — and **the caller sets `$repo` before invoking any profile op**, which is the half that makes the rest true.** FINISH resolves it in its preamble; **START must too**, before it reaches this profile from its Step 8 review loop, by the same normalization (`git remote get-url origin`, or the repository `REPO_SELECT` chose where a profile maps the issue elsewhere). An unset `$repo` expands to empty, so `-R ""` is not a safe degradation to the cwd — it is a malformed flag, and a rule that assumes a variable nobody assigns is a rule that fails at the first call. Where a caller genuinely has no repository in scope, that is the caller's bug to fix.** A profile op is invoked *by* a phase, so it inherits that phase's binding rather than resolving its own from the cwd — and this one both **reads** a gate signal and **mutates** the PR, so unbound it can gate on one repository and request a review on another. Where a caller has no `$repo` in scope, that is the caller's bug to fix, not a licence to fall back to the cwd.
 
 - **Request a review** (when not already engaged): `gh pr edit <pr> -R "$repo" --add-reviewer "@copilot"`.
   Best-effort — if it errors (Copilot review not enabled for the repo/account), post the no-bot
@@ -178,7 +178,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   thread to reply on or resolve, so post a **single** comment after the review, one line per entry (a repeated `path:line` gets
   one line per finding):
   `path:line` — `fixed in <sha> — …` or `not changing — …`. Push fixes first so the lines can cite
-  SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
+  SHAs; `gh pr comment <pr> -R "$repo" --body-file <file>`. If every entry is "not changing" (no push), don't
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
 - **Loop** until **all three** hold — the completion gate:
@@ -189,7 +189,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
      an earlier review doesn't carry over; after each push, answer the newest review's list (repeats
      included). Also met when the engaged bot isn't Copilot, or the no-bot fallback comment (last
      bullet) is already on the PR;
-  3. CI is green (`gh pr checks <pr> --watch`).
+  3. CI is green (`gh pr checks <pr> -R "$repo" --watch`).
 
   For (2), list comments newer than the review (ISO-8601 `Z` timestamps compare as strings):
   ```bash
@@ -215,7 +215,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   review. That fallback
   comment is the durable marker the gates read: if the PR already carries it, don't re-request.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
-  fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
+  fallback above): rely on `gh pr checks <pr> -R "$repo" --watch` + the user's review.
 
 ## SMOKE_DEPLOY
 - If the project has a way to run or deploy, smoke test before merging (start it / deploy
