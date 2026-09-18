@@ -241,10 +241,17 @@ branch=<the adapter's BRANCH value, or the `Worktree:` directive verbatim>
   || { echo "branch name rejected by the allowlist — refuse and report"; exit 1; }
 git check-ref-format --branch "$branch" >/dev/null \
   || { echo "not a valid branch name — refuse and report"; exit 1; }
-# Same two checks, same order, for the `Base branch:` value before anything fetches or rebases with it.
+# …and the SAME two checks for the base, written out rather than described: it comes from the
+# issue body or the briefing (attacker-reachable text) and is interpolated into fetches, rebases
+# and `gh pr create --base`. A comment saying "do this too" is not a check.
+base_branch=<the resolved `Base branch:` value — directive, issue body, or the repo default>
+[[ $base_branch =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] \
+  || { echo "base branch name rejected by the allowlist — refuse and report"; exit 1; }
+git check-ref-format --branch "$base_branch" >/dev/null \
+  || { echo "not a valid base branch name — refuse and report"; exit 1; }
 ```
 
-Every `<branch>` placeholder below stands for **this validated value** — substitute it from `$branch`, never from the raw directive text, and keep it quoted at every call site (validation narrows the input; quoting contains it).
+Every `<branch>` and `<the validated base branch>` placeholder below stands for **these validated values** — substitute it from `$branch`, never from the raw directive text, and keep it quoted at every call site (validation narrows the input; quoting contains it).
 
 Two paths from here; pick by whether `<branch>` is already checked out:
 
