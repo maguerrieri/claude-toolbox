@@ -273,8 +273,16 @@ else
     hold_add child "$branch" "claim-unconfirmed: could not read the thread back"
     rows=""
   fi
+  # NORMALISE THE STORED BODY'S LINE ENDING BEFORE COMPARING. The claim is written with a
+  # trailing newline (`printf …\n`), and `@tsv` escapes a preserved one as a literal `\n` inside
+  # field 2 — so a byte-for-byte compare against `$want` would never match, the hold would never
+  # clear, and BOTH locks would be retained until a human intervened. Measured 2026-09-18 on this
+  # repository's API: a body posted with a trailing newline came back WITHOUT one, so the compare
+  # happens to match today — which is exactly why this is worth pinning rather than leaving to
+  # luck, since the failure mode is permanent retention and the behaviour is the server's to change.
   if [ "$(printf '%s\n' "$rows" | ORCH="<the orchestrator's login>" WANT="$want" \
-            awk -F'\t' '$1==ENVIRON["ORCH"] && $2==ENVIRON["WANT"]{n++} END{print n+0}')" -gt 0 ]; then
+            awk -F'\t' '{sub(/(\\r)?\\n$/, "", $2)}
+                         $1==ENVIRON["ORCH"] && $2==ENVIRON["WANT"]{n++} END{print n+0}')" -gt 0 ]; then
     # BOTH sets, and for the same reason: this confirmed record carries `base=` (what put the
     # branch into $epic_lock_holds) AND `child=` (what put it into $child_reservation_holds).
     # A later pass re-running this block after an earlier pass failed to write is how a

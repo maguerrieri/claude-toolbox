@@ -403,7 +403,17 @@ if [ "$launched" != yes ]; then
   # was never started, and the next pass would read the claim as an occupied base. Release the
   # child's lock ref by the protocol's leased delete, post a superseding claim saying the launch
   # failed, report, and leave the row unlaunched for the next pass to retry.
-  echo "launch failed for <id> on epic-<epic-id-lower>-<id-lower> — releasing its reservation"
+  # AND DO THE TWO THINGS THE COMMENT PROMISES. The first version of this branch printed the
+  # sentence and exited — which is round 113's "an echo is not a state" in the text I wrote to
+  # fix a different instance of it. A message does not delete a ref: left as it was, the
+  # reservation and its pre-launch claim stay on the remote for a child that does not exist,
+  # and the next coordinator reads that claim's `base=` as an occupied base for ever.
+  git push --force-with-lease="$lock_ref":"$tok" "$remote" ":$lock_ref" \
+    || { echo "could not release $lock_ref after a failed launch — report it as a stranded lock"; }
+  <COORD write: claim: <assigned branch> -> <session> for <child> (epic <epic>) launch-failed
+   — supersedes this run's pre-launch claim, so the chain-top walk stops reading that base as taken>
+  echo "launch failed for <id> on epic-<epic-id-lower>-<id-lower> — reservation released, row left"
+  echo "unlaunched for the next pass; not marked blocked, because nothing about the CHILD failed"
   exit 1
 fi
 ```

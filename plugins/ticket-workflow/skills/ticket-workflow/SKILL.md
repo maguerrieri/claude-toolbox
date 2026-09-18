@@ -497,7 +497,18 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
     0) branch_on_origin=yes ;;
     *) echo "cannot tell whether <branch> is on origin (exit $rc) — stop and report"; exit 1 ;;
   esac
-  [ "$branch_on_origin" = yes ] || { : "skip the rest of this bullet"; }
+  ```
+
+  **and then actually branch on it** — the line I first wrote here, `[ "$branch_on_origin" = yes ] || { : "skip…"; }`, is a no-op: it evaluates and continues, so the fetch below still ran on a first push and stopped the run, which is the whole defect it was added to fix. A skip has to be a conditional around the thing being skipped:
+
+  ```bash
+  if [ "$branch_on_origin" = yes ]; then
+    # ── everything the rest of this bullet describes goes HERE ──
+    # the fetch, the $prev capture, the ancestry test, the rebase decision.
+    # On a first push none of it runs, which is the point: there is no remote
+    # branch to have moved under you, so there is nothing to reconcile.
+    :
+  fi
   ```
 
   and **skip this whole check when it isn't**, which is the normal case for a first push: `git fetch origin <branch>` on a branch the remote has never seen fails with "couldn't find remote ref" and would block every new START run before it opens its PR. When it *does* exist, fetch it and compare `origin/<branch>` with your local head. (A plain `git fetch origin <branch>` is correct here even though the orchestrator force-pushed: a configured remote's default refspec is `+refs/heads/*:refs/remotes/origin/*`, and that `+` force-updates the tracking ref — verified 2026-09-16 across *unrelated* history. The forced `+` EPIC's cascade needs is required there only because it fetches into `refs/rs/*` with an **explicit** refspec, which overrides the configured one. Don't "fix" this fetch to match that one.) If they differ, reconcile first and push nothing until you have — and **check the worktree is clean before *either* path** (`git status --porcelain`), not only before the reset. Uncommitted or untracked work is invisible to the commit comparison and blocks both reconciliations, differently: `reset --hard` **destroys** it, while a rebase refuses to run. Measured on git 2.43.0: an unstaged change stops a rebase with "cannot rebase: You have unstaged changes", a staged-only one with "Your index contains uncommitted changes", and an untracked file colliding with a path in the new base aborts the initial checkout ("The following untracked working tree files would be overwritten by checkout … Aborting", exit 1, the file intact). So on the rebase path the hazard is not lost work but a **stall mid-reconcile** — your branch already rewritten on origin, and a standing temptation to clear git's way (`checkout -- .`, deleting the colliding file) to get moving. Commit or stash it, or stop and report, before *either* path; never clear it to unblock the rebase. Then: with no local commits the remote lacks, `git reset --hard origin/<branch>`; with local work, **replay only the genuinely new commits — you must name that range, not infer it from the divergence.** After a force-push, `origin/<branch>..HEAD` lists your *entire* pre-restack history as "commits the remote lacks", because the orchestrator rewrote the same work onto a new base; rebasing that range replays commits the restack already incorporated. The range you want is bounded by the remote head as it was **before** you fetched, so capture it first:
@@ -588,7 +599,14 @@ Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `gi
 # reason — then hand `gh` the path.
 body_file=<path you wrote the PR body to>
 [ -s "$body_file" ] || { echo "PR body not staged — write it first"; exit 1; }
-gh pr create -R "$repo" --base <base_branch> --title "<adapter PR title>" --body-file "$body_file"
+# The TITLE is issue-derived too — the body was only half the problem. A title carrying a quote,
+# a backtick or `$( )` breaks out of the command before `gh` ever sees it, and an unquoted
+# `<base_branch>` placeholder is read as a redirection. Stage the title as data alongside the
+# body, and pass the base through the variable Step 3 already validated.
+title_file=<path you wrote the PR title to>
+[ -s "$title_file" ] || { echo "PR title not staged — write it first"; exit 1; }
+title=$(cat "$title_file")
+gh pr create -R "$repo" --base "$base_branch" --title "$title" --body-file "$body_file"
 # The body's content, for reference — the same sections, staged rather than inlined:
 #   ## Summary            <1-3 bullets tied to the issue>
 #   ## Test plan          - [ ] CI passes
