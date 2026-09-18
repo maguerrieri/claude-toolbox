@@ -119,7 +119,15 @@ rm -f "$body"
 # is a precondition rather than a retry: a cloud reservation crosses a turn boundary and needs the
 # `lock:` record to be adoptable, so on cloud an unwritable channel means do not launch at all —
 # checked BEFORE taking the ref, not discovered here.)
-[ $rc -eq 0 ] || { echo "pre-launch claim write failed — reservation stands; launch and report the missing claim"; }
+# …but NOT a bare warning either. `base=` lives in THIS record, and between launch and the child's
+# first push it is the only thing on the server saying the child occupies that base — no branch,
+# no PR. So a second coordinator's chain-top walk is blind to this child and can assign another
+# one to the same base: the fan-out the graph lock exists to prevent, arriving after the lock is
+# released. The phase already names the consequence — a run whose COORD is unwritable MUST NOT
+# share the epic with another coordinator — so say that in the report, not just "claim missing".
+[ $rc -eq 0 ] || { echo "pre-launch claim write failed — reservation stands, launch;" \
+                        "report: base=$base unrecorded for $branch, this epic must be run by ONE" \
+                        "coordinator until a human reconciles it"; }
 # …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
 # the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
 # launch cannot answer the question a later run asks. Run this the moment the backend returns an id:
