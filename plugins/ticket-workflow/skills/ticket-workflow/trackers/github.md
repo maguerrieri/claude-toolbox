@@ -124,10 +124,12 @@ rm -f "$body"
 # no PR. So a second coordinator's chain-top walk is blind to this child and can assign another
 # one to the same base: the fan-out the graph lock exists to prevent, arriving after the lock is
 # released. The phase already names the consequence — a run whose COORD is unwritable MUST NOT
-# share the epic with another coordinator — so say that in the report, not just "claim missing".
+# share the epic with another coordinator — and a REPORT does not enforce that, so the run
+# keeps the graph lock it already holds instead of releasing it at the end of the pass.
 [ $rc -eq 0 ] || { echo "pre-launch claim write failed — reservation stands, launch;" \
-                        "report: base=$base unrecorded for $branch, this epic must be run by ONE" \
-                        "coordinator until a human reconciles it"; }
+                        "HOLD THE EPIC GRAPH LOCK past this pass (do not release, exclude from the" \
+                        "sweep) until the claim is repaired or a human releases it — base=$base is" \
+                        "unrecorded for $branch and the lock is the only enforceable form of that"; }
 # …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
 # the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
 # launch cannot answer the question a later run asks. Run this the moment the backend returns an id:

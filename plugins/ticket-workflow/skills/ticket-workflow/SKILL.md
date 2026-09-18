@@ -278,7 +278,16 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   # out, check-ref-format keeps git-invalid names out, and `--branch` runs AFTER the allowlist and
   # never instead of it, since it is documented to EXPAND @{-1} where a reflog exists. Then quote
   # every validated value at every call site — validation narrows the input, quoting contains it.
-  cd /path/to/<repo>
+  # `/path/to/<repo>` is THE SELECTED REPOSITORY'S OWN CHECKOUT — the one `$repo` names, not the
+  # cwd you happen to be in. Every git command in this phase is bound by that cwd rather than by
+  # a flag (git has no `-R`), so `origin` below is correct only because you are standing in that
+  # repository: in an umbrella checkout, or where a profile maps the issue elsewhere, `origin`
+  # is a DIFFERENT repository and the base, the fetches and Step 7's push would all act on it
+  # while the `gh` calls acted on `$repo`. So resolve that checkout first, and if the selected
+  # repository has none here, clone it or stop and report — do not fall through to this cwd.
+  cd /path/to/<repo>                 # the checkout of $repo; `git -C` it if you prefer
+  [ "$(git remote get-url origin | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')" = "$repo" ] \
+    || { echo "this checkout is not $repo — resolve the selected repository's checkout, or stop"; exit 1; }
   git fetch origin "<the validated base branch>"
   # `Cut from:` arrives as text in your
   # briefing, so every command below that contains it was already parsed by the shell by the time
