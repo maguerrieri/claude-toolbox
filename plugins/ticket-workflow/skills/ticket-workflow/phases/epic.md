@@ -62,7 +62,11 @@ Five paths in this phase rewrite a branch: Step 4's cascade, Step 6's restack ac
 - **Bind every git and `gh` call to the repository `REPO_SELECT` chose**, not to whatever the cwd resolves to. An org profile can map the issue to another repo, and an orchestrator often sits in an umbrella checkout — unbound, a retarget lands on an unrelated PR and a marker read misses the epic entirely. Resolve **three** values once, up front, and never substitute one for another:
 
   ```bash
-  repo=<owner>/<repo>          # -R for every BUILT-IN gh command: pr edit, pr list, issue comment, api
+  repo=<owner>/<repo>          # -R for every BUILT-IN gh SUBCOMMAND: pr edit, pr list, issue comment
+                               # NOT `gh api` — it has no `-R` (an `-R` there is `unknown shorthand
+                               # flag: 'R'`); its repository is the URL path, `repos/$repo/…`, and
+                               # `gh api graphql` takes neither, binding by -f owner=/-f repo=
+                               # variables instead. `gh stack` is a third case — see below.
   remote=<clone URL>           # git ls-remote / fetch / push — a URL, so it needs no configured remote
   # NOTE: this binds the network endpoint, NOT the local repository. `git fetch`/`worktree add`/
   # `rev-parse` still run in whatever checkout you are standing in, so that checkout is a scratch

@@ -215,13 +215,23 @@ else
   # field that distinguishes the two is `child=`, so it has to be in the pattern.
   # And PAGE: `gh issue view --json comments` returns what one response carries, while an epic's
   # thread is exactly the long one — the same paging the claim-ordering rule below requires.
-  if body_seen=$(gh api --paginate "repos/<owner>/<repo>/issues/<epic_id>/comments" \
-                   --jq '.[].body'); then :; else
+  # WHOLE BODY, AND THE AUTHOR — `grep -qF` over concatenated bodies is a substring test, and
+  # this adapter's own claim rules require a well-formed WHOLE-BODY record from the orchestrator's
+  # login. Measured 2026-09-18 against four rows (the pre-launch prefix, the expected body with
+  # trailing text, the expected body from another login, the real one): the substring test matched
+  # THREE of them, the test below matched one. Anyone who can comment on a public epic could
+  # otherwise clear this hold, and the pre-launch record — whose incompleteness set it — clears it
+  # by itself. `@tsv` keeps each comment on one row (tabs and newlines inside a body are escaped),
+  # so a multi-line comment cannot forge a row, and the claim is a single tab-free line by
+  # construction, so its escaped form is itself.
+  want="claim: $branch -> $session for $child_id (epic $epic_id) base=$base child=$child_session_id"
+  if rows=$(gh api --paginate "repos/<owner>/<repo>/issues/<epic_id>/comments" \
+              --jq '.[] | [.user.login, .body] | @tsv'); then :; else
     hold_add epic_lock_holds "$branch" "claim-unconfirmed: could not read the thread back"
-    body_seen=""
+    rows=""
   fi
-  if printf '%s\n' "$body_seen" | grep -qF \
-       "claim: $branch -> $session for $child_id (epic $epic_id) base=$base child=$child_session_id"; then
+  if [ "$(printf '%s\n' "$rows" | ORCH="<the orchestrator's login>" WANT="$want" \
+            awk -F'\t' '$1==ENVIRON["ORCH"] && $2==ENVIRON["WANT"]{n++} END{print n+0}')" -gt 0 ]; then
     # BOTH sets, and for the same reason: this confirmed record carries `base=` (what put the
     # branch into $epic_lock_holds) AND `child=` (what put it into $child_reservation_holds).
     # A later pass re-running this block after an earlier pass failed to write is how a
