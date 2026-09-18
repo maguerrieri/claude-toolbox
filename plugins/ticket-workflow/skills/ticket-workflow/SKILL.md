@@ -355,7 +355,13 @@ That last line is the `$prev` the reconciliation above needs, written down inste
 If the branch **is** already on origin and either rebase above rewrote it, that plain push is a non-fast-forward and is refused — use the lease form instead, the same one EPIC's cascades use:
 
 ```bash
-git push --force-with-lease=<branch>:$(git rev-parse --verify --quiet origin/<branch>) origin HEAD:refs/heads/<branch> \
+# Capture and CHECK the expected value first. An empty substitution here would read as
+# `--force-with-lease=<branch>:` — the CREATE-ONLY lease, i.e. "this ref must not exist" —
+# which is the opposite of what this push means and would re-create a branch that was
+# merged and deleted between the check above and here. Never inline the rev-parse.
+expect=$(git rev-parse --verify --quiet origin/<branch>) \
+  || { echo "no expected remote head for <branch> — re-fetch, or stop and report"; exit 1; }
+git push --force-with-lease=<branch>:"$expect" origin HEAD:refs/heads/<branch> \
   && git update-ref refs/pushed/<branch> HEAD   # this path records too — it is a successful push like any other
 # A rejection here is NOT a retry and NOT something to push past: someone else moved the branch.
 # Stop and report. Falling through would open or update a PR from a remote head that is not the
