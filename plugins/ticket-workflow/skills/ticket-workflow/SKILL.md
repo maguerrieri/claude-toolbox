@@ -221,10 +221,15 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   # attacker-reachable text (`Base branch:` from the ISSUE BODY; `Cut from:` and `Worktree:` from a
   # briefing), and each is interpolated into commands here and in Step 7 — including the very fetch
   # that used to sit above this block, which is why it now sits below. For the two BRANCH NAMES:
-  # check the TEXT yourself, then `git check-ref-format --branch "<value>"` (measured 2026-09-18,
-  # git 2.43.0: `feature/ok` passed; `bad name`, `foo;rm -rf /`, `--upload-pack=evil`, `@{-1}`,
-  # `a..b` exited 128) — after your text check, never instead of it, since `--branch` is documented
-  # to EXPAND `@{-1}` where a reflog exists. Quote every validated value at every call site.
+  # check the TEXT against an ALLOWLIST — ^[A-Za-z0-9][A-Za-z0-9._/-]*$ — and THEN run
+  # `git check-ref-format --branch "<value>"`. Both, in that order: they answer different questions,
+  # and the second is NOT a shell-safety check. Measured 2026-09-18 on git 2.43.0, check-ref-format
+  # ACCEPTED foo;id, foo$(id), foo`id`, foo&&id, foo|id, foo>out, foo'x, foo"x, foo!x — every one a
+  # refname git is happy with and a shell will execute. It rejected `bad name`, foo\x, foo*x, foo~x,
+  # foo^x, foo:x, -dashlead, a..b and (with no reflog) @{-1}. So the allowlist keeps metacharacters
+  # out, check-ref-format keeps git-invalid names out, and `--branch` runs AFTER the allowlist and
+  # never instead of it, since it is documented to EXPAND @{-1} where a reflog exists. Then quote
+  # every validated value at every call site — validation narrows the input, quoting contains it.
   cd /path/to/<repo>
   git fetch origin "<the validated base branch>"
   # `Cut from:` arrives as text in your
