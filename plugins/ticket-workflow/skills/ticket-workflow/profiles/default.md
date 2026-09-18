@@ -188,7 +188,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     | jq --arg bot "<bot login>" '[.[][] | select(.user.login==$bot)
-           | select(.body | test("^\\s*Copilot was unable to review") | not) | .commit_id] | unique | length'
+           | select((.body // "") | test("^\\s*Copilot was unable to review") | not) | .commit_id] | unique | length'
   ```
   `<bot login>` is the engaged bot as the detect step found it among the PR's reviews —
   `copilot-pull-request-reviewer[bot]` for Copilot, `coderabbitai[bot]` for CodeRabbit, a CI
@@ -202,12 +202,13 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   auto-review a push *is* a re-request — so **stop pushing and stop re-requesting** (no fresh
   verdict on an unchanged head; a *new* head after a push the cap permits still gets the
   stale-review rule above): no one-line clarification rides without a push, so none rides. Answer the newest round by **disposition**
-  instead — every thread gets a reply and is resolved, every body entry gets its line in the one
-  PR comment — each line either `not changing — <why>` or `agree, held at the round cap — <the
-  fix it would take>`. **Post that comment even when the round had no body entries** — it then
-  lists the threads answered (`<path>:<line> — <disposition>` per thread): the gates date the
-  round's answer by a PR comment newer than the review, and thread replies alone don't show up
-  there. Nothing is discarded; the human reads the dispositions. Then rewrite the PR body's
+  instead — every thread gets a reply and is resolved, and **every finding of the round, thread
+  or body entry, gets its line in the one PR comment** (`<path>:<line> — <disposition>`; a thread's
+  line repeats its reply) — each line either `not changing — <why>` or `agree, held at the round
+  cap — <the fix it would take>`. The comment is the whole round's record, so it is posted even
+  for a thread-only round and `<m>` below counts every held finding, not just the body's: the
+  gates date the round's answer by a PR comment newer than the review, and thread replies alone
+  don't show up there. Nothing is discarded; the human reads the dispositions. Then rewrite the PR body's
   `Review rounds: <n> (cap <cap>); <m> findings open by disposition` line (START Step 7 seeds it
   at `0 (cap <cap>)`; add it after the test plan if it's missing) with the count and the number
   of `agree, held` lines in that comment, and hand back at the usual reviewed-PR stopping
@@ -223,9 +224,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   head keeps the gate open (the unable path below runs first). So every push after the cap
   re-opens the loop: count the review it triggers, answer it, and rewrite the line with the new
   count before handing back. The cap is a budget, not a verdict — a human can raise it
-  (`Budget: rounds=<n>` on a re-brief, or "one more round" to an attached session), the old line
-  stops matching, and the loop resumes from there, pushes included, until the new cap is reached
-  or the review is clean. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
+  (`Budget: rounds=<n>` on a re-brief, or "one more round" to an attached session) — **persist the
+  new cap before resuming**: rewrite the budget file START Step 1 wrote and the PR line's
+  `(cap <new>)`, so every source Step 8 reads agrees (an unpersisted raise is lost at the next
+  compaction and the loop stops again at the old cap) — then the old line stops matching and the
+  loop resumes from there, pushes included, until the new cap is reached or the review is clean. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
   so make it, count the review it triggers, answer that review by disposition, and rewrite the
   line. If that push doesn't auto-request a review (neither pending signal after it), the
   stale-review rule above applies as written — request once for the new head and record it: the
