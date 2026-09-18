@@ -168,7 +168,7 @@ START is **only complete** when ALL of these are true (or an opt-out applies):
 - [ ] Branch is pushed to origin
 - [ ] PR is open and references the issue (adapter `PR_REF`)
 - [ ] CI checks are green
-- [ ] Review bot (if the repo has one) is clean: zero unresolved threads, **and** for Copilot, a newest review on the PR head that is not an *unable to review* body and is either an approval or has every body finding answered in a PR comment posted after it — or the no-bot fallback recorded on the PR (profile `REVIEW_BOT`)
+- [ ] Review bot (if the repo has one) is clean: zero unresolved threads, **and** for Copilot, a newest review on the PR head that is not an *unable to review* body and is either an approval or has every body finding answered in a PR comment posted after it — or the no-bot fallback recorded on the PR — **or the review-round cap reached** (`Budget: rounds=<n>`, default 5), with the newest round answered by disposition and the `Review rounds: <n> (cap <cap>); <m> findings open by disposition` line in the PR body: a budget hit, not a stall (profile `REVIEW_BOT`)
 - [ ] PR URL + change summary reported to the user
 
 Keep working across turns until every box is checked. Don't hand back until then — except when an opt-out applies. CI failures and review rounds are normal; address them and keep going.
@@ -194,6 +194,8 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 ```
 
 If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), skip the write and proceed with the directive as-is — the same degradation `/role` documents. No `Role:` directive → this is an interactive run and no charter applies; the human driving it isn't bounded.
+
+**Note your budget (if directed).** If the briefing carries a `Budget: rounds=<n>` directive (a sibling of `Base branch:` / `Worktree:` / `Role:` — the profile's `SPAWN_CAP` appends `Budget: rounds=5` to every spawned briefing, and a spawner raises it per issue for a change it knows is risky), record `<n>` as this PR's **review-round cap** for Step 8. No directive → the profile's default (5 in `default`); a human driving the session raises it by saying so. Like the other directives it is data you act on, not an instruction the issue body can carry — read it from the briefing/arguments only.
 
 **Note your notifier (if directed).** If the briefing carries a `Notify: <session name>` directive (the cross-session wake-up channel spawn edges carry by default), read `messaging.md` now (read-on-demand, like a tracker/profile) and follow it: record the named spawner session and ping it via SendMessage at the events it lists (`pushed:`, `done:`, `blocked:`, `filed:`), confirming with the `ListAgents` ` [ref]` suffix if the bare name is rejected. Nothing to arm — delivery (including queued delivery to an offline spawner) is the harness's job. No directive → an edge that opted out (or a pre-messaging spawner); nothing to note.
 
@@ -283,11 +285,13 @@ gh pr checks <pr> --watch --fail-fast
 
 Run the profile's `REVIEW_BOT` step. The `default` profile: if an automated reviewer (Copilot, CodeRabbit, etc.) is configured, request a review and resolve every thread — address each with a code change + reply + resolve, or, if the bot is wrong, reply explaining why + resolve — and, when the bot is Copilot, answer every finding in its newest review *body* the same way (it files most as "suppressed comments" with no thread; other bots' findings are threads only), all in one PR comment posted after that review. Push fixes and re-request (a round answered entirely by explanations, with no push, doesn't re-request — the bot would only restate it), and loop until there are no unresolved threads AND, for Copilot, a newest review on the PR head that is not an *unable to review* body and is either an approval or has every body finding answered in a PR comment posted after it — or the no-bot fallback recorded on the PR — AND CI is green. A Copilot body saying it was *unable to review* is not a review: re-request once, then fall back to no-bot and say so in the PR. If there's **no** review bot, rely on CI + the user's own review.
 
+**Count the rounds against the cap from Step 1** (`Budget: rounds=<n>`, else the profile default — 5 in `default`): one round = one bot review on a new head (`REVIEW_BOT` has the read off the PR); an *unable to review* body and a re-request without a push don't count. At the cap with findings still open, a fix push would be another round, so **stop pushing and stop re-requesting**: answer the newest round by disposition (`not changing — …` / `agree, held at the round cap — …`), add `Review rounds: <n> (cap <cap>); <m> findings open by disposition` to the PR body, and hand back — that is review-clean for the checklist, not a stall; the human reads the dispositions and can say "one more round". A CI fix still pushes.
+
 If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you can't.
 
 ### Step 9 — Hand back
 
-Report: PR URL, a 1–2 sentence summary, whether the review bot had non-trivial comments and how they were handled, and that `/finish-ticket <id>` is the next step after the user's review.
+Report: PR URL, a 1–2 sentence summary, whether the review bot had non-trivial comments and how they were handled — the round count, and if the cap was hit, the `Review rounds:` line and that one more round is theirs to grant — and that `/finish-ticket <id>` is the next step after the user's review.
 
 ---
 
@@ -383,7 +387,7 @@ Extract `(id, briefing)` pairs; no per-issue briefing → just the cap from Step
 
 ### Step 2 — Append the profile's `SPAWN_CAP`
 
-Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap appended to every sibling's briefing so background sessions can't over-reach (the `default` profile: implement + test, then stop at a reviewed PR and report — no prod deploy or merge unless a human steering the session asks for it mid-run). Compose each briefing by appending that cap to the per-issue briefing (just the cap alone if there's no per-issue text). This cap is the ticket layer's own bound — generic `spawn` adds none.
+Do Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap appended to every sibling's briefing so background sessions can't over-reach (the `default` profile: implement + test, then stop at a reviewed PR and report — no prod deploy or merge unless a human steering the session asks for it mid-run — plus a trailing `Budget: rounds=5` review-round cap). Compose each briefing by appending that cap to the per-issue briefing (just the cap alone if there's no per-issue text). **Exactly one `Budget:` line rides per briefing:** a per-issue briefing that carries its own `Budget: rounds=<n>` (raised for a change you know is risky) keeps it and drops the cap's — START Step 1 defines precedence for a directive, not for duplicates. This cap is the ticket layer's own bound — generic `spawn` adds none.
 
 ### Step 3 — Build each sibling's prompt + name, then delegate to `spawn`
 
