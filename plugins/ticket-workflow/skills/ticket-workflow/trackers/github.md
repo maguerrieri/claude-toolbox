@@ -135,7 +135,12 @@ rm -f "$body"
 # An ECHO IS NOT A STATE. Set the outcome the phase consumes — its release and sweep rules read
 # `$epic_lock_holds`, and a caller that only printed a warning would run the ordinary end-of-pass
 # cleanup and release the one protection this failure leaves.
-# BOTH holds are SETS keyed by branch, never scalars. One Step 5 wave launches several children,
+# BOTH holds are SETS keyed by branch, never scalars — AND THEY ARE A CACHE, not the record.
+# These are shell variables, and a cloud EPIC ends its turn between the failure and the sweep, in
+# a different container: the lock ref and the incomplete claim survive, these do not. So the phase
+# rebuilds the retention from the durable records before every sweep (epic.md, the sweep rule) and
+# unions it with whatever this turn set. Setting them here is still required — a write that FAILED
+# leaves no record to derive from, which is exactly what these carry across the rest of the turn. One Step 5 wave launches several children,
 # so a second failure assigning over a scalar would erase the first — and the sweep would then
 # find no marker for a branch whose child is live and unrecorded, release its reservation, and
 # let a later coordinator launch a second child onto it. Keyed, every entry survives and the
