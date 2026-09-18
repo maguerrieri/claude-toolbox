@@ -198,19 +198,25 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   clarification rides without a push, so none rides. Answer the newest round by **disposition**
   instead — every thread gets a reply and is resolved, every body entry gets its line in the one
   PR comment — each line either `not changing — <why>` or `agree, held at the round cap — <the
-  fix it would take>`. Nothing is discarded; the human reads the dispositions. Then add
+  fix it would take>`. **Post that comment even when the round had no body entries** — it then
+  lists the threads answered (`<path>:<line> — <disposition>` per thread): the gates date the
+  round's answer by a PR comment newer than the review, and thread replies alone don't show up
+  there. Nothing is discarded; the human reads the dispositions. Then add
   `Review rounds: <n> (cap <cap>); <m> findings open by disposition` to the PR body (its own
   line, after the test plan; `<m>` counts the `agree, held` lines) and hand back at the usual
   reviewed-PR stopping point. That line is the durable marker the completion gates read, like
   the no-bot fallback comment: a reached cap with dispositions posted **is** review-clean, not a
-  stall. **The line is bound to the count, not to a head:** the gates accept it only when its
-  `<n>` equals the count the read above returns *now* and the newest review on the head has its
-  dispositions in a PR comment posted after it — a line a later push left behind is no marker,
-  and a pending review on the head keeps the gate open. So every push after the cap re-opens the
-  loop: count the review it triggers, answer it, and rewrite the line with the new count before
-  handing back. The cap is a budget, not a verdict — a human can raise it (`Budget: rounds=<n>`
-  on a re-brief, or "one more round" to an attached session) and the loop resumes from there,
-  pushes included. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
+  stall. **The line is bound to the cap and the count, not to a head:** the gates accept it only
+  when its `<cap>` is the cap in force, its `<n>` equals the count the read above returns *now*
+  and is at least `<cap>`, and the newest review on the head is not an *unable to review* body
+  and has its dispositions in a PR comment posted after it — a line a later push left behind is
+  no marker, a raised budget makes the old line's `<cap>` wrong, and a pending or unable review
+  on the head keeps the gate open (the unable path below runs first). So every push after the cap
+  re-opens the loop: count the review it triggers, answer it, and rewrite the line with the new
+  count before handing back. The cap is a budget, not a verdict — a human can raise it
+  (`Budget: rounds=<n>` on a re-brief, or "one more round" to an attached session), the old line
+  stops matching, and the loop resumes from there, pushes included, until the new cap is reached
+  or the review is clean. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
   so make it, count the review it triggers, answer that review by disposition, and rewrite the
   line. An *unable to review* body on that head takes the last bullet's single retry as written —
   the retry re-requests on the **same** head, so it adds no round — and its fallback applies
