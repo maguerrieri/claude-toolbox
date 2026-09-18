@@ -60,7 +60,7 @@ Skip silently if it errors (e.g. label doesn't exist) — START is best-effort.
 - If the PR body had `Closes #<n>`, merging already closed it — verify with `gh issue view <n> -R <owner>/<repo> --json state -q .state` (expect `CLOSED`).
 - If it's still open:
 ```bash
-gh issue close <n> --comment "Resolved by #<pr> (merged)."
+gh issue close <n> -R <owner>/<repo> --comment "Resolved by #<pr> (merged)."
 ```
 
 ## EPIC_CHILDREN(id)  — list an epic's child tickets (EPIC phase)
