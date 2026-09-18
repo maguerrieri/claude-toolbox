@@ -418,7 +418,20 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   [ "$rc" = 0 ] || [ "$rc" = 2 ] \
     || { echo "cannot read origin (exit $rc) — the branch state is unknown; stop and report"; exit 1; }
   if [ "$rc" = 0 ]; then
-    git fetch origin "<branch>" || { echo "branch exists on origin but cannot be fetched — stop and report"; exit 1; }
+    # The FETCH is the anchor, and that is why the suffix-match rule does not reach the seed
+    # below: measured 2026-09-18 against a remote holding only `refs/heads/x/refs/heads/feature-42`,
+    # `git fetch <remote> feature-42` fails — `fatal: couldn't find remote ref feature-42` — so an
+    # impostor that satisfied the probe cannot supply a SHA here. What it CAN do is make the stop
+    # message a lie, so say which of the two happened rather than assuming the first.
+    if ! git fetch origin "<branch>"; then
+      if git ls-remote --exit-code --heads origin "refs/heads/<branch>" >/dev/null 2>&1 \
+         && [ "$(git ls-remote --heads origin "refs/heads/<branch>" | awk -F'\t' '$2=="refs/heads/<branch>"' | wc -l)" -eq 0 ]; then
+        echo "the probe matched a different ref, not refs/heads/<branch> — this name is NOT on origin"
+      else
+        echo "branch exists on origin but cannot be fetched"
+      fi
+      echo "stop and report"; exit 1
+    fi
     # Seed from the FETCHED tip, not from the ls-remote answer: only the fetch put an object
     # in this store, and the two can differ if the branch moved in between.
     git update-ref "refs/pushed/<branch>" "$(git rev-parse --verify FETCH_HEAD)"
@@ -472,7 +485,22 @@ Look at the diff (`git diff origin/<base_branch>...HEAD` — compare against `or
 Before pushing, self-check the branch's commits — this is the cheap place to fix them; FINISH's pre-merge gate *blocks* on anything that slips through, and fixing it there costs a force-push round-trip back here:
 - Each commit subject matches the tracker's `COMMIT_REF` (via `COMMIT_STYLE`) and accurately describes its diff — reword stale/placeholder subjects with `git rebase` now, while nothing's reviewed yet.
 - No hold / placeholder / leftover-debug markers — the same commit/diff markers FINISH Step 1's gate blocks on (`DO NOT MERGE`, `WIP`, qualified `FIXME`/`XXX`/`HACK`, stray debug) — remain in the commit messages or the diff (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`).
-- **Your own branch hasn't moved under you either.** An EPIC orchestrator can rewrite *your* branch while you are idle (EPIC Step 4/6/7), so before looking at the base, check whether the branch is even on origin yet — `git ls-remote --exit-code --heads origin "refs/heads/<branch>"` — and **skip this whole check when it isn't**, which is the normal case for a first push: `git fetch origin <branch>` on a branch the remote has never seen fails with "couldn't find remote ref" and would block every new START run before it opens its PR. When it *does* exist, fetch it and compare `origin/<branch>` with your local head. (A plain `git fetch origin <branch>` is correct here even though the orchestrator force-pushed: a configured remote's default refspec is `+refs/heads/*:refs/remotes/origin/*`, and that `+` force-updates the tracking ref — verified 2026-09-16 across *unrelated* history. The forced `+` EPIC's cascade needs is required there only because it fetches into `refs/rs/*` with an **explicit** refspec, which overrides the configured one. Don't "fix" this fetch to match that one.) If they differ, reconcile first and push nothing until you have — and **check the worktree is clean before *either* path** (`git status --porcelain`), not only before the reset. Uncommitted or untracked work is invisible to the commit comparison and blocks both reconciliations, differently: `reset --hard` **destroys** it, while a rebase refuses to run. Measured on git 2.43.0: an unstaged change stops a rebase with "cannot rebase: You have unstaged changes", a staged-only one with "Your index contains uncommitted changes", and an untracked file colliding with a path in the new base aborts the initial checkout ("The following untracked working tree files would be overwritten by checkout … Aborting", exit 1, the file intact). So on the rebase path the hazard is not lost work but a **stall mid-reconcile** — your branch already rewritten on origin, and a standing temptation to clear git's way (`checkout -- .`, deleting the colliding file) to get moving. Commit or stash it, or stop and report, before *either* path; never clear it to unblock the rebase. Then: with no local commits the remote lacks, `git reset --hard origin/<branch>`; with local work, **replay only the genuinely new commits — you must name that range, not infer it from the divergence.** After a force-push, `origin/<branch>..HEAD` lists your *entire* pre-restack history as "commits the remote lacks", because the orchestrator rewrote the same work onto a new base; rebasing that range replays commits the restack already incorporated. The range you want is bounded by the remote head as it was **before** you fetched, so capture it first:
+- **Your own branch hasn't moved under you either.** An EPIC orchestrator can rewrite *your* branch while you are idle (EPIC Step 4/6/7), so before looking at the base, check whether the branch is even on origin yet — `git ls-remote --exit-code --heads origin "refs/heads/<branch>"` — **classified, not run bare**, because the outcome this sentence calls normal is the one that would kill the run:
+
+  ```bash
+  if git ls-remote --exit-code --heads origin "refs/heads/<branch>" >/dev/null; then rc=0; else rc=$?; fi
+  case $rc in
+    2) branch_on_origin=no ;;   # FIRST PUSH — the normal case. `--exit-code` returns 2 here, and
+                                # a bare command would end the run under `set -e` on every new
+                                # START, before it ever opens its PR: the check this bullet says
+                                # to SKIP would instead be the thing that stops you.
+    0) branch_on_origin=yes ;;
+    *) echo "cannot tell whether <branch> is on origin (exit $rc) — stop and report"; exit 1 ;;
+  esac
+  [ "$branch_on_origin" = yes ] || { : "skip the rest of this bullet"; }
+  ```
+
+  and **skip this whole check when it isn't**, which is the normal case for a first push: `git fetch origin <branch>` on a branch the remote has never seen fails with "couldn't find remote ref" and would block every new START run before it opens its PR. When it *does* exist, fetch it and compare `origin/<branch>` with your local head. (A plain `git fetch origin <branch>` is correct here even though the orchestrator force-pushed: a configured remote's default refspec is `+refs/heads/*:refs/remotes/origin/*`, and that `+` force-updates the tracking ref — verified 2026-09-16 across *unrelated* history. The forced `+` EPIC's cascade needs is required there only because it fetches into `refs/rs/*` with an **explicit** refspec, which overrides the configured one. Don't "fix" this fetch to match that one.) If they differ, reconcile first and push nothing until you have — and **check the worktree is clean before *either* path** (`git status --porcelain`), not only before the reset. Uncommitted or untracked work is invisible to the commit comparison and blocks both reconciliations, differently: `reset --hard` **destroys** it, while a rebase refuses to run. Measured on git 2.43.0: an unstaged change stops a rebase with "cannot rebase: You have unstaged changes", a staged-only one with "Your index contains uncommitted changes", and an untracked file colliding with a path in the new base aborts the initial checkout ("The following untracked working tree files would be overwritten by checkout … Aborting", exit 1, the file intact). So on the rebase path the hazard is not lost work but a **stall mid-reconcile** — your branch already rewritten on origin, and a standing temptation to clear git's way (`checkout -- .`, deleting the colliding file) to get moving. Commit or stash it, or stop and report, before *either* path; never clear it to unblock the rebase. Then: with no local commits the remote lacks, `git reset --hard origin/<branch>`; with local work, **replay only the genuinely new commits — you must name that range, not infer it from the divergence.** After a force-push, `origin/<branch>..HEAD` lists your *entire* pre-restack history as "commits the remote lacks", because the orchestrator rewrote the same work onto a new base; rebasing that range replays commits the restack already incorporated. The range you want is bounded by the remote head as it was **before** you fetched, so capture it first:
 
     ```bash
     # --verify --quiet, NOT `2>/dev/null`: on a missing ref plain rev-parse prints the ref NAME
