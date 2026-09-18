@@ -96,7 +96,10 @@ The shared, durable channel sibling sessions use for file **claims** and **"bran
 ```bash
 body=$(mktemp)                                         # NEVER build the marker inline in the
 printf 'claim: %s -> %s\n' "$session" "$files" > "$body"   # command itself — see below
-gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+# `cmd; rc=$?` does NOT survive `set -e` — it exits AT cmd, so every failure path below
+# (the retry, the hold, the report) is skipped precisely when it is needed. Measured:
+# `set -e; false; rc=$?` never reaches the assignment. Same rule the lookup rule states.
+if gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; then rc=0; else rc=$?; fi
 rm -f "$body"; [ $rc -eq 0 ] || { echo "file claim write failed — do not start editing these files"; exit $rc; }
 
 # TWO claim shapes, same channel and same write discipline — don't overload one for the other:
@@ -110,7 +113,10 @@ rm -f "$body"; [ $rc -eq 0 ] || { echo "file claim write failed — do not start
 # this child occupies that base (EPIC Step 4). Omit it and that walk assigns another child there.
 body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s) base=%s\n' "$branch" "$session" "$child_id" "$epic_id" "$base" > "$body"
-gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+# `cmd; rc=$?` does NOT survive `set -e` — it exits AT cmd, so every failure path below
+# (the retry, the hold, the report) is skipped precisely when it is needed. Measured:
+# `set -e; false; rc=$?` never reaches the assignment. Same rule the lookup rule states.
+if gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; then rc=0; else rc=$?; fi
 rm -f "$body"
 # NOT launch-blocking, and this `exit` used to be. The phase is explicit: where COORD is unwritable
 # the RECORD is unavailable but the RESERVATION is not — the lock ref is the reservation — so a
@@ -157,7 +163,10 @@ fi
 body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s) base=%s child=%s\n' \
   "$branch" "$session" "$child_id" "$epic_id" "$base" "$child_session_id" > "$body"
-gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+# `cmd; rc=$?` does NOT survive `set -e` — it exits AT cmd, so every failure path below
+# (the retry, the hold, the report) is skipped precisely when it is needed. Measured:
+# `set -e; false; rc=$?` never reaches the assignment. Same rule the lookup rule states.
+if gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; then rc=0; else rc=$?; fi
 rm -f "$body"
 # NOT the pre-launch handling, and not a copy of it: the child is already running, so "do not launch
 # on this name" would be advice about a decision already taken. Retry the write once; if it still
@@ -179,7 +188,7 @@ if [ $rc -ne 0 ]; then
   body=$(mktemp)
   printf 'claim: %s -> %s for %s (epic %s) base=%s child=%s\n' \
     "$branch" "$session" "$child_id" "$epic_id" "$base" "$child_session_id" > "$body"
-  gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+  if gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; then rc=0; else rc=$?; fi
   rm -f "$body"
 fi
 # Same rule: a named outcome, not a warning. `$child_reservation_holds` is what keeps this name
@@ -198,12 +207,24 @@ if [ $rc -ne 0 ]; then
   echo "post-launch claim write failed twice — child $child_session_id is LIVE on $branch:"
   echo "keep its row, hold the reservation, report the gap, do not relaunch"
 else
-  # read it back before believing it; `gh issue comment` exiting 0 is not the record existing
-  if gh issue view <epic_id> -R <owner>/<repo> --json comments \
-       -q '.comments[].body' | grep -qF "claim: $branch -> $session for $child_id"; then
-    hold_drop epic_lock_holds "$branch"    # base= is recorded now — this branch no longer holds the lock
+  # Read it back before believing it; `gh issue comment` exiting 0 is not the record existing.
+  # MATCH THE WHOLE POST-LAUNCH BODY, never a prefix. `claim: $branch -> $session for $child_id`
+  # is a prefix of the PRE-launch record too, so a prefix match is satisfied by the very record
+  # whose incompleteness set this hold — it would clear the lock on the strength of the claim
+  # that is missing `child=`, leaving a live child unrecorded and the name reclaimable. The
+  # field that distinguishes the two is `child=`, so it has to be in the pattern.
+  # And PAGE: `gh issue view --json comments` returns what one response carries, while an epic's
+  # thread is exactly the long one — the same paging the claim-ordering rule below requires.
+  if body_seen=$(gh api --paginate "repos/<owner>/<repo>/issues/<epic_id>/comments" \
+                   --jq '.[].body'); then :; else
+    hold_add epic_lock_holds "$branch" "claim-unconfirmed: could not read the thread back"
+    body_seen=""
+  fi
+  if printf '%s\n' "$body_seen" | grep -qF \
+       "claim: $branch -> $session for $child_id (epic $epic_id) base=$base child=$child_session_id"; then
+    hold_drop epic_lock_holds "$branch"    # base= AND child= are recorded — this branch no longer holds the lock
   else
-    hold_add epic_lock_holds "$branch" "claim-unconfirmed: write returned 0, record not found"
+    hold_add epic_lock_holds "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
   fi
 fi
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
