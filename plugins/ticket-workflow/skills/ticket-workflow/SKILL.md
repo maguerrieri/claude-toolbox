@@ -253,6 +253,20 @@ git check-ref-format --branch "$base_branch" >/dev/null \
 
 Every `<branch>` and `<the validated base branch>` placeholder below stands for **these validated values** — substitute it from `$branch`, never from the raw directive text, and keep it quoted at every call site (validation narrows the input; quoting contains it).
 
+**Bind the checkout before either dispatch test — `git` has no `-R`, so the working directory *is* the binding.** Step 1 resolved `$repo`, and that binds the `gh` calls; it binds none of the commands below. Both dispatch tests are **git** calls against *this* checkout: `git branch --show-current` and `git rev-parse` answer for whatever repository you are standing in, and `git ls-remote … origin` reads whatever remote it has. In an umbrella checkout, or where a profile's `REPO_SELECT` maps the issue to another repository, that is a **different repo** — so the local test can choose path (b) because an unrelated repository happens to be sitting on a branch of the same name, and the remote test can report the name free (or taken) on a remote that has nothing to do with `$repo`. Neither is recoverable afterwards: this `cd` used to live *inside* path (a), which is to say after both decisions had already been made, and moving to the right repository does not un-make a decision taken against the wrong one. It is the same rule Step 1 states one level up — bind at first use — applied to the binding `git` actually has.
+
+```bash
+# THE SELECTED REPOSITORY'S OWN CHECKOUT — the one `$repo` names, not the cwd you happen to be in.
+# A linked worktree of it counts (it shares `origin`); an umbrella checkout that merely CONTAINS
+# it does not. If the selected repository has no checkout here, clone it or stop and report — do
+# not fall through to this cwd.
+cd /path/to/<repo>                 # the checkout of $repo; `git -C` it if you prefer
+[ "$(git remote get-url origin | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')" = "$repo" ] \
+  || { echo "this checkout is not $repo — resolve the selected repository's checkout, or stop"; exit 1; }
+```
+
+Everything from here on — both dispatch tests, every bare `origin`, both paths' fetches, and Step 7's push — is bound by that cwd and is correct only because of it. **Path (b) is not an exception**: "adopt this checkout" means adopt *this repository's* checkout, so the identity test above gates it exactly as it gates path (a); a checkout that fails it is not path (b) whatever branch it is on.
+
 Two paths from here; pick by whether `<branch>` is already checked out:
 
 - **(a) Normal — `<branch>` is new here *and* on origin:** the dispatch is **two tests, in this order**, and neither replaces the other.
@@ -312,16 +326,12 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   # out, check-ref-format keeps git-invalid names out, and `--branch` runs AFTER the allowlist and
   # never instead of it, since it is documented to EXPAND @{-1} where a reflog exists. Then quote
   # every validated value at every call site — validation narrows the input, quoting contains it.
-  # `/path/to/<repo>` is THE SELECTED REPOSITORY'S OWN CHECKOUT — the one `$repo` names, not the
-  # cwd you happen to be in. Every git command in this phase is bound by that cwd rather than by
-  # a flag (git has no `-R`), so `origin` below is correct only because you are standing in that
-  # repository: in an umbrella checkout, or where a profile maps the issue elsewhere, `origin`
-  # is a DIFFERENT repository and the base, the fetches and Step 7's push would all act on it
-  # while the `gh` calls acted on `$repo`. So resolve that checkout first, and if the selected
-  # repository has none here, clone it or stop and report — do not fall through to this cwd.
-  cd /path/to/<repo>                 # the checkout of $repo; `git -C` it if you prefer
-  [ "$(git remote get-url origin | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')" = "$repo" ] \
-    || { echo "this checkout is not $repo — resolve the selected repository's checkout, or stop"; exit 1; }
+  # You are ALREADY standing in the selected repository's checkout — the block above the path
+  # split did the `cd` and verified it, because both dispatch tests are git calls and a decision
+  # made against the wrong remote is not undone by moving to the right one afterwards. Do not
+  # re-resolve it here, and do not read `origin` below as "whatever remote this cwd has": every
+  # git command in this phase is bound by that cwd rather than by a flag (git has no `-R`), and
+  # that binding was established before anything read it.
   git fetch origin "<the validated base branch>"
   # `Cut from:` arrives as text in your
   # briefing, so every command below that contains it was already parsed by the shell by the time
