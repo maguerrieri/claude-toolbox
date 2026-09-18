@@ -128,8 +128,14 @@ rm -f "$body"
 # the one that just failed — so freeing the name here is how a SECOND child gets launched on the
 # same branch. Hold the lock (its release point is "the name stops being this run's to hold", which
 # has not happened — EPIC's lock protocol, step 5) and report an unresolved handoff for a human.
+# NOT `blocked-unrecordable`, and NOT a stop. The phase reserves that state for a fork point whose
+# SHA is unrecoverable, and it is TERMINAL — it would mark a healthy, running child dead and
+# propagate `blocked-by-…` to its dependents, while its reservation is deliberately being kept.
+# The child is fine; it is the coordinator's record that is missing. So leave the child's row
+# alone, keep the reservation, carry on with the rest of the wave, and report the gap (branch +
+# child session id) with the epic flagged as needing a human before a second coordinator runs it.
 [ $rc -eq 0 ] || { echo "post-launch claim write failed — child $child_session_id is LIVE on $branch:" \
-                        "hold the reservation, report blocked-unrecordable, do not relaunch"; exit $rc; }
+                        "keep its row, hold the reservation, report the gap, do not relaunch"; }
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
 # — NOT by session alone, or a coordinator holding one claim per child keeps a single newest record
 # and discards the child= liveness evidence for every other branch it reserved — then within each

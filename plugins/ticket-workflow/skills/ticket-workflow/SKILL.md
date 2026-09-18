@@ -239,13 +239,21 @@ Every `<branch>` placeholder below stands for **this validated value** — subst
 
 Two paths from here; pick by whether `<branch>` is already checked out:
 
-- **(a) Normal — `<branch>` does not exist yet:** **ask the remote before you run anything else in this path.** "Does not exist yet" is a claim about *this checkout*, and a fresh or resumed clone is absent locally for **every** branch, including ones that exist on origin with someone's work on them — so the dispatch between (a) and (b) is decided by `ls-remote`, not by the local ref, and it has to be decided **here**, because the two commands that make a collision unrecoverable (cutting the worktree, clearing `refs/pushed/<branch>`) are the first ones below. A check written further down is a check that runs after the damage; the paragraph after this block says what that damage is.
+- **(a) Normal — `<branch>` is new here *and* on origin:** the dispatch is **two tests, in this order**, and neither replaces the other.
+
+  **First, locally.** Path (b) is chosen by the checkout, and only the checkout can answer it: `git branch --show-current` printing `$branch`, or a local ref existing for it, means the branch is already here — a cloud session launched with `outcome_branch`, or a resumed path (a) worktree — and none of that is visible on the remote, because such a branch may never have been pushed. Deciding this from `ls-remote` alone regresses exactly that case: the remote says absent, path (a) runs `git worktree add -b "$branch"`, and it fails against a branch this clone already holds.
+
+  **Then, remotely — as the collision check, not as the dispatch.** "New" also has to be true on origin, and *that* is what the local test cannot see: a fresh or resumed clone is absent locally for **every** branch, including ones carrying someone else's work.
 
   ```bash
+  git rev-parse --verify --quiet "refs/heads/$branch" >/dev/null \
+    && { echo "the branch is already in this clone — this is path (b), not (a)"; }   # …and stop reading path (a)
   git ls-remote --exit-code --heads origin "$branch"   # measured 2026-09-18, git 2.43.0: absent → exit 2, present → exit 0
   ```
 
-  **Absent** → this really is path (a): continue below. **Present** → this is *not* path (a), whatever the local checkout says. Adopt the branch by **path (b)**'s rules if this run owns the name (its own spawn record, or the deliberate re-spawn EPIC Step 6 describes); otherwise **stop and report**, because a branch on origin that this run did not create is another run's work. Only on absent do you create the worktree, enter it, then init submodules:
+  Local ref present → **path (b)**. Local absent, remote **present** → still not path (a): adopt by path (b)'s rules if this run owns the name (its own spawn record, or the deliberate re-spawn EPIC Step 6 describes), otherwise **stop and report**, because a branch on origin this run did not create is another run's work. Local absent **and** remote absent → the name is genuinely new: create the worktree, enter it, then init submodules.
+
+  **Both tests run before any command below**, for the reason the next paragraph gives — and the remote one is not optional just because the local one already said "new".
 
   ```bash
   # WHY the validation above the split is there, and why NOTHING may use a directive before it.
