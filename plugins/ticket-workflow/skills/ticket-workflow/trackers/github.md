@@ -222,7 +222,16 @@ else
   fi
   if printf '%s\n' "$body_seen" | grep -qF \
        "claim: $branch -> $session for $child_id (epic $epic_id) base=$base child=$child_session_id"; then
-    hold_drop epic_lock_holds "$branch"    # base= AND child= are recorded — this branch no longer holds the lock
+    # BOTH sets, and for the same reason: this confirmed record carries `base=` (what put the
+    # branch into $epic_lock_holds) AND `child=` (what put it into $child_reservation_holds).
+    # A later pass re-running this block after an earlier pass failed to write is how a
+    # transient failure gets repaired, so a retention that nothing clears on success would
+    # hold the graph lock and the reservation until a human intervened — the hold would
+    # outlive the condition, which is the failure mode the hold was added to prevent, one
+    # level up. hold_drop is a no-op for a key that was never added, so this is safe on the
+    # ordinary path where neither failed.
+    hold_drop epic_lock_holds "$branch"
+    hold_drop child_reservation_holds "$branch"
   else
     hold_add epic_lock_holds "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
   fi
