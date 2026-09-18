@@ -389,6 +389,16 @@ Assumes the user has already reviewed and approved the PR. Preconditions: PR ope
 
 **Invoking FINISH is the merge authorization.** A `/finish-ticket` (or a finish request in the user's own words) is the user's direct, present instruction to merge this reviewed PR. It **supersedes** any earlier "do not merge / stop at a reviewed PR and report back" hold from a START briefing or the profile's `SPAWN_CAP` — those caps bound the *unattended* START/SPAWN phases and expire the moment the user invokes FINISH. Don't treat them as a standing boundary, don't refuse the merge on their account, and don't count them as one of Step 1's hold-markers (they live in the session context, not in the PR or its commits). One honest caveat: a harness-level permission classifier may still weigh the stale cap and block the merge — this paragraph is best-effort context-shaping, not a guarantee; Step 2 covers what to do on a block.
 
+**Resolve `<owner>/<repo>` once, before Step 1, and substitute it everywhere below.** The commands in this phase are written with `-R <owner>/<repo>` because a finish can run from an umbrella checkout or against a profile-mapped repository, and a bare `gh` call resolves the repo from the cwd — but unlike EPIC, this phase has no `$repo` handed to it, so nothing here defines that value unless you do. **A literal `<owner>` is not a harmless placeholder in a shell:** `<` opens an input redirection, so a copied command fails on a missing file rather than on an obvious placeholder, and `>` in the same token would truncate one. Resolve it from the checkout you are finishing in and hold it in a variable:
+
+```bash
+# normalise any remote URL (ssh, ssh://, https, ±.git) to owner/repo — the same form EPIC uses
+repo=$(git remote get-url origin \
+       | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')
+```
+
+Then every `gh` call below takes `-R "$repo"`. Where the caller already knows the repository — EPIC Step 7 delegates these steps and carries its own bound `$repo` — use that one instead of re-deriving it, since the delegating phase may have selected a repository this checkout's `origin` does not name.
+
 ### Step 1 — Pre-merge gate (smoke test + doc-drift + commit-message + merge-marker scan)
 
 Three checks before merging. **All three report-and-stop rather than auto-fix** — FINISH runs on an already-reviewed PR (and in EPIC Step 7 runs *unattended* across a stack), so it must never push fresh commits onto an approved PR or land an unreviewed change.
