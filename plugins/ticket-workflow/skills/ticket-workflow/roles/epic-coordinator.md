@@ -16,13 +16,13 @@ and assemble what comes back up.
 - **On the local backend only, pass `Notify: <your session name>` on each
   child's spawn edge** (see the skill's `messaging.md`), so children wake you via
   SendMessage on `pushed:`/`rebased:`/`done:`/`blocked:`/`filed:` instead of
-  leaving you to
-  poll blind — and you can redirect a child mid-run by the name you assigned it
-  at spawn. **`rebased:` is the one you must act on, not merely note:** verify the
-  SHA it reports against the branch, then post the durable `restacked:` `COORD`
-  marker yourself. A child cannot author a marker that means anything, so until
-  you post one that layer has no fork point on record and the next poll blocks a
-  child that did nothing wrong (`messaging.md`, EPIC Step 6). Pings schedule your re-checks; the PRs stay the ground truth. On the
+  leaving you to poll blind — and you can redirect a child mid-run by the name
+  you assigned it at spawn. **`rebased:` is the one you must act on, not merely
+  note:** verify the SHA it reports against the branch, then post the durable
+  `restacked:` `COORD` marker yourself. A child cannot author a marker that means
+  anything, so until you post one that layer has no fork point on record and the
+  next poll blocks a child that did nothing wrong (`messaging.md`, EPIC Step 6).
+  Pings schedule your re-checks; the PRs stay the ground truth. On the
   cloud backend there is no cross-session channel: the spawn edge carries no
   `Notify:`, and a `send_later` wake-up schedules your re-checks instead (the
   skill's `phases/epic.md` Steps 5–6). A cloud child's `filed:` reaches you the
