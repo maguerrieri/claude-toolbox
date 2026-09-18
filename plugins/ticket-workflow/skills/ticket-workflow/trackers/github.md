@@ -11,7 +11,7 @@ Use the `gh` CLI. In worktrees, cwd detection usually works, but pass `-R OWNER/
 
 ## FETCH(id)
 ```bash
-gh issue view <n> --json number,title,body,labels,assignees,url
+gh issue view <n> -R <owner>/<repo> --json number,title,body,labels,assignees,url
 ```
 Read `title` and `body`. Look in `body` for a base-branch directive (e.g. "Base branch: `dev`").
 
@@ -57,7 +57,7 @@ Skip silently if it errors (e.g. label doesn't exist) — START is best-effort.
 - Because of the closing keyword, FINISH's `DONE` is usually automatic.
 
 ## DONE(id)  — close the issue
-- If the PR body had `Closes #<n>`, merging already closed it — verify with `gh issue view <n> --json state -q .state` (expect `CLOSED`).
+- If the PR body had `Closes #<n>`, merging already closed it — verify with `gh issue view <n> -R <owner>/<repo> --json state -q .state` (expect `CLOSED`).
 - If it's still open:
 ```bash
 gh issue close <n> --comment "Resolved by #<pr> (merged)."
@@ -70,14 +70,14 @@ GitHub has no native "epic", so an epic is one of these — try in order:
 gh api graphql --paginate -f query='query($owner:String!,$repo:String!,$num:Int!,$endCursor:String){repository(owner:$owner,name:$repo){issue(number:$num){subIssues(first:100, after:$endCursor){totalCount pageInfo{hasNextPage endCursor} nodes{number title state labels(first:20){nodes{name}}}}}}}' -F owner='{owner}' -F repo='{repo}' -F num=<n>
 ```
   `--paginate` auto-follows pages via the `$endCursor`/`pageInfo` pairing (verified on gh 2.88.1), so an epic with **>100** children isn't silently truncated — keep the `$endCursor` var, the `after:$endCursor` arg, and `pageInfo` intact.
-- **Task-list / tracking issue:** the epic's body has a checklist that references child issues (`- [ ] #123`). Parse `#<n>` refs from the body — use `-q .body` so you get raw text, not a JSON object with escaped newlines: `gh issue view <n> --json body -q .body`.
+- **Task-list / tracking issue:** the epic's body has a checklist that references child issues (`- [ ] #123`). Parse `#<n>` refs from the body — use `-q .body` so you get raw text, not a JSON object with escaped newlines: `gh issue view <n> -R <owner>/<repo> --json body -q .body`.
 - **Shared label or milestone:** `gh issue list --label "epic:<name>" --json number,title,state,labels -L 500` (or `--milestone "<name>"`) — set `-L`/`--limit` explicitly; `gh issue list` defaults to **30**, which would silently cap a large epic.
 
 Return `(number, title, labels)` for each child — the labels feed the EPIC coupling router (`phases/epic.md` Step 3). If none of these apply, ask the user for the child IDs.
 
 ## DEPS(id)  — intra-epic dependencies for a child (EPIC phase)
 GitHub has no first-class issue dependencies, so derive them:
-- **Body directives:** `Depends on #<n>` / `Blocked by #<n>` / `After #<n>` in the child's body (`gh issue view <n> --json body -q .body` — `-q .body` for raw text). Parse the `#<n>` references.
+- **Body directives:** `Depends on #<n>` / `Blocked by #<n>` / `After #<n>` in the child's body (`gh issue view <n> -R <owner>/<repo> --json body -q .body` — `-q .body` for raw text). Parse the `#<n>` references.
 - **Ordered task list:** only if the user says the epic's checklist is ordered (each item depends on the one above) — order is *not* dependency by default.
 
 Return the set of child numbers this child is blocked by, **keeping only those that are themselves children of this epic**. Empty set → it's a root.
@@ -85,7 +85,7 @@ Return the set of child numbers this child is blocked by, **keeping only those t
 ## DEPENDENCY_PR(id)  — find the open PR for a dependency (START phase)
 GitHub PRs created by this workflow close their issue from the body, so search for an exact closing reference (not merely `#<n>` appearing in discussion):
 ```bash
-gh pr list --state open -L 500 --search "#<n> in:body" --json number,headRefName,body --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number,headRefName}'
+gh pr list --state open -R <owner>/<repo> -L 500 --search "#<n> in:body" --json number,headRefName,body --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number,headRefName}'
 ```
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
@@ -118,7 +118,10 @@ printf 'claim: %s -> %s for %s (epic %s) base=%s child=%s\n' \
   "$branch" "$session" "$child_id" "$epic_id" "$base" "$child_session_id" > "$body"
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
 rm -f "$body"
-# ONE ordering rule, stated identically in EPIC Step 5: collapse each session's records to its
+# ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
+# — NOT by session alone, or a coordinator holding one claim per child keeps a single newest record
+# and discards the child= liveness evidence for every other branch it reserved — then within each
+# group collapse that session's records for that branch to its
 # NEWEST (so this post-launch record supersedes that session's own pre-launch one), then among the
 # survivors, still unspent, the EARLIEST by record id holds the name. "Newest" resolves a session's
 # own history; "earliest" resolves who won the race — either half alone lets two coordinators pick
