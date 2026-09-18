@@ -180,22 +180,24 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
 - **Count the rounds, and stop at the cap.** A round is one bot review submitted on a **new head** —
-  a review whose `commit_id` no earlier counted review carried. An *unable to review* body is not a
-  round, and a re-request without a push (a fresh review on the same head) is not one either: it
-  restates the last. Read the count off the PR, never from memory, so a later turn or a fresh
+  a review whose `commit_id` no earlier counted review carried. An *unable to review* body (the
+  body that is only that sentence — the filter anchors on its opening, so a review that merely
+  mentions the phrase still counts) is not a round, and a re-request without a push (a fresh
+  review on the same head) is not one either: it restates the last. Read the count off the PR, never from memory, so a later turn or a fresh
   coordinator gets the same answer:
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     | jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")
-           | select(.body | test("unable to review") | not) | .commit_id] | unique | length'
+           | select(.body | test("^\\s*Copilot was unable to review") | not) | .commit_id] | unique | length'
   ```
   (Another bot: the same expression on its login — one review per head.) The **cap** is the
   `Budget: rounds=<n>` the briefing carried (START Step 1), else this profile's default of **5**
   (`SPAWN_CAP`); it applies to every PR, whatever the diff contains. **Below** the cap, loop as
   written: fix, push, let the bot re-review. Once the count **reaches** the cap and the newest
   review on the head still has findings, a fix push would be round `<cap>+1` — on a repo with
-  auto-review a push *is* a re-request — so **stop pushing and stop re-requesting**: no one-line
-  clarification rides without a push, so none rides. Answer the newest round by **disposition**
+  auto-review a push *is* a re-request — so **stop pushing and stop re-requesting** (no fresh
+  verdict on an unchanged head; a *new* head after a push the cap permits still gets the
+  stale-review rule above): no one-line clarification rides without a push, so none rides. Answer the newest round by **disposition**
   instead — every thread gets a reply and is resolved, every body entry gets its line in the one
   PR comment — each line either `not changing — <why>` or `agree, held at the round cap — <the
   fix it would take>`. **Post that comment even when the round had no body entries** — it then
@@ -218,7 +220,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   stops matching, and the loop resumes from there, pushes included, until the new cap is reached
   or the review is clean. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
   so make it, count the review it triggers, answer that review by disposition, and rewrite the
-  line. An *unable to review* body on that head takes the last bullet's single retry as written —
+  line. If that push doesn't auto-request a review (neither pending signal after it), the
+  stale-review rule above applies as written — request once for the new head and record it: the
+  round the push costs still needs its review, or the head gate could never close. An *unable to
+  review* body on that head takes the last bullet's single retry as written —
   the retry re-requests on the **same** head, so it adds no round — and its fallback applies
   unchanged.
 
@@ -303,7 +308,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   it to merge mid-run). The EPIC phase's optional finish flag (`--finish` / "merge when green") is an
   explicit user opt-in that lifts the cap for the orchestrator's own FINISH pass **only**. The
   orchestrator also strips merge-intent flags from what it forwards to children (see the EPIC phase's
-  spawn step), so that intent never even reaches a child — never lift the cap for the per-child spawns.
+  spawn step), so that intent never even reaches a child — never lift the merge hold for the per-child spawns. The
+  cap's trailing `Budget: rounds=<n>` line is the one part a coordinator adjusts per child (a higher
+  review-round budget for a risky change — EPIC Step 5); that raises a budget, it lifts no hold.
 - Coupling / coordination: the default route is independent **bg** sessions; when a cluster needs
   coordination (concurrent children sharing code), use **shared markers** via the tracker's `COORD`
   op — **not** a live agent team. The `--coordinate` flag selects markers; `--team` is the explicit
