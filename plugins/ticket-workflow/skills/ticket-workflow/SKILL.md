@@ -356,7 +356,14 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   **And **re-establish** `refs/pushed/<branch>` on *every* path (b) adopt — which is a clear for a new branch and a **re-seed** for one that already exists.** A valid `Fork point:` directive says where the branch forks; it says nothing about what this run has pushed, so the inherited value is never trustworthy on its own and must not simply be left. But **clearing it unconditionally breaks the documented re-spawn**: EPIC Step 6's stuck-recovery relaunches a child on its *already-pushed* `outcome_branch`, and that cloud checkout has no upstream configured, so Step 7 would find neither `origin/<branch>` nor `refs/pushed/<branch>` and stop before the resumed child could push — a resume path turned into a dead end by a hygiene rule. Ask the remote which case you are in, and write the answer down:
 
   ```bash
-  if git ls-remote --exit-code --heads origin "refs/heads/<branch>" >/dev/null; then
+  # Same three-way classification as the dispatch probe above — `--exit-code` is not a boolean here
+  # either. Exit 128 (unreachable remote, auth failure) is NOT "absent", and reading it as absent
+  # falls through to the clear, destroying this branch's pushed-head record on a question that
+  # was never answered — the same failure the dispatch probe was fixed for, in the same file.
+  if git ls-remote --exit-code --heads origin "refs/heads/<branch>" >/dev/null; then rc=0; else rc=$?; fi
+  [ "$rc" = 0 ] || [ "$rc" = 2 ] \
+    || { echo "cannot read origin (exit $rc) — the branch state is unknown; stop and report"; exit 1; }
+  if [ "$rc" = 0 ]; then
     git fetch origin "<branch>" || { echo "branch exists on origin but cannot be fetched — stop and report"; exit 1; }
     # Seed from the FETCHED tip, not from the ls-remote answer: only the fetch put an object
     # in this store, and the two can differ if the branch moved in between.
