@@ -163,7 +163,12 @@ An unguarded `--delete` is never the release: it would erase a *newer* reservati
 **Validate the resolved base *branch name* here, before any command in this step touches it.** The epic base can come from a `Base branch:` directive in the epic body or the briefing — fetched text — and this phase puts it straight into `git ls-remote`, fetch refspecs, `gh pr edit --base` and the child's own briefing. START's validation runs in the *child*, far too late for any of those. So apply the same two-step check here, before the first use: check the text yourself, then `git check-ref-format --branch "<value>"`, and refuse rather than emit a command when it fails. The same goes for any branch name you did not construct yourself from this run's own naming scheme. **It is stated at the top of Step 4 because Step 4 is its first use** — the chain-top walk, the cascade's fetch refspecs and `--onto` targets, and the `gh pr edit --base` retargets all consume it, and it previously sat in Step 5, after every one of them. A validation written downstream of the first use is not a validation; it is a description of one. **And written out, not described** — this phase learned in round 109 that a sentence saying "apply the same two checks" is not the two checks, and a reader following prose reconstructs the strict form or a loose one with equal confidence:
 
 ```bash
-epic_base=<the resolved Base branch: value — epic body or briefing, i.e. FETCHED TEXT>
+# Same rule as START's block, and for the same reason: DO NOT paste this value into the command
+# source. `$(…)` or backticks inside it execute while the shell PARSES the assignment, before the
+# allowlist below can reject it — the check would run on the result. Read the text yourself first
+# and refuse to emit anything containing it when it fails; then bring it in as data (a file or an
+# exported variable), never inline.
+epic_base=$(cat "$epic_base_file")   # the resolved Base branch: — epic body or briefing, i.e. FETCHED TEXT
 # Allowlist FIRST: it is the one that keeps shell metacharacters out. A value like `foo$(id)`
 # substituted into a quoted placeholder is still executed by the shell while it PARSES the
 # command — quoting contains what reaches the program, it does not stop command substitution

@@ -203,7 +203,13 @@ fi
 # the claim back (the same read-back the claim rules already require) and clear only if it is
 # there.
 if [ $rc -ne 0 ]; then
+  # BOTH sets, always, in every state where the child may be live and its `child=` record is
+  # unconfirmed. The reservation keeps the NAME from being relaunched; the graph lock keeps a
+  # SECOND COORDINATOR out of the epic, which is the one-coordinator condition the text above
+  # requires under exactly this failure. Adding one without the other leaves the other protection
+  # to the ordinary sweep — and the sweep is right to release what nothing retained.
   hold_add child_reservation_holds "$branch" "unrecorded-live-child: $child_session_id"
+  hold_add epic_lock_holds "$branch" "unrecorded-live-child: $child_session_id"
   echo "post-launch claim write failed twice — child $child_session_id is LIVE on $branch:"
   echo "keep its row, hold the reservation, report the gap, do not relaunch"
 else
@@ -227,7 +233,11 @@ else
   want="claim: $branch -> $session for $child_id (epic $epic_id) base=$base child=$child_session_id"
   if rows=$(gh api --paginate "repos/<owner>/<repo>/issues/<epic_id>/comments" \
               --jq '.[] | [.user.login, .body] | @tsv'); then :; else
+    # Unconfirmed is not confirmed-absent, and it is not confirmed-present either: the child may
+    # be live with no readable `child=` record, so BOTH protections stay on until a later pass
+    # reads the thread and clears them together.
     hold_add epic_lock_holds "$branch" "claim-unconfirmed: could not read the thread back"
+    hold_add child_reservation_holds "$branch" "claim-unconfirmed: could not read the thread back"
     rows=""
   fi
   if [ "$(printf '%s\n' "$rows" | ORCH="<the orchestrator's login>" WANT="$want" \
@@ -244,6 +254,7 @@ else
     hold_drop child_reservation_holds "$branch"
   else
     hold_add epic_lock_holds "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
+    hold_add child_reservation_holds "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
   fi
 fi
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
