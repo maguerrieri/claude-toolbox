@@ -41,7 +41,14 @@ The vocabulary is unchanged from the `COORD` markers — prefixed one-liners, so
 receivers and greps treat the two channels uniformly:
 
 - **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks
-  a dependent's spawn), `done:` (START-complete: CI green, review clean),
+  a dependent's spawn), `rebased: <branch> onto <base> @ <sha>` (this branch was
+  rebased and its fork point moved — send it *right after* the push, since the
+  SHA cannot be validated until it is on origin. The coordinator, not the child,
+  posts the durable `restacked:` `COORD` marker: it verifies the reported SHA
+  against the branch first, which is the step that makes the marker worth
+  trusting. The author check does not enforce this — child and coordinator share
+  a login (EPIC's fork-point rules) — so it is a contract, not a boundary),
+  `done:` (START-complete: CI green, review clean),
   `blocked:` (stuck; say on what), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
   acceptance criteria` when it's urgent). A `filed:` ping is a **request, not an
@@ -49,8 +56,14 @@ receivers and greps treat the two channels uniformly:
   `roles/implementer.md`); the receiver dedups, prioritizes, and decides
   whether/when to spawn.
 - **Coordinator → child:** rare — a redirect the child should see before its
-  next natural checkpoint (e.g. `blocked: parent restacked, rebase onto
-  <base>`), sent to the name the coordinator assigned at spawn. A redirect is
+  next natural checkpoint, sent to the name the coordinator assigned at spawn.
+  A restack is **two** of them, and the wording is the protocol: first
+  `blocked: stand by — <branch> is being restacked; do not push or rebase
+  until I send the fork point`, then, once the coordinator has moved and
+  recorded that layer, `blocked: parent restacked, rebase onto <base>
+  Fork point: <sha>`. A stop message that says "rebase" makes the child
+  race the force-push it was sent to prevent, and the fork point it would
+  need does not exist until the move happens (EPIC Step 6). A redirect is
   *about the child's own issue*: a base-branch change, a scope clarification,
   "stop" / "restack" / "rebase". It is **never a new issue ID** — a live
   session's branch, worktree, PR footer, name, and notify wiring are all keyed

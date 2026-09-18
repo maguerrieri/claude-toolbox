@@ -83,11 +83,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   absent `.github/` means no Actions/CI, **not** no review bot. After opening the PR, check whether
   Copilot is already engaged — and note `requested_reviewers` lists only *pending* reviewers, so a
   bot that already **submitted** drops off it; check existing reviews too:
-  - `gh api repos/OWNER/REPO/pulls/<pr> --jq '[.requested_reviewers[].login]'` — review pending
-  - `gh pr checks <pr>` — a `copilot-pull-request-reviewer` check run still in progress is also
+  - `gh api "repos/$repo/pulls/<pr>" --jq '[.requested_reviewers[].login]'` — review pending
+  - `gh pr checks <pr> -R "$repo"` — a `copilot-pull-request-reviewer` check run still in progress is also
     "pending": Copilot drops off `requested_reviewers` once its run starts (observed on #131), so
     "pending" below means *either* signal.
-  - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
+  - `gh pr view <pr> -R "$repo" --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
     it). Don't re-request — just wait, then read its threads **and its review body** (below). A
     submitted review whose body is the *unable to review* sentence is not a review: take the last
@@ -95,7 +95,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
     "no bot" if the request fails (Copilot disabled for the repo).
 
-- **Request a review** (when not already engaged): `gh pr edit <pr> --add-reviewer "@copilot"`.
+**Every `gh` call in this profile names the selected repository — `-R "$repo"` where the command takes it, and `$repo` substituted into the path where it does not.** `gh api` has no `-R`: its repository is the URL, so a contract written as "takes `-R`" simply does not reach the GraphQL thread query, the reviews, timeline and comments reads, or the requested-reviewers probe, and those are the calls the **gate** is computed from. Bound only on the mutation side, this op could request a review on the selected repository while reading its gate signal from the cwd's — the worst of the two halves to get wrong, since the wrong answer looks like a normal result. GraphQL takes the two parts separately: `-f owner="${repo%%/*}" -f repo="${repo##*/}"`. So: `-R "$repo"`, `repos/$repo/…`, or the split — one of the three, at every call, with **the caller setting `$repo` before invoking any profile op**, which is the half that makes the rest true. FINISH resolves it in its preamble and **START in its Step 1, ahead of `FETCH`** — the phase's first `gh` call, and therefore the first thing that would be unbound — both by the same normalization (`git remote get-url origin`, or the repository `REPO_SELECT` chose where a profile maps the issue elsewhere). The binding is stated *there* as well as here on purpose: a rule that lives only at the consuming end is satisfied by nothing, which is how START's own Step 8 review loop reached this profile with the variable unset. An unset `$repo` expands to empty, so `-R ""` is not a safe degradation to the cwd — it is a malformed flag, and a rule that assumes a variable nobody assigns is a rule that fails at the first call. Where a caller genuinely has no repository in scope, that is the caller's bug to fix.** A profile op is invoked *by* a phase, so it inherits that phase's binding rather than resolving its own from the cwd — and this one both **reads** a gate signal and **mutates** the PR, so unbound it can gate on one repository and request a review on another.
+
+- **Request a review** (when not already engaged): `gh pr edit <pr> -R "$repo" --add-reviewer "@copilot"`.
   Best-effort — if it errors (Copilot review not enabled for the repo/account), post the no-bot
   fallback comment (last bullet; the gates read that marker) and rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
   they need no explicit request.)
@@ -106,7 +108,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   completion gate, so it must not under-count (the same pagination the github tracker's `EPIC_CHILDREN`
   uses):
   ```bash
-  gh api graphql --paginate -f owner=OWNER -f repo=REPO -F pr=<pr> -f query='
+  gh api graphql --paginate -f owner="${repo%%/*}" -f repo="${repo##*/}" -F pr=<pr> -f query='
     query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
       repository(owner:$owner,name:$repo){
         pullRequest(number:$pr){
@@ -124,7 +126,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   (last by `submitted_at`; `--slurp` so `last` spans all pages — a review cycle passes 30 easily —
   piped to standalone `jq`, since `gh` rejects `--slurp` together with `--jq`):
   ```bash
-  gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
+  gh api "repos/$repo/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     | jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
            | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
   ```
@@ -135,7 +137,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   signal for a moment while it schedules the run). That fact is durable on the PR itself, so read
   it there, never from memory — a later turn or a fresh coordinator sees the same answer:
   ```bash
-  gh api "repos/OWNER/REPO/issues/<pr>/timeline?per_page=100" --paginate --slurp \
+  gh api "repos/$repo/issues/<pr>/timeline?per_page=100" --paginate --slurp \
     | jq '[.[][] | select(.event=="review_requested" and .requested_reviewer.login=="Copilot")] | length'
   ```
   Non-zero → keep waiting until a review, an explicit request failure, or the fallback comment
@@ -176,7 +178,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   thread to reply on or resolve, so post a **single** comment after the review, one line per entry (a repeated `path:line` gets
   one line per finding):
   `path:line` — `fixed in <sha> — …` or `not changing — …`. Push fixes first so the lines can cite
-  SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
+  SHAs; `gh pr comment <pr> -R "$repo" --body-file <file>`. If every entry is "not changing" (no push), don't
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
 - **Loop** until **all three** hold — the completion gate:
@@ -187,11 +189,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
      an earlier review doesn't carry over; after each push, answer the newest review's list (repeats
      included). Also met when the engaged bot isn't Copilot, or the no-bot fallback comment (last
      bullet) is already on the PR;
-  3. CI is green (`gh pr checks <pr> --watch`).
+  3. CI is green (`gh pr checks <pr> -R "$repo" --watch`).
 
   For (2), list comments newer than the review (ISO-8601 `Z` timestamps compare as strings):
   ```bash
-  gh api "repos/OWNER/REPO/issues/<pr>/comments?per_page=100" --paginate --slurp \
+  gh api "repos/$repo/issues/<pr>/comments?per_page=100" --paginate --slurp \
     | jq '[.[][] | select(.created_at > "<submitted_at>")] | map(.body)'
   ```
   Push fixes, let the bot re-review (a push re-triggers Copilot/CodeRabbit), re-read threads and the
@@ -199,7 +201,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
 - **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
   review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
-  (`gh pr edit <pr> --add-reviewer "@copilot"`) and record the retry in the same step with a
+  (`gh pr edit <pr> -R "$repo" --add-reviewer "@copilot"`) and record the retry in the same step with a
   one-line PR comment (`Copilot could not review <review id>; re-requested once`) — a later turn
   that finds the same unable review newest then knows the retry was issued and doesn't request
   again. Wait for a **newer** review (a later `submitted_at`; the same body stays newest while the
@@ -213,7 +215,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   review. That fallback
   comment is the durable marker the gates read: if the PR already carries it, don't re-request.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
-  fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
+  fallback above): rely on `gh pr checks <pr> -R "$repo" --watch` + the user's review.
 
 ## SMOKE_DEPLOY
 - If the project has a way to run or deploy, smoke test before merging (start it / deploy

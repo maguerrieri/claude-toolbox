@@ -15,9 +15,25 @@ and assemble what comes back up.
   Poll them to completion and assemble the stack.
 - **On the local backend only, pass `Notify: <your session name>` on each
   child's spawn edge** (see the skill's `messaging.md`), so children wake you via
-  SendMessage on `pushed:`/`done:`/`blocked:`/`filed:` instead of leaving you to
-  poll blind — and you can redirect a child mid-run by the name you assigned it
-  at spawn. Pings schedule your re-checks; the PRs stay the ground truth. On the
+  SendMessage on `pushed:`/`rebased:`/`done:`/`blocked:`/`filed:` instead of
+  leaving you to poll blind — and you can redirect a child mid-run by the name
+  you assigned it at spawn. **`rebased:` is the one you must act on, not merely
+  note:** verify the SHA it reports against the branch, then post the durable
+  `restacked:` `COORD` marker yourself. The author check does **not** stop a child
+  posting one — child and coordinator share a login, as the fork-point rules say
+  plainly — so what your marker adds is not unforgeability but the *verification*:
+  you checked the SHA against the branch before signing it. Until you post one,
+  that layer has no fork point anybody should act on **where none of the durable
+  sources applies** — and the qualifier matters, because the commonest case is
+  not that one: a layer whose PR is already open carries its own `base.sha`,
+  which the fork-point rules rank as the strongest source once it passes their
+  checks, so a child there is not blocked and must not be treated as such. What
+  your marker is for is the layer with no usable durable source — before the PR
+  exists, or when `base.sha` fails its own tests (a visible base rewrite, or a
+  candidate that is not descendant-most). Blocking a child that has a valid
+  `base.sha` is the same error in the other direction, and it stalls a layer
+  that did nothing wrong (`messaging.md`, EPIC Step 6).
+  Pings schedule your re-checks; the PRs stay the ground truth. On the
   cloud backend there is no cross-session channel: the spawn edge carries no
   `Notify:`, and a `send_later` wake-up schedules your re-checks instead (the
   skill's `phases/epic.md` Steps 5–6). A cloud child's `filed:` reaches you the
