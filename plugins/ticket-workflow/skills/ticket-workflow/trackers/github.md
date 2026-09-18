@@ -96,6 +96,17 @@ body=$(mktemp)                                         # NEVER build the marker 
 printf 'claim: %s -> %s\n' "$session" "$files" > "$body"   # command itself — see below
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
 rm -f "$body"
+
+# TWO claim shapes, same channel and same write discipline — don't overload one for the other:
+#   file claim   (coordinated runs, EPIC Step 3): claim: <session> -> <files>          — above
+#   branch claim (every run, EPIC Step 5):        claim: <branch> -> <session> for <child id> (epic <epic_id>)
+# The branch claim is the RECORD of a reservation the lock ref already took (EPIC Step 5); its
+# branch and child fields are what a later reader matches on, so a file-claim-shaped body posted
+# in its place records nothing a second coordinator can use.
+body=$(mktemp)
+printf 'claim: %s -> %s for %s (epic %s)\n' "$branch" "$session" "$child_id" "$epic_id" > "$body"
+gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
+rm -f "$body"
 # Read markers WITH their id, author and timestamp — all three are load-bearing (EPIC's fork-point
 # rules authenticate a `restacked:` marker by author and take the newest; Step 5 arbitrates two
 # claims on one branch by ID, because `created_at` is second-granular and can tie), and this
