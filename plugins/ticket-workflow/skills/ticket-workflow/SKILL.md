@@ -250,6 +250,15 @@ Branch named via the adapter's `BRANCH` — **unless** the briefing/arguments su
 #      (`branch=$(cat "$branch_file")`), or export it and use `branch=$TW_BRANCH`. Never inline.
 # The two checks below still run: they are what catches a value that passed your reading but is
 # not a legal ref, and they are what a later reader relies on.
+# STAGE THE VALUES FIRST — this is the step that was missing, and without it `$branch_file` is
+# empty, `cat ""` fails, and under `set -e` the run dies before any check. Write each value with
+# your FILE-WRITING tool, not a shell heredoc (a heredoc is still shell source, which is the
+# whole thing being avoided): one value per file, one line, no trailing newline needed. The paths
+# are yours — you chose them, they are not fetched text — so interpolating them is fine.
+branch_file=<path you wrote the adapter's BRANCH value / `Worktree:` directive to>
+base_file=<path you wrote the resolved `Base branch:` value to>
+[ -s "$branch_file" ] && [ -s "$base_file" ] \
+  || { echo "branch/base not staged — write them first, then re-run this block"; exit 1; }
 branch=$(cat "$branch_file")     # the adapter's BRANCH value, or the `Worktree:` directive
 [[ $branch =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] \
   || { echo "branch name rejected by the allowlist — refuse and report"; exit 1; }
@@ -362,6 +371,12 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   # EXACTLY ONE of the two arms below runs. They are an if/else, not a sequence: run as written
   # top-to-bottom, the solo arm cuts the worktree and the `Cut from:` arm then runs `worktree add`
   # again on a branch that now exists (it fails), or cuts from the wrong revision.
+  # Stage it the same way, and never from the issue body — `Cut from:` is briefing-only (the
+  # fork-point rules say so), and it is a SHA, so it is checked as one before anything reads it.
+  cut_from_directive=$(cat "$cut_from_file" 2>/dev/null || true)   # empty when the briefing carried none
+  if [ -n "$cut_from_directive" ] && ! [[ $cut_from_directive =~ ^[0-9a-f]{40}$ ]]; then
+    echo "Cut from: is not a full 40-hex SHA — refuse and report"; exit 1
+  fi
   if [ -z "$cut_from_directive" ]; then      # solo run — no `Cut from:` in the briefing
   cut_from=$(git rev-parse "origin/<the validated base branch>")     # the fork point, captured AT the cut
   git worktree add "<worktree_dir>/<branch>" -b "<branch>" "$cut_from"   # quoted: <worktree_dir> is configurable
@@ -471,7 +486,10 @@ Before pushing, self-check the branch's commits — this is the cheap place to f
 **An absent remote branch is not by itself proof of a first push.** `refs/pushed/<branch>` in this checkout, or a PR that ever existed for it, means the branch *was* pushed and is now gone — merged and auto-deleted, or cleaned up — and the create-only lease below would happily **re-create** it, resurrecting work that has already landed or racing a cleanup that is still running. **And "a PR that ever existed" has to be a query, not a hope** — the preflight above checks `refs/pushed/<branch>` and the remote ref, and in the case that matters most neither exists: a fresh checkout, a merged PR, its branch auto-deleted. Both refs absent, the name reads as new, and the create-only lease recreates landed work. So ask the server, bound to the selected repository and restricted to this head:
 
 ```bash
-gh pr list -R "$repo" --state all --head "$branch" -L 100 --json number,state,mergedAt
+if hist=$(gh pr list -R "$repo" --state all --head "$branch" -L 100 --json number,state,mergedAt); then :; else
+  echo "cannot ask whether this name was ever used — the question is unanswered, not answered 'no'"
+  echo "stop and report rather than pushing"; exit 1
+fi   # an auth or network failure prints nothing; an empty result and no result are NOT the same
 ```
 
 Any row is prior-push evidence, whatever its state — a merged one most of all. Check before you treat the empty `ls-remote` as "new": no local record, no remote ref **and no PR ever** → genuinely new, push as below; evidence of a prior push with the branch now absent → **stop and report**, and let a human say whether this is a resume that needs a fresh branch or work that is already merged.

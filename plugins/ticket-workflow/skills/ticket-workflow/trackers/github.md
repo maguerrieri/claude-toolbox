@@ -147,12 +147,31 @@ rm -f "$body"
 # put fetched data into command source, and a helper that reads `eval "$1=…\$2…"` is the pattern
 # they will copy to a place where the value IS re-parsed. `printf -v` with indirect expansion
 # does the same job with the values never leaving data position.
-hold_add()  { local __n=$1; local __c=${!__n}; printf -v "$__n" '%s%s\t%s\n' "$__c" "$2" "$3"; }
-hold_drop() {                              # $1 = set name, $2 = branch key
-  local __n=$1; local __v=${!__n}
-  __v=$(printf '%s' "$__v" | awk -F'\t' -v b="$2" '$1!=b')
-  if [ -n "$__v" ]; then __v="$__v"$'\n'; fi
-  printf -v "$__n" '%s' "$__v"
+# No `eval`, and no shell-specific feature either. The previous form used bash's `${!name}`
+# indirect expansion and `printf -v`; `AGENTS.md` says tool commands run under **zsh**, where
+# `${!name}` is not indirection at all, so the helper would silently fail to record a hold —
+# and a hold that is never set is the sweep releasing the protection. There are exactly two
+# sets, so naming them outright costs a `case` and needs nothing beyond POSIX parameter
+# assignment: correct in bash and zsh without either having to be the one it was tested in.
+hold_add()  {                              # $1 = epic|child, $2 = branch key, $3 = reason
+  case $1 in
+    epic)  epic_lock_holds="${epic_lock_holds}$2	$3
+" ;;
+    child) child_reservation_holds="${child_reservation_holds}$2	$3
+" ;;
+    *)     echo "hold_add: unknown set '$1'"; exit 1 ;;
+  esac
+}
+hold_drop() {                              # $1 = epic|child, $2 = branch key
+  case $1 in
+    epic)  epic_lock_holds=$(printf '%s' "$epic_lock_holds" | awk -F'\t' -v b="$2" '$1!=b')
+           if [ -n "$epic_lock_holds" ]; then epic_lock_holds="$epic_lock_holds
+"; fi ;;
+    child) child_reservation_holds=$(printf '%s' "$child_reservation_holds" | awk -F'\t' -v b="$2" '$1!=b')
+           if [ -n "$child_reservation_holds" ]; then child_reservation_holds="$child_reservation_holds
+"; fi ;;
+    *)     echo "hold_drop: unknown set '$1'"; exit 1 ;;
+  esac
 }
 # THE KEY MUST BE AN ALLOWLIST-VALIDATED BRANCH NAME, and that is load-bearing rather than tidy:
 # the set is tab- and newline-delimited, so a key containing either splits one entry into two.
@@ -161,7 +180,7 @@ hold_drop() {                              # $1 = set name, $2 = branch key
 # these helpers take the validated name and never raw directive text.
 
 if [ $rc -ne 0 ]; then
-  hold_add epic_lock_holds "$branch" "claim-unwritable: base=$base unrecorded"   # phases/epic.md, release rule
+  hold_add epic "$branch" "claim-unwritable: base=$base unrecorded"   # phases/epic.md, release rule
   echo "pre-launch claim write failed — reservation stands, launch; the epic graph lock is now"
   echo "held past this pass and excluded from the sweep until every entry in \$epic_lock_holds is"
   echo "repaired or a human releases it. Held for: $branch"
@@ -217,8 +236,8 @@ if [ $rc -ne 0 ]; then
   # SECOND COORDINATOR out of the epic, which is the one-coordinator condition the text above
   # requires under exactly this failure. Adding one without the other leaves the other protection
   # to the ordinary sweep — and the sweep is right to release what nothing retained.
-  hold_add child_reservation_holds "$branch" "unrecorded-live-child: $child_session_id"
-  hold_add epic_lock_holds "$branch" "unrecorded-live-child: $child_session_id"
+  hold_add child "$branch" "unrecorded-live-child: $child_session_id"
+  hold_add epic "$branch" "unrecorded-live-child: $child_session_id"
   echo "post-launch claim write failed twice — child $child_session_id is LIVE on $branch:"
   echo "keep its row, hold the reservation, report the gap, do not relaunch"
 else
@@ -245,8 +264,8 @@ else
     # Unconfirmed is not confirmed-absent, and it is not confirmed-present either: the child may
     # be live with no readable `child=` record, so BOTH protections stay on until a later pass
     # reads the thread and clears them together.
-    hold_add epic_lock_holds "$branch" "claim-unconfirmed: could not read the thread back"
-    hold_add child_reservation_holds "$branch" "claim-unconfirmed: could not read the thread back"
+    hold_add epic "$branch" "claim-unconfirmed: could not read the thread back"
+    hold_add child "$branch" "claim-unconfirmed: could not read the thread back"
     rows=""
   fi
   if [ "$(printf '%s\n' "$rows" | ORCH="<the orchestrator's login>" WANT="$want" \
@@ -259,11 +278,11 @@ else
     # outlive the condition, which is the failure mode the hold was added to prevent, one
     # level up. hold_drop is a no-op for a key that was never added, so this is safe on the
     # ordinary path where neither failed.
-    hold_drop epic_lock_holds "$branch"
-    hold_drop child_reservation_holds "$branch"
+    hold_drop epic "$branch"
+    hold_drop child "$branch"
   else
-    hold_add epic_lock_holds "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
-    hold_add child_reservation_holds "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
+    hold_add epic "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
+    hold_add child "$branch" "claim-unconfirmed: write returned 0, post-launch record not found"
   fi
 fi
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)

@@ -23,8 +23,16 @@ and assemble what comes back up.
   posting one — child and coordinator share a login, as the fork-point rules say
   plainly — so what your marker adds is not unforgeability but the *verification*:
   you checked the SHA against the branch before signing it. Until you post one,
-  that layer has no fork point anybody should act on, and the next poll blocks a
-  child that did nothing wrong (`messaging.md`, EPIC Step 6).
+  that layer has no fork point anybody should act on **where none of the durable
+  sources applies** — and the qualifier matters, because the commonest case is
+  not that one: a layer whose PR is already open carries its own `base.sha`,
+  which the fork-point rules rank as the strongest source once it passes their
+  checks, so a child there is not blocked and must not be treated as such. What
+  your marker is for is the layer with no usable durable source — before the PR
+  exists, or when `base.sha` fails its own tests (a visible base rewrite, or a
+  candidate that is not descendant-most). Blocking a child that has a valid
+  `base.sha` is the same error in the other direction, and it stalls a layer
+  that did nothing wrong (`messaging.md`, EPIC Step 6).
   Pings schedule your re-checks; the PRs stay the ground truth. On the
   cloud backend there is no cross-session channel: the spawn edge carries no
   `Notify:`, and a `send_later` wake-up schedules your re-checks instead (the
