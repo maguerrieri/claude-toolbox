@@ -97,7 +97,7 @@ The shared, durable channel sibling sessions use for file **claims** and **"bran
 body=$(mktemp)                                         # NEVER build the marker inline in the
 printf 'claim: %s -> %s\n' "$session" "$files" > "$body"   # command itself — see below
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
-rm -f "$body"; [ $rc -eq 0 ] || { echo "claim write failed — do not launch on this name"; exit $rc; }
+rm -f "$body"; [ $rc -eq 0 ] || { echo "file claim write failed — do not start editing these files"; exit $rc; }
 
 # TWO claim shapes, same channel and same write discipline — don't overload one for the other:
 #   file claim   (coordinated runs, EPIC Step 3): claim: <session> -> <files>          — above
@@ -119,7 +119,17 @@ body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s) base=%s child=%s\n' \
   "$branch" "$session" "$child_id" "$epic_id" "$base" "$child_session_id" > "$body"
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
-rm -f "$body"; [ $rc -eq 0 ] || { echo "claim write failed — do not launch on this name"; exit $rc; }
+rm -f "$body"
+# NOT the pre-launch handling, and not a copy of it: the child is already running, so "do not launch
+# on this name" would be advice about a decision already taken. Retry the write once; if it still
+# will not land, do NOT exit quietly and do NOT release or sweep this child's reservation. A live
+# child with no `child=` record is precisely the state a later run reads as reclaimable — the
+# takeover rule decides on the CHILD's liveness, and the only record that would name that child is
+# the one that just failed — so freeing the name here is how a SECOND child gets launched on the
+# same branch. Hold the lock (its release point is "the name stops being this run's to hold", which
+# has not happened — EPIC's lock protocol, step 5) and report an unresolved handoff for a human.
+[ $rc -eq 0 ] || { echo "post-launch claim write failed — child $child_session_id is LIVE on $branch:" \
+                        "hold the reservation, report blocked-unrecordable, do not relaunch"; exit $rc; }
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
 # — NOT by session alone, or a coordinator holding one claim per child keeps a single newest record
 # and discards the child= liveness evidence for every other branch it reserved — then within each
