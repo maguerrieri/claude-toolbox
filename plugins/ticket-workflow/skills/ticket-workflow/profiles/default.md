@@ -187,10 +187,14 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   coordinator gets the same answer:
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
-    | jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")
+    | jq --arg bot "<bot login>" '[.[][] | select(.user.login==$bot)
            | select(.body | test("^\\s*Copilot was unable to review") | not) | .commit_id] | unique | length'
   ```
-  (Another bot: the same expression on its login — one review per head.) The **cap** is the
+  `<bot login>` is the engaged bot as the detect step found it among the PR's reviews —
+  `copilot-pull-request-reviewer[bot]` for Copilot, `coderabbitai[bot]` for CodeRabbit, a CI
+  action's app login — read off the PR each time, not remembered; every bot files its findings
+  through reviews (inline comments belong to one), so one review per head counts the same for
+  all of them, and the unable-body filter only ever matches Copilot's sentence. The **cap** is the
   `Budget: rounds=<n>` the briefing carried (START Step 1), else this profile's default of **5**
   (`SPAWN_CAP`); it applies to every PR, whatever the diff contains. **Below** the cap, loop as
   written: fix, push, let the bot re-review. Once the count **reaches** the cap and the newest
@@ -203,17 +207,20 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   fix it would take>`. **Post that comment even when the round had no body entries** — it then
   lists the threads answered (`<path>:<line> — <disposition>` per thread): the gates date the
   round's answer by a PR comment newer than the review, and thread replies alone don't show up
-  there. Nothing is discarded; the human reads the dispositions. Then add
-  `Review rounds: <n> (cap <cap>); <m> findings open by disposition` to the PR body (its own
-  line, after the test plan; `<m>` counts the `agree, held` lines) and hand back at the usual
-  reviewed-PR stopping point. That line is the durable marker the completion gates read, like
+  there. Nothing is discarded; the human reads the dispositions. Then rewrite the PR body's
+  `Review rounds: <n> (cap <cap>); <m> findings open by disposition` line (START Step 7 seeds it
+  at `0 (cap <cap>)`; add it after the test plan if it's missing) with the count and the number
+  of `agree, held` lines in that comment, and hand back at the usual reviewed-PR stopping
+  point. That line is the durable marker the completion gates read, like
   the no-bot fallback comment: a reached cap with dispositions posted **is** review-clean, not a
   stall. **The line is bound to the cap and the count, not to a head:** the gates accept it only
   when its `<cap>` is the cap in force, its `<n>` equals the count the read above returns *now*
-  and is at least `<cap>`, and the newest review on the head is not an *unable to review* body
-  and has its dispositions in a PR comment posted after it — a line a later push left behind is
-  no marker, a raised budget makes the old line's `<cap>` wrong, and a pending or unable review
-  on the head keeps the gate open (the unable path below runs first). So every push after the cap
+  and is at least `<cap>`, the newest review on the head is not an *unable to review* body and
+  has its dispositions in a PR comment posted after it, and its `<m>` equals the number of
+  `agree, held` lines in that comment — a line a later push left behind is no marker, a raised
+  budget makes the old line's `<cap>` wrong, a seeded line's `0` never reaches the cap, an `<m>`
+  that disagrees with the comment is a malformed marker, and a pending or unable review on the
+  head keeps the gate open (the unable path below runs first). So every push after the cap
   re-opens the loop: count the review it triggers, answer it, and rewrite the line with the new
   count before handing back. The cap is a budget, not a verdict — a human can raise it
   (`Budget: rounds=<n>` on a re-brief, or "one more round" to an attached session), the old line
@@ -291,8 +298,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 - The trailing `Budget: rounds=5` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
   directive — a sibling of `Base branch:` / `Worktree:` / `Role:` — so START Step 1 reads it like
   the others. A spawner that knows a change is risky raises it per issue with its own
-  `Budget: rounds=<n>`; SPAWN Step 2 keeps exactly one `Budget:` line per briefing (the per-issue
-  one wins over this cap's). **5 is also this profile's default when no directive arrives** — an
+  `Budget: rounds=<n>`; SPAWN Step 2 keeps exactly one `Budget:` line per briefing, the most
+  specific (per-issue over shared over this cap's). **5 is also this profile's default when no directive arrives** — an
   interactive `/start-ticket` — since the human is right there to say "one more round". An org
   profile overriding this op keeps a `Budget: rounds=<n>` line or inherits 5.
 - Keep the payload text free of
