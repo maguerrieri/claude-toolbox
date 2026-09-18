@@ -26,7 +26,7 @@ gh issue list -R <owner>/<repo> --search "<query>" --state open --json number,ti
 
 ## CREATE(title, body, labels?)  — file a new issue (FILE phase)
 ```bash
-gh issue create --title "<title>" --body-file <path>  [--label "<label>"]
+gh issue create -R <owner>/<repo> --title "<title>" --body-file <path>  [--label "<label>"]
 ```
 - Write the body to a temp file and pass `--body-file` — issue bodies are multi-line, quote- and backtick-heavy markdown, and a file sidesteps the brittle shell escaping an inline `--body "…"` would need.
 - `--label` is best-effort: it errors if the label doesn't exist in the repo (`gh` doesn't create labels on the fly) — retry without it rather than failing the CREATE.
