@@ -206,8 +206,10 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 - **Repo:** Use the profile's `REPO_SELECT` (the `default` profile: the repo named in the request, else the current repo — for personal projects you're almost always already inside it; ask if you're in an umbrella/bare dir and it's ambiguous). Org profiles may map the issue to a repo from a catalog. **Then write the answer down as `$repo` (`<owner>/<repo>`), here, and bind every `gh` call in this phase to it** — `gh pr create`, `gh pr checks`, and every profile op START invokes. This phase is where the repository is *chosen*, so it is where the binding belongs; a rule stated at the far end, in `profiles/default.md`'s "the caller sets `$repo`", is satisfied by nothing unless this bullet does it. Resolve it by the same normalization FINISH uses:
 
   ```bash
+  # The SAME string FINISH's preamble uses, character for character — keep them identical.
   repo=$(git remote get-url origin \
-    | sed -E 's@^(https://[^/]+/|git@[^:]+:)@@; s@\.git$@@')   # …or the repository REPO_SELECT chose, where a profile maps the issue elsewhere
+         | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')
+  # …or the repository REPO_SELECT chose, where a profile maps the issue elsewhere.
   [ -n "$repo" ] || { echo "no repository in scope — stop and report"; exit 1; }
   ```
 
@@ -222,18 +224,35 @@ Branch named via the adapter's `BRANCH` — **unless** the briefing/arguments su
 
 **Validate the directives before the split, not inside one branch of it.** The allowlist-then-`check-ref-format` check in path (a)'s block applies to *both* paths: path (b) skips that block entirely, and Step 7 still interpolates the same `Base branch:` and `Worktree:` values into fetches, rebases and pushes. So run it here — allowlist `^[A-Za-z0-9][A-Za-z0-9._/-]*$`, then `git check-ref-format --branch "<value>"`, then quote at every call site — and treat the copy inside path (a) as the worked example rather than the only instance.
 
+**And "before the split" means these commands run here, not that a later block describes them.** The block inside path (a) carries the *reasoning* and the measurements; the check itself has to have happened by the time anything — either path, or the remote probe that opens path (a) — uses the name:
+
+```bash
+branch=<the adapter's BRANCH value, or the `Worktree:` directive verbatim>
+[[ $branch =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] \
+  || { echo "branch name rejected by the allowlist — refuse and report"; exit 1; }
+git check-ref-format --branch "$branch" >/dev/null \
+  || { echo "not a valid branch name — refuse and report"; exit 1; }
+# Same two checks, same order, for the `Base branch:` value before anything fetches or rebases with it.
+```
+
+Every `<branch>` placeholder below stands for **this validated value** — substitute it from `$branch`, never from the raw directive text, and keep it quoted at every call site (validation narrows the input; quoting contains it).
+
 Two paths from here; pick by whether `<branch>` is already checked out:
 
 - **(a) Normal — `<branch>` does not exist yet:** **ask the remote before you run anything else in this path.** "Does not exist yet" is a claim about *this checkout*, and a fresh or resumed clone is absent locally for **every** branch, including ones that exist on origin with someone's work on them — so the dispatch between (a) and (b) is decided by `ls-remote`, not by the local ref, and it has to be decided **here**, because the two commands that make a collision unrecoverable (cutting the worktree, clearing `refs/pushed/<branch>`) are the first ones below. A check written further down is a check that runs after the damage; the paragraph after this block says what that damage is.
 
   ```bash
-  git ls-remote --exit-code --heads origin "<branch>"   # measured 2026-09-18, git 2.43.0: absent → exit 2, present → exit 0
+  git ls-remote --exit-code --heads origin "$branch"   # measured 2026-09-18, git 2.43.0: absent → exit 2, present → exit 0
   ```
 
   **Absent** → this really is path (a): continue below. **Present** → this is *not* path (a), whatever the local checkout says. Adopt the branch by **path (b)**'s rules if this run owns the name (its own spawn record, or the deliberate re-spawn EPIC Step 6 describes); otherwise **stop and report**, because a branch on origin that this run did not create is another run's work. Only on absent do you create the worktree, enter it, then init submodules:
 
   ```bash
-  # VALIDATE EVERY DIRECTIVE FIRST — BEFORE the fetch below, not after it. Three of them are
+  # WHY the validation above the split is there, and why NOTHING may use a directive before it.
+  # It is stated above rather than here because a check written below its first use is not a
+  # check: the remote probe that opens this path took `$branch` before this block is read, and
+  # an earlier round already moved the fetch below this comment for exactly that reason. Three
+  # of the directives are
   # attacker-reachable text (`Base branch:` from the ISSUE BODY; `Cut from:` and `Worktree:` from a
   # briefing), and each is interpolated into commands here and in Step 7 — including the very fetch
   # that used to sit above this block, which is why it now sits below. For the two BRANCH NAMES:
