@@ -419,9 +419,17 @@ if [ "$launched" != yes ]; then
   # the sweep the status that tells it what the record means.
   <COORD write: claim: <assigned branch> -> <session> for <child> (epic <epic>) base=<assigned base>
    launch-failed — supersedes this run's pre-launch claim>
+  # AND DO NOT `exit` OUT OF THE PASS. The previous version did, which strands the epic GRAPH lock
+  # — the pass holds it and the release runs at the pass's end, which an exit never reaches — and
+  # blocks every later coordinator on a lock nothing will clear. It also abandons the rest of the
+  # wave: one child's launch call failing says nothing about its siblings, and the pass is the
+  # unit that holds the graph lock precisely because it covers all of them. This is a per-child
+  # outcome, so it ends this child's iteration and nothing else. The graph lock is then released
+  # where it always is — at the end of the pass, by the unconditional-release rule — which is the
+  # point of having exactly one release site rather than one per failure path.
   echo "launch failed for <id> on epic-<epic-id-lower>-<id-lower> — reservation released, row left"
   echo "unlaunched for the next pass; not marked blocked, because nothing about the CHILD failed"
-  exit 1
+  continue          # next child in the wave; the pass ends normally and releases the graph lock
 fi
 ```
 
