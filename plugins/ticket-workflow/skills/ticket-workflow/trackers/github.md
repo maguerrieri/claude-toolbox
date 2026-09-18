@@ -142,7 +142,16 @@ rm -f "$body"
 # The child is fine; it is the coordinator's record that is missing. So leave the child's row
 # alone, keep the reservation, carry on with the rest of the wave, and report the gap (branch +
 # child session id) with the epic flagged as needing a human before a second coordinator runs it.
-[ $rc -eq 0 ] || { echo "post-launch claim write failed — child $child_session_id is LIVE on $branch:" \
+# The retry the comment above promises — one, and actually written out. A single transient 5xx
+# otherwise loses the only record naming this child, which is the whole failure being guarded.
+if [ $rc -ne 0 ]; then
+  body=$(mktemp)
+  printf 'claim: %s -> %s for %s (epic %s) base=%s child=%s\n' \
+    "$branch" "$session" "$child_id" "$epic_id" "$base" "$child_session_id" > "$body"
+  gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+  rm -f "$body"
+fi
+[ $rc -eq 0 ] || { echo "post-launch claim write failed twice — child $child_session_id is LIVE on $branch:" \
                         "keep its row, hold the reservation, report the gap, do not relaunch"; }
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
 # — NOT by session alone, or a coordinator holding one claim per child keeps a single newest record

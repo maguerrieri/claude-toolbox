@@ -206,10 +206,15 @@ If `$CLAUDE_SESSION_ID` is unset (the plugin's SessionStart hook didn't run), sk
 - **Repo:** Use the profile's `REPO_SELECT` (the `default` profile: the repo named in the request, else the current repo — for personal projects you're almost always already inside it; ask if you're in an umbrella/bare dir and it's ambiguous). Org profiles may map the issue to a repo from a catalog. **Then write the answer down as `$repo` (`<owner>/<repo>`), here, and bind every `gh` call in this phase to it** — `gh pr create`, `gh pr checks`, and every profile op START invokes. This phase is where the repository is *chosen*, so it is where the binding belongs; a rule stated at the far end, in `profiles/default.md`'s "the caller sets `$repo`", is satisfied by nothing unless this bullet does it. Resolve it by the same normalization FINISH uses:
 
   ```bash
-  # The SAME string FINISH's preamble uses, character for character — keep them identical.
-  repo=$(git remote get-url origin \
-         | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')
-  # …or the repository REPO_SELECT chose, where a profile maps the issue elsewhere.
+  # REPO_SELECT's answer FIRST — it is the selection; `origin` is only the fallback it names for
+  # the ordinary case of already standing in the repo. The other order silently discards a
+  # profile mapping and an explicitly requested repo, which is the whole reason this is bound.
+  repo=<the repository REPO_SELECT chose, as owner/repo>
+  if [ -z "$repo" ]; then                    # REPO_SELECT resolved to "the current repo"
+    # The SAME string FINISH's preamble uses, character for character — keep them identical.
+    repo=$(git remote get-url origin \
+           | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')
+  fi
   [ -n "$repo" ] || { echo "no repository in scope — stop and report"; exit 1; }
   ```
 
@@ -460,10 +465,16 @@ Assumes the user has already reviewed and approved the PR. Preconditions: PR ope
 
 **Resolve `<owner>/<repo>` once, before Step 1, and substitute it everywhere below.** The commands in this phase are written with `-R "$repo"` because a finish can run from an umbrella checkout or against a profile-mapped repository, and a bare `gh` call resolves the repo from the cwd — but unlike EPIC, this phase has no `$repo` handed to it, so nothing here defines that value unless you do. **A literal `<owner>` is not a harmless placeholder in a shell:** `<` opens an input redirection, so a copied command fails on a missing file rather than on an obvious placeholder, and `>` in the same token would truncate one. Resolve it from the checkout you are finishing in and hold it in a variable:
 
+**Take the caller's repository before deriving one.** EPIC Step 7 delegates these steps and carries its own bound `$repo`, and a profile may have mapped the issue elsewhere; the delegating phase's selection wins, because this checkout's `origin` can name a different repository entirely. Deriving first and mentioning the caller afterwards is how the derived value ends up being the one every command below uses.
+
 ```bash
-# normalise any remote URL (ssh, ssh://, https, ±.git) to owner/repo — the same form EPIC uses
-repo=$(git remote get-url origin \
-       | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')
+repo=<the caller's $repo, or the repository REPO_SELECT chose, as owner/repo>
+if [ -z "$repo" ]; then                    # neither: this checkout is the repository
+  # normalise any remote URL (ssh, ssh://, https, ±.git) to owner/repo — the same form EPIC uses
+  repo=$(git remote get-url origin \
+         | sed -E 's#^git@[^:]+:#https://h/#; s#^ssh://[^/]+/#https://h/#; s#\.git$##; s#^.*://[^/]+/##')
+fi
+[ -n "$repo" ] || { echo "no repository in scope — stop and report"; exit 1; }
 ```
 
 Then every `gh` call below takes `-R "$repo"`. Where the caller already knows the repository — EPIC Step 7 delegates these steps and carries its own bound `$repo` — use that one instead of re-deriving it, since the delegating phase may have selected a repository this checkout's `origin` does not name.
