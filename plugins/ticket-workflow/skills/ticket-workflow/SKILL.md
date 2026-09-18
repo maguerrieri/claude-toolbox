@@ -316,6 +316,14 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   # and the next commands cut a worktree and clear this branch's pushed-head record on that basis.
   # Ask for the EXACT ref, too: `--heads "$branch"` is a suffix match — it returned BOTH
   # refs/heads/feature-42 and refs/heads/x/feature-42 for the pattern `feature-42` (measured).
+  # AND `refs/heads/$branch` NARROWS that match without anchoring it. Measured 2026-09-18, git
+  # 2.43.0, on a remote whose only branch was `refs/heads/x/refs/heads/feature-42`: asking for
+  # `refs/heads/feature-42` returned exit 0 and exactly one line, for a branch that does not
+  # exist. This probe only DECIDES here (a wrong match reads as "the name is taken" and stops,
+  # which is the safe direction), but every site that then USES the result — a SHA to pin, a
+  # base to rebase onto — must compare the returned ref column with what it asked for, per the
+  # capture block in `phases/epic.md`'s lookup rule. Presence checks may stop on doubt; value
+  # reads may not proceed on it.
   # Capture with `if`, not `cmd; rc=$?`: under `set -e` the bare form EXITS on the "absent" case
   # (measured — `set -e; false; rc=$?` never reaches the assignment), which kills the run on the
   # one outcome that is supposed to continue.
