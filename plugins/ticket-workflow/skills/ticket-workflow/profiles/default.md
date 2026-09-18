@@ -203,10 +203,18 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   line, after the test plan; `<m>` counts the `agree, held` lines) and hand back at the usual
   reviewed-PR stopping point. That line is the durable marker the completion gates read, like
   the no-bot fallback comment: a reached cap with dispositions posted **is** review-clean, not a
-  stall. The cap is a budget, not a verdict — a human can raise it (`Budget: rounds=<n>` on a
-  re-brief, or "one more round" to an attached session) and the loop resumes from there. One
-  push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR — so make it, count the
-  review it triggers, and answer that review by disposition too.
+  stall. **The line is bound to the count, not to a head:** the gates accept it only when its
+  `<n>` equals the count the read above returns *now* and the newest review on the head has its
+  dispositions in a PR comment posted after it — a line a later push left behind is no marker,
+  and a pending review on the head keeps the gate open. So every push after the cap re-opens the
+  loop: count the review it triggers, answer it, and rewrite the line with the new count before
+  handing back. The cap is a budget, not a verdict — a human can raise it (`Budget: rounds=<n>`
+  on a re-brief, or "one more round" to an attached session) and the loop resumes from there,
+  pushes included. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
+  so make it, count the review it triggers, answer that review by disposition, and rewrite the
+  line. An *unable to review* body on that head takes the last bullet's single retry as written —
+  the retry re-requests on the **same** head, so it adds no round — and its fallback applies
+  unchanged.
 
 - **Loop** until **all three** hold — the completion gate:
   1. the unresolved-threads query returns nothing;
