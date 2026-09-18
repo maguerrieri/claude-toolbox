@@ -542,19 +542,24 @@ git push --force-with-lease=<branch>:"$expect" origin HEAD:refs/heads/<branch> \
 Draft the title/body from the commits (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`) and the issue. Open the PR using the adapter's `PR_REF` for title format and the issue-linking footer (e.g. a closing keyword so merge auto-closes the issue):
 
 ```bash
-gh pr create -R "$repo" --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'EOF'
-## Summary
-<1-3 bullets tied to the issue>
-
-## Test plan
-- [ ] CI passes
-- [ ] <smoke-test steps the user will run via /finish-ticket>
-
-<adapter PR_REF footer, e.g. "Closes #42">
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
+# --body-file, NOT a heredoc. This body is assembled from the issue title, the issue body and
+# commit subjects — fetched text — and a quoted delimiter stops EXPANSION inside the body while
+# doing nothing about TERMINATION: a body containing a line that is exactly `EOF` closes the
+# heredoc early and everything after it is parsed as shell. Measured 2026-09-18: a body whose
+# second line was `EOF` ran the line after it (`bash: EOF: command not found` for the trailing
+# text, and the injected command executed). The adapters already write comments this way; this
+# was the one place that did not, and it is the place whose content is most attacker-reachable.
+# Write the body with your FILE-WRITING tool — the same staging rule Step 3 states, for the same
+# reason — then hand `gh` the path.
+body_file=<path you wrote the PR body to>
+[ -s "$body_file" ] || { echo "PR body not staged — write it first"; exit 1; }
+gh pr create -R "$repo" --base <base_branch> --title "<adapter PR title>" --body-file "$body_file"
+# The body's content, for reference — the same sections, staged rather than inlined:
+#   ## Summary            <1-3 bullets tied to the issue>
+#   ## Test plan          - [ ] CI passes
+#                         - [ ] <smoke-test steps the user will run via /finish-ticket>
+#   <adapter PR_REF footer, e.g. "Closes #42">
+#   🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
 ### Step 8 — Review-bot cycle + CI watch
