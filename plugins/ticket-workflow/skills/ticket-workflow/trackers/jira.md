@@ -67,7 +67,7 @@ Return the set of child keys this child is blocked by, **keeping only those that
 ## DEPENDENCY_PR(id)  — find the open PR for a dependency (START phase)
 Jira PRs reference the ticket key rather than using GitHub closing keywords. Search open PR titles and bodies for the key, then require an exact token match (so `ABC-12` doesn't match `ABC-123`):
 ```bash
-gh pr list --state open -R <owner>/<repo> -L 500 --search "<ID> in:title,body" --json number,headRefName,title,body --jq '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number,headRefName}'
+gh pr list --state open -R <owner>/<repo> -L 500 --search "<ID> in:title,body" --json number,headRefName,isCrossRepository,headRepositoryOwner,headRepository,title,body --jq '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | select(.isCrossRepository == false) | {number,headRefName}'
 ```
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 

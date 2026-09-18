@@ -77,6 +77,8 @@ Return `(number, title, labels)` for each child — the labels feed the EPIC cou
 
 ## DEPS(id)  — intra-epic dependencies for a child (EPIC phase)
 GitHub has no first-class issue dependencies, so derive them:
+**A fork PR is never a base.** `gh pr list -R <owner>/<repo>` includes PRs whose *head* lives in a fork, so a dependency lookup that returns `headRefName` alone can hand START a branch name that exists only in someone else's repository — which START then treats as a local base to cut from and, later, to push to. Worse, that name can collide with a real local branch and silently select the wrong one. So `DEPENDENCY_PR` filters `isCrossRepository == false` (the head-repository fields are in the query for that reason) before returning a branch, and a fork PR that would otherwise have been the unique match is reported as *not stackable* rather than used. This is the same ownership test Step 6 applies before rewriting a branch, applied one step earlier — at the point the name is chosen rather than the point it is written to.
+
 - **Body directives:** `Depends on #<n>` / `Blocked by #<n>` / `After #<n>` in the child's body (`gh issue view <n> -R <owner>/<repo> --json body -q .body` — `-q .body` for raw text). Parse the `#<n>` references.
 - **Ordered task list:** only if the user says the epic's checklist is ordered (each item depends on the one above) — order is *not* dependency by default.
 
@@ -85,7 +87,7 @@ Return the set of child numbers this child is blocked by, **keeping only those t
 ## DEPENDENCY_PR(id)  — find the open PR for a dependency (START phase)
 GitHub PRs created by this workflow close their issue from the body, so search for an exact closing reference (not merely `#<n>` appearing in discussion):
 ```bash
-gh pr list --state open -R <owner>/<repo> -L 500 --search "#<n> in:body" --json number,headRefName,body --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number,headRefName}'
+gh pr list --state open -R <owner>/<repo> -L 500 --search "#<n> in:body" --json number,headRefName,isCrossRepository,headRepositoryOwner,headRepository,body --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | select(.isCrossRepository == false) | {number,headRefName}'
 ```
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
