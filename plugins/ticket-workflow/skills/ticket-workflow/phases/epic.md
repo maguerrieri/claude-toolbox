@@ -420,14 +420,29 @@ A child is done when its PR is open, CI is green, its review is clean — the ST
      # STEP 1 — before the `git fetch` for this layer. Prefer the persisted value; the ref is only
      # a fallback for a container that has been alive since the previous wake.
      old_base=<the base SHA recorded for this row at the previous wake>              # persisted; empty on a first poll
-     [ -n "$old_base" ] || old_base=$(git rev-parse --verify --quiet refs/rs/<base>)   # same-container fallback
+     # The fallback MUST NOT be the last command of a `||` list. On a first cloud poll `$old_base`
+     # is empty AND `refs/rs/<base>` is absent, so the assignment fails — measured 2026-09-18,
+     # git 2.43.0: `--verify --quiet` on a missing ref exits **1** (128 is the plain form, which
+     # also prints the ref name on stdout) — and under `set -e` the failing list ENDS THE RUN,
+     # on the one state this line exists to represent: no evidence yet. "Absent" is an answer
+     # here, unlike the branch lookups, because this ref is a record this run writes rather than
+     # a question about the remote; what must not happen is the pass dying instead of taking the
+     # no-evidence path.
+     if [ -z "$old_base" ]; then
+       if old_base=$(git rev-parse --verify --quiet refs/rs/<base>); then :; else old_base=""; fi
+     fi                                                                              # same-container fallback
      ```
 
      ```bash
      # STEP 2 — after the forced fetch. `refs/rs/<base>` is now the NEW tip by construction.
      fp=$(git rev-parse "<the layer's recorded fork point>^{commit}")               # may be abbreviated
-     [ "$(git rev-parse refs/rs/<base>)" = "$fp" ]                                  # the BASE hasn't moved
-     git merge-base --is-ancestor refs/rs/<base> refs/rs/<branch>                  # the BRANCH still contains it
+     # Both of these are assertions meant to stop — but a bare test under `set -e` stops SILENTLY,
+     # and a cloud pass that ends with no report is indistinguishable from one that crashed. Say
+     # which one failed, the way every other stop in this phase does.
+     [ "$(git rev-parse refs/rs/<base>)" = "$fp" ] \
+       || { echo "the base moved since this layer's fork point — do not cascade; re-derive"; exit 1; }
+     git merge-base --is-ancestor refs/rs/<base> refs/rs/<branch> \
+       || { echo "the branch no longer contains its base — stop and report"; exit 1; }
      # and the rewrite test rule 1 needs, with the value STEP 1 captured:
      [ -z "$old_base" ] || git merge-base --is-ancestor "$old_base" refs/rs/<base>  # false ⇒ base was rewritten
      ```
