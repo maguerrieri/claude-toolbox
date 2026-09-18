@@ -111,7 +111,15 @@ rm -f "$body"; [ $rc -eq 0 ] || { echo "file claim write failed — do not start
 body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s) base=%s\n' "$branch" "$session" "$child_id" "$epic_id" "$base" > "$body"
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
-rm -f "$body"; [ $rc -eq 0 ] || { echo "claim write failed — do not launch on this name"; exit $rc; }
+rm -f "$body"
+# NOT launch-blocking, and this `exit` used to be. The phase is explicit: where COORD is unwritable
+# the RECORD is unavailable but the RESERVATION is not — the lock ref is the reservation — so a
+# failed pre-launch claim is reported, not obeyed. Blocking here strands a name this run already
+# holds a lock on, every time comments are temporarily unwritable. (Cloud is the exception, and it
+# is a precondition rather than a retry: a cloud reservation crosses a turn boundary and needs the
+# `lock:` record to be adoptable, so on cloud an unwritable channel means do not launch at all —
+# checked BEFORE taking the ref, not discovered here.)
+[ $rc -eq 0 ] || { echo "pre-launch claim write failed — reservation stands; launch and report the missing claim"; }
 # …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
 # the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
 # launch cannot answer the question a later run asks. Run this the moment the backend returns an id:
