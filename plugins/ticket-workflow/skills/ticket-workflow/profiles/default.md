@@ -87,7 +87,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - `gh pr checks <pr>` — a `copilot-pull-request-reviewer` check run still in progress is also
     "pending": Copilot drops off `requested_reviewers` once its run starts (observed on #131), so
     "pending" below means *either* signal.
-  - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
+  - `gh pr view <pr> -R "$repo" --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
     it). Don't re-request — just wait, then read its threads **and its review body** (below). A
     submitted review whose body is the *unable to review* sentence is not a review: take the last
@@ -95,7 +95,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
     "no bot" if the request fails (Copilot disabled for the repo).
 
-- **Request a review** (when not already engaged): `gh pr edit <pr> --add-reviewer "@copilot"`.
+**Every `gh` call in this profile takes `-R "$repo"`, the repository the calling phase selected.** A profile op is invoked *by* a phase, so it inherits that phase's binding rather than resolving its own from the cwd — and this one both **reads** a gate signal and **mutates** the PR, so unbound it can gate on one repository and request a review on another. Where a caller has no `$repo` in scope, that is the caller's bug to fix, not a licence to fall back to the cwd.
+
+- **Request a review** (when not already engaged): `gh pr edit <pr> -R "$repo" --add-reviewer "@copilot"`.
   Best-effort — if it errors (Copilot review not enabled for the repo/account), post the no-bot
   fallback comment (last bullet; the gates read that marker) and rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
   they need no explicit request.)
@@ -199,7 +201,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
 - **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
   review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
-  (`gh pr edit <pr> --add-reviewer "@copilot"`) and record the retry in the same step with a
+  (`gh pr edit <pr> -R "$repo" --add-reviewer "@copilot"`) and record the retry in the same step with a
   one-line PR comment (`Copilot could not review <review id>; re-requested once`) — a later turn
   that finds the same unable review newest then knows the retry was issued and doesn't request
   again. Wait for a **newer** review (a later `submitted_at`; the same body stays newest while the

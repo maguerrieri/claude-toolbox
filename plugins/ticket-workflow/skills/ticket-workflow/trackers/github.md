@@ -96,8 +96,8 @@ The shared, durable channel sibling sessions use for file **claims** and **"bran
 ```bash
 body=$(mktemp)                                         # NEVER build the marker inline in the
 printf 'claim: %s -> %s\n' "$session" "$files" > "$body"   # command itself — see below
-gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
-rm -f "$body"
+gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+rm -f "$body"; [ $rc -eq 0 ] || { echo "claim write failed — do not launch on this name"; exit $rc; }
 
 # TWO claim shapes, same channel and same write discipline — don't overload one for the other:
 #   file claim   (coordinated runs, EPIC Step 3): claim: <session> -> <files>          — above
@@ -110,16 +110,16 @@ rm -f "$body"
 # this child occupies that base (EPIC Step 4). Omit it and that walk assigns another child there.
 body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s) base=%s\n' "$branch" "$session" "$child_id" "$epic_id" "$base" > "$body"
-gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
-rm -f "$body"
+gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+rm -f "$body"; [ $rc -eq 0 ] || { echo "claim write failed — do not launch on this name"; exit $rc; }
 # …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
 # the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
 # launch cannot answer the question a later run asks. Run this the moment the backend returns an id:
 body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s) base=%s child=%s\n' \
   "$branch" "$session" "$child_id" "$epic_id" "$base" "$child_session_id" > "$body"
-gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
-rm -f "$body"
+gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
+rm -f "$body"; [ $rc -eq 0 ] || { echo "claim write failed — do not launch on this name"; exit $rc; }
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
 # — NOT by session alone, or a coordinator holding one claim per child keeps a single newest record
 # and discards the child= liveness evidence for every other branch it reserved — then within each
