@@ -99,20 +99,23 @@ rm -f "$body"
 
 # TWO claim shapes, same channel and same write discipline — don't overload one for the other:
 #   file claim   (coordinated runs, EPIC Step 3): claim: <session> -> <files>          — above
-#   branch claim (every run, EPIC Step 5):        claim: <branch> -> <session> for <child id> (epic <epic_id>)
+#   branch claim (every run, EPIC Step 5):        claim: <branch> -> <session> for <child id> (epic <epic_id>) base=<base>
 # The branch claim is the RECORD of a reservation the lock ref already took (EPIC Step 5); its
 # branch and child fields are what a later reader matches on, so a file-claim-shaped body posted
 # in its place records nothing a second coordinator can use.
+# `base=` is not decoration: between launch and the child's first push there is no branch and no PR
+# on the server, so this field is the ONLY thing telling a second coordinator's chain-top walk that
+# this child occupies that base (EPIC Step 4). Omit it and that walk assigns another child there.
 body=$(mktemp)
-printf 'claim: %s -> %s for %s (epic %s)\n' "$branch" "$session" "$child_id" "$epic_id" > "$body"
+printf 'claim: %s -> %s for %s (epic %s) base=%s\n' "$branch" "$session" "$child_id" "$epic_id" "$base" > "$body"
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
 rm -f "$body"
 # …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
 # the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
 # launch cannot answer the question a later run asks. Run this the moment the backend returns an id:
 body=$(mktemp)
-printf 'claim: %s -> %s for %s (epic %s) child=%s\n' \
-  "$branch" "$session" "$child_id" "$epic_id" "$child_session_id" > "$body"
+printf 'claim: %s -> %s for %s (epic %s) base=%s child=%s\n' \
+  "$branch" "$session" "$child_id" "$epic_id" "$base" "$child_session_id" > "$body"
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
 rm -f "$body"
 # ONE ordering rule, stated identically in EPIC Step 5: collapse each session's records to its
