@@ -129,11 +129,27 @@ rm -f "$body"
 # An ECHO IS NOT A STATE. Set the outcome the phase consumes — its release and sweep rules read
 # `$epic_lock_hold`, and a caller that only printed a warning would run the ordinary end-of-pass
 # cleanup and release the one protection this failure leaves.
+# BOTH holds are SETS keyed by branch, never scalars. One Step 5 wave launches several children,
+# so a second failure assigning over a scalar would erase the first — and the sweep would then
+# find no marker for a branch whose child is live and unrecorded, release its reservation, and
+# let a later coordinator launch a second child onto it. Keyed, every entry survives and the
+# sweep walks all of them. `awk` for the drop, not `grep -v`, which exits 1 when it removes the
+# last line and kills the run under `set -e` (both measured 2026-09-18).
+hold_add()  { eval "$1=\"\${$1}\$2	\$3
+\""; }
+hold_drop() {                              # $1 = set name, $2 = branch key
+  eval "local v=\${$1}"
+  v=$(printf '%s' "$v" | awk -F'\t' -v b="$2" '$1!=b')
+  if [ -n "$v" ]; then v="$v
+"; fi
+  eval "$1=\$v"
+}
+
 if [ $rc -ne 0 ]; then
-  epic_lock_hold="claim-unwritable: base=$base unrecorded for $branch"   # phases/epic.md, release rule
+  hold_add epic_lock_holds "$branch" "claim-unwritable: base=$base unrecorded"   # phases/epic.md, release rule
   echo "pre-launch claim write failed — reservation stands, launch; the epic graph lock is now"
-  echo "held past this pass and excluded from the sweep until the claim is repaired or a human"
-  echo "releases it: $epic_lock_hold"
+  echo "held past this pass and excluded from the sweep until every entry in \$epic_lock_holds is"
+  echo "repaired or a human releases it. Held for: $branch"
 fi
 # …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
 # the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
@@ -166,12 +182,29 @@ if [ $rc -ne 0 ]; then
   gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
   rm -f "$body"
 fi
-# Same rule: a named outcome, not a warning. `$child_reservation_hold` is what keeps this name out
-# of the sweep's release test while the child is live and unrecorded.
+# Same rule: a named outcome, not a warning. `$child_reservation_holds` is what keeps this name
+# out of the sweep's release test while the child is live and unrecorded — keyed by branch, for
+# the reason the helpers above give.
+# AND THE SUCCESS ARM IS NOT A NO-OP. This record carries `base=`, which is the field whose
+# absence put this branch into `$epic_lock_holds` before the launch. A hold that is set on the
+# failure and never cleared on the repair leaves the epic's graph lock held forever, blocked on a
+# human for a gap that closed seconds later — so clear THIS BRANCH's entry, and only this one:
+# every other branch whose claim is still unrecorded keeps the lock held, which is why the hold
+# is a set rather than a flag. Clear it on a CONFIRMED write, never on a zero exit alone — read
+# the claim back (the same read-back the claim rules already require) and clear only if it is
+# there.
 if [ $rc -ne 0 ]; then
-  child_reservation_hold="unrecorded-live-child: $child_session_id on $branch"
+  hold_add child_reservation_holds "$branch" "unrecorded-live-child: $child_session_id"
   echo "post-launch claim write failed twice — child $child_session_id is LIVE on $branch:"
-  echo "keep its row, hold the reservation ($child_reservation_hold), report the gap, do not relaunch"
+  echo "keep its row, hold the reservation, report the gap, do not relaunch"
+else
+  # read it back before believing it; `gh issue comment` exiting 0 is not the record existing
+  if gh issue view <epic_id> -R <owner>/<repo> --json comments \
+       -q '.comments[].body' | grep -qF "claim: $branch -> $session for $child_id"; then
+    hold_drop epic_lock_holds "$branch"    # base= is recorded now — this branch no longer holds the lock
+  else
+    hold_add epic_lock_holds "$branch" "claim-unconfirmed: write returned 0, record not found"
+  fi
 fi
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
 # — NOT by session alone, or a coordinator holding one claim per child keeps a single newest record
