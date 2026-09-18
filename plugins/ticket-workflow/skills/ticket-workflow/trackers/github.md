@@ -126,10 +126,15 @@ rm -f "$body"
 # released. The phase already names the consequence — a run whose COORD is unwritable MUST NOT
 # share the epic with another coordinator — and a REPORT does not enforce that, so the run
 # keeps the graph lock it already holds instead of releasing it at the end of the pass.
-[ $rc -eq 0 ] || { echo "pre-launch claim write failed — reservation stands, launch;" \
-                        "HOLD THE EPIC GRAPH LOCK past this pass (do not release, exclude from the" \
-                        "sweep) until the claim is repaired or a human releases it — base=$base is" \
-                        "unrecorded for $branch and the lock is the only enforceable form of that"; }
+# An ECHO IS NOT A STATE. Set the outcome the phase consumes — its release and sweep rules read
+# `$epic_lock_hold`, and a caller that only printed a warning would run the ordinary end-of-pass
+# cleanup and release the one protection this failure leaves.
+if [ $rc -ne 0 ]; then
+  epic_lock_hold="claim-unwritable: base=$base unrecorded for $branch"   # phases/epic.md, release rule
+  echo "pre-launch claim write failed — reservation stands, launch; the epic graph lock is now"
+  echo "held past this pass and excluded from the sweep until the claim is repaired or a human"
+  echo "releases it: $epic_lock_hold"
+fi
 # …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
 # the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
 # launch cannot answer the question a later run asks. Run this the moment the backend returns an id:
@@ -161,8 +166,13 @@ if [ $rc -ne 0 ]; then
   gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"; rc=$?
   rm -f "$body"
 fi
-[ $rc -eq 0 ] || { echo "post-launch claim write failed twice — child $child_session_id is LIVE on $branch:" \
-                        "keep its row, hold the reservation, report the gap, do not relaunch"; }
+# Same rule: a named outcome, not a warning. `$child_reservation_hold` is what keeps this name out
+# of the sweep's release test while the child is live and unrecorded.
+if [ $rc -ne 0 ]; then
+  child_reservation_hold="unrecorded-live-child: $child_session_id on $branch"
+  echo "post-launch claim write failed twice — child $child_session_id is LIVE on $branch:"
+  echo "keep its row, hold the reservation ($child_reservation_hold), report the gap, do not relaunch"
+fi
 # ONE ordering rule, stated identically in EPIC Step 5: group the records by (session, branch)
 # — NOT by session alone, or a coordinator holding one claim per child keeps a single newest record
 # and discards the child= liveness evidence for every other branch it reserved — then within each
