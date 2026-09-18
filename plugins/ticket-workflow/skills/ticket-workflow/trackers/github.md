@@ -105,13 +105,21 @@ rm -f "$body"
 # in its place records nothing a second coordinator can use.
 body=$(mktemp)
 printf 'claim: %s -> %s for %s (epic %s)\n' "$branch" "$session" "$child_id" "$epic_id" > "$body"
-# …and AFTER the child launches, a SECOND record naming it. EPIC Step 5's takeover rule decides on
-# the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
-# launch cannot answer the question a later run asks. One more comment, same discipline:
-#   claim: <branch> -> <session> for <child id> (epic <epic_id>) child=<child session id>
-# Readers take the newest non-spent claim for a branch, so the second record supersedes the first.
 gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
 rm -f "$body"
+# …and AFTER the child launches, a SECOND record naming it — EPIC Step 5's takeover rule decides on
+# the CHILD's liveness (a child outlives the coordinator that spawned it), so a claim posted before
+# launch cannot answer the question a later run asks. Run this the moment the backend returns an id:
+body=$(mktemp)
+printf 'claim: %s -> %s for %s (epic %s) child=%s\n' \
+  "$branch" "$session" "$child_id" "$epic_id" "$child_session_id" > "$body"
+gh issue comment <epic_id> -R <owner>/<repo> --body-file "$body"
+rm -f "$body"
+# ONE ordering rule, stated identically in EPIC Step 5: collapse each session's records to its
+# NEWEST (so this post-launch record supersedes that session's own pre-launch one), then among the
+# survivors, still unspent, the EARLIEST by record id holds the name. "Newest" resolves a session's
+# own history; "earliest" resolves who won the race — either half alone lets two coordinators pick
+# different holders.
 # Read markers WITH their id, author and timestamp — all three are load-bearing (EPIC's fork-point
 # rules authenticate a `restacked:` marker by author and take the newest; Step 5 arbitrates two
 # claims on one branch by ID, because `created_at` is second-granular and can tie), and this
