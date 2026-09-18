@@ -257,8 +257,15 @@ Branch named via the adapter's `BRANCH` — **unless** the briefing/arguments su
 # are yours — you chose them, they are not fetched text — so interpolating them is fine.
 branch_file=<path you wrote the adapter's BRANCH value / `Worktree:` directive to>
 base_file=<path you wrote the resolved `Base branch:` value to>
-[ -s "$branch_file" ] && [ -s "$base_file" ] \
-  || { echo "branch/base not staged — write them first, then re-run this block"; exit 1; }
+# STAGE THE `Cut from:` FILE HERE TOO — it is read three hundred lines below and, unlike the two
+# above, its consumer swallows a missing file (`2>/dev/null || true`), so an unstaged path is not
+# an error there: it is silently "no directive", the solo arm, and a branch cut from whatever
+# `origin/<base>` happens to be instead of the SHA the coordinator pinned. WRITE AN EMPTY FILE
+# when the briefing carries no `Cut from:` — "staged and empty" and "never staged" must not look
+# the same, which is the whole reason this line exists.
+cut_from_file=<path you wrote the briefing's `Cut from:` SHA to — an EMPTY file when there is none>
+[ -s "$branch_file" ] && [ -s "$base_file" ] && [ -e "$cut_from_file" ] \
+  || { echo "branch/base/cut-from not staged — write them first, then re-run this block"; exit 1; }
 branch=$(cat "$branch_file")     # the adapter's BRANCH value, or the `Worktree:` directive
 [[ $branch =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] \
   || { echo "branch name rejected by the allowlist — refuse and report"; exit 1; }
@@ -381,7 +388,7 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   # again on a branch that now exists (it fails), or cuts from the wrong revision.
   # Stage it the same way, and never from the issue body — `Cut from:` is briefing-only (the
   # fork-point rules say so), and it is a SHA, so it is checked as one before anything reads it.
-  cut_from_directive=$(cat "$cut_from_file" 2>/dev/null || true)   # empty when the briefing carried none
+  cut_from_directive=$(cat "$cut_from_file")   # staged above; EMPTY file = no directive, not "unstaged"
   if [ -n "$cut_from_directive" ] && ! [[ $cut_from_directive =~ ^[0-9a-f]{40}$ ]]; then
     echo "Cut from: is not a full 40-hex SHA — refuse and report"; exit 1
   fi
