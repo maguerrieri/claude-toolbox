@@ -19,9 +19,12 @@ and assemble what comes back up.
   leaving you to poll blind — and you can redirect a child mid-run by the name
   you assigned it at spawn. **`rebased:` is the one you must act on, not merely
   note:** verify the SHA it reports against the branch, then post the durable
-  `restacked:` `COORD` marker yourself. A child cannot author a marker that means
-  anything, so until you post one that layer has no fork point on record and the
-  next poll blocks a child that did nothing wrong (`messaging.md`, EPIC Step 6).
+  `restacked:` `COORD` marker yourself. The author check does **not** stop a child
+  posting one — child and coordinator share a login, as the fork-point rules say
+  plainly — so what your marker adds is not unforgeability but the *verification*:
+  you checked the SHA against the branch before signing it. Until you post one,
+  that layer has no fork point anybody should act on, and the next poll blocks a
+  child that did nothing wrong (`messaging.md`, EPIC Step 6).
   Pings schedule your re-checks; the PRs stay the ground truth. On the
   cloud backend there is no cross-session channel: the spawn edge carries no
   `Notify:`, and a `send_later` wake-up schedules your re-checks instead (the

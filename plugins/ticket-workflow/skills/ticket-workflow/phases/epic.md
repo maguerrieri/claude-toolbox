@@ -128,6 +128,10 @@ Five paths in this phase rewrite a branch: Step 4's cascade, Step 6's restack ac
      git -C <tmp>/<Li> push --force-with-lease=<Li>:$pre_Li "$remote" HEAD:refs/heads/<Li>
      new_Li=$(git -C <tmp>/<Li> rev-parse HEAD)            # <target> for the next layer up
      git worktree remove --force <tmp>/<Li>
+     # RECORD FIRST, RETARGET SECOND. The branch is already rewritten; a retarget that fails
+     # (permissions, a race, an API error) must not be what stops you before the marker lands,
+     # or the next wake sees a moved head with no recoverable fork point.
+     …post `restacked: <Li> onto <target branch> @ <target's tip SHA at the move>`, read it back…
      gh pr edit <Li's PR> -R "$repo" --base <target branch>   # or PATCH repos/{owner}/{repo}/pulls/{n} with base=… (MCP: update_pull_request)
      ```
 
