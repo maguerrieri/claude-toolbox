@@ -133,7 +133,7 @@ rm -f "$body"
 # share the epic with another coordinator — and a REPORT does not enforce that, so the run
 # keeps the graph lock it already holds instead of releasing it at the end of the pass.
 # An ECHO IS NOT A STATE. Set the outcome the phase consumes — its release and sweep rules read
-# `$epic_lock_hold`, and a caller that only printed a warning would run the ordinary end-of-pass
+# `$epic_lock_holds`, and a caller that only printed a warning would run the ordinary end-of-pass
 # cleanup and release the one protection this failure leaves.
 # BOTH holds are SETS keyed by branch, never scalars. One Step 5 wave launches several children,
 # so a second failure assigning over a scalar would erase the first — and the sweep would then
@@ -141,15 +141,24 @@ rm -f "$body"
 # let a later coordinator launch a second child onto it. Keyed, every entry survives and the
 # sweep walks all of them. `awk` for the drop, not `grep -v`, which exits 1 when it removes the
 # last line and kills the run under `set -e` (both measured 2026-09-18).
-hold_add()  { eval "$1=\"\${$1}\$2	\$3
-\""; }
+# No `eval`. Measured 2026-09-18: the eval form these replaced did NOT execute a `$(…)` inside a
+# value — a parameter expansion's *result* is not re-scanned — so this is not a fix for an
+# injection that existed. It removes the question instead: this file now tells readers never to
+# put fetched data into command source, and a helper that reads `eval "$1=…\$2…"` is the pattern
+# they will copy to a place where the value IS re-parsed. `printf -v` with indirect expansion
+# does the same job with the values never leaving data position.
+hold_add()  { local __n=$1; local __c=${!__n}; printf -v "$__n" '%s%s\t%s\n' "$__c" "$2" "$3"; }
 hold_drop() {                              # $1 = set name, $2 = branch key
-  eval "local v=\${$1}"
-  v=$(printf '%s' "$v" | awk -F'\t' -v b="$2" '$1!=b')
-  if [ -n "$v" ]; then v="$v
-"; fi
-  eval "$1=\$v"
+  local __n=$1; local __v=${!__n}
+  __v=$(printf '%s' "$__v" | awk -F'\t' -v b="$2" '$1!=b')
+  if [ -n "$__v" ]; then __v="$__v"$'\n'; fi
+  printf -v "$__n" '%s' "$__v"
 }
+# THE KEY MUST BE AN ALLOWLIST-VALIDATED BRANCH NAME, and that is load-bearing rather than tidy:
+# the set is tab- and newline-delimited, so a key containing either splits one entry into two.
+# Measured: a key of "evil\nfeat-b" became two rows, and the sweep then walks a phantom "evil".
+# `^[A-Za-z0-9][A-Za-z0-9._/-]*$` (START/EPIC's check) excludes both characters, which is why
+# these helpers take the validated name and never raw directive text.
 
 if [ $rc -ne 0 ]; then
   hold_add epic_lock_holds "$branch" "claim-unwritable: base=$base unrecorded"   # phases/epic.md, release rule
