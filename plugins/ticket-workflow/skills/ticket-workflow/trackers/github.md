@@ -65,9 +65,9 @@ gh issue close <n> -R <owner>/<repo> --comment "Resolved by #<pr> (merged)."
 
 ## EPIC_CHILDREN(id)  — list an epic's child tickets (EPIC phase)
 GitHub has no native "epic", so an epic is one of these — try in order:
-- **Native sub-issues** (GitHub's sub-issue feature). List via GraphQL — `{owner}`/`{repo}` auto-populate from the current repo (verified on gh 2.88.1), so no manual substitution; replace only `<n>`:
+- **Native sub-issues** (GitHub's sub-issue feature). List via GraphQL, **bound to the selected repository**. `{owner}`/`{repo}` do auto-populate from the *current* repo (verified on gh 2.88.1) and that is exactly what makes them wrong here: where a profile maps the issue elsewhere, or the run stands in an umbrella checkout, this call would enumerate a different repository's children while every later operation targets `$repo`. `gh api graphql` takes no `-R`, so the binding is the variables: split `$repo` into its two halves. Replace only `<n>`:
 ```bash
-gh api graphql --paginate -f query='query($owner:String!,$repo:String!,$num:Int!,$endCursor:String){repository(owner:$owner,name:$repo){issue(number:$num){subIssues(first:100, after:$endCursor){totalCount pageInfo{hasNextPage endCursor} nodes{number title state labels(first:20){nodes{name}}}}}}}' -F owner='{owner}' -F repo='{repo}' -F num=<n>
+gh api graphql --paginate -f query='query($owner:String!,$repo:String!,$num:Int!,$endCursor:String){repository(owner:$owner,name:$repo){issue(number:$num){subIssues(first:100, after:$endCursor){totalCount pageInfo{hasNextPage endCursor} nodes{number title state labels(first:20){nodes{name}}}}}}}' -F owner="${repo%%/*}" -F repo="${repo##*/}" -F num=<n>
 ```
   `--paginate` auto-follows pages via the `$endCursor`/`pageInfo` pairing (verified on gh 2.88.1), so an epic with **>100** children isn't silently truncated — keep the `$endCursor` var, the `after:$endCursor` arg, and `pageInfo` intact.
 - **Task-list / tracking issue:** the epic's body has a checklist that references child issues (`- [ ] #123`). Parse `#<n>` refs from the body — use `-q .body` so you get raw text, not a JSON object with escaped newlines: `gh issue view <n> -R <owner>/<repo> --json body -q .body`.

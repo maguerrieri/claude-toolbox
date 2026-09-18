@@ -272,10 +272,13 @@ Two paths from here; pick by whether `<branch>` is already checked out:
   # and the next commands cut a worktree and clear this branch's pushed-head record on that basis.
   # Ask for the EXACT ref, too: `--heads "$branch"` is a suffix match — it returned BOTH
   # refs/heads/feature-42 and refs/heads/x/feature-42 for the pattern `feature-42` (measured).
-  git ls-remote --exit-code --heads origin "refs/heads/$branch"; rc=$?
+  # Capture with `if`, not `cmd; rc=$?`: under `set -e` the bare form EXITS on the "absent" case
+  # (measured — `set -e; false; rc=$?` never reaches the assignment), which kills the run on the
+  # one outcome that is supposed to continue.
+  if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then rc=0; else rc=$?; fi
   case $rc in
-    0) : ;;   # present on origin — NOT path (a); see below
-    2) : ;;   # genuinely absent — path (a) continues
+    2) : ;;                 # genuinely absent, locally AND on origin → path (a): continue below
+    0) echo "the name is taken on origin — not path (a): adopt it or stop (see below)"; exit 1 ;;
     *) echo "cannot read origin (exit $rc) — the branch state is unknown; stop and report"; exit 1 ;;
   esac
   ```
