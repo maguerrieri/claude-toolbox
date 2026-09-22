@@ -41,6 +41,13 @@ Prefer `Inherits:` over the old workaround of copying `default` (which then drif
 telling the agent in prose to "follow `default` for the other ops" (nothing enforces it).
 No `Inherits:` line → the file is a complete standalone profile, exactly as before.
 
+**Overriding `REVIEW_BOT` replaces the review-round cap with it.** The cap's mechanics — the
+round count, the cap and its default, the spiral check, *At the cap*, the **valid cap marker**
+the START and EPIC gates point to, and *Raising the cap* — live in this profile's `REVIEW_BOT`,
+and an op override replaces the whole section. A profile that overrides `REVIEW_BOT` and wants
+a cap carries those bullets over; one that doesn't has no cap, and the gates' cap alternative
+never applies (START Step 8).
+
 ## REPO_SELECT
 - Use the repo named in the request; otherwise the current repo (for personal projects
   you're almost always already inside it). If you're in an umbrella/bare dir and it's
@@ -112,9 +119,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
         pullRequest(number:$pr){
           reviewThreads(first:100, after:$endCursor){
             pageInfo{ hasNextPage endCursor }
-            nodes{ id isResolved path comments(first:1){ nodes{ author{login} body } } } } } } }' \
+            nodes{ id isResolved path comments(first:1){ nodes{ author{login} body pullRequestReview{ databaseId } } } } } } } }' \
     --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)"
   ```
+  `pullRequestReview.databaseId` names the review that opened the thread (the REST review `id`).
+  The valid cap marker's coverage check below runs this query **without** the `isResolved`
+  filter and keeps the threads whose first comment carries the newest bot review's `id`.
 
 - **Then read the bot's newest review body.** Copilot files most findings as *suppressed comments*
   in the review body, not as threads: a 🔵 *Needs a closer look* review has **zero** threads, a 🟡
@@ -185,26 +195,30 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   the PR each time, never from memory, so a later turn or a fresh coordinator gets the same answer:
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
-    | jq --arg bot "<bot login>" '[.[][] | select(.user.login==$bot)
-           | select($bot != "copilot-pull-request-reviewer[bot]"
-                    or ((.body // "") | test("^\\s*Copilot was unable to review") | not))
-           | .commit_id] | unique | length'
+    | jq --arg bot "<bot login>" '($bot | sub("\\[bot\\]$"; "")) as $b
+           | [.[][] | select((.user.login | sub("\\[bot\\]$"; "")) == $b)
+                    | select($b != "copilot-pull-request-reviewer"
+                             or ((.body // "") | test("^\\s*Copilot was unable to review") | not))
+                    | .commit_id] | unique | length'
   ```
   `<bot login>` is the engaged bot as the detect step found it among the PR's reviews
-  (`copilot-pull-request-reviewer[bot]`, `coderabbitai[bot]`, a CI action's app login). Keying on
-  it matters: the implementer's own thread replies post as reviews on the head too, and must never
+  (`copilot-pull-request-reviewer`, `coderabbitai`, a CI action's app login), with or without the
+  `[bot]` suffix: the detect step's `gh pr view` prints the bare login while REST adds `[bot]`, so
+  the query strips the suffix from both sides before comparing. Keying on it matters: the
+  implementer's own thread replies post as reviews on the head too, and must never
   count or stand in for the bot's. The unable-body filter applies only when the engaged bot is Copilot
   (as on the MCP path) and anchors on the opening of Copilot's sentence, so it drops nothing else.
 
-- **The cap.** It is the one START Step 8 resolves, most recently persisted source first: this
-  ticket's budget file, else the PR line's `(cap <cap>)`, else the briefing's `Budget: rounds=<n>`,
-  else this profile's default of **12** (`SPAWN_CAP`). A raise rewrites the first two, so it always
-  wins over the original briefing. The cap is a **cost ceiling, not the usual way a review ends**:
+- **The cap.** It is the one START Step 8 resolves: the **largest** valid value among this ticket's
+  budget file, the PR line's `(cap <cap>)`, and the briefing's `Budget: rounds=<n>`, else — when
+  none is present — this profile's default of **12** (`SPAWN_CAP`). A cap only goes up, so a raise
+  recorded in any one source wins and nothing lowers it. The cap is a **cost ceiling, not the
+  usual way a review ends**:
   below it, stay thorough on correctness and loop as written (fix or explain, push, let the bot
   re-review). It applies to every PR, whatever the diff contains. After every round, rewrite the
   PR body's `Review rounds: <n> (cap <cap>); <m> findings open by disposition` line (START Step 7
-  seeds it; add it after the test plan if it's missing) with the current count, so the body never
-  under-reports.
+  seeds it; add it after the test plan if it's missing) with the current count and the cap in
+  force, so the body never under-reports.
 
 - **Spiral check — every round, alongside fix-or-explain.** If you are making repeated small
   changes to the same section across rounds, and especially if a round's findings are mostly about
@@ -232,28 +246,33 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   definition of a **valid cap marker**; START's completion checklist and EPIC's gates point here
   rather than restating it. The line is valid only when all of these hold, and is no marker
   otherwise:
-  - its `<cap>` is the cap in force (START Step 8's resolution; an EPIC coordinator uses the
-    child's latest `budget:` marker, else the default), and its `<n>` equals the count read now and
-    is at least `<cap>` — so a line a later push left behind, a raised cap, or a seeded low count
-    never passes;
+  - its `<cap>` is the cap in force (START Step 8's resolution; for an EPIC coordinator, the larger
+    of the cap it briefed — the child's latest `budget:` marker, else the default — and the line's
+    own `<cap>`, so the line can record a raise but never lower the cap), and its `<n>` equals the
+    count read now and is at least `<cap>` — so a line a later push left behind, a raised cap, or a
+    seeded low count never passes;
   - **the engaged bot's** newest review on the head is not an *unable to review* body, and one
     disposition comment was posted after it;
-  - that comment **covers the whole review**: every thread the review opened and every entry in its
-    body (a repeated anchor counts once per entry) has its own disposition line — a comment that
-    omits a finding is not an answer, whatever its `<m>`;
+  - that comment **covers the whole review**: every thread the review opened (the threads query
+    above, unfiltered, matched on `pullRequestReview.databaseId`) and every entry in its body (a
+    repeated anchor counts once per entry) has its own disposition line — a comment that omits a
+    finding is not an answer, whatever its `<m>`;
   - its `<m>` equals that comment's `agree, held` lines.
 
   A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
 
 - **Raising the cap.** A human can raise it (`Budget: rounds=<n>` on a re-brief, or "one more
-  round" to an attached session). **Persist the new cap before resuming**, so every source Step 8
-  and a coordinator read agrees: overwrite this ticket's budget file at START Step 1's path
-  (creating it if Step 1 had no directive — the raise is the one write that replaces a value),
-  rewrite the PR line's `(cap <new>)`, and on an epic child post a fresh `budget:` marker on the
-  epic (EPIC Step 5). An unpersisted raise is lost at the next compaction. Then the loop resumes,
-  pushes included, until the new cap is reached or the review is clean.
+  round" to an attached session). **Persist the new cap before resuming**: write it to this
+  ticket's budget file (START Step 1's path and rule — a larger value replaces the old one) and
+  rewrite the PR line's `(cap <new>)`. That is enough everywhere: Step 8 and an EPIC coordinator
+  both take the largest cap they can see, and the line is on the PR, so a child raised directly
+  needs no marker on an epic it may not know (a coordinator that raises a child by re-brief posts
+  its own `budget:` marker, EPIC Step 5). An unpersisted raise is lost at the next compaction.
+  Then the loop resumes, pushes included, until the new cap is reached or the review is clean.
 
-- **Pushes the cap never blocks.** A **CI fix** always pushes, since a red PR isn't a reviewed PR:
+- **Pushes the cap never blocks.** A **CI fix**, a **restack** a coordinator redirects (rebase onto
+  a new base), and a merge of the base that clears a **conflict** always push, since a red,
+  mis-based, or unmergeable PR isn't a reviewed PR:
   count the review it triggers, answer it by disposition, and rewrite the line. If that push doesn't
   auto-request a review (neither pending signal after it), request once for the new head and record
   it, per the stale-review rule above; the round the push costs still needs its review. An *unable
