@@ -226,12 +226,19 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     then hand back at the usual reviewed-PR stopping point.
 
   That line is the durable marker the completion gates read, like the no-bot fallback comment: a
-  reached cap with dispositions posted **is** review-clean, not a stall. The gates accept it only
-  when all of these hold, and treat anything else as no marker:
-  - its `<cap>` is the cap in force, and its `<n>` equals the count read now and is at least `<cap>`
-    (so a line a later push left behind, a raised cap, or a seeded low count never passes);
-  - **the engaged bot's** newest review on the head is not an *unable to review* body, and the one
+  reached cap with dispositions posted **is** review-clean, not a stall. This is the one
+  definition of a **valid cap marker**; START's completion checklist and EPIC's gates point here
+  rather than restating it. The line is valid only when all of these hold, and is no marker
+  otherwise:
+  - its `<cap>` is the cap in force (START Step 8's resolution; an EPIC coordinator uses the
+    child's latest `budget:` marker, else the default), and its `<n>` equals the count read now and
+    is at least `<cap>` — so a line a later push left behind, a raised cap, or a seeded low count
+    never passes;
+  - **the engaged bot's** newest review on the head is not an *unable to review* body, and one
     disposition comment was posted after it;
+  - that comment **covers the whole review**: every thread the review opened and every entry in its
+    body (a repeated anchor counts once per entry) has its own disposition line — a comment that
+    omits a finding is not an answer, whatever its `<m>`;
   - its `<m>` equals that comment's `agree, held` lines.
 
   A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
