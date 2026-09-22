@@ -194,9 +194,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   `copilot-pull-request-reviewer[bot]` for Copilot, `coderabbitai[bot]` for CodeRabbit, a CI
   action's app login — read off the PR each time, not remembered; every bot files its findings
   through reviews (inline comments belong to one), so one review per head counts the same for
-  all of them, and the unable-body filter only ever matches Copilot's sentence. The **cap** is the
-  `Budget: rounds=<n>` the briefing carried (START Step 1), else this profile's default of **5**
-  (`SPAWN_CAP`); it applies to every PR, whatever the diff contains. **Below** the cap, loop as
+  all of them, and the unable-body filter only ever matches Copilot's sentence. The **cap** is the one START Step 8
+  resolves — this ticket's budget file, else the PR line's `(cap <cap>)`, else the briefing's
+  `Budget: rounds=<n>`, else this profile's default of **5** (`SPAWN_CAP`); a raise rewrites the
+  first two, so it wins over the original briefing. It applies to every PR, whatever the diff
+  contains. Keep the PR line current: after every round, rewrite its `<n>` (and `<m>`, 0 below the
+  cap). **Below** the cap, loop as
   written: fix, push, let the bot re-review. Once the count **reaches** the cap and the newest
   review on the head still has findings, a fix push would be round `<cap>+1` — on a repo with
   auto-review a push *is* a re-request — so **stop pushing and stop re-requesting** (no fresh
@@ -225,8 +228,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   re-opens the loop: count the review it triggers, answer it, and rewrite the line with the new
   count before handing back. The cap is a budget, not a verdict — a human can raise it
   (`Budget: rounds=<n>` on a re-brief, or "one more round" to an attached session) — **persist the
-  new cap before resuming**: write the budget file at START Step 1's path (creating it if Step 1
-  had no directive to write), rewrite the PR line's `(cap <new>)`, and — on an epic child — post a
+  new cap before resuming**: write this ticket's budget file at START Step 1's path, overwriting it (and
+  creating it if Step 1 had no directive to write) — the raise is the one write that replaces an
+  existing value, rewrite the PR line's `(cap <new>)`, and — on an epic child — post a
   fresh `budget:` marker on the epic (EPIC Step 5), so every source Step 8 and the coordinator read
   agrees (an unpersisted raise is lost at the next
   compaction and the loop stops again at the old cap) — then the old line stops matching and the
