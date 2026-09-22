@@ -225,8 +225,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   re-opens the loop: count the review it triggers, answer it, and rewrite the line with the new
   count before handing back. The cap is a budget, not a verdict — a human can raise it
   (`Budget: rounds=<n>` on a re-brief, or "one more round" to an attached session) — **persist the
-  new cap before resuming**: rewrite the budget file START Step 1 wrote and the PR line's
-  `(cap <new>)`, so every source Step 8 reads agrees (an unpersisted raise is lost at the next
+  new cap before resuming**: write the budget file at START Step 1's path (creating it if Step 1
+  had no directive to write), rewrite the PR line's `(cap <new>)`, and — on an epic child — post a
+  fresh `budget:` marker on the epic (EPIC Step 5), so every source Step 8 and the coordinator read
+  agrees (an unpersisted raise is lost at the next
   compaction and the loop stops again at the old cap) — then the old line stops matching and the
   loop resumes from there, pushes included, until the new cap is reached or the review is clean. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
   so make it, count the review it triggers, answer that review by disposition, and rewrite the
