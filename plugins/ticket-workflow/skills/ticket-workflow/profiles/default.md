@@ -46,7 +46,9 @@ round count, the cap and its default, the spiral check, *At the cap*, the **vali
 the START and EPIC gates point to, and *Raising the cap* — live in this profile's `REVIEW_BOT`,
 and an op override replaces the whole section. A profile that overrides `REVIEW_BOT` and wants
 a cap carries those bullets over; one that doesn't has no cap, and the gates' cap alternative
-never applies (START Step 8).
+never applies (START Step 8). Either way it also overrides `SPAWN_CAP`, whose inherited
+`Budget: rounds=15` would otherwise win as the larger value: its own `Budget:` line matches its
+own default cap, or is dropped when it has none.
 
 ## REPO_SELECT
 - Use the repo named in the request; otherwise the current repo (for personal projects
@@ -209,10 +211,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   count or stand in for the bot's. The unable-body filter applies only when the engaged bot is Copilot
   (as on the MCP path) and anchors on the opening of Copilot's sentence, so it drops nothing else.
 
-- **The cap.** It is the one START Step 8 resolves: the **largest** valid value among this ticket's
-  budget file, the PR line's `(cap <cap>)`, and the briefing's `Budget: rounds=<n>`, else — when
-  none is present — this profile's default of **12** (`SPAWN_CAP`). A cap only goes up, so a raise
-  recorded in any one source wins and nothing lowers it. The cap is a **cost ceiling, not the
+- **The cap.** It is the one START Step 8 resolves: the **larger** valid value of the PR line's
+  `(cap <cap>)` and the briefing's `Budget: rounds=<n>`, else — when neither is present — this
+  profile's default of **15** (`SPAWN_CAP`). A cap only goes up, so a raise recorded on the line
+  wins and nothing lowers it. The cap is a **cost ceiling, not the
   usual way a review ends**:
   below it, stay thorough on correctness and loop as written (fix or explain, push, let the bot
   re-review). It applies to every PR, whatever the diff contains. After every round, rewrite the
@@ -262,10 +264,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
 
 - **Raising the cap.** A human can raise it (`Budget: rounds=<n>` on a re-brief, or "one more
-  round" to an attached session). **Persist the new cap before resuming**: write it to this
-  ticket's budget file (START Step 1's path and rule — a larger value replaces the old one) and
-  rewrite the PR line's `(cap <new>)`. That is enough everywhere: Step 8 and an EPIC coordinator
-  both take the largest cap they can see, and the line is on the PR, so a child raised directly
+  round" to an attached session). **Persist the new cap before resuming**: rewrite the PR
+  line's `(cap <new>)` — the line is the cap's one durable record (before the PR exists, carry the
+  raise into START Step 7's seed). That is enough everywhere: Step 8 and an EPIC coordinator both
+  take the larger cap they can see, and the line is on the PR, so a child raised directly
   needs no marker on an epic it may not know (a coordinator that raises a child by re-brief posts
   its own `budget:` marker, EPIC Step 5). An unpersisted raise is lost at the next compaction.
   Then the loop resumes, pushes included, until the new cap is reached or the review is clean.
@@ -337,16 +339,16 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   not treat this launch briefing as merge authorization. This hold is scoped, not standing: it
   applies only until a human explicitly asks this session to finish — if someone attaches and
   invokes /finish-ticket (or asks to merge in their own words), that instruction is the merge
-  authorization and supersedes this cap. Budget: rounds=12" Keeps an unattended background session
+  authorization and supersedes this cap. Budget: rounds=15" Keeps an unattended background session
   from over-reaching, while making the hold's expiry explicit — so a later /finish-ticket in the
   same session reads as the sanctioned merge phase, not a violation of this cap.
-- The trailing `Budget: rounds=12` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
+- The trailing `Budget: rounds=15` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
   directive — a sibling of `Base branch:` / `Worktree:` / `Role:` — so START Step 1 reads it like
   the others. A spawner that knows a change is risky raises it per issue with its own
   `Budget: rounds=<n>`; SPAWN Step 2 keeps exactly one `Budget:` line per briefing, the most
-  specific (per-issue over shared over this cap's). **12 is also this profile's default when no directive arrives** — an
+  specific (per-issue over shared over this cap's). **15 is also this profile's default when no directive arrives** — an
   interactive `/start-ticket` — since the human is right there to say "one more round". An org
-  profile overriding this op keeps a `Budget: rounds=<n>` line or inherits 12. 12 is a cost ceiling that should rarely be hit, not the usual way a review ends.
+  profile overriding this op keeps a `Budget: rounds=<n>` line or inherits 15. 15 is a cost ceiling that should rarely be hit, not the usual way a review ends.
 - Keep the payload text free of
   backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
   argument (`SKILL.md` SPAWN Step 3 / `phases/epic.md` Step 5), where a backtick or `$` triggers shell substitution,
