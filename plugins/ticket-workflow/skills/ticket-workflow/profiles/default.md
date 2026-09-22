@@ -179,69 +179,77 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
-- **Count the rounds, and stop at the cap.** A round is one bot review submitted on a **new head** —
-  a review whose `commit_id` no earlier counted review carried. An *unable to review* body (the
-  body that is only that sentence — the filter anchors on its opening, so a review that merely
-  mentions the phrase still counts) is not a round, and a re-request without a push (a fresh
-  review on the same head) is not one either: it restates the last. Read the count off the PR, never from memory, so a later turn or a fresh
-  coordinator gets the same answer:
+- **Count the rounds.** A round is one review by the **engaged bot** on a **new head** — a review
+  whose `commit_id` no earlier counted review carried. A re-request without a push (a fresh review
+  on the same head) is not a round, and neither is an *unable to review* body. Read the count off
+  the PR each time, never from memory, so a later turn or a fresh coordinator gets the same answer:
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     | jq --arg bot "<bot login>" '[.[][] | select(.user.login==$bot)
            | select((.body // "") | test("^\\s*Copilot was unable to review") | not) | .commit_id] | unique | length'
   ```
-  `<bot login>` is the engaged bot as the detect step found it among the PR's reviews —
-  `copilot-pull-request-reviewer[bot]` for Copilot, `coderabbitai[bot]` for CodeRabbit, a CI
-  action's app login — read off the PR each time, not remembered; every bot files its findings
-  through reviews (inline comments belong to one), so one review per head counts the same for
-  all of them, and the unable-body filter only ever matches Copilot's sentence. The **cap** is the one START Step 8
-  resolves — this ticket's budget file, else the PR line's `(cap <cap>)`, else the briefing's
-  `Budget: rounds=<n>`, else this profile's default of **5** (`SPAWN_CAP`); a raise rewrites the
-  first two, so it wins over the original briefing. It applies to every PR, whatever the diff
-  contains. Keep the PR line current: after every round, rewrite its `<n>` (and `<m>`, 0 below the
-  cap). **Below** the cap, loop as
-  written: fix, push, let the bot re-review. Once the count **reaches** the cap and the newest
-  review on the head still has findings, a fix push would be round `<cap>+1` — on a repo with
-  auto-review a push *is* a re-request — so **stop pushing and stop re-requesting** (no fresh
-  verdict on an unchanged head; a *new* head after a push the cap permits still gets the
-  stale-review rule above): no one-line clarification rides without a push, so none rides. Answer the newest round by **disposition**
-  instead — every thread gets a reply and is resolved, and **every finding of the round, thread
-  or body entry, gets its line in the one PR comment** (`<path>:<line> — <disposition>`; a thread's
-  line repeats its reply) — each line either `not changing — <why>` or `agree, held at the round
-  cap — <the fix it would take>`. The comment is the whole round's record, so it is posted even
-  for a thread-only round and `<m>` below counts every held finding, not just the body's: the
-  gates date the round's answer by a PR comment newer than the review, and thread replies alone
-  don't show up there. Nothing is discarded; the human reads the dispositions. Then rewrite the PR body's
-  `Review rounds: <n> (cap <cap>); <m> findings open by disposition` line (START Step 7 seeds it
-  at `0 (cap <cap>)`; add it after the test plan if it's missing) with the count and the number
-  of `agree, held` lines in that comment, and hand back at the usual reviewed-PR stopping
-  point. That line is the durable marker the completion gates read, like
-  the no-bot fallback comment: a reached cap with dispositions posted **is** review-clean, not a
-  stall. **The line is bound to the cap and the count, not to a head:** the gates accept it only
-  when its `<cap>` is the cap in force, its `<n>` equals the count the read above returns *now*
-  and is at least `<cap>`, the newest review on the head is not an *unable to review* body and
-  has its dispositions in a PR comment posted after it, and its `<m>` equals the number of
-  `agree, held` lines in that comment — a line a later push left behind is no marker, a raised
-  budget makes the old line's `<cap>` wrong, a seeded line's `0` never reaches the cap, an `<m>`
-  that disagrees with the comment is a malformed marker, and a pending or unable review on the
-  head keeps the gate open (the unable path below runs first). So every push after the cap
-  re-opens the loop: count the review it triggers, answer it, and rewrite the line with the new
-  count before handing back. The cap is a budget, not a verdict — a human can raise it
-  (`Budget: rounds=<n>` on a re-brief, or "one more round" to an attached session) — **persist the
-  new cap before resuming**: write this ticket's budget file at START Step 1's path, overwriting it (and
-  creating it if Step 1 had no directive to write) — the raise is the one write that replaces an
-  existing value, rewrite the PR line's `(cap <new>)`, and — on an epic child — post a
-  fresh `budget:` marker on the epic (EPIC Step 5), so every source Step 8 and the coordinator read
-  agrees (an unpersisted raise is lost at the next
-  compaction and the loop stops again at the old cap) — then the old line stops matching and the
-  loop resumes from there, pushes included, until the new cap is reached or the review is clean. One push the cap never blocks: a **CI fix** — a red PR isn't a reviewed PR —
-  so make it, count the review it triggers, answer that review by disposition, and rewrite the
-  line. If that push doesn't auto-request a review (neither pending signal after it), the
-  stale-review rule above applies as written — request once for the new head and record it: the
-  round the push costs still needs its review, or the head gate could never close. An *unable to
-  review* body on that head takes the last bullet's single retry as written —
-  the retry re-requests on the **same** head, so it adds no round — and its fallback applies
-  unchanged.
+  `<bot login>` is the engaged bot as the detect step found it among the PR's reviews
+  (`copilot-pull-request-reviewer[bot]`, `coderabbitai[bot]`, a CI action's app login). Keying on
+  it matters: the implementer's own thread replies post as reviews on the head too, and must never
+  count or stand in for the bot's. The unable-body filter anchors on the opening of Copilot's
+  sentence, so it matches nothing else.
+
+- **The cap.** It is the one START Step 8 resolves, most recently persisted source first: this
+  ticket's budget file, else the PR line's `(cap <cap>)`, else the briefing's `Budget: rounds=<n>`,
+  else this profile's default of **12** (`SPAWN_CAP`). A raise rewrites the first two, so it always
+  wins over the original briefing. The cap is a **cost ceiling, not the usual way a review ends**:
+  below it, stay thorough on correctness and loop as written (fix or explain, push, let the bot
+  re-review). It applies to every PR, whatever the diff contains. After every round, rewrite the
+  PR body's `Review rounds: <n> (cap <cap>); <m> findings open by disposition` line (START Step 7
+  seeds it; add it after the test plan if it's missing) with the current count, so the body never
+  under-reports.
+
+- **Spiral check — every round, alongside fix-or-explain.** If you are making repeated small
+  changes to the same section across rounds, and especially if a round's findings are mostly about
+  text you added or changed for earlier rounds, **stop patching that section**. Re-read it together
+  with every finding raised against it so far (threads, body entries, and your earlier
+  dispositions), and rewrite it once so it answers the whole set coherently, or say in the
+  disposition why the rest don't apply. Then carry on with the loop as normal. This targets fixes
+  that each breed the next finding, not review depth.
+
+- **At the cap.** Once the count reaches the cap and the engaged bot's newest review on the head
+  still has findings, a fix push would be one round too many (on a repo with auto-review a push
+  *is* a re-request), so **stop pushing and stop re-requesting**. Answer that review by
+  **disposition** instead:
+  - every thread gets a reply and is resolved;
+  - **one PR comment** posted after the review lists every finding of the round, threads and body
+    entries alike, one line each: `<path>:<line> — not changing — <why>` or
+    `<path>:<line> — agree, held at the round cap — <the fix it would take>`. Post it even for a
+    thread-only round: the gates date the round's answer by a comment newer than the review, and
+    thread replies alone don't show up there;
+  - rewrite the PR line with the count and `<m>`, the number of `agree, held` lines in that comment,
+    then hand back at the usual reviewed-PR stopping point.
+
+  That line is the durable marker the completion gates read, like the no-bot fallback comment: a
+  reached cap with dispositions posted **is** review-clean, not a stall. The gates accept it only
+  when all of these hold, and treat anything else as no marker:
+  - its `<cap>` is the cap in force, and its `<n>` equals the count read now and is at least `<cap>`
+    (so a line a later push left behind, a raised cap, or a seeded low count never passes);
+  - **the engaged bot's** newest review on the head is not an *unable to review* body, and the one
+    disposition comment was posted after it;
+  - its `<m>` equals that comment's `agree, held` lines.
+
+  A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
+
+- **Raising the cap.** A human can raise it (`Budget: rounds=<n>` on a re-brief, or "one more
+  round" to an attached session). **Persist the new cap before resuming**, so every source Step 8
+  and a coordinator read agrees: overwrite this ticket's budget file at START Step 1's path
+  (creating it if Step 1 had no directive — the raise is the one write that replaces a value),
+  rewrite the PR line's `(cap <new>)`, and on an epic child post a fresh `budget:` marker on the
+  epic (EPIC Step 5). An unpersisted raise is lost at the next compaction. Then the loop resumes,
+  pushes included, until the new cap is reached or the review is clean.
+
+- **Pushes the cap never blocks.** A **CI fix** always pushes, since a red PR isn't a reviewed PR:
+  count the review it triggers, answer it by disposition, and rewrite the line. If that push doesn't
+  auto-request a review (neither pending signal after it), request once for the new head and record
+  it, per the stale-review rule above; the round the push costs still needs its review. An *unable
+  to review* body on that head takes the last bullet's single retry as written: the retry is on the
+  **same** head, so it adds no round, and its fallback applies unchanged.
 
 - **Loop** until **all three** hold — the completion gate:
   1. the unresolved-threads query returns nothing;
@@ -301,16 +309,16 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   not treat this launch briefing as merge authorization. This hold is scoped, not standing: it
   applies only until a human explicitly asks this session to finish — if someone attaches and
   invokes /finish-ticket (or asks to merge in their own words), that instruction is the merge
-  authorization and supersedes this cap. Budget: rounds=5" Keeps an unattended background session
+  authorization and supersedes this cap. Budget: rounds=12" Keeps an unattended background session
   from over-reaching, while making the hold's expiry explicit — so a later /finish-ticket in the
   same session reads as the sanctioned merge phase, not a violation of this cap.
-- The trailing `Budget: rounds=5` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
+- The trailing `Budget: rounds=12` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
   directive — a sibling of `Base branch:` / `Worktree:` / `Role:` — so START Step 1 reads it like
   the others. A spawner that knows a change is risky raises it per issue with its own
   `Budget: rounds=<n>`; SPAWN Step 2 keeps exactly one `Budget:` line per briefing, the most
-  specific (per-issue over shared over this cap's). **5 is also this profile's default when no directive arrives** — an
+  specific (per-issue over shared over this cap's). **12 is also this profile's default when no directive arrives** — an
   interactive `/start-ticket` — since the human is right there to say "one more round". An org
-  profile overriding this op keeps a `Budget: rounds=<n>` line or inherits 5.
+  profile overriding this op keeps a `Budget: rounds=<n>` line or inherits 12. 12 is a cost ceiling that should rarely be hit, not the usual way a review ends.
 - Keep the payload text free of
   backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
   argument (`SKILL.md` SPAWN Step 3 / `phases/epic.md` Step 5), where a backtick or `$` triggers shell substitution,
