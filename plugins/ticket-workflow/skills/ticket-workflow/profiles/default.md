@@ -186,13 +186,15 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     | jq --arg bot "<bot login>" '[.[][] | select(.user.login==$bot)
-           | select((.body // "") | test("^\\s*Copilot was unable to review") | not) | .commit_id] | unique | length'
+           | select($bot != "copilot-pull-request-reviewer[bot]"
+                    or ((.body // "") | test("^\\s*Copilot was unable to review") | not))
+           | .commit_id] | unique | length'
   ```
   `<bot login>` is the engaged bot as the detect step found it among the PR's reviews
   (`copilot-pull-request-reviewer[bot]`, `coderabbitai[bot]`, a CI action's app login). Keying on
   it matters: the implementer's own thread replies post as reviews on the head too, and must never
-  count or stand in for the bot's. The unable-body filter anchors on the opening of Copilot's
-  sentence, so it matches nothing else.
+  count or stand in for the bot's. The unable-body filter applies only when the engaged bot is Copilot
+  (as on the MCP path) and anchors on the opening of Copilot's sentence, so it drops nothing else.
 
 - **The cap.** It is the one START Step 8 resolves, most recently persisted source first: this
   ticket's budget file, else the PR line's `(cap <cap>)`, else the briefing's `Budget: rounds=<n>`,
