@@ -401,9 +401,29 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   not treat this launch briefing as merge authorization. This hold is scoped, not standing: it
   applies only until a human explicitly asks this session to finish — if someone attaches and
   invokes /finish-ticket (or asks to merge in their own words), that instruction is the merge
-  authorization and supersedes this cap. Budget: rounds=15" Keeps an unattended background session
-  from over-reaching, while making the hold's expiry explicit — so a later /finish-ticket in the
-  same session reads as the sanctioned merge phase, not a violation of this cap.
+  authorization and supersedes this cap. Do not arm a periodic PR check-in (no recurring or
+  self-re-arming send_later or Routine that re-checks your own PR): you are subscribed to your PR's
+  events, so reviews, review comments, and CI failures wake you. Wait on CI in-turn after a push,
+  and keep waiting in-turn while a requested review is still pending on your head; once you have
+  handed back at the reviewed stopping point, stop — the coordinator or a human wakes you if
+  needed. Budget: rounds=15" Keeps an unattended background session from over-reaching, while
+  making the hold's expiry explicit — so a later /finish-ticket in the same session reads as the
+  sanctioned merge phase, not a violation of this cap.
+- The **no-check-in sentence** overrides the cloud harness's PR-driving rule for spawned children.
+  That rule has a session that opened a PR arm a self check-in about an hour out and keep re-arming
+  it until the PR is merged or closed, because webhooks can deliver CI success, new pushes, and
+  merge-conflict transitions late or not at all. After a child's hand-back that means hourly wakes
+  of a large-context session for days while a human gets to the merge, each re-caching the whole
+  context, and they buy little: the child waits on CI itself right after pushing, reviews and CI
+  failures arrive as PR events, and a conflict from a moving base surfaces at FINISH, which
+  rebases anyway. The harness applies those rules unless the user says otherwise, and a spawned
+  child's briefing is its user turn, so the cap is where the override has to live. It forbids
+  only a *periodic* re-check of the child's own PR: waiting in-turn for CI or for a pending
+  Copilot review (`REVIEW_BOT`) is not a check-in, and one-shot notification Routines a briefing
+  asks for (a spawner's own wake-up channel) are not either. A repo-level
+  `.claude/skills/steward/SKILL.md` cannot carry the same override: the harness ranks that file as
+  repository content, below its own never-rules, and the check-in rule says to never cancel the
+  check-in early.
 - The trailing `Budget: rounds=15` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
   directive — a sibling of `Base branch:` / `Worktree:` / `Role:` — so START Step 1 reads it like
   the others. A spawner that knows a change is risky raises it per issue with its own

@@ -193,6 +193,20 @@ directions. So:
 `get_session` returns status, not a transcript; reading what a stuck child actually
 did means opening it in the web UI.
 
+**What a child wakes on by itself.** A child that opened a PR is subscribed to its
+events, so new reviews, review comments, and CI failures wake it. The cloud
+harness's PR-driving rules also tell a PR-owning session to arm a self check-in
+about an hour out and keep re-arming it until the PR is merged or closed. For a
+child that has already handed back, that is an hourly wake of a large-context
+session for as long as the PR waits on a human, each one re-caching the whole
+context, with nothing for it to do. The harness applies those rules unless the
+user says otherwise, and a child's briefing is its user turn, so a caller that
+doesn't want the wakes says so in the briefing: no periodic check-in, wait on CI
+in-turn after a push, and stop once handed back. The ticket-workflow `default`
+profile's `SPAWN_CAP` carries that sentence. Generic `spawn` adds no cap of its
+own, so an ad-hoc cloud child that opens a PR arms the check-in unless its
+briefing says not to.
+
 **The poller is itself reclaimed while it waits.** A cloud container is released
 after a period of inactivity, and a turn spent waiting on children is inactivity —
 so a caller that must outlive its children (an aggregating orchestrator) cannot
