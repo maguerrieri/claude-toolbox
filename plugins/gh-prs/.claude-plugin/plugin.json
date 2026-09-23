@@ -1,0 +1,8 @@
+{
+  "name": "gh-prs",
+  "description": "GitHub PR and CI mechanics: registered stacks and gh stack, required checks without admin, and CI results that mislead",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mario Guerrieri"
+  }
+}
