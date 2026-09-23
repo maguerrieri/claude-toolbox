@@ -53,7 +53,8 @@ receivers and greps treat the two channels uniformly:
   next natural checkpoint (e.g. `blocked: parent restacked, rebase onto
   <base>`), sent to the name the coordinator assigned at spawn. A redirect is
   *about the child's own issue*: a base-branch change, a scope clarification,
-  "stop" / "restack" / "rebase". It is **never a new issue ID** — a live
+  "stop" / "restack" / "rebase", or integration-review findings the
+  coordinator posted on the child's own PR (`phases/epic.md` Step 6b). It is **never a new issue ID** — a live
   session's branch, worktree, PR footer, name, and notify wiring are all keyed
   to the one issue it was spawned for, so "also do #N" either lands on the
   wrong branch or forces a hand-rolled START with none of SPAWN's safeguards.
