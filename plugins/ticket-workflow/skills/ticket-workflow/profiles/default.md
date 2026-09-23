@@ -248,7 +248,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
 - **Count the rounds.** A round is one review by the **engaged bot** on a **new head** — a review
   whose `commit_id` no earlier counted review carried. A re-request without a push (a fresh review
-  on the same head) is not a round, and neither is an *unable to review* body. Read the count off
+  on the same head) is not a round, and neither is an *unable to review* body or a `/code-review`
+  self-review pass (START Steps 7 and 8). Read the count off
   the PR each time, never from memory, so a later turn or a fresh coordinator gets the same answer:
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
