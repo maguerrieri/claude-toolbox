@@ -172,13 +172,20 @@ head**, not the body:
    (a CodeRabbit-only or bot-less PR is judged on threads alone) and waived
    when the profile's no-bot fallback comment is on the PR (an unresolved
    thread still fails regardless):
-   Copilot's newest review on the head neither opens with the body verdict
-   `### 🟢 Approval recommended` (its REST `state` is always `COMMENTED`,
-   so GitHub's `APPROVED` is never the test) nor is answered
-   finding-by-finding in a PR comment posted after it (Copilot files most
-   findings as "suppressed comments" in the review body, with no thread; a
-   body saying Copilot was *unable to review* is not a review and fails this
-   clause until the profile's retry/fallback has run);
+   Copilot's newest review on the head has a body finding that no PR comment
+   posted after it answers entry by entry (its REST `state` is always
+   `COMMENTED`, so GitHub's `APPROVED` is never the test). Body findings are
+   the entries with no thread of their own, parsed from both of Copilot's
+   body formats as the profile's `REVIEW_BOT` spells out: the legacy
+   `### Suppressed comments (N)` entries, and in the `ccr-overview-v2`
+   format (since 2026-09-22) the `Previously missed (N)` entries plus any
+   `Open (N)` entry whose `#discussion_r<id>` anchor matches no inline
+   thread. The verdict is the first `### 🟢|🟡|🔵` heading, not the first
+   line (v2 opens with an HTML comment); a `**Findings:** None` line is never
+   trusted over a count of the entries; and a 🟡/🔵 review with no entries
+   and no thread fails as a parse failure rather than passing. A body saying
+   Copilot was *unable to review* is not a review and fails this clause until
+   the profile's retry/fallback has run;
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
    exactly `[<issue>]` — zero, a different issue, or more than one all fail;
 4. `<issue>` does not carry **exactly one** label matching `risk:*`, or that

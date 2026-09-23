@@ -121,24 +121,31 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
         pullRequest(number:$pr){
           reviewThreads(first:100, after:$endCursor){
             pageInfo{ hasNextPage endCursor }
-            nodes{ id isResolved path comments(first:1){ nodes{ author{login} body pullRequestReview{ databaseId } } } } } } } }' \
+            nodes{ id isResolved path comments(first:1){ nodes{ databaseId author{login} body pullRequestReview{ databaseId } } } } } } } }' \
     --jq ".data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)"
   ```
-  `pullRequestReview.databaseId` names the review that opened the thread (the REST review `id`).
+  `pullRequestReview.databaseId` names the review that opened the thread (the REST review `id`); the
+  first comment's own `databaseId` is the `<id>` in the `#discussion_r<id>` anchor that a v2 Copilot
+  body's `Open` entry links to (body shape, below).
   The valid cap marker's coverage check below runs this query **without** the `isResolved`
   filter and keeps the threads whose first comment carries the newest bot review's `id`.
 
-- **Then read the bot's newest review body.** Copilot files most findings as *suppressed comments*
-  in the review body, not as threads: a 🔵 *Needs a closer look* review has **zero** threads, a 🟡
-  *Changes recommended* review has body findings on top of its inline ones. This step and gate (2)
+- **Then read the bot's newest review body.** Copilot lists findings in the review body that have
+  no thread (legacy *suppressed comments*; v2 *Previously missed* entries): a 🔵 *Needs a closer
+  look* review can have **zero** threads and still carry findings, and a 🟡 *Changes recommended*
+  review can have body findings on top of its inline ones. This step and gate (2)
   below are Copilot-specific: with another bot (CodeRabbit, a CI action) or none, the query returns
   no review and gate (2) is vacuously met — those bots' findings are threads. Fetch the latest review
   (last by `submitted_at`; `--slurp` so `last` spans all pages — a review cycle passes 30 easily —
-  piped to standalone `jq`, since `gh` rejects `--slurp` together with `--jq`):
+  piped to standalone `jq`, since `gh` rejects `--slurp` together with `--jq`). The `gsub` rewrites
+  each v2 severity badge (a `<picture>` element) to its `alt` text in brackets, e.g.
+  `[High severity]`, so the body reads as plain text:
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
     | jq '[.[][] | select(.user.login=="copilot-pull-request-reviewer[bot]")]
-           | sort_by(.submitted_at) | last // empty | {id, submitted_at, commit_id, body}'
+           | sort_by(.submitted_at) | last // empty
+           | {id, submitted_at, commit_id,
+              body: ((.body // "") | gsub("<picture>.*?alt=\"(?<a>[^\"]*)\".*?</picture>"; "[\(.a)]"))}'
   ```
   No output (`// empty` keeps an empty array from printing a null record) → read the detect step's
   two pending signals **fresh** (a snapshot taken before a request you just made is stale): Copilot
@@ -160,14 +167,48 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   the PR for the current head, wait; if the request fails, take the no-bot fallback (last bullet).
   A current-head review never triggers a re-request here, with one exception: an *unable to
   review* body on the head takes the last bullet's one retry.
-  Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it):
-  - **Verdict** — first line: `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
+  Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it).
+  Copilot has posted two formats, and a PR's history can mix them. A body whose first line is
+  `<!-- ccr-overview-v2 -->` is **v2** (seen from 2026-09-22); anything else is **legacy**. Read both:
+  - **Verdict** — the **first** `### 🟢 …`, `### 🟡 …`, or `### 🔵 …` heading in the body, **not**
+    the first line (v2 opens with the HTML comment and a `## Copilot review overview` heading, so
+    its verdict is on line 5): `### 🟢 Approval recommended`, `### 🟡 Changes recommended`, or
     `### 🔵 Needs a closer look`.
-  - **Findings** — under `### Suppressed comments (N)` inside the `Review details` block: each is a
-    bold **`path:line`** line, a `* ` bullet, and usually a fenced quote of the anchored lines
+  - **Findings, v2** — each section is a `<details>` block titled
+    `<summary><strong><name> (N)</strong></summary>`:
+    - `Open (N)` — one `- ` bullet per entry: severity badge, `[<title>](#discussion_r<id>)`,
+      `· New`. Each **links an inline thread**: on every v2 review checked, every entry was
+      `· New` and the anchors were exactly the first comments of the threads that review opened.
+      So answer it **on its thread** (the thread bullet below), not a second time in the body
+      comment. An entry whose `<id>` matches no thread's first-comment `databaseId` (the threads
+      query, unfiltered) is a body entry instead.
+    - `Previously missed (N)` — a line of prose ("In code that hasn't changed since last review"),
+      then one nested `<details>` per entry: its `<summary>` is a severity badge plus a title, and
+      its body is a backticked `` `path:line` `` and the finding. These have **no thread**, so the
+      body comment is their only answer.
+    - `Resolved since last review (N)` — bullets linking earlier threads. Informational, not findings.
+    - **`**Findings:** N` is not the count to answer, and neither is `**Findings:** None`.** It counts
+      only the `Open` entries: one review said `2` and carried three `Previously missed` entries
+      besides, another said `None` and carried two. The prose sentence under the verdict isn't a count
+      either. Count the entries in each section. If a heading's `N` disagrees with its entries,
+      answer every entry and note the mismatch.
+  - **Findings, legacy** — under `### Suppressed comments (N)` inside the `Review details` block: each
+    is a bold **`path:line`** line, a `* ` bullet, and usually a fenced quote of the anchored lines
     (context, not finding). `N` counts entries; the same `path:line` can appear twice, and a bold
     **`Previously missed (k)`** line is a sub-label, not an entry. No heading (🟢) → no findings. The
     *File summaries* table's "Critical / Nit (k votes)" phrases summarize these same findings.
+  - **Body entries** — the term the rest of this profile uses (the body comment, gate (2), the valid
+    cap marker's coverage): legacy `Suppressed comments` entries, v2 `Previously missed` entries,
+    and v2 `Open` entries whose anchor matches no thread.
+  - **Severity** — a v2 entry's badge carries it in the `<img alt="…">` text (`High severity` and
+    `Medium severity` so far); the fetch above prints it as `[High severity]`. Carry it into the
+    entry's disposition line and use it in the spiral check. **Never filter on it**: every finding
+    gets an answer, whatever its severity. Legacy entries have no badge.
+  - **Nothing to answer on a non-🟢 verdict is a parse failure, not a clean review.** A 🟡 or 🔵
+    review with no entry in any findings section (`Open`, `Previously missed`, `Suppressed
+    comments`) and no thread of its own means the format has probably changed again. Re-read
+    the raw `.body`. If it still shows no findings, don't let gate (2) pass on it: say so in a PR
+    comment and hand back reporting it as a blocker.
   - **Not a review** — a body that is only *"Copilot was unable to review this pull request …"*
     (see the last bullet).
 
@@ -184,11 +225,14 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     mutation($threadId:ID!){ resolveReviewThread(input:{threadId:$threadId}){ thread{ isResolved } } }'
   ```
 
-- **Address each body finding the same way — fix or explain — in one PR comment.** There is no
-  thread to reply on or resolve, so post a **single** comment after the review, one line per entry (a repeated `path:line` gets
-  one line per finding):
-  `path:line` — `fixed in <sha> — …` or `not changing — …`. Push fixes first so the lines can cite
-  SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
+- **Address each body entry the same way — fix or explain — in one PR comment.** There is no
+  thread to reply on or resolve, so post a **single** comment after the review, one line per body
+  entry (a repeated `path:line` gets one line per finding; a v2 `Open` entry answered on its thread
+  gets none here):
+  `path:line` — `fixed in <sha> — …` or `not changing — …`, with the severity and title after the
+  anchor when the entry has them (`path:line (Medium severity: <title>) — …`), and the title as
+  the anchor for an `Open` entry with no thread and no `path:line`. Push fixes first so the lines
+  can cite SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
 - **Count the rounds.** A round is one review by the **engaged bot** on a **new head** — a review
@@ -228,7 +272,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   with every finding raised against it so far (threads, body entries, and your earlier
   dispositions), and rewrite it once so it answers the whole set coherently, or say in the
   disposition why the rest don't apply. Then carry on with the loop as normal. This targets fixes
-  that each breed the next finding, not review depth.
+  that each breed the next finding, not review depth. Where the body gives a severity, weigh it
+  here: a section still drawing `High severity` findings after two patches is the clearest case
+  for the rewrite. Severity only orders the work; lower-severity findings still get answered.
 
 - **At the cap.** Once the count reaches the cap and the engaged bot's newest review on the head
   still has findings, a fix push would be one round too many (on a repo with auto-review a push
@@ -236,7 +282,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   **disposition** instead:
   - every thread gets a reply and is resolved;
   - **one PR comment** posted after the review lists every finding of the round, threads and body
-    entries alike, one line each: `<path>:<line> — not changing — <why>` or
+    entries alike (a v2 `Open` entry is its thread, listed once), one line each, with the
+    severity after the anchor when the body gives one: `<path>:<line> — not changing — <why>` or
     `<path>:<line> — agree, held at the round cap — <the fix it would take>`. Post it even for a
     thread-only round: the gates date the round's answer by a comment newer than the review, and
     thread replies alone don't show up there;
@@ -256,9 +303,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - **the engaged bot's** newest review on the head is not an *unable to review* body, and one
     disposition comment was posted after it;
   - that comment **covers the whole review**: every thread the review opened (the threads query
-    above, unfiltered, matched on `pullRequestReview.databaseId`) and every entry in its body (a
-    repeated anchor counts once per entry) has its own disposition line — a comment that omits a
-    finding is not an answer, whatever its `<m>`;
+    above, unfiltered, matched on `pullRequestReview.databaseId`) and every body entry (as the
+    body shape defines it; a repeated anchor counts once per entry) has its own disposition
+    line — a comment that omits a finding is not an answer, whatever its `<m>`;
   - its `<m>` equals that comment's `agree, held` lines.
 
   A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
@@ -283,12 +330,16 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
 - **Loop** until **all three** hold — the completion gate:
   1. the unresolved-threads query returns nothing;
-  2. for Copilot, the **newest** review — on the PR head, and not an *unable to review* body — is
-     🟢 *Approval recommended*, **or** every entry in its `Suppressed comments` has its own line in
-     a PR comment posted **after** it (an anchor two entries share needs two lines) — an answer to
-     an earlier review doesn't carry over; after each push, answer the newest review's list (repeats
-     included). Also met when the engaged bot isn't Copilot, or the no-bot fallback comment (last
-     bullet) is already on the PR. **A reached round cap meets it the same way** — the newest
+  2. for Copilot, the **newest** review — on the PR head, and not an *unable to review* body — has
+     every **body entry** (body shape above: legacy `Suppressed comments`, v2 `Previously missed`,
+     and v2 `Open` entries without a thread) answered by its own line in a PR comment posted
+     **after** it (an anchor two entries share needs two lines). A review with no body entries
+     meets this vacuously. That is the normal 🟢 *Approval recommended* case, but never a 🟡/🔵
+     review with nothing in any findings section and no thread (the parse-failure rule above).
+     `**Findings:** None` never stands in for counting. An answer to an earlier review doesn't
+     carry over; after each push, answer the newest review's list (repeats included). Also met
+     when the engaged bot isn't Copilot, or the no-bot fallback comment (last bullet) is already
+     on the PR. **A reached round cap meets it the same way** — the newest
      round's disposition lines *are* that PR comment, and the `Review rounds:` line in the PR
      body says why no fix push followed;
   3. CI is green (`gh pr checks <pr> --watch`).
