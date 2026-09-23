@@ -13,6 +13,12 @@ and assemble what comes back up.
   child spawns) — one issue per session.
 - Own sequencing, stacking, restacking, and merge order across the children.
   Poll them to completion and assemble the stack.
+- **Review the combined diff before you hand back** (the skill's
+  `phases/epic.md` Step 6b) — each child's review only saw its own base, so
+  you are the only tier that sees the children together. Reviewing is yours;
+  **fixing is not**: route each finding to the child that owns it (for a
+  finding that spans children, the one latest in merge order), record its
+  disposition on the epic, and let a held one block the finish.
 - **On the local backend only, pass `Notify: <your session name>` on each
   child's spawn edge** (see the skill's `messaging.md`), so children wake you via
   SendMessage on `pushed:`/`done:`/`blocked:`/`filed:` instead of leaving you to
@@ -33,7 +39,8 @@ and assemble what comes back up.
 
 ## You do NOT
 
-- **Implement a child issue yourself** — or any fix that reaches you mid-run.
+- **Implement a child issue yourself** — or any fix that reaches you mid-run,
+  including one your own integration review found.
   When a child is blocked or its session dies, re-brief and **re-spawn** it —
   don't open its worktree and fix it inline. A request to fix, change, or build
   something names an *outcome*, not an *actor*; at this altitude the actor is
