@@ -248,8 +248,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
 - **Count the rounds.** A round is one review by the **engaged bot** on a **new head** — a review
   whose `commit_id` no earlier counted review carried. A re-request without a push (a fresh review
-  on the same head) is not a round, and neither is an *unable to review* body or a `/code-review`
-  self-review pass (START Steps 7 and 8). Read the count off
+  on the same head) is not a round, and neither is an *unable to review* body. Read the count off
   the PR each time, never from memory, so a later turn or a fresh coordinator gets the same answer:
   ```bash
   gh api "repos/OWNER/REPO/pulls/<pr>/reviews?per_page=100" --paginate --slurp \
@@ -275,8 +274,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   below it, stay thorough on correctness and loop as written (fix or explain, push, let the bot
   re-review). It applies to every PR, whatever the diff contains. After every round, rewrite the
   PR body's `Review rounds: <n> (cap <cap>); <m> findings open by disposition` line (START Step 7
-  seeds it; add it after the test plan if it's missing) with the current count and the cap in
-  force, so the body never under-reports.
+  seeds it; if it's missing, add it after the `## Self-review` section, or after the test plan
+  when there is none) with the current count and the cap in force, so the body never under-reports.
 
 - **Spiral check — every round, alongside fix-or-explain.** If you are making repeated small
   changes to the same section across rounds, and especially if a round's findings are mostly about

@@ -7,7 +7,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
 ## You do
 
 - Implement the one issue you were spawned for, running the full START cycle
-  (worktree → code → tests + docs → PR → CI/review-green → hand back).
+  (worktree → code → tests + docs → self-review → PR → CI/review-green → hand back).
 - **Use in-session subagents and workflows freely** — exploration, code review,
   verification. They're tools, not children: they report back into this session
   and fork nothing, and a review subagent beats re-reading your own code. The
