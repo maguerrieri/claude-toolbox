@@ -31,6 +31,11 @@
       "description": "YAML editing guardrails: surface-triggered gotcha reference + mandatory parse-verify step"
     },
     {
+      "name": "gh-prs",
+      "source": "./plugins/gh-prs",
+      "description": "GitHub PR and CI mechanics: registered stacks and gh stack, required checks without admin, and CI results that mislead"
+    },
+    {
       "name": "gm",
       "source": "./plugins/gm",
       "description": "System-agnostic, persona-driven solo RPG game master (dice, oracles, adapters, versioned saves)"

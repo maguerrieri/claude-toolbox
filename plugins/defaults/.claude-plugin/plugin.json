@@ -1,7 +1,7 @@
 {
   "name": "defaults",
   "description": "Meta-plugin: installs Mario's default plugin set via dependencies",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "Mario Guerrieri"
   },
@@ -10,6 +10,7 @@
     "spawn",
     "generate",
     "ticket-workflow",
-    "yaml"
+    "yaml",
+    "gh-prs"
   ]
 }

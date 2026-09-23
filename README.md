@@ -34,6 +34,13 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
   and carries one quoting decision rule, a mandatory parse/round-trip verify
   step, and a compact symptom→cause→fix gotcha table.
+- **gh-prs** — GitHub PR and CI mechanics: the `gh-prs` skill. An on-demand
+  reference for the moments `gh` misleads: merging a registered stack
+  (`gh stack`) and moving a stacked PR's base, reading required checks without
+  admin access, the required-fan-in-job trap, and CI results that aren't what
+  they look like (outage-cancelled jobs, green checks whose gate step was
+  skipped).
+  Complements `ticket-workflow`, which owns the merge procedure itself.
 - **gm** — system-agnostic, persona-driven solo-RPG game master: the `gm` skill
   plus 7 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
   `/gm:oracle`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`). Pluggable system
@@ -57,7 +64,8 @@ Per repo, in `.claude/settings.json`:
     "spawn@maguerrieri-toolbox": true,
     "generate@maguerrieri-toolbox": true,
     "ticket-workflow@maguerrieri-toolbox": true,
-    "yaml@maguerrieri-toolbox": true
+    "yaml@maguerrieri-toolbox": true,
+    "gh-prs@maguerrieri-toolbox": true
   }
 }
 ```
@@ -90,7 +98,7 @@ the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
-five default plugins (`gm` isn't a `defaults` dependency; install it separately).
+six default plugins (`gm` isn't a `defaults` dependency; install it separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these

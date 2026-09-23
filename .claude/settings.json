@@ -12,6 +12,7 @@
     "generate@maguerrieri-toolbox": true,
     "ticket-workflow@maguerrieri-toolbox": true,
     "yaml@maguerrieri-toolbox": true,
+    "gh-prs@maguerrieri-toolbox": true,
     "superpowers@claude-plugins-official": true
   },
   "hooks": {
