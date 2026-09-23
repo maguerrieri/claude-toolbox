@@ -172,18 +172,18 @@ head**, not the body:
    (a CodeRabbit-only or bot-less PR is judged on threads alone) and waived
    when the profile's no-bot fallback comment is on the PR (an unresolved
    thread still fails regardless):
-   Copilot's newest review on the head has a body finding that no PR comment
+   Copilot's newest review on the head has a body entry that no PR comment
    posted after it answers entry by entry (its REST `state` is always
-   `COMMENTED`, so GitHub's `APPROVED` is never the test). Body findings are
-   the entries with no thread of their own, parsed from both of Copilot's
-   body formats as the profile's `REVIEW_BOT` spells out: the legacy
-   `### Suppressed comments (N)` entries, and in the `ccr-overview-v2`
-   format (since 2026-09-22) the `Previously missed (N)` entries plus any
-   `Open (N)` entry whose `#discussion_r<id>` anchor matches no inline
-   thread. The verdict is the first `### 🟢|🟡|🔵` heading, not the first
-   line (v2 opens with an HTML comment); a `**Findings:** None` line is never
-   trusted over a count of the entries; and a 🟡/🔵 review with no entries
-   and no thread fails as a parse failure rather than passing. A body saying
+   `COMMENTED`, so GitHub's `APPROVED` is never the test). Body entries are
+   the profile `REVIEW_BOT`'s definition, which covers both of Copilot's body
+   formats: legacy `### Suppressed comments (N)` entries; in the
+   `ccr-overview-v2` format (since 2026-09-22), `Previously missed (N)`
+   entries plus any `Open (N)` entry whose `#discussion_r<id>` anchor matches
+   no inline thread; and, for a 🟡/🔵 review with none of those and no
+   unresolved thread, the summary sentence under the verdict. The verdict is
+   the first `### 🟢|🟡|🔵` heading, not the first line (v2 opens with an HTML
+   comment), and a `**Findings:** None` line is never trusted over a count of
+   the entries. A body saying
    Copilot was *unable to review* is not a review and fails this clause until
    the profile's retry/fallback has run;
 3. the PR's closing references (`closingIssuesReferences` in GraphQL) are not
