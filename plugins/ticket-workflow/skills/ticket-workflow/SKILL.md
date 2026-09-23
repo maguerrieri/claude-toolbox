@@ -17,7 +17,7 @@ description: >-
 
 Four phases, invoked by the `/start-ticket`, `/finish-ticket`, `/spawn-tickets`, and `/start-epic` commands — plus `/spawn-epic`, a thin launcher that runs the EPIC phase's `/start-epic` in a background session, and the **FILE mini-phase** (`/make-ticket`), which creates the issue the other phases consume (or invoke the phases directly):
 
-- **START** — worktree → implement → tests + docs → commit → self-review → push → PR → review-bot cycle → CI green → hand back for the user's review.
+- **START** — worktree → implement → tests + docs → commit → self-review → push → PR → review-bot cycle → CI green → final self-review → hand back for the user's review.
 - **FINISH** — (after the user has reviewed) smoke test → rebase-merge → clean up worktree/branch → close the issue → record expected outcome.
 - **SPAWN** — fan out parallel background sessions, one `/start-ticket` per issue, each running the full START cycle independently.
 - **EPIC** — expand an epic into its child tickets, run each through START **dependency-aware** (parallel where independent, stacked where one child depends on another), then aggregate and hand back the resulting **stack of PRs** — optionally finishing them.
@@ -153,7 +153,7 @@ The composed body is exactly what the delegated session will `FETCH` as its brie
 
 By default START runs the **full autonomous cycle** and hands back a PR that the review bot is satisfied with and CI is green on:
 
-> worktree setup → implement → tests + docs → commit → self-review → push → PR → review cycle → CI green → hand back
+> worktree setup → implement → tests + docs → commit → self-review → push → PR → review cycle → CI green → final self-review → hand back
 
 The user then reviews the PR themself and invokes `/finish-ticket`.
 
@@ -166,6 +166,7 @@ START is **only complete** when ALL of these are true (or an opt-out applies):
 - [ ] Test coverage verified / new tests added where the project's conventions call for it
 - [ ] Docs the change touches are still accurate (profile `DOCS`) — any drift fixed in this PR
 - [ ] Self-review ran on the full diff before the first push — or, for a branch already pushed without one (a resume, a re-brief, a re-spawn), once on the current full diff — (Step 7: `/code-review high`, or a manual adversarial read where that skill isn't available), and the PR body's `## Self-review` section names which ran and gives one line per finding left unfixed
+- [ ] Final self-review ran on the final diff before hand-back (Step 8, always — not only when the diff grew), recorded in the same section
 - [ ] Branch is pushed to origin
 - [ ] PR is open and references the issue (adapter `PR_REF`)
 - [ ] CI checks are green
@@ -272,7 +273,8 @@ gh pr create --base <base_branch> --title "<adapter PR title>" --body "$(cat <<'
 - [ ] <smoke-test steps the user will run via /finish-ticket>
 
 ## Self-review
-<`/code-review high` or manual adversarial read>: <n> findings, <k> fixed
+Before the PR: <`/code-review high` or manual adversarial read>: <n> findings, <k> fixed
+Final diff: <`/code-review high` or manual adversarial read>: <n> findings, <k> fixed
 - <anchor> — not changing — <why>
 
 Review rounds: 0 (cap <cap>); 0 findings open by disposition
@@ -296,13 +298,13 @@ Run the profile's `REVIEW_BOT` step. The `default` profile: if an automated revi
 
 **Count the rounds against the cap.** The cap in force is the **larger** valid value (`^[1-9][0-9]*$`) of the `(cap <cap>)` in the PR body's `Review rounds:` line and the briefing's `Budget: rounds=<n>` — else, when neither is present, the profile default (15 in `default`). A cap only goes up: a raise recorded on the line wins, a fresh session re-briefed with the original value can't undo it, and a malformed or hand-lowered PR line can't bring the cap forward. After each round rewrite the line with the count, the cap in force, and `<m>` (0 below the cap): one round = one bot review on a new head (`REVIEW_BOT` has the count, read off the PR); an *unable to review* body and a re-request without a push don't count. At the cap with findings still open, a fix push would be another round, so **stop pushing and stop re-requesting**: answer the newest round by disposition and rewrite the line, per `REVIEW_BOT`'s *At the cap* — a **valid cap marker** (as `REVIEW_BOT` defines it) is review-clean for the checklist, not a stall, and the human reads the dispositions and can say "one more round". The pushes the cap never blocks (a CI fix, a restack, a conflict merge) still go out; the review each triggers is counted and answered the same way. Every round, also run the profile's **spiral check**: a section you keep patching for findings about your own earlier fixes gets one coherent rewrite instead of another patch. If the effective profile's `REVIEW_BOT` defines no round cap (an org override written without one), there is none: loop as that profile says, and the checklist's cap alternative doesn't apply.
 
-**Optional self-review re-run, once, before hand-back.** If the diff grew substantially during this loop (a spiral-check rewrite, a new section, a restructure), run Step 7's self-review once more on the final diff (same explicit `origin/<base_branch>...HEAD` range, same fallback). Not every round: high effort is expensive, and cost is why the cap exists. Like Step 7's pass it never counts toward the cap. Its findings are handled like any other: fix, or `not changing — <why>` added to the `## Self-review` section. A fix is an ordinary push — below the cap it goes out and the bot review it triggers counts as a round; at the cap it is held, recorded as `<anchor> — agree, held at the round cap — <the fix>` in that section. Held self-review findings are not part of the `Review rounds:` line's `<m>` (that counts the bot round's disposition comment only), so Step 9 names them.
+**Final self-review, always, before hand-back.** Once the loop above is done (review-clean by the checklist's gate, CI green), run Step 7's self-review once more on the final diff: same explicit `origin/<base_branch>...HEAD` range, same fallback. This runs every time, not only when the diff grew; a small late change can still break things. It runs once per hand-back, not every round: high effort is expensive, and cost is why the cap exists. Like Step 7's pass it never counts toward the cap. Record it in the `## Self-review` section (which ran, the counts), and handle its findings like any other: fix, or `<anchor> — not changing — <why>` in that section. A fix is an ordinary push that goes back through this loop — below the cap it goes out and the bot review it triggers counts as a round — but the final pass itself doesn't run again for it. At the cap the fix is held instead, recorded as `<anchor> — agree, held at the round cap — <the fix>` in that section. Held self-review findings are not part of the `Review rounds:` line's `<m>` (that counts the bot round's disposition comment only), so Step 9 names them.
 
 If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you can't.
 
 ### Step 9 — Hand back
 
-Report: PR URL, a 1–2 sentence summary, which self-review ran (`/code-review high` or the manual read, and whether it re-ran before hand-back) and any self-review finding held at the cap, whether the review bot had non-trivial comments and how they were handled — the round count, and if the cap was hit, the `Review rounds:` line and that one more round is theirs to grant — and that `/finish-ticket <id>` is the next step after the user's review.
+Report: PR URL, a 1–2 sentence summary, which self-review ran for each of the two passes (`/code-review high` or the manual read) and any self-review finding held at the cap, whether the review bot had non-trivial comments and how they were handled — the round count, and if the cap was hit, the `Review rounds:` line and that one more round is theirs to grant — and that `/finish-ticket <id>` is the next step after the user's review.
 
 ---
 
