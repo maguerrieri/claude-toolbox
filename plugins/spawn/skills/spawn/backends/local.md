@@ -27,6 +27,39 @@ spawned job fails with "session ended", even if the job completed fine.
   it's itself temporary (a job tmp dir, `/tmp`), in which case pick a durable one
   (e.g. `$HOME` or the relevant project dir).
 
+## Resuming a session after its cwd is gone
+
+Same root cause as the rule above: a session's transcript is filed under its
+launch cwd. It lives at `~/.claude/projects/<slug>/<session-id>.jsonl`, where
+`<slug>` is the cwd's **physical** path (symlinks resolved) with `/` and `.`
+turned into `-`. What that means for a removed worktree, verified on Claude Code
+2.1.280 with headless `claude -p`:
+
+- **`claude --resume <id>` finds the transcript by ID from any cwd**, even after
+  the original cwd has been deleted. It appends to the original file in its
+  original slug dir, and the resumed turns run in the **current** cwd.
+- **`--fork-session`** writes the copy, under a new ID, into the current cwd's
+  slug dir and leaves the original file untouched. Use it to try a recovery
+  without mutating the original.
+- **`claude --continue` is cwd-scoped**: it picks the most recent conversation
+  *in the current directory*, so it can't reach a removed worktree's sessions.
+  Resume those by ID.
+- **`sessions-index.json` is dead weight.** A new session writes only the
+  `.jsonl`, and the index files left in older project dirs were last written
+  months earlier. Don't rely on one, and don't hand-edit one to make a session
+  show up.
+
+Older builds (as noted in July 2026) looked the ID up only in the current cwd's
+slug dir, and a resume from the wrong cwd created an **empty transcript under
+the same ID** there, which then shadowed later resumes from that cwd. That no
+longer reproduces with `--resume <id>` on 2.1.280. Not re-verified here: the
+interactive `--resume` picker and interactive `--resume <id>`. If either can't
+find a session, recover it the old way: recreate the missing path
+(`git worktree add --detach <path>`, or `mkdir -p <path>`) and resume from
+there, or `cp -p` the `.jsonl` into a live cwd's slug dir. Test with
+`--fork-session` first. A very large transcript may need a 1M-context model to
+load.
+
 ## Launch
 
 One Bash call per unit, **all in a single message** so they launch concurrently —
