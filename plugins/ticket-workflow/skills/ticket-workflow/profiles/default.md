@@ -99,14 +99,14 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
     it). Don't re-request — just wait, then read its threads **and its review body** (below). A
-    submitted review whose body is the *unable to review* sentence is not a review: take the last
-    bullet's one-retry / fallback path instead of waiting on it.
+    submitted review whose body is the *unable to review* sentence is not a review: take the
+    *Unable to review* bullet's one-retry / fallback path instead of waiting on it.
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
     "no bot" if the request fails (Copilot disabled for the repo).
 
 - **Request a review** (when not already engaged): `gh pr edit <pr> --add-reviewer "@copilot"`.
   Best-effort — if it errors (Copilot review not enabled for the repo/account), post the no-bot
-  fallback comment (last bullet; the gates read that marker) and rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
+  fallback comment (the *Unable to review* bullet; the gates read that marker) and rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
   they need no explicit request.)
 
 - **Read the unresolved threads** (authoritative — works on any repo, no extra tooling). Each thread
@@ -167,9 +167,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   signal) → wait; neither (the push didn't auto-request) → re-request now and record it with a
   one-line PR comment (`Copilot re-requested on <head sha>`), so a later pass that finds the same
   stale review with the signals transiently absent doesn't request again — with that comment on
-  the PR for the current head, wait; if the request fails, take the no-bot fallback (last bullet).
+  the PR for the current head, wait; if the request fails, take the no-bot fallback (the *Unable to review* bullet).
   A current-head review never triggers a re-request here, with one exception: an *unable to
-  review* body on the head takes the last bullet's one retry.
+  review* body on the head takes the *Unable to review* bullet's one retry.
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it).
   Copilot has posted two formats, and one PR's history can mix them: **legacy**, and **v2**, which
   opens with `<!-- ccr-overview-v2 -->` (seen from 2026-09-22). Don't branch on that marker. Read
@@ -220,7 +220,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     entry's disposition line and use it in the spiral check. **Never filter on it**: every finding
     gets an answer, whatever its severity. Legacy entries have no badge.
   - **Not a review** — a body whose only content, after any v2 marker and overview heading, is
-    *"Copilot was unable to review this pull request …"* (see the last bullet).
+    *"Copilot was unable to review this pull request …"* (see the *Unable to review* bullet).
 
 - **Address each thread, then resolve it.** Either fix the code (commit + push) and reply, or — if the
   bot is wrong — reply explaining why. Then resolve. Reply and resolve are two GraphQL mutations keyed
@@ -336,7 +336,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   count the review it triggers, answer it by disposition, and rewrite the line. If that push doesn't
   auto-request a review (neither pending signal after it), request once for the new head and record
   it, per the stale-review rule above; the round the push costs still needs its review. An *unable
-  to review* body on that head takes the last bullet's single retry as written: the retry is on the
+  to review* body on that head takes the *Unable to review* bullet's single retry as written: the retry is on the
   **same** head, so it adds no round, and its fallback applies unchanged.
 
 - **Loop** until **all three** hold — the completion gate:
@@ -348,7 +348,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
      review with no section entries and no unresolved thread still has one: its summary sentence.
      `**Findings:** None` never stands in for counting. An answer to an earlier review doesn't
      carry over; after each push, answer the newest review's list (repeats included). Also met
-     when the engaged bot isn't Copilot, or the no-bot fallback comment (last bullet) is already
+     when the engaged bot isn't Copilot, or the no-bot fallback comment (the *Unable to review* bullet) is already
      on the PR. **A reached round cap meets it the same way** — the newest
      round's disposition lines *are* that PR comment, and the `Review rounds:` line in the PR
      body says why no fix push followed;
@@ -363,8 +363,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   newest body, repeat — while the round count is below the cap (the bullet above); at the cap the
   round's dispositions and the `Review rounds:` line close the loop instead of a push.
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
-- **"Unable to review" is not a review.** A newest review whose body is only *"Copilot was unable to
-  review this pull request …"* (e.g. quota) neither passes nor fails gate (2). Re-request **once**
+- **"Unable to review" is not a review.** A newest review whose body, after any v2 marker and
+  overview heading, is only *"Copilot was unable to review this pull request …"* (e.g. quota)
+  neither passes nor fails gate (2). Re-request **once**
   (`gh pr edit <pr> --add-reviewer "@copilot"`) and record the retry in the same step with a
   one-line PR comment (`Copilot could not review <review id>; re-requested once`) — a later turn
   that finds the same unable review newest then knows the retry was issued and doesn't request
