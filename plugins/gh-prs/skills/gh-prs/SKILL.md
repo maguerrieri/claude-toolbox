@@ -37,9 +37,12 @@ command? `gh extension install github/gh-stack`.
   approvals stop it only where branch protection requires them. In a
   non-interactive shell (any agent's) there is no wizard: it merges at once.
 - **It takes numbers only**: a PR URL is rejected. And a bare number is tried
-  as a stack number first, then as a PR number. If the repo's stack numbers
-  could have reached your PR number, confirm on the PR page's stack panel that
-  `<pr>` isn't also a stack number.
+  as a stack number first, then as a PR number. Stacks have been seen taking
+  their numbers from the same sequence as issues and PRs, so an existing PR's
+  number shouldn't also name a stack, but the extension doesn't promise that.
+  The PR page's stack panel shows only that PR's own stack, so it can't rule a
+  clash out. Where it matters, `gh stack view --json` from the stack's checkout
+  shows its number and layers.
 - **Always pass the method.** `--yes` without one reuses your last-used method.
 - It merges every layer up to and including `<pr>`, all or nothing: if any of
   them can't merge, none do (per its `--help`). Layers above `<pr>` stay open.
@@ -50,11 +53,13 @@ command? `gh extension install github/gh-stack`.
 
 **After a merge, verify the layer above.** GitHub retargets it and rebases it
 server-side, and that rebase is real. Still check it:
-`gh pr view <child> --json baseRefName,changedFiles`. `baseRefName` should be
-the base branch, and `changedFiles` should drop to the child's own files. A bare
-retarget keeps the merged parent's files in the child's diff, because its
-merge-base is still the old base. So the file count, not the base name, tells a
-rebase from a retarget. Note the count before you merge.
+`gh pr view <child> --json baseRefName,changedFiles`. Note `changedFiles`
+before you merge: while the child is based on the parent, it counts only the
+child's own files. Afterwards `baseRefName` should be the base branch, and
+`changedFiles` should be **unchanged**. A bare retarget raises it, because the
+merged parent's files come back into the child's diff (its merge-base is still
+the old base). So the file count, not the base name, tells a rebase from a
+retarget.
 
 **Base surgery on a registered PR.** The base is locked, so in order:
 
@@ -66,10 +71,11 @@ rebase from a retarget. Note the count before you merge.
 2. `gh stack modify` (an interactive TUI: drop, reorder, insert), then
    `gh stack submit`, might re-parent it. Also untested.
 3. Close and recreate the PR. This loses the PR number and its review threads,
-   so **ask a human first**. A closed member also **wedges the whole stack**:
-   every later `gh stack merge` fails with *"nothing to merge: pull request is
-   closed"*. So after recreating, `gh stack unstack <s>` and
-   `gh stack link <bottom> … <top>` again with the replacement PR.
+   so **ask a human first**. A closed member of a registered stack **wedges the
+   whole stack**: every later `gh stack merge` fails with *"nothing to merge:
+   pull request is closed"*. So unstack before closing (skip that if step 1
+   already did), then `gh stack link <bottom> … <top>` again with the
+   replacement PR.
 
 `ticket-workflow`'s `phases/epic.md` Step 7 records the scratch-repo validation
 of stack merges (retarget and rebase, draft and closed layers, number
@@ -85,10 +91,12 @@ ambiguity). When it and this skill disagree, re-check against
   returns **404 to non-admins**, which reads like "no protection". It is no
   evidence either way.
 - **Rulesets:**
-  `gh api repos/O/R/rules/branches/<b> --jq '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context]'`
-  lists the ruleset-required checks in effect on that branch, org rulesets
-  included. An empty list there (or `[]` from `gh api repos/O/R/rulesets`)
-  means no ruleset requires anything, not that classic protection does.
+  `gh api --paginate 'repos/O/R/rules/branches/<b>?per_page=100' --jq '.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'`
+  lists the ruleset-required checks in effect on that branch, one per line, org
+  rulesets included. Keep `--paginate`: the endpoint pages, and a check rule on
+  a later page would otherwise go missing. No output there (or `[]` from
+  `gh api repos/O/R/rulesets`) means no ruleset requires anything, not that
+  classic protection does.
 - Both can apply at once. The branch requires the union of the two lists, and
   both empty means no required checks.
 
@@ -138,7 +146,9 @@ require a workflow that can be skipped.
   cancelled after about 15 minutes in the queue with **zero steps executed**.
   `gh pr checks` shows it exactly like a real failure. Before touching code:
   `gh run view <run-id> --json jobs --jq '.jobs[] | {name, conclusion, steps: (.steps | length)}'`.
-  `cancelled` with `0` steps is infrastructure, not your change. Then check
+  `cancelled` with `0` steps is not your change. It is infrastructure unless a
+  newer push superseded the run (a `concurrency:` group with
+  `cancel-in-progress`) or someone cancelled it, so rule those out, then check
   https://www.githubstatus.com. Actions can be down while the API and webhooks
   are fine, so a working `gh` proves nothing. A re-run during the incident dies
   the same way, so wait for it to resolve, then `gh run rerun <run-id> --failed`.
