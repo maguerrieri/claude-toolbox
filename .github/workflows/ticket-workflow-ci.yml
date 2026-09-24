@@ -1,0 +1,21 @@
+name: ticket-workflow CI
+
+on:
+  push:
+    paths:
+      - "plugins/ticket-workflow/hooks/**"
+      - "plugins/ticket-workflow/tests/**"
+      - ".github/workflows/ticket-workflow-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/ticket-workflow/hooks/**"
+      - "plugins/ticket-workflow/tests/**"
+      - ".github/workflows/ticket-workflow-ci.yml"
+
+jobs:
+  hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Role-guard hook tests
+        run: bash plugins/ticket-workflow/tests/test-role-guard.sh

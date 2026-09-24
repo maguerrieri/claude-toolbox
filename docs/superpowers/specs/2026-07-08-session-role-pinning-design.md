@@ -63,6 +63,17 @@ open — the guard is a drift nudge, not a security control.
 Bash is deliberately NOT gated: planners legitimately run `gh`, `git worktree
 list`, greps, and `/make-ticket` itself shells out.
 
+**Update (#147):** the matcher now also covers `Bash` and the cloud
+`create_session` tool, for a second guard: while `implementer` is pinned, a
+`claude --bg` or `create_session` launch whose prompt *leads* with an
+issue-spawning command (`/start-ticket`, `/start-epic`, `/spawn-tickets`,
+`/spawn-epic`, or their `/ticket-workflow:` forms) gets
+`permissionDecision: "deny"` with a file-and-ping redirect. The planner's Bash
+stays ungated, as above. It denies rather than asks because an implementer
+usually runs unattended, where nobody would answer a prompt. It backstops the
+phase-entry *implementer spawn guard* in `SKILL.md`, and its tests are
+`plugins/ticket-workflow/tests/test-role-guard.sh`.
+
 ### Which tiers pin
 
 - **planner** — always via `/role planner`; it's the tier with no spawn edge
