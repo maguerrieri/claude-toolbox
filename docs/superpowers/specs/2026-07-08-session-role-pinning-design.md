@@ -67,8 +67,10 @@ list`, greps, and `/make-ticket` itself shells out.
 `create_session` tool, for a second guard: while `implementer` is pinned, a
 `claude --bg` or `create_session` launch whose prompt *leads* with an
 issue-spawning command (`/start-ticket`, `/start-epic`, `/spawn-tickets`,
-`/spawn-epic`, or their `/ticket-workflow:` forms) gets
-`permissionDecision: "deny"` with a file-and-ping redirect. The planner's Bash
+`/spawn-epic`, or their `/ticket-workflow:` forms, or `/make-ticket` with
+`--spawn`/`--start`) gets `permissionDecision: "deny"` with a file-and-ping
+redirect. The Bash check (`hooks/role-guard-launch.jq`) tokenizes the command
+so a launch only quoted inside a message doesn't count. The planner's Bash
 stays ungated, as above. It denies rather than asks because an implementer
 usually runs unattended, where nobody would answer a prompt. It backstops the
 phase-entry *implementer spawn guard* in `SKILL.md`, and its tests are

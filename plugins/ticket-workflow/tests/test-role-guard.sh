@@ -64,6 +64,16 @@ bash_case deny implementer "prompt assigned to a variable first" 'p="/start-tick
 bash_case deny implementer "env prefix and assignment" 'env FOO=1 BAR=2 claude --bg "/start-ticket 7"'
 bash_case deny implementer "after then" 'if true; then claude --bg "/start-ticket 7"; fi'
 bash_case deny implementer "command substitution" 'out=$(claude --bg "/start-ticket 7")'
+bash_case deny implementer "backtick substitution" 'x=`claude --bg "/start-ticket 5"`'
+bash_case deny implementer "unquoted prompt" 'claude --bg /start-ticket 5'
+bash_case deny implementer "prompt after --" 'claude --bg -- /start-ticket 5'
+bash_case deny implementer "wrapper command" 'caffeinate -i nice claude --bg "/start-ticket 5"'
+bash_case deny implementer "negation" '! claude --bg "/start-ticket 5"'
+bash_case deny implementer "separators inside a quoted --name" 'claude --name "fix a|b; c&d" --bg "/start-ticket 5"'
+bash_case deny implementer "colon after the command" 'claude --bg "/start-ticket: 5"'
+bash_case deny implementer "/make-ticket --start" 'claude --bg "/make-ticket Fix flaky CI --start"'
+bash_case deny implementer "/make-ticket --spawn, unquoted" 'claude --bg /make-ticket Fix flaky CI --spawn'
+bash_case deny implementer "prompt from a command-substitution heredoc" "$(printf '%s\n' 'p="$(cat <<'"'"'EOF'"'"'' '/spawn-tickets 3 5' 'EOF' ')"' 'claude --bg "$p"')"
 
 # Implementer: helpers and everything else pass.
 bash_case allow implementer "helper whose prompt leads with prose" "$helper"
@@ -74,8 +84,15 @@ bash_case allow implementer "not a whole command word" 'claude --bg "/start-tick
 bash_case allow implementer ".claude path, not the claude CLI" 'ls .claude --bg "/start-ticket 5"'
 bash_case allow implementer "mentions only" 'gh pr comment 5 --body "a claude --bg helper that leads with prose passes"'
 bash_case allow implementer "prose mention beside a quoted command" "gh pr comment 5 --body 'denies a \`claude --bg\` launch like \"/start-ticket 5\"'"
+bash_case allow implementer "issue command in an earlier command's message" 'git commit -m "/start-ticket docs"; claude --bg "Investigate X, report back"'
+bash_case allow implementer "escaped quotes inside a helper prompt" 'claude --bg "Investigate why \"/start-ticket 5\" fails; report back"'
+bash_case allow implementer "helper prompt with a line that starts with a command" "$(printf '%s\n' 'claude --bg "Investigate X.' '/start-ticket 5 fails on Y; report back"')"
+bash_case allow implementer "launch quoted in a PR body heredoc" "$(printf '%s\n' 'gh pr create --body-file - <<'"'"'EOF'"'"'' 'claude --bg "/start-ticket 5"' 'EOF')"
+bash_case allow implementer "plain /make-ticket (filing only)" 'claude --bg "/make-ticket Fix flaky CI"'
+bash_case allow implementer "launch nested in bash -c (documented gap)" 'bash -c "claude --bg /start-ticket 5"'
 cloud_case deny implementer "prompt leading with /start-ticket" '/start-ticket 52 Implement and test.  Role: implementer'
 cloud_case deny implementer "leading whitespace, namespaced /spawn-epic" '  /ticket-workflow:spawn-epic 40'
+cloud_case deny implementer "/make-ticket --spawn" '/make-ticket Fix flaky CI --spawn'
 cloud_case allow implementer "helper prompt" 'Investigate why the build flakes; report findings back only.'
 cloud_case allow implementer "prose-opened skill prompt (documented gap)" 'Run the epic 40. Read SKILL.md and follow the EPIC phase for: 40'
 record allow "implementer bare create_session" "$(decide implementer create_session prompt 'Investigate X; report back only.')"
@@ -93,6 +110,9 @@ record allow "coordinator Edit" "$(decide epic-coordinator Edit file_path /repo/
 # Fail open.
 record allow "unsafe session id" "$(decide_raw implementer '{"session_id":"../x","tool_name":"Bash","tool_input":{"command":"claude --bg \"/start-ticket 1\""}}')"
 record allow "malformed payload" "$(decide_raw implementer 'not json')"
+out=$(printf '%s' '{"session_id":"s","tool_name":"Bash","tool_input":{"command":"claude --bg /start-ticket 1"}}' |
+	CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$guard")
+record allow "no roles directory" "${out:-allow}"
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
