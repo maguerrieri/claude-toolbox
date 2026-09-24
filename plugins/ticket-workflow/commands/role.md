@@ -47,6 +47,11 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    printf '%s\n' "<role>" >"$roles_dir/$CLAUDE_SESSION_ID"
    ```
 
+   A hand pin writes the role line only. The `issue: <id>` line a spawned
+   implementer's self-pin adds (START Step 1) has no source here, so a hand
+   pin leaves START's one-issue guard unarmed, and re-pinning over a
+   self-pinned marker drops that line.
+
 5. Read the charter at
    `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` and
    **adopt it as governing for this session**, exactly as START Step 1 does

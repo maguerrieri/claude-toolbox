@@ -10,7 +10,7 @@ Thin launcher over `/start-epic`: spawn ONE background session that runs the ful
 
 ```bash
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-[ -n "${CLAUDE_SESSION_ID:-}" ] && cat "$roles_dir/$CLAUDE_SESSION_ID" 2>/dev/null
+[ -n "${CLAUDE_SESSION_ID:-}" ] && head -n 1 "$roles_dir/$CLAUDE_SESSION_ID" 2>/dev/null
 ```
 
    If it prints `implementer`, or a charter you hold in context makes you one, **launch nothing**. Epics are the planner's to spawn and yours to flag. Ping your `Notify:` spawner `filed: <epic-id> (already open), suggest spawning` per the skill's `messaging.md`, or note it on your issue/PR when no `Notify:` is wired, then return to your own issue. Say so in one line. A human steering this session can override (`/role none` drops the pin).
