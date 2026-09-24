@@ -29,11 +29,12 @@ spawned job fails with "session ended", even if the job completed fine.
 
 ## Resuming a session after its cwd is gone
 
-Same root cause as the rule above: a session's transcript is filed under its
-launch cwd. It lives at `~/.claude/projects/<slug>/<session-id>.jsonl`, where
-`<slug>` is the cwd's **physical** path (symlinks resolved) with `/` and `.`
-turned into `-`. What that means for a removed worktree, verified on Claude Code
-2.1.280 with headless `claude -p`:
+A different record from the bg job's recorded cwd above, so fixing one doesn't
+fix the other. A session's transcript is filed under its launch cwd at
+`~/.claude/projects/<slug>/<session-id>.jsonl`, where `<slug>` is the cwd's
+**physical** path (symlinks resolved) with every non-alphanumeric character
+(`/`, `.`, spaces, `~`) turned into `-`. What that means for a removed worktree,
+verified on Claude Code 2.1.280 with headless `claude -p`:
 
 - **`claude --resume <id>` finds the transcript by ID from any cwd**, even after
   the original cwd has been deleted. It appends to the original file in its
