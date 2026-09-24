@@ -72,14 +72,22 @@ bash_case deny implementer "negation" '! claude --bg "/start-ticket 5"'
 bash_case deny implementer "separators inside a quoted --name" 'claude --name "fix a|b; c&d" --bg "/start-ticket 5"'
 bash_case deny implementer "colon after the command" 'claude --bg "/start-ticket: 5"'
 bash_case deny implementer "/make-ticket --start" 'claude --bg "/make-ticket Fix flaky CI --start"'
-bash_case deny implementer "/make-ticket --spawn, unquoted" 'claude --bg /make-ticket Fix flaky CI --spawn'
+bash_case deny implementer "/make-ticket --spawn right after the command" 'claude --bg "/make-ticket --spawn Fix flaky CI"'
 bash_case deny implementer "prompt from a command-substitution heredoc" "$(printf '%s\n' 'p="$(cat <<'"'"'EOF'"'"'' '/spawn-tickets 3 5' 'EOF' ')"' 'claude --bg "$p"')"
+bash_case deny implementer "inline command-substitution heredoc prompt" "$(printf '%s\n' 'claude --bg "$(cat <<'"'"'EOF'"'"'' '/start-ticket 5 Role: implementer' 'EOF' ')"')"
+bash_case deny implementer "apostrophe in an earlier comment" "$(printf '%s\n' "# don't do this" "claude --bg '/start-ticket 5'")"
+bash_case deny implementer "last assignment wins (spawn)" 'p="Investigate X"; p="/start-ticket 5"; claude --bg "$p"'
+bash_case deny implementer "claude through a \$HOME path" '$HOME/.local/bin/claude --bg "/start-ticket 5"'
+bash_case deny implementer "quoted \$HOME path" '"$HOME/.local/bin/claude" --bg "/start-ticket 5"'
+bash_case deny implementer "claude -p" 'claude -p "/start-ticket 5"'
+bash_case deny implementer "backgrounded claude -p" 'nohup claude -p "/start-ticket 5" &'
+bash_case deny implementer "prompt after a variadic option and another flag" 'claude --add-dir a b --bg "/start-ticket 5"'
 
 # Implementer: helpers and everything else pass.
 bash_case allow implementer "helper whose prompt leads with prose" "$helper"
 bash_case allow implementer "plain command" 'git status'
 bash_case allow implementer "claude agents" 'claude agents'
-bash_case allow implementer "claude -p (not a bg spawn)" 'claude -p "/start-ticket 5"'
+bash_case allow implementer "claude with neither --bg nor -p" 'claude "/start-ticket 5"'
 bash_case allow implementer "not a whole command word" 'claude --bg "/start-tickets-report 5"'
 bash_case allow implementer ".claude path, not the claude CLI" 'ls .claude --bg "/start-ticket 5"'
 bash_case allow implementer "mentions only" 'gh pr comment 5 --body "a claude --bg helper that leads with prose passes"'
@@ -90,6 +98,12 @@ bash_case allow implementer "helper prompt with a line that starts with a comman
 bash_case allow implementer "launch quoted in a PR body heredoc" "$(printf '%s\n' 'gh pr create --body-file - <<'"'"'EOF'"'"'' 'claude --bg "/start-ticket 5"' 'EOF')"
 bash_case allow implementer "plain /make-ticket (filing only)" 'claude --bg "/make-ticket Fix flaky CI"'
 bash_case allow implementer "launch nested in bash -c (documented gap)" 'bash -c "claude --bg /start-ticket 5"'
+bash_case allow implementer "--spawn mentioned mid-description" 'claude --bg "/make-ticket Document the --spawn flag behavior"'
+bash_case allow implementer "--start only inside another option's value" 'claude --bg "/make-ticket X" --name "a --start b"'
+bash_case allow implementer "issue command as a --name value" 'claude --bg --name "/start-ticket helper" "Investigate X"'
+bash_case allow implementer "unquoted helper prompt mentioning a command" 'claude --bg Investigate why /start-ticket fails'
+bash_case allow implementer "last assignment wins (helper)" 'p="/start-ticket 5"; p="Investigate X"; claude --bg "$p"'
+bash_case allow implementer "launch only in a trailing comment" 'echo hi # claude --bg "/start-ticket 5"'
 cloud_case deny implementer "prompt leading with /start-ticket" '/start-ticket 52 Implement and test.  Role: implementer'
 cloud_case deny implementer "leading whitespace, namespaced /spawn-epic" '  /ticket-workflow:spawn-epic 40'
 cloud_case deny implementer "/make-ticket --spawn" '/make-ticket Fix flaky CI --spawn'

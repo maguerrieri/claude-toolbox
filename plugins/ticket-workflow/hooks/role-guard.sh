@@ -9,8 +9,9 @@
 #
 # - implementer: launching a session whose prompt *leads* with an
 #   issue-spawning command is denied with a redirect to file + ping instead.
-#   It covers a hand-rolled `claude --bg` (Bash) and a cloud `create_session`
-#   call (an MCP tool; PreToolUse receives its arguments as tool_input). The
+#   It covers a hand-rolled `claude --bg` or `claude -p` (Bash) and a cloud
+#   `create_session` call (an MCP tool; PreToolUse receives its arguments as
+#   tool_input). The
 #   leading-command test is what separates an issue spawn from a helper
 #   session, which the implementer charter allows: a helper's prompt leads with
 #   its task. role-guard-launch.jq holds the test. Deny, not ask: an
@@ -33,11 +34,16 @@ input=$(cat)
 command -v jq >/dev/null 2>&1 || exit 0
 
 # Fail open (not an unbound-variable abort) when neither the override nor HOME
-# is available. The matcher includes Bash, so this runs before every Bash call:
-# with no roles directory, no session is pinned, and nothing needs parsing.
+# is available.
 [ -n "${CLAUDE_SESSION_ROLES_DIR:-}${HOME:-}" ] || exit 0
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-[ -d "$roles_dir" ] || exit 0
+
+# The matcher includes Bash, so this runs before every Bash call in every
+# session. Find the session id with a bash regex and exit unless it has a
+# marker, so an unpinned session never starts jq. jq re-reads the id below.
+id_re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)"'
+[[ $input =~ $id_re ]] || exit 0
+[ -f "$roles_dir/${BASH_REMATCH[1]}" ] || exit 0
 
 fields=$(printf '%s' "$input" | jq -r '[.session_id // "", .tool_name // ""] | @tsv' 2>/dev/null) || exit 0
 session_id=${fields%%$'\t'*}

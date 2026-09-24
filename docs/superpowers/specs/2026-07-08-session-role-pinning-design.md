@@ -65,12 +65,15 @@ list`, greps, and `/make-ticket` itself shells out.
 
 **Update (#147):** the matcher now also covers `Bash` and the cloud
 `create_session` tool, for a second guard: while `implementer` is pinned, a
-`claude --bg` or `create_session` launch whose prompt *leads* with an
+`claude --bg`/`-p` or `create_session` launch whose prompt *leads* with an
 issue-spawning command (`/start-ticket`, `/start-epic`, `/spawn-tickets`,
 `/spawn-epic`, or their `/ticket-workflow:` forms, or `/make-ticket` with
 `--spawn`/`--start`) gets `permissionDecision: "deny"` with a file-and-ping
 redirect. The Bash check (`hooks/role-guard-launch.jq`) tokenizes the command
-so a launch only quoted inside a message doesn't count. The planner's Bash
+and reads only the launch's positional prompt, so a launch that is only quoted
+inside a message or a comment doesn't count. The hook finds the session id
+with a bash regex and exits before starting jq when the session has no marker,
+since the matcher now runs it before every Bash call. The planner's Bash
 stays ungated, as above. It denies rather than asks because an implementer
 usually runs unattended, where nobody would answer a prompt. It backstops the
 phase-entry *implementer spawn guard* in `SKILL.md`, and its tests are

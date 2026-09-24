@@ -8,7 +8,7 @@ A role set here is durable: it's recorded in a per-session marker file that the
 plugin's hooks consume — the SessionStart hook re-injects the charter after
 `--resume`, `/clear`, and compaction, and the PreToolUse guard turns file edits
 into a permission prompt while the `planner` charter is pinned, and denies a
-`claude --bg` or `create_session` launch that leads with an issue-spawning
+`claude --bg`/`-p` or `create_session` launch that leads with an issue-spawning
 command while `implementer` is. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
 are normally injected by spawn edges (`Role:` directives), not by hand.
