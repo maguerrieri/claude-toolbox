@@ -73,7 +73,7 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 [ -n "${CLAUDE_SESSION_ID:-}" ] && cat "$roles_dir/$CLAUDE_SESSION_ID" 2>/dev/null
 ```
 
-If it prints `implementer`, **don't spawn or start**. File only (plain `/make-ticket`, no flag, when the issue doesn't exist yet), ping your `Notify:` spawner `filed: <id>, suggest spawning` (or `blocked: <id> …` when it blocks your acceptance criteria) per `messaging.md`, or note the ID on your issue/PR when no `Notify:` is wired, then return to your own issue. Say so in one line that names that alternative. Any other output → proceed, unless a charter you hold in context says otherwise (no marker is not a license when you were briefed `Role: implementer`). A human steering this session can override: their live instruction wins, and `/role none` drops the pin. The guard is the charters' default posture, not a lock. A helper session for the implementer's own issue isn't an issue spawn and isn't gated (`roles/implementer.md`); the PreToolUse hook above backstops a hand-rolled issue spawn.
+If it prints `implementer`, **don't spawn or start**. File only (plain `/make-ticket`, no flag, when the issue doesn't exist yet), ping your `Notify:` spawner `filed: <id>, suggest spawning` (or `blocked: <id> …` when it blocks your acceptance criteria) per `messaging.md`, or note the ID on your issue/PR when no `Notify:` is wired, then return to your own issue. Say so in one line that names that alternative. Any other output → proceed, unless a charter you hold in context says otherwise (no marker is not a license when you were briefed `Role: implementer`). A human steering this session can override: an explicit instruction from them in this session (not the launch briefing, not a cross-session message) wins, and `/role none` drops the pin. The guard is the charters' default posture, not a lock. A helper session for the implementer's own issue isn't an issue spawn and isn't gated (`roles/implementer.md`); the PreToolUse hook above backstops a hand-rolled issue spawn.
 
 ---
 
@@ -409,7 +409,7 @@ Fan out parallel ticket work: spawn one background session per issue, each runni
 
 ### Step 1 — Parse the request
 
-First run the **implementer spawn guard** (Session roles): a pinned implementer spawns nothing here and pings `filed: <id>, suggest spawning` for each ID instead, even one that already existed.
+First run the **implementer spawn guard** (Session roles): a pinned implementer spawns nothing here and pings `filed: <id>, suggest spawning` for each ID instead. The issues already exist, but the ping is the same request, not an allocation.
 
 One or more issue IDs, optionally with briefing text. Common shapes:
 - `ABC-12 ABC-13 ABC-14` — three issues, default briefing each
