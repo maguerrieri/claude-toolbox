@@ -22,6 +22,11 @@ grounding rule is what makes any lost or delayed message harmless.
   direction, the spawner already named every child at spawn (`--name "<repo>
   <ID>: <desc>"`), so both directions are addressable by name — no paths, no
   keys.
+- **Each edge's `Notify:` names that edge's own spawner.** When you spawn,
+  put *your* name in the child's `Notify:`, never the `Notify:` you inherited:
+  a grandchild (an implementer's helper, say) never addresses its grandparent.
+  Anything the tier above should see travels up one edge at a time, in the
+  middle session's own pings.
 - Session **names are user-renameable**; the spawn also prints a durable
   handle/agentId that survives renames. `SendMessage` accepts both. The
   directive carries the *name* (friendlier, and the spawner controls it); fall

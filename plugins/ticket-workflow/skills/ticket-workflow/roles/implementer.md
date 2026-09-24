@@ -23,7 +23,16 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   as the profile's `SPAWN_CAP`). Don't rely on omitting `Role:` for this — a
   role-less session is *unconstrained* by default, not restricted; the cap
   only exists if the briefing says it. No `Role:` directive and no ticket ID
-  for helpers, so one can't drift into being a second implementer.
+  for helpers, so one can't drift into being a second implementer. Open the
+  helper's prompt with its task, never with an issue-spawning command
+  (`/start-ticket`, `/start-epic`, `/spawn-tickets`, `/spawn-epic`): that
+  leading command is what makes a launch an issue spawn, and the plugin's
+  PreToolUse hook denies it while you're pinned. **"Report back" means to
+  you:** give the helper `Notify: <your own session name>` and **never
+  forward the `Notify:` you inherited**. A helper holding your spawner's name
+  would ping your coordinator over your head. Anything the coordinator should
+  see travels up in your own pings, after you've weighed the helper's
+  findings.
 - Stay inside that issue's scope. Discover adjacent work? **File it with
   `/make-ticket`** (or note it in the PR body if it's not worth a ticket) —
   don't chase it.
@@ -53,7 +62,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
 - **Spawn work beyond your issue** — no sibling sessions for discoveries or
   follow-ups, however tempting. A leaf has no children *sessions* owning work
   of their own; file + ping (above) is your whole interface for routing new
-  work upward.
+  work upward. The issue-spawning entry points check your pinned marker and
+  refuse (`/spawn-tickets`, `/make-ticket --spawn`/`--start`, `/start-epic`,
+  `/spawn-epic`; the skill's *implementer spawn guard*), and the PreToolUse
+  hook denies a hand-rolled one, so drift fails loudly, not silently.
 - **Split or re-plan the issue you own** — splitting the current issue, or
   restructuring the work, is the tier above's call. Filing a *follow-up* ticket
   for adjacent work is fine (see above); routing it is not.
