@@ -52,7 +52,7 @@ Pairs with the ticket workflow above.
 
 `.claude/settings.json` registers this repo's own marketplace **over GitHub**
 (`extraKnownMarketplaces.maguerrieri-toolbox` → `maguerrieri/claude-toolbox`) and
-enables `defaults@maguerrieri-toolbox` **plus each of its five dependencies by
+enables `defaults@maguerrieri-toolbox` **plus each of its six dependencies by
 name**, so an interactive session that trusts the folder gets `/make-ticket`,
 `/start-ticket`, `/spawn`, etc. with no manual `/plugin` step. Caveats, all
 verified on Claude Code 2.1.268:
@@ -68,7 +68,7 @@ verified on Claude Code 2.1.268:
 - **Keep the dependencies listed next to `defaults`.** The install that project
   settings trigger caches `defaults` but does not resolve its `dependencies`, so
   `defaults` alone ends up disabled (`dependency-unsatisfied`) and zero commands
-  load. With the five listed explicitly, all six enable and the nine plugin
+  load. With the six listed explicitly, all seven enable and the nine plugin
   commands load. A new plugin added to `defaults`' dependencies must therefore
   also be added here (and to the README snippet). `claude plugin install
   defaults@maguerrieri-toolbox` *does* resolve dependencies; only the
