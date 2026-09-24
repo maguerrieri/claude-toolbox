@@ -36,12 +36,15 @@ command? `gh extension install github/gh-stack`.
   nobody approved. The CLI checks only that each PR is open and not a draft;
   approvals stop it only where branch protection requires them. In a
   non-interactive shell (any agent's) there is no wizard: it merges at once.
-- **A bare number is tried as a stack number first**, then as a PR number. If
-  the repo's stack numbers could have reached your PR number, confirm on the PR
-  page's stack panel that `<pr>` isn't also a stack number.
+- **It takes numbers only**: a PR URL is rejected. And a bare number is tried
+  as a stack number first, then as a PR number. If the repo's stack numbers
+  could have reached your PR number, confirm on the PR page's stack panel that
+  `<pr>` isn't also a stack number.
 - **Always pass the method.** `--yes` without one reuses your last-used method.
 - It merges every layer up to and including `<pr>`, all or nothing: if any of
-  them can't merge, none do. Layers above `<pr>` stay open.
+  them can't merge, none do. Layers above `<pr>` stay open. So a failure
+  during a GitHub incident (*"Git service unavailable during rebase"*) merged
+  nothing, and a plain retry once the incident clears is safe.
 
 **After a merge, verify the layer above.** GitHub retargets it and rebases it
 server-side, and that rebase is real. Still check it:
