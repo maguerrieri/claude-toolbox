@@ -6,6 +6,15 @@ Spawn a background epic run for: **$ARGUMENTS**
 
 Thin launcher over `/start-epic`: spawn ONE background session that runs the full EPIC cycle, then hand back immediately. Don't run any EPIC step yourself — no fetching the epic, no enumerating children, no Step 0; the spawned session does all of it.
 
+0. **Implementer spawn guard** (the `ticket-workflow` skill's Session roles section). Read this session's role marker first:
+
+```bash
+roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+[ -n "${CLAUDE_SESSION_ID:-}" ] && cat "$roles_dir/$CLAUDE_SESSION_ID" 2>/dev/null
+```
+
+   If it prints `implementer`, or a charter you hold in context makes you one, **launch nothing**. Epics are the planner's to spawn and yours to flag. Ping your `Notify:` spawner `filed: <epic-id>, suggest spawning` per the skill's `messaging.md`, or note it on your issue/PR when no `Notify:` is wired, then return to your own issue. Say so in one line. A human steering this session can override (`/role none` drops the pin).
+
 1. Take the first token of "$ARGUMENTS" as the epic ID (used only for the session name). Pass the **full** "$ARGUMENTS" through to the child **verbatim** — briefing and flags (`--finish`, `--coordinate`, `--team`, `--independent`) are parsed by the `/start-epic` orchestrator, not here. Do **not** append a `SPAWN_CAP`: the epic orchestrator caps each child itself, and an explicit `--finish` must reach it intact. **Do** append a `Role: epic-coordinator` directive so the spawned orchestrator adopts its charter (EPIC Step 1 reads `roles/epic-coordinator.md`) — this is the one role you set at the epic boundary; the children get `Role: implementer` from the EPIC phase itself.
 2. Determine `<repo>` for the session name — basename of the repo the work targets (the current repo unless the briefing names another).
 3. **Select the backend**, as the `spawn` skill's step 3 does: `[ -n "${CLAUDE_CODE_REMOTE_SESSION_ID:-}" ] && echo cloud || echo local`. The orchestrator this launches runs the EPIC phase on the same backend (it inherits your environment), so launch it the way that backend launches anything — the mechanics live in the `spawn` skill's `backends/local.md` / `backends/cloud.md`; the EPIC-specific parts are below. One refusal applies up front on **cloud**: if "$ARGUMENTS" carries `--team`, **stop and say so** — SendMessage doesn't span cloud sessions, so the live team that flag names can't form there (the EPIC phase's Step 3 refuses for the same reason); suggest `--coordinate` or no routing flag instead of launching an orchestrator that will only refuse later.
