@@ -61,6 +61,9 @@ bash_case deny implementer "heredoc prompt in a variable" "$(printf '%s\n' "read
 bash_case deny implementer "line continuations" "$(printf '%s\n' 'claude \' '  --bg \' '  --name "x" \' '  "/start-ticket 7"')"
 bash_case deny implementer "claude by path" '~/.local/bin/claude --bg "/start-ticket 7"'
 bash_case deny implementer "prompt assigned to a variable first" 'p="/start-ticket 7"; claude --bg --name x "$p"'
+bash_case deny implementer "env prefix and assignment" 'env FOO=1 BAR=2 claude --bg "/start-ticket 7"'
+bash_case deny implementer "after then" 'if true; then claude --bg "/start-ticket 7"; fi'
+bash_case deny implementer "command substitution" 'out=$(claude --bg "/start-ticket 7")'
 
 # Implementer: helpers and everything else pass.
 bash_case allow implementer "helper whose prompt leads with prose" "$helper"
@@ -70,6 +73,7 @@ bash_case allow implementer "claude -p (not a bg spawn)" 'claude -p "/start-tick
 bash_case allow implementer "not a whole command word" 'claude --bg "/start-tickets-report 5"'
 bash_case allow implementer ".claude path, not the claude CLI" 'ls .claude --bg "/start-ticket 5"'
 bash_case allow implementer "mentions only" 'gh pr comment 5 --body "a claude --bg helper that leads with prose passes"'
+bash_case allow implementer "prose mention beside a quoted command" "gh pr comment 5 --body 'denies a \`claude --bg\` launch like \"/start-ticket 5\"'"
 cloud_case deny implementer "prompt leading with /start-ticket" '/start-ticket 52 Implement and test.  Role: implementer'
 cloud_case deny implementer "leading whitespace, namespaced /spawn-epic" '  /ticket-workflow:spawn-epic 40'
 cloud_case allow implementer "helper prompt" 'Investigate why the build flakes; report findings back only.'

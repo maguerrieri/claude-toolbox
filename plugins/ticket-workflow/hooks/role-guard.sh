@@ -22,8 +22,9 @@
 # default, not a lock. The implementer check is a heuristic over the command
 # text, not a shell parser; a prompt that opens with prose naming the skill
 # file (the cloud slash-command workaround) or that is assembled at run time
-# passes it. The phase-entry guard in the skill is the primary check; this is
-# the backstop.
+# passes it, and a command that merely quotes such a launch in a heredoc can
+# trip it (the deny reason says to pass that text through a file). The
+# phase-entry guard in the skill is the primary check; this is the backstop.
 #
 # Fails open: any missing dependency, unreadable marker, or unparseable payload
 # exits 0 (allow). This is a drift nudge, not a security control.
@@ -67,7 +68,7 @@ implementer_reason="This session is pinned to the implementer charter (Role: imp
 
 Instead: file the work (plain /make-ticket, no --spawn or --start), ping your Notify: spawner 'filed: #<n>, suggest spawning' (or 'blocked: ...' if it blocks your acceptance criteria), or note it on your issue/PR when no Notify: is wired, then return to your own issue.
 
-A helper session for this issue's own work is fine: give it a prompt that leads with the task, not an issue-spawning command. A human steering this session can override with '/role none'."
+A helper session for this issue's own work is fine: give it a prompt that leads with the task, not an issue-spawning command. If this command only quotes such a launch (a commit message or PR body), pass that text through a file instead. A human steering this session can override with '/role none'."
 
 case "$role:$tool" in
 planner:Edit | planner:Write | planner:MultiEdit | planner:NotebookEdit)
@@ -79,9 +80,10 @@ Planners don't implement: file the work (/make-ticket) and hand it down (/spawn-
 Approve to make this one edit anyway, or run '/role none' to drop the charter for the rest of the session."
 	;;
 implementer:Bash)
-	# A `claude` word (not .claude/ or claude-toolbox) with --bg later in the
-	# same simple command, line continuations allowed ...
-	launch_re='(?<![\w.-])claude(?:[ \t]|\\\n)(?:[^\n;&|\\]|\\[\s\S])*?(?<=[ \t\n])--bg(?![\w-])'
+	# `claude` (or a path to it) in command position, so a prose mention
+	# inside a quoted message doesn't count, with --bg later in the same
+	# simple command, line continuations allowed ...
+	launch_re='(?:\A|[;&|({\n])[ \t]*(?:(?:then|do|else|if|exec|nohup|command|time|env)[ \t]+|[A-Za-z_][A-Za-z0-9_]*=[^ \t\n]*[ \t]+)*(?:[^ \t\n;&|(){}]*/)?claude(?:[ \t]|\\\n)(?:[^\n;&|\\]|\\[\s\S])*?(?<=[ \t\n])--bg(?![\w-])'
 	# ... and an issue-spawning command opening a prompt: right after a quote
 	# (an inline argument or a variable assignment) or at a line start (a
 	# heredoc body).

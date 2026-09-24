@@ -28,8 +28,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   (`/start-ticket`, `/start-epic`, `/spawn-tickets`, `/spawn-epic`): that
   leading command is what makes a launch an issue spawn, and the plugin's
   PreToolUse hook denies it while you're pinned. **"Report back" means to
-  you:** give the helper `Notify: <your own session name>` and **never
-  forward the `Notify:` you inherited**. A helper holding your spawner's name
+  you:** give the helper `Notify: <your own session name>` (local backend; a
+  cloud edge carries no `Notify:`, per `messaging.md`) and **never forward
+  the `Notify:` you inherited**. A helper holding your spawner's name
   would ping your coordinator over your head. Anything the coordinator should
   see travels up in your own pings, after you've weighed the helper's
   findings.
