@@ -42,9 +42,11 @@ command? `gh extension install github/gh-stack`.
   `<pr>` isn't also a stack number.
 - **Always pass the method.** `--yes` without one reuses your last-used method.
 - It merges every layer up to and including `<pr>`, all or nothing: if any of
-  them can't merge, none do. Layers above `<pr>` stay open. So a failure
-  during a GitHub incident (*"Git service unavailable during rebase"*) merged
-  nothing, and a plain retry once the incident clears is safe.
+  them can't merge, none do (per its `--help`). Layers above `<pr>` stay open.
+  A failure during a GitHub incident (*"Git service unavailable during
+  rebase"*) has been seen to merge nothing, and a retry once the incident
+  cleared worked. Before any retry, confirm what actually landed:
+  `gh stack view` marks merged layers `✓`.
 
 **After a merge, verify the layer above.** GitHub retargets it and rebases it
 server-side, and that rebase is real. Still check it:
@@ -56,13 +58,23 @@ rebase from a retarget. Note the count before you merge.
 
 **Base surgery on a registered PR.** The base is locked, so in order:
 
-1. `gh stack unstack [<stack-number>]` removes the stack on GitHub (PRs queued
+1. `gh stack unstack <stack-number>` removes the stack on GitHub (PRs queued
    for merge or with auto-merge enabled stay stacked). After that the base
-   should be editable. Documented in `--help` but not yet exercised.
+   should be editable; re-`link` the chain you still want stacked. Unstack
+   itself is exercised (ticket-workflow uses it to recover a stack), but that
+   it releases the base lock is untested.
 2. `gh stack modify` (an interactive TUI: drop, reorder, insert), then
    `gh stack submit`, might re-parent it. Also untested.
 3. Close and recreate the PR. This loses the PR number and its review threads,
-   so **ask a human first**.
+   so **ask a human first**. A closed member also **wedges the whole stack**:
+   every later `gh stack merge` fails with *"nothing to merge: pull request is
+   closed"*. So after recreating, `gh stack unstack <s>` and
+   `gh stack link <bottom> … <top>` again with the replacement PR.
+
+`ticket-workflow`'s `phases/epic.md` Step 7 records the scratch-repo validation
+of stack merges (retarget and rebase, draft and closed layers, number
+ambiguity). When it and this skill disagree, re-check against
+`gh stack <cmd> --help` and fix both.
 
 ## Which checks a branch requires, without admin
 
@@ -75,9 +87,10 @@ rebase from a retarget. Note the count before you merge.
 - **Rulesets:**
   `gh api repos/O/R/rules/branches/<b> --jq '[.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context]'`
   lists the ruleset-required checks in effect on that branch, org rulesets
-  included. `gh api repos/O/R/rulesets` returning `[]` means there are no
-  rulesets, so the rules live in classic protection.
-- Both can apply at once. The branch requires the union of the two lists.
+  included. An empty list there (or `[]` from `gh api repos/O/R/rulesets`)
+  means no ruleset requires anything, not that classic protection does.
+- Both can apply at once. The branch requires the union of the two lists, and
+  both empty means no required checks.
 
 **Why it matters: required fan-in jobs.** A job whose `needs:` failed or was
 skipped is skipped too, unless its `if:` uses a status function (`always()`,
@@ -91,16 +104,24 @@ short-circuit **inside** the gated job, and keep the fan-in unconditional.
 
 ```yaml
 jobs:
-  # changes: sets outputs.code (e.g. from a paths filter step)
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - id: filter       # replace with your real change detection
+        run: echo "code=true" >> "$GITHUB_OUTPUT"
   test:
     needs: changes
     runs-on: ubuntu-latest
     steps:               # the job always runs; only its steps are gated
+      - uses: actions/checkout@v5
+        if: needs.changes.outputs.code == 'true'
       - if: needs.changes.outputs.code == 'true'
         run: make test
   ci-ok:                 # the required check
     if: always()
-    needs: [test, lint]
+    needs: [changes, test]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
@@ -121,8 +142,10 @@ require a workflow that can be skipped.
   https://www.githubstatus.com. Actions can be down while the API and webhooks
   are fine, so a working `gh` proves nothing. A re-run during the incident dies
   the same way, so wait for it to resolve, then `gh run rerun <run-id> --failed`.
-- **A green check that isn't proof.** A skipped job or step still reports
-  `success`. Before reporting that a gate passed, confirm its step actually ran:
+- **A green check that isn't proof.** A job whose gating step was skipped
+  still concludes `success`, and a skipped job still counts as passing for a
+  required check. Before reporting that a gate passed, confirm its step
+  actually ran:
   `gh run view <run-id> --json jobs --jq '.jobs[] | {name, conclusion, steps: [.steps[] | {name, conclusion}]}'`
   and look for `success`, not `skipped`, on the gating step. Then say which one
   you saw: "gate ran and passed", or "check green, gate step skipped".
