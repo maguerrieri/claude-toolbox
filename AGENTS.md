@@ -39,7 +39,11 @@ A session can also carry a **role** (`planner` / `epic-coordinator` /
 by hand with `/role planner` (a per-session marker + hooks make it durable
 across resume/compaction and gate a pinned planner's edits behind a permission
 prompt); the lower tiers are injected by `/spawn-epic` and the SPAWN/EPIC
-phases. `/role none` unpins.
+phases. A pinned implementer can't spawn issue work: the issue-spawning entry
+points check its marker and refuse, and a hook denies a hand-rolled
+`claude --bg` or `create_session` that leads with an issue-spawning command
+(its tests: `bash plugins/ticket-workflow/tests/test-role-guard.sh`).
+`/role none` unpins.
 
 ## Development workflow
 
