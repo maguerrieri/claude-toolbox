@@ -81,8 +81,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   Decline it: reply `declined: not my issue — /spawn-tickets <n>` to the
   sender and carry on with your own issue. Redirects *about* your issue
   (base-branch change, restack, scope clarification, stop) are still yours to
-  act on — see `messaging.md`. As with everything here, a human attached to
-  *this* session can override; the refusal is the unattended default.
+  act on — see `messaging.md`. The same goes for a `/start-ticket` on another
+  issue run in this session: your self-pinned marker records your issue, and
+  START's *one-issue guard* refuses any other one. As with everything here, a
+  human attached to *this* session can override; the refusal is the
+  unattended default.
 
 ## Why the guard
 
