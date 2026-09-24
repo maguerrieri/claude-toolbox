@@ -25,7 +25,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   only exists if the briefing says it. No `Role:` directive and no ticket ID
   for helpers, so one can't drift into being a second implementer. Open the
   helper's prompt with its task, never with an issue-spawning command
-  (`/start-ticket`, `/start-epic`, `/spawn-tickets`, `/spawn-epic`): that
+  (`/start-ticket`, `/start-epic`, `/spawn-tickets`, `/spawn-epic`,
+  `/make-ticket --spawn`/`--start`): that
   leading command is what makes a launch an issue spawn, and the plugin's
   PreToolUse hook denies it while you're pinned. **"Report back" means to
   you:** give the helper `Notify: <your own session name>` (local backend; a
