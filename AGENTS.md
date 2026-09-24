@@ -42,7 +42,10 @@ prompt); the lower tiers are injected by `/spawn-epic` and the SPAWN/EPIC
 phases. A pinned implementer can't spawn issue work: the issue-spawning entry
 points check its marker and refuse, and a hook denies a hand-rolled
 `claude --bg`/`-p` or `create_session` that leads with an issue-spawning command
-(its tests: `bash plugins/ticket-workflow/tests/test-role-guard.sh`).
+(its tests: `bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can
+it start a second issue: its self-pinned marker records its own issue on a
+second line, and START refuses any other. The marker's role is its first line
+only.
 `/role none` unpins.
 
 ## Development workflow
