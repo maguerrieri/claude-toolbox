@@ -40,17 +40,20 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    State that the role is dropped and no charter governs the session; stop.
 
 4. **Pin:** write the marker, keyed by session id (`$CLAUDE_SESSION_ID` is
-   exported by this plugin's SessionStart hook via `CLAUDE_ENV_FILE`):
+   exported by this plugin's SessionStart hook via `CLAUDE_ENV_FILE`), unless
+   its first line already names this role:
 
    ```bash
    mkdir -p "$roles_dir"
-   printf '%s\n' "<role>" >"$roles_dir/$CLAUDE_SESSION_ID"
+   marker="$roles_dir/$CLAUDE_SESSION_ID"
+   [ "$(head -n 1 "$marker" 2>/dev/null)" = "<role>" ] || printf '%s\n' "<role>" >"$marker"
    ```
 
    A hand pin writes the role line only. The `issue: <id>` line a spawned
-   implementer's self-pin adds (START Step 1) has no source here, so a hand
-   pin leaves START's one-issue guard unarmed, and re-pinning over a
-   self-pinned marker drops that line.
+   implementer's self-pin adds (START Step 1) has no source here, so a fresh
+   hand pin leaves START's one-issue guard unarmed. Re-pinning the role the
+   marker already holds leaves the marker untouched, so a spawned implementer
+   that runs `/role implementer` keeps its issue line.
 
 5. Read the charter at
    `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` and
