@@ -23,7 +23,9 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 1. Take the first token of "$ARGUMENTS" as the role. Valid: `planner`,
    `epic-coordinator`, `implementer`, `none`. Anything else (or empty): report
    the valid values — plus, when `$CLAUDE_SESSION_ID` is set and a marker file
-   exists, the current pin (`cat "$roles_dir/$CLAUDE_SESSION_ID"`) — and stop.
+   exists, the current pin (`cat "$roles_dir/$CLAUDE_SESSION_ID"`: the role
+   on its first line, then any `issue:` lines an implementer recorded) — and
+   stop.
 
 2. If `$CLAUDE_SESSION_ID` is unset, this plugin's SessionStart hook didn't
    run (plugin installed mid-session, or hooks disabled) — say so, note the
@@ -46,14 +48,15 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    ```bash
    mkdir -p "$roles_dir"
    marker="$roles_dir/$CLAUDE_SESSION_ID"
-   [ "$(head -n 1 "$marker" 2>/dev/null)" = "<role>" ] || printf '%s\n' "<role>" >"$marker"
+   [ "$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]')" = "<role>" ] || printf '%s\n' "<role>" >"$marker"
    ```
 
-   A hand pin writes the role line only. The `issue: <id>` line a spawned
-   implementer's self-pin adds (START Step 1) has no source here, so a fresh
+   A hand pin writes the role line only. The `issue:` lines a spawned
+   implementer's self-pin adds (START Step 1) have no source here, so a fresh
    hand pin leaves START's one-issue guard unarmed. Re-pinning the role the
-   marker already holds leaves the marker untouched, so a spawned implementer
-   that runs `/role implementer` keeps its issue line.
+   marker already holds (compared as the hooks read it: first line, whitespace
+   stripped) leaves the marker untouched, so a spawned implementer that runs
+   `/role implementer` keeps its issue lines.
 
 5. Read the charter at
    `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` and
