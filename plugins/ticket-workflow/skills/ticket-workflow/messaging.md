@@ -50,7 +50,9 @@ receivers and greps treat the two channels uniformly:
   complete — START Step 7),
   `blocked:` (stuck; say on what), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
-  acceptance criteria` when it's urgent). A `filed:` ping is a **request, not an
+  acceptance criteria` when it's urgent; `filed: #52 (already open), …` when
+  the implementer spawn guard in `SKILL.md` redirected a spawn of an issue it
+  didn't file). A `filed:` ping is a **request, not an
   allocation**: the sender never spawns the work itself (see
   `roles/implementer.md`); the receiver dedups, prioritizes, and decides
   whether/when to spawn.
