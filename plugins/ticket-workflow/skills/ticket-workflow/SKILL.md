@@ -64,7 +64,16 @@ Tracker and profile say *what tracks the work* and *how this environment ships i
 - When a START or EPIC run finds a `Role:` directive in its briefing, it reads `roles/<role>.md` (read-on-demand, like a tracker/profile) and adopts it as governing. **No directive → interactive run, unconstrained** — the charter bounds *spawned/unattended* sessions exactly as `SPAWN_CAP` does; a human driving the session is never boxed in.
 - The **top planner** is the one manual step: run `/role planner` in that session (see `roles/planner.md`). Everything below inherits from the spawn edge that created it.
 
-**Pinning — `/role` + hooks.** `/role <role>` makes a role *durable* where a briefing directive is only *initial*: it writes a per-session marker (`~/.claude/session-roles/<session_id>`) that the plugin's hooks consume — SessionStart re-injects the charter after resume/`/clear`/compaction (a directive read at Step 1 doesn't survive those), and PreToolUse turns file edits into a permission prompt while `planner` is pinned (drift-proof unattended, one keystroke for a human; the escape hatch made mechanical). `/role none` unpins. Spawned tiers self-pin on adoption: when START Step 1 or EPIC Step 1 adopts a `Role:` directive, it writes the same marker itself (see those steps) — so every tier is compaction-proof, not just the hand-pinned top planner.
+**Pinning — `/role` + hooks.** `/role <role>` makes a role *durable* where a briefing directive is only *initial*: it writes a per-session marker (`~/.claude/session-roles/<session_id>`) that the plugin's hooks consume — SessionStart re-injects the charter after resume/`/clear`/compaction (a directive read at Step 1 doesn't survive those), and PreToolUse turns file edits into a permission prompt while `planner` is pinned (drift-proof unattended, one keystroke for a human; the escape hatch made mechanical) and, while `implementer` is pinned, denies a `claude --bg` or cloud `create_session` launch whose prompt leads with an issue-spawning command (the implementer spawn guard, below). `/role none` unpins. Spawned tiers self-pin on adoption: when START Step 1 or EPIC Step 1 adopts a `Role:` directive, it writes the same marker itself (see those steps) — so every tier is compaction-proof, not just the hand-pinned top planner.
+
+**Implementer spawn guard.** An implementer is a leaf (`roles/implementer.md`): spawning work *for an issue* is its coordinator's allocation call. So every entry point that spawns or starts an issue — SPAWN Step 1, FILE Step 4's `--spawn` and `--start`, EPIC Step 1, and `/spawn-epic` — first reads this session's marker. It reads the marker rather than trusting self-report, because a session that has forgotten its role is exactly the drift being prevented:
+
+```bash
+roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+[ -n "${CLAUDE_SESSION_ID:-}" ] && cat "$roles_dir/$CLAUDE_SESSION_ID" 2>/dev/null
+```
+
+If it prints `implementer`, **don't spawn or start**. File only (plain `/make-ticket`, no flag, when the issue doesn't exist yet), ping your `Notify:` spawner `filed: <id>, suggest spawning` (or `blocked: <id> …` when it blocks your acceptance criteria) per `messaging.md`, or note the ID on your issue/PR when no `Notify:` is wired, then return to your own issue. Say so in one line that names that alternative. Any other output → proceed, unless a charter you hold in context says otherwise (no marker is not a license when you were briefed `Role: implementer`). A human steering this session can override: their live instruction wins, and `/role none` drops the pin. The guard is the charters' default posture, not a lock. A helper session for the implementer's own issue isn't an issue spawn and isn't gated (`roles/implementer.md`); the PreToolUse hook above backstops a hand-rolled issue spawn.
 
 ---
 
@@ -146,6 +155,8 @@ Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. La
 - *(no flag)* — report the new ID + URL and stop; filing was the whole request.
 - `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` session), **in the same turn** — report the ID *and* the spawned session together; never park the spawn behind the report.
 - `--start` — run the **START phase** on the new ID inline in this session, same turn.
+
+Before either route, run the **implementer spawn guard** (Session roles). A pinned implementer skips the route, even `--start`: running START on a second issue inline is a reassignment by another name. The issue it just filed is the follow-up, so it pings `filed:` and returns to its own issue.
 
 The composed body is exactly what the delegated session will `FETCH` as its briefing — the other reason Step 1 carries the weight.
 
@@ -397,6 +408,8 @@ If branch auto-deletion is on for the remote, no need to delete the remote branc
 Fan out parallel ticket work: spawn one background session per issue, each running `/start-ticket`. Use when given several issue IDs at once. SPAWN is a **ticket specialization of the generic `spawn` skill** — it builds the per-issue `/start-ticket` prompt and the `SPAWN_CAP`, then hands the actual fan-out (backend selection, parallel launch, naming, table, hand-back, inspect commands) to `spawn`. It implements nothing itself: each sibling runs the full START cycle independently.
 
 ### Step 1 — Parse the request
+
+First run the **implementer spawn guard** (Session roles): a pinned implementer spawns nothing here and pings `filed: <id>, suggest spawning` for each ID instead, even one that already existed.
 
 One or more issue IDs, optionally with briefing text. Common shapes:
 - `ABC-12 ABC-13 ABC-14` — three issues, default briefing each
