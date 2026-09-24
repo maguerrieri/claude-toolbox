@@ -56,8 +56,11 @@ the same ID** there, which then shadowed later resumes from that cwd. That no
 longer reproduces with `--resume <id>` on 2.1.280. Not re-verified here: the
 interactive `--resume` picker and interactive `--resume <id>`. If either can't
 find a session, recover it the old way: recreate the missing path
-(`git worktree add --detach <path>`, or `mkdir -p <path>`) and resume from
-there, or `cp -p` the `.jsonl` into a live cwd's slug dir. Test with
+(`git worktree add --detach <path>`, after `git worktree prune` if the
+directory was deleted without `git worktree remove`; or `mkdir -p <path>`) and
+resume from there, or `cp -p` the `.jsonl` into a live cwd's slug dir. Locate
+the file by ID rather than rebuilding its slug by hand:
+`find ~/.claude/projects -name '<session-id>.jsonl'`. Test with
 `--fork-session` first. A very large transcript may need a 1M-context model to
 load.
 
