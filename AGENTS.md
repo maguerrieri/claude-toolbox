@@ -47,7 +47,9 @@ it start a second issue: its self-pinned marker records its own issue on a
 second line, and START refuses any other. The marker's role is its first line
 only. The marker is keyed on the session id, so it doesn't follow `/clear` or a
 fork (re-pin with `/role`), and the same hook denies a marker write from an
-in-process subagent or teammate, which shares its parent's id.
+in-process subagent, which shares its parent's id. Ticket work itself never
+runs in an in-process agent team: EPIC rejects `--team`, and every child is a
+background session of its own.
 `/role none` unpins.
 
 ## Development workflow
