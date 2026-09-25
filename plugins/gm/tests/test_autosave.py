@@ -368,6 +368,41 @@ def test_player_markup_is_a_prompt_not_harness_traffic(campaign_path, tmp_path):
     assert "### Player\n\n<ooc>can we pause the chase?</ooc>" in raw_text(d)
 
 
+def test_only_gm_slash_commands_are_play(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    t = str(tmp_path / "transcript.jsonl")
+    append_lines(t, user("<command-name>/gm:oracle</command-name>\n<command-args>is the bridge out?</command-args>"),
+                 gm("Yes, but…"))
+    hook(campaign_path, e, t)
+    append_lines(t, user("<command-name>/model</command-name>\n<command-args>opus</command-args>"),
+                 user("<local-command-stdout>Set model to opus</local-command-stdout>"),
+                 user("<command-name>/compact</command-name>"),
+                 user("I cross anyway."), gm("The planks groan."))
+    hook(campaign_path, e, t)
+    text = raw_text(d)
+    assert "/gm:oracle is the bridge out?" in text and "I cross anyway." in text
+    assert "/model" not in text and "/compact" not in text
+
+
+def test_overlapping_runs_log_a_turn_once(campaign_path, tmp_path):
+    """Stop and SessionEnd can overlap (e.g. exiting while Stop still runs)."""
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    t = copy_fixture(tmp_path)
+    payload = json.dumps({"session_id": SID, "transcript_path": t, "hook_event_name": "SessionEnd"})
+    procs = [subprocess.Popen([campaign_path, "hook-autosave"], stdin=subprocess.PIPE, text=True, env=e)
+             for _ in range(4)]
+    for proc in procs:
+        proc.stdin.write(payload)
+        proc.stdin.close()
+    assert [proc.wait(timeout=20) for proc in procs] == [0, 0, 0, 0]
+    assert raw_text(d).count("The names in it are all of the dead.") == 1
+    assert git(d, "status", "--porcelain") == ""
+
+
 def stamped(entry, when):
     return dict(entry, timestamp=when)
 
@@ -500,17 +535,22 @@ def test_unwrapped_lists_raw_play_since_the_last_wrap(campaign_path, tmp_path):
     assert p.returncode == 0
     assert f"{f}:1-" in p.stdout  # a never-wrapped file is unwrapped in full
 
-    # the /gm:wrap turn: this session's marker waits until the wrap turn itself is logged
+    # the /gm:wrap turn: marked right away (the named checkpoint carries it), then marked
+    # again below the wrap turn once the Stop hook has logged it
     append_lines(t, user("<command-name>/gm:wrap</command-name>"))
     p = run(campaign_path, "mark-wrapped", d, "log/0001-the-ledger.md", env=e)
     assert p.returncode == 0
-    assert "gm:wrapped" not in open(f).read()
+    marker = "<!-- gm:wrapped log/0001-the-ledger.md -->"
+    assert marker in open(f).read()
+    run(campaign_path, "checkpoint", d, "--label", "the ledger", env=e)
+    assert marker in git(d, "show", "HEAD:" + os.path.relpath(f, d))
     append_lines(t, gm("Session logged as 0001-the-ledger."))
     hook(campaign_path, e, t)
     text = open(f).read()
-    assert text.index("Session logged as") < text.index("<!-- gm:wrapped log/0001-the-ledger.md -->")
+    assert text.count(marker) == 2
+    assert text.index(marker) < text.index("Session logged as") < text.rindex(marker)
     assert "no unwrapped play" in run(campaign_path, "unwrapped", d, env=e).stdout
-    assert "gm:wrapped" in git(d, "show", "HEAD:" + os.path.relpath(f, d))  # committed
+    assert git(d, "show", "HEAD:" + os.path.relpath(f, d)).count(marker) == 2  # committed
 
     append_lines(t, user("I set out at dawn."), gm("Frost on the road."))
     hook(campaign_path, e, t)
@@ -536,7 +576,7 @@ def test_mark_wrapped_marks_immediately_outside_a_bound_session(campaign_path, t
     assert "gm:wrapped log/0002-b.md" not in raw_text(d)
 
 
-def test_mark_wrapped_marks_other_sessions_logs_right_away(campaign_path, tmp_path):
+def test_the_wrap_re_mark_only_touches_the_wrapping_sessions_log(campaign_path, tmp_path):
     e = gm_env(tmp_path, GM_SESSION_ID=SID)
     d = new_campaign(campaign_path, tmp_path, e)
     run(campaign_path, "bind", d, env=e)
@@ -549,10 +589,47 @@ def test_mark_wrapped_marks_other_sessions_logs_right_away(campaign_path, tmp_pa
     append_lines(t2, user("<command-name>/gm:play</command-name>"), gm("Where were we?"))
     hook(campaign_path, e2, t2, sid=sid2)
     p = run(campaign_path, "mark-wrapped", d, "log/0001-a.md", env=e2)
-    assert os.path.basename(earlier) in p.stdout and "once this turn is saved" in p.stdout
-    assert "gm:wrapped" in open(earlier).read()
+    assert os.path.basename(earlier) in p.stdout and "once it's saved" in p.stdout
     [mine] = [f for f in raw_files(d) if f.endswith(f"-{sid2[:8]}.md")]
-    assert "gm:wrapped" not in open(mine).read()
+    assert "gm:wrapped" in open(earlier).read() and "gm:wrapped" in open(mine).read()
+    append_lines(t2, user("<command-name>/gm:wrap</command-name>"), gm("Logged."))
+    hook(campaign_path, e2, t2, sid=sid2)
+    assert open(earlier).read().count("gm:wrapped") == 1
+    assert open(mine).read().count("gm:wrapped") == 2
+
+
+def test_rebinding_elsewhere_drops_a_pending_wrap_re_mark(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    a = new_campaign(campaign_path, tmp_path, e, name="a")
+    b = new_campaign(campaign_path, tmp_path, e, name="b")
+    run(campaign_path, "bind", a, env=e)
+    t = str(tmp_path / "t.jsonl")
+    append_lines(t, user("<command-name>/gm:play</command-name>"), gm("In A."))
+    hook(campaign_path, e, t)
+    run(campaign_path, "mark-wrapped", a, "log/0001-a.md", env=e)
+    run(campaign_path, "bind", b, env=e)  # same turn: switch campaigns
+    append_lines(t, user("<command-name>/gm:play</command-name>"), gm("In B."))
+    hook(campaign_path, e, t)
+    assert "gm:wrapped" not in raw_text(b)
+    assert f"{raw_files(b)[0]}:1-" in run(campaign_path, "unwrapped", b, env=e).stdout
+
+
+def test_mark_wrapped_matches_a_tilde_path_to_the_binding(campaign_path, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    e = gm_env(tmp_path, GM_SESSION_ID=SID, HOME=str(home))
+    d = new_campaign(campaign_path, home, e, name="ember")
+    run(campaign_path, "bind", "~/ember", env=e)  # quoted by the model: no shell expansion
+    t = str(tmp_path / "t.jsonl")
+    append_lines(t, user("<command-name>/gm:play</command-name>"), gm("The embers glow."))
+    hook(campaign_path, e, t)
+    assert os.path.join(d, "log", "raw") in run(campaign_path, "unwrapped", "~/ember", env=e).stdout
+    p = run(campaign_path, "mark-wrapped", "~/ember", "log/0001-x.md", env=e)
+    assert "once it's saved" in p.stdout
+    append_lines(t, user("<command-name>/gm:wrap</command-name>"), gm("Logged."))
+    hook(campaign_path, e, t)
+    assert "no unwrapped play" in run(campaign_path, "unwrapped", "~/ember", env=e).stdout
+    assert raw_text(d).count("gm:wrapped log/0001-x.md") == 2
 
 
 # ---- hooks.json -----------------------------------------------------------
