@@ -8,23 +8,31 @@
 # The name comes on stdin from a quoted heredoc, so no character in it ever
 # reaches the shell as syntax:
 #
-#   bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<'NOTIFY'
+#   [ -n "${CLAUDE_TICKET_WORKFLOW_ROOT:-}" ] &&
+#     bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<'NOTIFY_NAME_EOF'
 #   <session name>
-#   NOTIFY
+#   NOTIFY_NAME_EOF
 #
 # It replaces any earlier notify: line (a re-brief naming a new spawner wins)
 # and keeps the role (first line) and issue: lines in place. It records
 # nothing, prints why on stderr, and exits 1 when there is no marker to add to
-# or the name fails the check role-session-start.sh applies before printing it.
+# or the name fails notify_name_ok, the check role-session-start.sh applies
+# before printing it.
 set -uo pipefail
+# Bytes, not characters: grep must not treat a marker as binary over its
+# encoding, and the trim below must match notify_name_ok's C-locale classes.
+export LC_ALL=C
 
 skip() {
 	printf 'record-notify: %s; nothing recorded\n' "$1" >&2
 	exit 1
 }
 
+# shellcheck source=notify-name.sh
+. "$(dirname "${BASH_SOURCE[0]}")/notify-name.sh" || skip 'notify-name.sh is missing'
+
 name=$(head -n 1)
-# Trim surrounding whitespace: the hook refuses a name that has any.
+# Trim surrounding whitespace, which notify_name_ok refuses.
 name=${name#"${name%%[![:space:]]*}"}
 name=${name%"${name##*[![:space:]]}"}
 
@@ -37,14 +45,8 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
 marker="$roles_dir/$CLAUDE_SESSION_ID"
 [ -f "$marker" ] || skip 'this session has no role marker, so the target stays in context only'
 
-# The same check as role-session-start.sh: the name is printed into session
-# context inside a code span, so no control character (no second line) and no
-# backtick (no way out of the span), and a length a session name can have.
-case "$name" in
-'') skip 'the name is empty' ;;
-*[[:cntrl:]]* | *'`'*) skip 'the name has a control character or a backtick' ;;
-esac
-[ "${#name}" -le 200 ] || skip 'the name is longer than 200 characters'
+notify_name_ok "$name" ||
+	skip 'the name is empty, over 200 bytes, or has a control character, a backtick, or a line break'
 
 # Rebuild the marker without its notify: lines. A failed read must not become
 # a marker whose first line (the role) is blank, so require the rest to read.
