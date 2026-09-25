@@ -9,6 +9,7 @@ Use the `gm` skill to start a new campaign.
 3. Establish a few **truths** about the world and run a **lines & veils** safety check.
 4. Create the starting character in `characters/<name>.md` using the adapter's `sheet-template.md`.
 5. **Version the saves:** run `campaign init <saves-dir> --author "<persona author>" --email "<persona email>"` (`${CLAUDE_PLUGIN_ROOT}/bin/campaign`) to start a dedicated git repo for the campaign — it defers automatically if the dir is already inside a repo (e.g. an Obsidian vault). Resolve author/email from the chosen persona's `chronicle_identity`.
-6. Offer to begin play with `/gm:play`.
+6. **Turn on autosave:** `campaign bind <saves-dir>`, so from here on every turn's dialogue is logged to `log/raw/` and checkpointed by the plugin's Stop hook.
+7. Offer to begin play with `/gm:play`.
 
 $ARGUMENTS may name the setting or the saves path.

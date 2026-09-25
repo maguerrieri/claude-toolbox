@@ -14,6 +14,7 @@ A campaign is a folder in **your** space (a directory or an Obsidian vault) — 
   locations.md            # places, with a line of sensory detail each
   tables/<type>.md        # player-facing rollable tables (hand-authored or forged)
   log/NNNN-<title>.md     # one file per session: what happened + a "Previously…" recap
+  log/raw/<date>-<session>.md  # autosaved every turn: the player's prompts + the GM's narration
   .gm/tables/<type>.md    # sealed GM tables (same format; see .gm/ below)
   .gm/state.json          # GM-only hidden state (sealed clocks + answers) — only when adapter is visibility: gm
 ```
@@ -49,7 +50,12 @@ Progress clocks the world advances: `Bandits find the camp [▰▰▱▱] 2/4`. 
 Places visited or known, each with a line of sensory detail so scenes stay grounded.
 
 ### `log/NNNN-<title>.md`
-One per session, zero-padded index (`0001-the-ember-road.md`). Holds the session's beats and, at the end, a **forward recap** ("Previously…") the next `/gm:play` reads back.
+One per session, zero-padded index (`0001-the-ember-road.md`). Holds the session's beats and, at the end, a **forward recap** ("Previously…") the next `/gm:play` reads back. `/gm:wrap` writes it from the raw log below.
+
+### `log/raw/<YYYY-MM-DD>-<session>.md`
+The **raw play log**, written by the plugin's Stop hook after every turn of a session bound to this campaign (`campaign bind`, run by `/gm:play` and `/gm:new-campaign`) — no model action involved. `<session>` is the first 8 characters of the Claude Code session id, and a new file starts each day. Each turn appends `### Player` (the prompt as typed, including a slash command like `/gm:play …`) and `### GM` (the GM's visible narration) blocks. **Text only:** tool calls and their results are never logged, so nothing written behind the GM screen (`campaign gm-*`, `.gm/`) reaches it. A managed campaign commits the log and the current state each turn (`autosave: <prompt>`), so every turn is a `/gm:rewind` target; a deferred campaign gets the log but no commits.
+
+It exists so the play record never depends on the model remembering `/gm:wrap`, or on Claude Code keeping its session transcripts (they are deleted after `cleanupPeriodDays`, 30 by default). `/gm:wrap` summarizes it into `log/NNNN-<title>.md`, then appends a `<!-- gm:wrapped log/NNNN-<title>.md -->` marker (`campaign mark-wrapped`); `campaign unwrapped` lists everything after each file's last marker — including sessions that were never wrapped at all. Append-only otherwise: don't edit it by hand. (A `/gm:rewind` rolls it back along with the rest of the campaign; the rewound turns stay in git history.)
 
 ### `tables/`
 
@@ -62,4 +68,4 @@ Present only when the active adapter is `visibility: gm` (see adapter-contract).
 
 - **Disk is truth; context is a cache.** These files are authoritative. The core re-reads them at session start and at decision points, so a long session or a context compaction can't corrupt the campaign — it recovers from disk.
 - **The player is referee.** If the player corrects a value, the file wins; reconcile to it.
-- **Deltas at wrap.** The play loop stages changes; `/gm:wrap` persists them and writes the session log + recap.
+- **Deltas as they happen; the story at wrap.** The play loop writes state deltas to disk as the fiction produces them, and the autosave commits them with each turn's raw log; `/gm:wrap` persists anything still staged and writes the curated session log + recap.
