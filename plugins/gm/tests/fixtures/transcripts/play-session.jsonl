@@ -1,0 +1,28 @@
+{"type":"permission-mode","permissionMode":"default","sessionId":"f1x7ure0-0000-4000-8000-000000000001"}
+{"type":"user","isSidechain":false,"uuid":"u1","message":{"role":"user","content":"<command-message>gm:play</command-message>\n<command-name>/gm:play</command-name>\n<command-args>~/rpg/embervale</command-args>"}}
+{"type":"user","isMeta":true,"isSidechain":false,"uuid":"u2","message":{"role":"user","content":[{"type":"text","text":"Run the gm skill's session-start flow for EXPANDED-COMMAND-PROMPT"}]}}
+{"type":"attachment","isSidechain":false,"attachment":{"type":"skill_listing","content":"SKILL-LISTING-NOISE"}}
+{"type":"assistant","isSidechain":false,"uuid":"a1","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"thinking","thinking":"THINKING-SECRET: the innkeeper did it","signature":"x"}]}}
+{"type":"assistant","isSidechain":false,"uuid":"a2","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"campaign bind ~/rpg/embervale"}}]}}
+{"type":"user","isSidechain":false,"uuid":"u3","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"gm: autosave on"}]}}
+{"type":"assistant","isSidechain":false,"uuid":"a3","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"campaign gm-seal ~/rpg/embervale killer 'TOOL-INPUT-SECRET: the innkeeper'"}}]}}
+{"type":"user","isSidechain":false,"uuid":"u4","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"TOOL-RESULT-SECRET gm: 'killer' sealed"}]},"toolUseResult":{"stdout":"TOOL-RESULT-SECRET"}}
+{"type":"assistant","isSidechain":false,"uuid":"a4","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"text","text":"**Previously…** Rain hammers the shutters of the Ember Road inn."}]}}
+{"type":"assistant","isSidechain":false,"uuid":"a5","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"text","text":"What do you do?"}]}}
+{"type":"system","isSidechain":false,"subtype":"turn_duration","content":"SYSTEM-NOISE"}
+{"type":"user","isSidechain":false,"uuid":"u5","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>REMINDER-NOISE</system-reminder>"},{"type":"text","text":"I search the cellar for the missing ledger."},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}}
+{"type":"assistant","isSidechain":false,"uuid":"a6","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"tool_use","id":"t3","name":"Bash","input":{"command":"roll 1d20+1"}}]}}
+{"type":"user","isSidechain":false,"uuid":"u6","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t3","content":[{"type":"text","text":"ROLL-TOOL-OUTPUT 1d20+1 = 17"}]}]}}
+{"type":"attachment","isSidechain":false,"attachment":{"type":"queued_command","prompt":"and I light a torch first","commandMode":"prompt","origin":{"kind":"human"}}}
+{"type":"attachment","isSidechain":false,"isMeta":true,"attachment":{"type":"queued_command","prompt":"<cross-session-message from=\"uds:/tmp/x.sock\">PEER-NOISE</cross-session-message>","commandMode":"prompt","origin":{"kind":"peer"},"isMeta":true}}
+{"type":"user","isSidechain":false,"uuid":"u7","message":{"role":"user","content":"<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>TASK-NOISE</summary>\n</task-notification>"}}
+{"type":"assistant","isSidechain":true,"uuid":"s1","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"text","text":"SIDECHAIN-NOISE"}]}}
+{"type":"assistant","isSidechain":false,"uuid":"a7","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"text","text":"You rolled a 17. The torch flares; behind a loose stone, the ledger."}]}}
+{"type":"assistant","isSidechain":false,"isApiErrorMessage":true,"uuid":"a8","message":{"model":"<synthetic>","role":"assistant","content":[{"type":"text","text":"API-ERROR-NOISE"}]}}
+{"type":"user","isSidechain":false,"uuid":"u8","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]}}
+{"type":"user","isSidechain":false,"uuid":"u9","message":{"role":"user","content":"<local-command-caveat>Caveat: CAVEAT-NOISE</local-command-caveat>"}}
+{"type":"user","isSidechain":false,"uuid":"u10","message":{"role":"user","content":"<bash-input>ls</bash-input>"}}
+{"type":"user","isSidechain":false,"uuid":"u11","message":{"role":"user","content":"<local-command-stdout>STDOUT-NOISE</local-command-stdout>"}}
+{"type":"user","isSidechain":false,"isCompactSummary":true,"uuid":"u12","message":{"role":"user","content":"This session is being continued from a previous conversation. COMPACT-NOISE"}}
+{"type":"user","isSidechain":false,"uuid":"u13","message":{"role":"user","content":"I read the ledger aloud."}}
+{"type":"assistant","isSidechain":false,"uuid":"a9","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"thinking","thinking":"THINKING-SECRET-2"},{"type":"text","text":"The names in it are all of the dead."}]}}

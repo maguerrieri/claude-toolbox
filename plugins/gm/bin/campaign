@@ -12,10 +12,22 @@
   campaign gm-reveal <dir> [id]
   campaign gm-list <dir>
 
+  campaign bind <dir> [--session ID]        # autosave this session's play into <dir>
+  campaign unbind [--session ID]
+  campaign unwrapped <dir>                  # raw play not yet summarized by /gm:wrap
+  campaign mark-wrapped <dir> <log-file>
+  campaign hook-session-start               # plugin hooks (payload on stdin)
+  campaign hook-autosave
+
 A campaign dir gets its own dedicated git repo (marked by a .gm-campaign file),
 UNLESS it is already inside another repo (e.g. an Obsidian vault under git) — then
 gm DEFERS and never commits, leaving history to your existing setup. Checkpoints are
 ordinary commits; rewind restores a past checkpoint as a new (reversible) commit.
+
+Autosave: once a session is bound to a campaign (`bind`, run by /gm:play and
+/gm:new-campaign), the plugin's Stop hook appends each turn's player prompt and GM
+narration to <dir>/log/raw/ and checkpoints it, so the play record never depends on
+the model remembering /gm:wrap or on Claude Code keeping its transcript.
 
 The gm-* subcommands keep hidden GM state (secret clocks, sealed answers) in a .gm/
 sealed dir, written through THIS CLI rather than the Write/Edit tools — so in a solo
@@ -25,10 +37,16 @@ never the value; gm-reveal surfaces a secret when the fiction earns it. Expandin
 call to read ahead is a feature (dramatic irony), not a leak — so no encryption here.
 """
 import argparse
+import datetime
 import json
 import os
+import re
+import shlex
 import subprocess
 import sys
+import tempfile
+import time
+import traceback
 
 MARKER = ".gm-campaign"
 
@@ -83,13 +101,20 @@ def _require_managed(d):
         sys.exit(0)  # deferred is a normal state, not an error
 
 
+def _commit_all(d, label):
+    """Stage everything and commit it; False when there was nothing to commit."""
+    git(d, "add", "-A")
+    if not _staged_changes(d):
+        return False
+    git(d, "commit", "-q", "-m", label)
+    return True
+
+
 def cmd_checkpoint(a):
     _require_managed(a.dir)
-    git(a.dir, "add", "-A")
-    if not _staged_changes(a.dir):
+    if not _commit_all(a.dir, a.label or "checkpoint"):
         print("nothing to checkpoint")
         return
-    git(a.dir, "commit", "-q", "-m", a.label or "checkpoint")
     print(f"checkpoint: {a.label or 'checkpoint'}")
 
 
@@ -212,6 +237,410 @@ def cmd_gm_list(a):
         print(f"{kind}: {k}")
 
 
+# ---- Autosave: raw play log + per-turn checkpoint ---------------------------
+# The plugin's Stop hook (hooks/hooks.json -> hook-autosave) appends each turn's
+# player prompts and GM narration to <campaign>/log/raw/ and checkpoints them. A
+# session opts in by binding (`bind`, run by /gm:play and /gm:new-campaign). The
+# binding is keyed by session id under the plugin's data dir, because play often
+# runs from a parent directory, so the hook can't infer the campaign from its cwd.
+
+RAW_DIR = os.path.join("log", "raw")
+WRAP_MARK = "<!-- gm:wrapped {} -->"
+WRAP_RE = re.compile(r"^<!-- gm:wrapped .*-->[ \t]*$")
+SESSION_RE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]*$")
+BINDING_TTL_DAYS = 30
+
+
+def _data_dir():
+    # Hooks see CLAUDE_PLUGIN_DATA; the Bash tool doesn't, so hook-session-start
+    # exports the same dir to it as GM_DATA_DIR.
+    d = os.environ.get("GM_DATA_DIR") or os.environ.get("CLAUDE_PLUGIN_DATA")
+    if d:
+        return d
+    config = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    return os.path.join(config, "plugins", "data", "gm")
+
+
+def _valid_session(sid):
+    # Session ids become file names: nothing that could traverse out of sessions/.
+    return isinstance(sid, str) and bool(SESSION_RE.match(sid)) and ".." not in sid
+
+
+def _session_id(explicit=None):
+    sid = explicit or os.environ.get("GM_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID")
+    return sid if _valid_session(sid) else None
+
+
+def _binding_path(sid):
+    return os.path.join(_data_dir(), "sessions", sid + ".json")
+
+
+def _load_binding(sid):
+    try:
+        with open(_binding_path(sid), encoding="utf-8") as f:
+            b = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return b if isinstance(b, dict) else None
+
+
+def _save_binding(sid, binding):
+    p = _binding_path(sid)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p), prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(binding, f, indent=2, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, p)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _now_utc():
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def _parse_time(ts):
+    try:
+        t = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return t if t.tzinfo else None
+
+
+def cmd_bind(a):
+    sid = _session_id(a.session)
+    if not sid:
+        print("gm: autosave unavailable — no session id (the gm plugin's SessionStart hook "
+              "hasn't run in this session); /gm:wrap still saves the story")
+        return
+    d = os.path.realpath(os.path.expanduser(a.dir))
+    if not os.path.isfile(os.path.join(d, "campaign.md")):
+        sys.exit(f"campaign: {d} has no campaign.md — not a gm campaign")
+    binding = _load_binding(sid) or {}
+    # Rebinding keeps the transcript offset, so switching campaigns mid-session
+    # doesn't re-log earlier turns into the new one.
+    binding.update(campaign=d, bound_at=_now_utc().isoformat())
+    _save_binding(sid, binding)
+    how = ("logged to log/raw/ and checkpointed" if is_managed(d)
+           else "logged to log/raw/ (saves deferred: no commits)")
+    print(f"gm: autosave on for {d} — each turn {how}")
+
+
+def cmd_unbind(a):
+    sid = _session_id(a.session)
+    if sid:
+        try:
+            os.remove(_binding_path(sid))
+        except FileNotFoundError:
+            pass
+    print("gm: autosave off for this session")
+
+
+# -- reading the transcript: what the player saw, never tool traffic --
+
+_REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
+_COMMAND_RE = re.compile(r"<command-name>(.*?)</command-name>", re.S)
+_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+# Harness traffic arriving as a user message is wholly tag-wrapped
+# (<task-notification>, <local-command-stdout>, <bash-input>, ...).
+_TAGGED_ONLY_RE = re.compile(r"\s*(?:<([A-Za-z][\w-]*)\b[^>]*>.*?</\1>\s*)+", re.S)
+
+
+def _prompt_text(content):
+    """The player's words in a user message, or None for harness traffic."""
+    if isinstance(content, list):
+        parts = []
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "tool_result":
+                return None
+            if b.get("type") == "text":
+                parts.append(_REMINDER_RE.sub("", b.get("text") or "").strip())
+            elif b.get("type") == "image":
+                parts.append("[image]")
+        text = "\n\n".join(p for p in parts if p)
+    elif isinstance(content, str):
+        text = _REMINDER_RE.sub("", content).strip()
+    else:
+        return None
+    command = _COMMAND_RE.search(text)
+    if command:  # a slash command: log what the player typed, not the wrapper
+        args = _ARGS_RE.search(text)
+        return " ".join(s for s in (command.group(1).strip(), args.group(1).strip() if args else "") if s) or None
+    if not text or text.startswith("[Request interrupted"):
+        return None
+    if text.startswith("<") and _TAGGED_ONLY_RE.fullmatch(text):
+        return None
+    return text
+
+
+def _turn_block(e):
+    """("Player"|"GM", text) for a transcript entry the player saw, else None.
+
+    GM blocks are the assistant's text only: thinking, tool calls, and tool results
+    never reach the raw log, so nothing written behind the GM screen leaks into it."""
+    if not isinstance(e, dict) or e.get("isSidechain") or e.get("isMeta"):
+        return None
+    kind = e.get("type")
+    if kind == "user" and not e.get("isCompactSummary"):
+        text = _prompt_text((e.get("message") or {}).get("content"))
+        return ("Player", text) if text else None
+    if kind == "attachment":
+        at = e.get("attachment") or {}
+        # A prompt typed while the GM is mid-turn is recorded only as this attachment.
+        if (at.get("type") == "queued_command" and not at.get("isMeta")
+                and (at.get("origin") or {}).get("kind", "human") == "human"
+                and at.get("commandMode", "prompt") == "prompt"):
+            text = _prompt_text(at.get("prompt"))
+            return ("Player", text) if text else None
+        return None
+    if kind == "assistant" and not e.get("isApiErrorMessage"):
+        msg = e.get("message") or {}
+        if msg.get("model") == "<synthetic>":
+            return None
+        content = msg.get("content")
+        if isinstance(content, str):
+            texts = [content]
+        elif isinstance(content, list):
+            texts = [b.get("text") or "" for b in content
+                     if isinstance(b, dict) and b.get("type") == "text"]
+        else:
+            return None
+        text = "\n\n".join(t.strip() for t in texts if t.strip())
+        return ("GM", text) if text else None
+    return None
+
+
+def _parse_line(line):
+    try:
+        return json.loads(line)
+    except ValueError:
+        return None
+
+
+def _turn_start(lines, bound_at):
+    """Byte offset where the first autosave of a session starts: the prompt of the
+    turn that bound it (the last prompt at or before the bind), else the latest one."""
+    latest = before_bind = None
+    pos = 0
+    for line in lines:
+        e = _parse_line(line)
+        if isinstance(e, dict) and e.get("type") == "user" and _turn_block(e):
+            latest = pos
+            ts = _parse_time(e.get("timestamp"))
+            if ts and bound_at and ts <= bound_at:
+                before_bind = pos
+        pos += len(line)
+    return before_bind if before_bind is not None else (latest or 0)
+
+
+def _read_new_blocks(transcript, offset, bound_at):
+    """Blocks appended to the transcript since `offset` (None: since the binding
+    turn's prompt) and the offset just past the last complete line read. A line
+    still being written waits for the next run, as does narration Claude Code
+    hasn't flushed yet when Stop fires: it lands with the next turn or SessionEnd."""
+    with open(transcript, "rb") as f:
+        size = f.seek(0, os.SEEK_END)
+        first_run = offset is None or offset > size  # or a replaced transcript
+        base = 0 if first_run else offset
+        f.seek(base)
+        data = f.read()
+    data = data[:data.rfind(b"\n") + 1]  # complete lines only
+    start = _turn_start(data.splitlines(keepends=True), bound_at) if first_run else 0
+    blocks = [b for b in (_turn_block(_parse_line(ln)) for ln in data[start:].splitlines()) if b]
+    return blocks, base + len(data)
+
+
+def _render(blocks):
+    merged = []
+    for role, text in blocks:
+        if merged and merged[-1][0] == role:
+            merged[-1][1].append(text)
+        else:
+            merged.append((role, [text]))
+    return "".join(f"### {role}\n\n" + "\n\n".join(texts) + "\n\n" for role, texts in merged)
+
+
+def _append_raw(d, sid, text, now):
+    p = os.path.join(d, RAW_DIR, f"{now:%Y-%m-%d}-{sid[:8]}.md")
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    fresh = not os.path.exists(p)
+    with open(p, "a", encoding="utf-8") as f:
+        if fresh:
+            f.write(f"# Raw play log — {now:%Y-%m-%d} (session {sid[:8]})\n\n"
+                    "<!-- Written by gm's Stop hook after every turn: the player's prompts and "
+                    "the GM's narration, never tool calls or their output. /gm:wrap summarizes "
+                    "it into log/NNNN-<title>.md. -->\n\n")
+        f.write(text)
+    return p
+
+
+def _autosave_label(blocks):
+    prompts = [text for role, text in blocks if role == "Player"]
+    if not prompts:
+        return "autosave: (narration)"
+    first = prompts[-1].strip().splitlines()[0].strip()
+    return "autosave: " + (first if len(first) <= 60 else first[:59].rstrip() + "…")
+
+
+def _autosave(payload):
+    sid = payload.get("session_id")
+    if not _valid_session(sid):
+        return
+    binding = _load_binding(sid)
+    if not binding:
+        return  # unbound session: strict no-op
+    d = binding.get("campaign")
+    transcript = payload.get("transcript_path")
+    if not (isinstance(d, str) and os.path.isfile(os.path.join(d, "campaign.md"))):
+        raise RuntimeError(f"bound campaign has no campaign.md: {d}")
+    if not (isinstance(transcript, str) and os.path.isfile(transcript)):
+        raise RuntimeError(f"no transcript at {transcript}")
+    offset = binding.get("offset") if binding.get("transcript") == transcript else None
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        offset = None
+    blocks, offset = _read_new_blocks(transcript, offset, _parse_time(binding.get("bound_at")))
+    if blocks:
+        _append_raw(d, sid, _render(blocks), datetime.datetime.now())
+    # Record progress before committing: a failed commit must not re-log the turn
+    # (the next turn's checkpoint picks the log up anyway).
+    binding.update(transcript=transcript, offset=offset)
+    _save_binding(sid, binding)
+    if blocks and is_managed(d):  # deferred saves: the log, but never a commit
+        _commit_all(d, _autosave_label(blocks))
+
+
+def _hook_payload():
+    try:
+        p = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        return {}
+    return p if isinstance(p, dict) else {}
+
+
+def _log_hook_error(where):
+    """Hook failures go to <data>/autosave.log, never to the turn."""
+    try:
+        p = os.path.join(_data_dir(), "autosave.log")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        if os.path.isfile(p) and os.path.getsize(p) > 256 * 1024:
+            os.replace(p, p + ".1")
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"--- {datetime.datetime.now().isoformat(timespec='seconds')} {where}\n"
+                    f"{traceback.format_exc()}")
+    except Exception:
+        pass
+
+
+def cmd_hook_autosave(a):
+    # Stop (every turn) and SessionEnd. Never fails or blocks the turn: always exit 0
+    # and print nothing, since a Stop hook's stdout can be read as a decision.
+    try:
+        _autosave(_hook_payload())
+    except Exception:
+        _log_hook_error("hook-autosave")
+
+
+def _gc_bindings(keep):
+    sessions = os.path.join(_data_dir(), "sessions")
+    if os.path.isfile(keep):
+        os.utime(keep)  # a live session's binding never ages out under it
+    cutoff = time.time() - BINDING_TTL_DAYS * 86400
+    try:
+        names = os.listdir(sessions)
+    except OSError:
+        return
+    for n in names:
+        p = os.path.join(sessions, n)
+        try:
+            if n.endswith(".json") and os.path.getmtime(p) < cutoff:
+                os.remove(p)
+        except OSError:
+            pass
+
+
+def cmd_hook_session_start(a):
+    # Hands the session id (and the data dir, which only hooks know) to the Bash tool
+    # so `campaign bind` can key the binding the Stop hook will look up. For a bound
+    # session (resume, /clear, compaction) also re-names the active campaign as context.
+    try:
+        payload = _hook_payload()
+        sid = payload.get("session_id")
+        if not _valid_session(sid):
+            return
+        env_file = os.environ.get("CLAUDE_ENV_FILE")
+        if env_file:
+            with open(env_file, "a", encoding="utf-8") as f:
+                f.write(f"export GM_SESSION_ID={shlex.quote(sid)}\n"
+                        f"export GM_DATA_DIR={shlex.quote(_data_dir())}\n")
+        _gc_bindings(_binding_path(sid))
+        binding = _load_binding(sid)
+        if binding and isinstance(binding.get("campaign"), str):
+            d = binding["campaign"]
+            print(f"gm autosave: this session is bound to the campaign at {d} — every turn's "
+                  f"player prompt and GM narration is logged to {os.path.join(d, RAW_DIR)}/ "
+                  f"automatically. It is the active campaign for /gm:wrap, /gm:checkpoint, "
+                  f"and /gm:rewind.")
+    except Exception:
+        _log_hook_error("hook-session-start")
+
+
+# -- /gm:wrap: what the raw log holds that no session log summarizes yet --
+
+def _raw_logs(d):
+    rd = os.path.join(d, RAW_DIR)
+    try:
+        names = sorted(n for n in os.listdir(rd) if n.endswith(".md"))
+    except OSError:
+        return []
+    return [os.path.join(rd, n) for n in names]
+
+
+def _unwrapped_range(p):
+    """1-based (first, last) lines after the file's last wrap marker, if any play is there."""
+    with open(p, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    start = 0
+    for i, line in enumerate(lines):
+        if WRAP_RE.match(line):
+            start = i + 1
+    if not any(line.startswith("### ") for line in lines[start:]):
+        return None
+    return start + 1, len(lines)
+
+
+def cmd_unwrapped(a):
+    found = False
+    for p in _raw_logs(a.dir):
+        r = _unwrapped_range(p)
+        if r:
+            found = True
+            print(f"{p}:{r[0]}-{r[1]}")
+    if not found:
+        print("gm: no unwrapped play in log/raw/")
+
+
+def cmd_mark_wrapped(a):
+    label = " ".join(a.log.split()).replace("-->", "")  # keep the marker one well-formed line
+    marked = []
+    for p in _raw_logs(a.dir):
+        if _unwrapped_range(p):
+            with open(p, "a", encoding="utf-8") as f:
+                f.write(WRAP_MARK.format(label) + "\n\n")
+            marked.append(os.path.basename(p))
+    if marked:
+        print(f"gm: marked wrapped into {label}: {', '.join(marked)}")
+    else:
+        print("gm: nothing to mark — no unwrapped play in log/raw/")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="campaign")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -225,12 +654,22 @@ def main(argv=None):
     p = sub.add_parser("gm-seal"); p.add_argument("dir"); p.add_argument("id"); p.add_argument("text", nargs="?")
     p = sub.add_parser("gm-reveal"); p.add_argument("dir"); p.add_argument("id", nargs="?")
     p = sub.add_parser("gm-list"); p.add_argument("dir")
+    p = sub.add_parser("bind"); p.add_argument("dir"); p.add_argument("--session")
+    p = sub.add_parser("unbind"); p.add_argument("--session")
+    p = sub.add_parser("unwrapped"); p.add_argument("dir")
+    p = sub.add_parser("mark-wrapped"); p.add_argument("dir"); p.add_argument("log")
+    sub.add_parser("hook-session-start")
+    sub.add_parser("hook-autosave")
     a = ap.parse_args(argv)
     try:
         {"init": cmd_init, "checkpoint": cmd_checkpoint, "log": cmd_log,
          "rewind": cmd_rewind, "backup": cmd_backup,
          "gm-clock": cmd_gm_clock, "gm-seal": cmd_gm_seal,
-         "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list}[a.cmd](a)
+         "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list,
+         "bind": cmd_bind, "unbind": cmd_unbind,
+         "unwrapped": cmd_unwrapped, "mark-wrapped": cmd_mark_wrapped,
+         "hook-session-start": cmd_hook_session_start,
+         "hook-autosave": cmd_hook_autosave}[a.cmd](a)
     except subprocess.CalledProcessError as e:
         sys.exit(f"campaign: git command failed: {' '.join(e.cmd)}")
     except FileNotFoundError as e:
