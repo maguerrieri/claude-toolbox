@@ -67,6 +67,7 @@ bash_case deny implementer "line continuations" "$(printf '%s\n' 'claude \' '  -
 bash_case deny implementer "claude by path" '~/.local/bin/claude --bg "/start-ticket 7"'
 bash_case deny implementer "prompt assigned to a variable first" 'p="/start-ticket 7"; claude --bg --name x "$p"'
 bash_case deny implementer "env prefix and assignment" 'env FOO=1 BAR=2 claude --bg "/start-ticket 7"'
+bash_case deny implementer "spawn edge's env -u prefix" 'env -u CLAUDE_SESSION_ID claude --bg --name x "/start-ticket 7"'
 bash_case deny implementer "after then" 'if true; then claude --bg "/start-ticket 7"; fi'
 bash_case deny implementer "command substitution" 'out=$(claude --bg "/start-ticket 7")'
 bash_case deny implementer "backtick substitution" 'x=`claude --bg "/start-ticket 5"`'
@@ -105,6 +106,7 @@ bash_case deny implementer "stripped-identity launch" 'env -u CLAUDE_SESSION_ID 
 
 # Implementer: helpers and everything else pass.
 bash_case allow implementer "helper whose prompt leads with prose" "$helper"
+bash_case allow implementer "helper through the spawn edge's env -u prefix" 'env -u CLAUDE_SESSION_ID claude --bg --name "helper: flaky build" "Investigate the flaky build; report back only."'
 bash_case allow implementer "plain command" 'git status'
 bash_case allow implementer "claude agents" 'claude agents'
 bash_case allow implementer "claude with neither --bg nor -p" 'claude "/start-ticket 5"'
