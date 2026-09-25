@@ -46,13 +46,16 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    ```
 
 5. Read the charter at
-   `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` (fall
-   back to locating `roles/<role>.md` under this plugin's skill directory if the
-   env var is unset) and **adopt it as governing for this session**, exactly as
-   START Step 1 does for a spawned `Role:` directive. Read it **whole with the
-   Read tool** on the expanded absolute path (`echo "$CLAUDE_TICKET_WORKFLOW_ROOT"`
-   first if you need the value), not through Bash — the skill's Step 0 ("How
-   to read these files") has the rule and why.
+   `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` and
+   **adopt it as governing for this session**, exactly as START Step 1 does
+   for a spawned `Role:` directive. Read it **whole with the Read tool** at the
+   absolute path the variable expands to (`echo "$CLAUDE_TICKET_WORKFLOW_ROOT"`
+   for the value). If the variable is empty (step 2's case), find the file
+   with the Glob tool (`**/ticket-workflow/skills/ticket-workflow/roles/<role>.md`
+   under your Claude config's `plugins/` directory) and Read that path. Never
+   `cat`, `sed`, `grep`, or `find` your way through the plugin cache instead:
+   it's a protected path, and Bash commands there can stop on a permission
+   prompt that no allow rule can pre-approve.
 
 6. Confirm to the user: role pinned, what it binds (`planner` also arms the
    edit guard — edits prompt for approval until `/role none`), and that it
