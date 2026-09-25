@@ -103,6 +103,16 @@ def test_bind_without_session_id_is_a_clean_notice(campaign_path, tmp_path):
     assert not os.path.exists(tmp_path / "data" / "sessions")
 
 
+def test_bind_ignores_another_plugins_session_id(campaign_path, tmp_path):
+    """CLAUDE_SESSION_ID (ticket-workflow's export) comes without GM_DATA_DIR, so a
+    binding keyed by it could land where the Stop hook never looks."""
+    e = gm_env(tmp_path, CLAUDE_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    p = run(campaign_path, "bind", d, env=e)
+    assert "autosave unavailable" in p.stdout
+    assert not os.path.exists(tmp_path / "data" / "sessions")
+
+
 def test_bind_reads_session_id_from_env(campaign_path, tmp_path):
     e = gm_env(tmp_path, GM_SESSION_ID=SID)
     d = new_campaign(campaign_path, tmp_path, e)

@@ -267,7 +267,10 @@ def _valid_session(sid):
 
 
 def _session_id(explicit=None):
-    sid = explicit or os.environ.get("GM_SESSION_ID") or os.environ.get("CLAUDE_SESSION_ID")
+    # Only gm's own SessionStart export: it arrives together with GM_DATA_DIR, so a
+    # binding always lands in the dir the Stop hook reads (another plugin's
+    # CLAUDE_SESSION_ID would pair it with the fallback dir instead).
+    sid = explicit or os.environ.get("GM_SESSION_ID")
     return sid if _valid_session(sid) else None
 
 
