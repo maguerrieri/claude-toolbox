@@ -18,8 +18,20 @@
 #   implementer usually runs unattended, where a prompt would stall with nobody
 #   to answer it; the human override is '/role none'.
 #
-# Both match the charters' stated philosophy: the guard is the unattended
-# default, not a lock. The implementer check is a heuristic over the command
+# - any session, pinned or not: an in-process subagent or agent-team teammate
+#   runs inside this session, so its calls carry this session's id and its
+#   Bash environment holds this session's CLAUDE_CODE_SESSION_ID. A self-pin
+#   or /role it ran would rewrite this session's marker: an implementer
+#   teammate would re-pin its epic coordinator. Its calls, and only its calls,
+#   carry an agent_id (checked on Claude Code 2.1.282). So such a call is
+#   denied when it would write the marker: a Bash command that
+#   role-guard-marker-write.jq judges a marker write, or a file edit in the
+#   roles directory. Reads pass, so the skill's guards still see the parent's
+#   role. Deny, not ask, with no override: the write is never the subagent's
+#   to make.
+#
+# The role guards match the charters' stated philosophy: the guard is the
+# unattended default, not a lock. The implementer check is a heuristic over the command
 # text, not a shell parser. A prompt that opens with prose naming the skill
 # file (the cloud slash-command workaround), one assembled at run time or
 # read from a file (`< prompt.txt`, `cat prompt.txt |`), or a launch nested in
@@ -38,6 +50,47 @@ command -v jq >/dev/null 2>&1 || exit 0
 # is available.
 [ -n "${CLAUDE_SESSION_ROLES_DIR:-}${HOME:-}" ] || exit 0
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+
+emit() { # emit <decision> <reason>
+	jq -n --arg decision "$1" --arg reason "$2" '{
+  hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    permissionDecision: $decision,
+    permissionDecisionReason: $reason
+  }
+}'
+}
+
+# A subagent's marker write (the header's last bullet). This comes before the
+# pinned-session check below, because a subagent that pins an unpinned parent
+# makes the same mistake. The bash tests keep jq to subagent calls that could
+# be one.
+agent_re='"agent_id"[[:space:]]*:[[:space:]]*"[^"]'
+if [[ $input =~ $agent_re ]]; then
+	subagent_write=no
+	if [[ $input == *SESSION_ID* ]] &&
+		[[ $input == *session-roles* || $input == *CLAUDE_SESSION_ROLES_DIR* || $input == *"$roles_dir"* ]] &&
+		printf '%s' "$input" | jq -e --arg dir "$roles_dir" -f "${BASH_SOURCE[0]%/*}/role-guard-marker-write.jq" >/dev/null 2>&1; then
+		subagent_write=yes
+	elif [[ $input == *'"file_path"'* || $input == *'"notebook_path"'* ]]; then
+		# -ef compares the directory itself, so a trailing slash, a `..`, a
+		# symlink, or a case variant on a case-insensitive disk can't slip past.
+		file_path=$(printf '%s' "$input" | jq -r '
+			if (.agent_id // "") != "" and (.tool_name | test("^(Edit|Write|MultiEdit|NotebookEdit)$"))
+			then .tool_input.file_path // .tool_input.notebook_path // "" else "" end' 2>/dev/null)
+		# The string test covers a roles directory that doesn't exist yet.
+		file_dir=${file_path%/*}
+		if [ -n "$file_path" ] && { [ "$file_dir" -ef "$roles_dir" ] || [ "${file_dir%/}" = "${roles_dir%/}" ]; }; then
+			subagent_write=yes
+		fi
+	fi
+	if [ "$subagent_write" = yes ]; then
+		emit deny "This call would write the role marker, and it comes from an in-process subagent or agent-team teammate (its hook input carries an agent_id). You run inside your parent's session and share its session id, so the marker is the parent session's, not yours.
+
+Skip the self-pin (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker is fine."
+		exit 0
+	fi
+fi
 
 # The matcher includes Bash, so this runs before every Bash call in every
 # session. Find the session id with a bash regex and exit unless it has a
@@ -87,10 +140,4 @@ A helper session for this issue's own work is fine: give it a prompt that leads 
 *) exit 0 ;;
 esac
 
-jq -n --arg decision "$decision" --arg reason "$reason" '{
-  hookSpecificOutput: {
-    hookEventName: "PreToolUse",
-    permissionDecision: $decision,
-    permissionDecisionReason: $reason
-  }
-}'
+emit "$decision" "$reason"
