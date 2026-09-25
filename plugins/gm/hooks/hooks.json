@@ -1,0 +1,39 @@
+{
+  "description": "gm autosave — export the session id so /gm:play and /gm:new-campaign can bind the session to its campaign, then after every turn append the player's prompt and the GM's narration to <campaign>/log/raw/ and checkpoint it. Unbound sessions are untouched; every command exits 0 so a hook can never block or fail a turn.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-session-start 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-autosave 2>/dev/null || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-autosave 2>/dev/null || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
