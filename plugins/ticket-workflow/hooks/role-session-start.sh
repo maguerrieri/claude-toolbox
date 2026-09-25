@@ -3,12 +3,13 @@
 #
 # Two jobs:
 #
-# 1. Export CLAUDE_SESSION_ID, the fallback key for `/role`'s marker. Claude
-#    Code 2.1.132+ sets CLAUDE_CODE_SESSION_ID in every Bash call, and the
-#    marker snippets prefer it: the harness sets it per session, while this
-#    export is an ordinary variable that a child launched from the Bash tool
-#    inherits (so the spawn edges strip it). Older CLIs have only this export,
-#    and CLAUDE_ENV_FILE is writable from SessionStart *only*.
+# 1. Export CLAUDE_SESSION_ID, the fallback key for `/role`'s marker, on CLIs
+#    that don't set CLAUDE_CODE_SESSION_ID (Claude Code before 2.1.132). The
+#    marker snippets prefer the harness's variable: each session sets its own,
+#    while this export is an ordinary variable that a child launched from the
+#    Bash tool inherits. So it is written only when the harness's is missing,
+#    and the spawn edges strip it for those older CLIs. CLAUDE_ENV_FILE is
+#    writable from SessionStart *only*.
 #
 # 2. Re-inject the charter. A role pinned by `/role` lives in a marker file, but
 #    the charter text itself lives in the conversation — which `/compact` and
@@ -32,13 +33,14 @@ case "$session_id" in
 *[!A-Za-z0-9._-]* | *..*) exit 0 ;;
 esac
 
-# 1. Hand the session id — and this plugin's root, which only a hook knows — to
-#    subsequent Bash commands. This is how /role locates the charters, and how
-#    it keys its marker on a CLI without CLAUDE_CODE_SESSION_ID.
-#    CLAUDE_ENV_FILE expects `export KEY=value` lines.
+# 1. Hand this plugin's root, which only a hook knows, to subsequent Bash
+#    commands, so /role can locate the charters. Hand them the session id too
+#    unless the harness already sets it for them: that is how /role keys its
+#    marker on an older CLI. CLAUDE_ENV_FILE expects `export KEY=value` lines.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 	{
-		printf 'export CLAUDE_SESSION_ID=%q\n' "$session_id"
+		[ "${CLAUDE_CODE_SESSION_ID:-}" = "$session_id" ] ||
+			printf 'export CLAUDE_SESSION_ID=%q\n' "$session_id"
 		[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] &&
 			printf 'export CLAUDE_TICKET_WORKFLOW_ROOT=%q\n' "$CLAUDE_PLUGIN_ROOT"
 	} >>"$CLAUDE_ENV_FILE" 2>/dev/null || true
