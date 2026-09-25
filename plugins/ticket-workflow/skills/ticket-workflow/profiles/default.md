@@ -449,6 +449,6 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   review-round budget for a risky change — EPIC Step 5); that raises a budget, it lifts no hold.
 - Coupling / coordination: the default route is independent **bg** sessions; when a cluster needs
   coordination (concurrent children sharing code), use **shared markers** via the tracker's `COORD`
-  op — **not** a live agent team. The `--coordinate` flag selects markers; `--team` is the explicit
-  opt-in to a live `SendMessage` team.
+  op — **not** an agent team. The `--coordinate` flag selects markers; ticket work never runs in an
+  in-process agent team or as teammates (EPIC Step 3, *No agent teams*).
   No org-specific epic steps in the default profile.
