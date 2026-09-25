@@ -8,7 +8,7 @@ Run the epic: **$ARGUMENTS**
 
 - the **epic ID** (first token);
 - shared **briefing** text;
-- orchestrator **flags**: `--finish` (also "merge when green" / "and finish them"); and a routing override — `--independent` (force bg) or `--coordinate` (coordinated via shared markers / the tracker's `COORD` op). The two routing flags are **distinct, not synonyms**. A `--team` argument is rejected: stop before Step 0 with the one-line reason in the skill's EPIC Step 3 (*No agent teams*).
+- orchestrator **flags**: `--finish` (also "merge when green" / "and finish them"); and a routing override — `--independent` (force bg) or `--coordinate` (coordinated via shared markers / the tracker's `COORD` op). The two routing flags are **distinct, not synonyms**. There is no `--team` flag: EPIC Step 1 rejects one before doing anything else (the reason is in Step 3, *No agent teams*).
 
 **Strip those flags — and any `Role:` directive — from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`, nor the orchestrator's own `Role: epic-coordinator` (each child gets its own `Role: implementer` from EPIC Step 5).
 

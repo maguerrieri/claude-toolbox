@@ -18,15 +18,16 @@
 #   implementer usually runs unattended, where a prompt would stall with nobody
 #   to answer it; the human override is '/role none'.
 #
-# - any session, pinned or not: an in-process subagent runs inside this
-#   session, so its calls carry this session's id and its Bash environment
-#   holds this session's CLAUDE_CODE_SESSION_ID. A self-pin or /role it ran
-#   would rewrite this session's marker: a subagent following a skill's START
-#   step would re-pin its parent. Its calls, and only its calls,
-#   carry an agent_id (checked on Claude Code 2.1.282). So such a call is
-#   denied when it would write the marker: a Bash command that
-#   role-guard-marker-write.jq judges a marker write, or a file edit in the
-#   roles directory. Reads pass, so the skill's guards still see the parent's
+# - any session, pinned or not: an in-process subagent (or any other agent
+#   the harness runs inside this session, a teammate of the user's own agent
+#   team included) shares this session, so its calls carry this session's id
+#   and its Bash environment holds this session's CLAUDE_CODE_SESSION_ID. A
+#   self-pin or /role it ran would rewrite this session's marker: a subagent
+#   following a skill's START step would re-pin its parent. Its calls, and
+#   only its calls, carry an agent_id (checked on Claude Code 2.1.282). So
+#   such a call is denied when it would write the marker: a Bash command
+#   that role-guard-marker-write.jq judges a marker write, or a file edit in
+#   the roles directory. Reads pass, so the skill's guards still see the parent's
 #   role. Deny, not ask, with no override: the write is never the subagent's
 #   to make.
 #
@@ -104,7 +105,7 @@ if [[ $input =~ $agent_re ]]; then
 		fi
 	fi
 	if [ "$subagent_write" = yes ]; then
-		emit deny "This call would write the role marker, and it comes from an in-process subagent (its hook input carries an agent_id). You run inside your parent's session and share its session id, so the marker is the parent session's, not yours.
+		emit deny "This call would write the role marker, and it comes from an in-process subagent or other in-process agent (its hook input carries an agent_id). You run inside your parent's session and share its session id, so the marker is the parent session's, not yours.
 
 Skip the self-pin (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker is fine. If this command only mentions a session-id variable and the roles directory (a grep pattern, a commit message), single-quote those names or pass the text through a file."
 		exit 0
