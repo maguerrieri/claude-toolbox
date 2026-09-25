@@ -2,7 +2,8 @@
 # Tests for hooks/role-guard.sh: pipe crafted PreToolUse payloads in, with an
 # isolated CLAUDE_SESSION_ROLES_DIR, and check the decision it prints (no
 # output = allow). The last section checks that hooks/role-session-start.sh
-# reads the role from the same markers. Needs jq, like the hooks themselves.
+# reads the role, and the Notify: target, from the same markers. Needs jq, like
+# the hooks themselves.
 #
 #   bash plugins/ticket-workflow/tests/test-role-guard.sh
 set -u
@@ -223,6 +224,21 @@ record none "session start: notify with markup" "$(notifies $'implementer\nnotif
 record none "session start: overlong notify" "$(notifies "$(printf 'implementer\nnotify: %0101d\n' 0)")"
 record none "session start: notify on the role line is no role" "$(injects $'notify: repo planning\nimplementer\n')"
 record none "session start: notify without a valid role" "$(notifies $'bogus\nnotify: repo planning\n')"
+
+# START Step 1's *Note your notifier* write, verbatim but for the substituted
+# name: it replaces the notify line and keeps the role first.
+write_notify() { # write_notify <marker content> <session name>; prints the marker
+	printf '%s' "$1" >"$roles_dir/$sid"
+	marker="$roles_dir/$sid"
+	rest=$(grep -v '^notify: ' "$marker")
+	printf '%s\nnotify: %s\n' "$rest" "$2" >"$marker"
+	cat "$marker"
+}
+rewritten=$(write_notify $'implementer\nissue: 52\nnotify: old\n' 'repo #52: new')
+record $'implementer\nissue: 52\nnotify: repo #52: new' "notify write: replaces the old line" "$rewritten"
+record implementer "notify write: role still first" "$(injects "$rewritten")"
+record "repo #52: new" "notify write: re-injected" "$(notifies "$rewritten")"
+record $'epic-coordinator\nnotify: planning' "notify write: marker without a trailing newline" "$(write_notify 'epic-coordinator' planning)"
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
