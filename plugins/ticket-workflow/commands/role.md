@@ -24,8 +24,8 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    `epic-coordinator`, `implementer`, `none`. Anything else (or empty): report
    the valid values — plus, when `$CLAUDE_SESSION_ID` is set and a marker file
    exists, the current pin (`cat "$roles_dir/$CLAUDE_SESSION_ID"`: the role
-   on its first line, then any `issue:` lines an implementer recorded) — and
-   stop.
+   on its first line, then any `issue:` lines an implementer recorded and a
+   `notify:` line naming its `Notify:` target) — and stop.
 
 2. If `$CLAUDE_SESSION_ID` is unset, this plugin's SessionStart hook didn't
    run (plugin installed mid-session, or hooks disabled) — say so, note the
@@ -39,7 +39,10 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    rm -f "$roles_dir/$CLAUDE_SESSION_ID"
    ```
 
-   State that the role is dropped and no charter governs the session; stop.
+   This deletes the whole marker, so any `issue:` lines and the `notify:`
+   line go with it: after the next compaction the session no longer has its
+   `Notify:` target re-injected. State that the role is dropped and no charter
+   governs the session; stop.
 
 4. **Pin:** write the marker, keyed by session id (`$CLAUDE_SESSION_ID` is
    exported by this plugin's SessionStart hook via `CLAUDE_ENV_FILE`), unless
@@ -51,12 +54,14 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    [ "$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]')" = "<role>" ] || printf '%s\n' "<role>" >"$marker"
    ```
 
-   A hand pin writes the role line only. The `issue:` lines a spawned
-   implementer's self-pin adds (START Step 1) have no source here, so a fresh
-   hand pin leaves START's one-issue guard unarmed. Re-pinning the role the
-   marker already holds (compared as the hooks read it: first line, whitespace
-   stripped) leaves the marker untouched, so a spawned implementer that runs
-   `/role implementer` keeps its issue lines.
+   A hand pin writes the role line only. The `issue:` and `notify:` lines a
+   spawned session's self-pin adds (START Step 1) have no source here, so a
+   fresh hand pin leaves START's one-issue guard unarmed and re-injects no
+   `Notify:` target. Re-pinning the role the marker already holds (compared as
+   the hooks read it: first line, whitespace stripped) leaves the marker
+   untouched, so a spawned implementer that runs `/role implementer` keeps its
+   issue and notify lines. Pinning a different role rewrites the marker and
+   drops them.
 
 5. Read the charter at
    `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` and
