@@ -45,7 +45,9 @@ points check its marker and refuse, and a hook denies a hand-rolled
 (its tests: `bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can
 it start a second issue: its self-pinned marker records its own issue on a
 second line, and START refuses any other. The marker's role is its first line
-only.
+only. The marker is keyed on the session id, so it doesn't follow `/clear` or a
+fork (re-pin with `/role`), and the same hook denies a marker write from an
+in-process subagent or teammate, which shares its parent's id.
 `/role none` unpins.
 
 ## Development workflow

@@ -6,18 +6,22 @@ Pin (or unpin) this session's role charter: **$ARGUMENTS**
 
 A role set here is durable: it's recorded in a per-session marker file that the
 plugin's hooks consume — the SessionStart hook re-injects the charter after
-`--resume`, `/clear`, and compaction (but `/clear` and forks start a new
-session id the marker may not follow: the skill's Session roles, *Session
-identity*, and #160), and the PreToolUse guard turns file edits
+`--resume` and compaction, and the PreToolUse guard turns file edits
 into a permission prompt while the `planner` charter is pinned, and denies a
 `claude --bg`/`-p` or `create_session` launch that leads with an issue-spawning
 command while `implementer` is. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
 are normally injected by spawn edges (`Role:` directives), not by hand.
-It is also how a **teleported** session gets its pin back: after
-`claude --teleport` the marker is still on the machine the session ran on,
-and a teleport launch doesn't deliver SessionStart output, so re-run
-`/role <role>` in the teleported session.
+It is also how a session gets its pin back where the marker doesn't follow
+it (the skill's Session roles: *Session identity*). `/clear` and forks
+(`--fork-session`, `/branch`, and `/fork` with agent view on) start a new
+session id that nothing links to the old one. With agent view off, `/fork`
+runs in-process under this session's pin, so there's nothing to re-pin. After
+`claude --teleport` the marker is still on the machine the session ran on (a
+teleport launch doesn't deliver SessionStart output either). Re-run
+`/role <role>` in the new or teleported session. An in-process subagent or
+teammate can't pin at all: it shares its parent's session, so the PreToolUse
+hook denies its marker write.
 
 Every snippet below opens by assigning the marker directory (the override
 exists for testing; the hooks honor the same variable) and this session's id:
@@ -90,4 +94,5 @@ sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
    edit guard — edits prompt for approval until `/role none`; `implementer`
    arms the spawn guard — issue-spawning entry points refuse and issue-spawn
    launches are denied until `/role none`), and that it survives
-   resume/compaction.
+   resume/compaction but not `/clear` or a fork, after which `/role` is run
+   again.

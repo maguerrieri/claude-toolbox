@@ -12,10 +12,15 @@
 #    writable from SessionStart *only*.
 #
 # 2. Re-inject the charter. A role pinned by `/role` lives in a marker file, but
-#    the charter text itself lives in the conversation — which `/compact` and
-#    `/clear` discard and `--resume` never had. Re-emitting it on those sources
-#    is what makes a role durable rather than merely initial. (stdout from a
-#    SessionStart hook is injected as session context.)
+#    the charter text itself lives in the conversation — which `/compact`
+#    discards and `--resume` never had. Re-emitting it on those sources is what
+#    makes a role durable rather than merely initial. (stdout from a
+#    SessionStart hook is injected as session context.) `/clear` and forks
+#    start a new session id with nothing linking it to the old one (no
+#    predecessor field in the input, and a fork's transcript isn't written yet
+#    when this runs; checked on 2.1.282), so the old marker isn't found there
+#    and the session re-pins with `/role`. The hook still runs on those sources
+#    for job 1: the new id needs its export on an older CLI.
 #
 # Fails open: this hook must never block a session from starting.
 set -uo pipefail
@@ -81,7 +86,7 @@ esac
 charter="${CLAUDE_PLUGIN_ROOT:-}/skills/ticket-workflow/roles/${role}.md"
 [ -f "$charter" ] || exit 0
 
-printf 'This session is pinned to the **%s** role charter (set earlier via `/role %s`; re-attached at session start — after resume, /clear, or compaction). It governs this session until `/role none`.\n\n' "$role" "$role"
+printf 'This session is pinned to the **%s** role charter (set earlier via `/role %s`; re-attached at session start — after resume or compaction). It governs this session until `/role none`.\n\n' "$role" "$role"
 # The charter names sibling skill files (messaging.md, phases/, roles/) without
 # the skill being loaded, so give their base dir and the whole-file Read rule
 # here: a Bash excerpt of the plugin cache stops on an unapprovable prompt.
