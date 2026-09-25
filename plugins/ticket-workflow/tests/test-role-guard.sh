@@ -149,6 +149,12 @@ record allow "two-line implementer marker, Edit" "$(decide "$two_line_implemente
 record ask "two-line planner marker, Edit" "$(decide $'planner\nissue: 52' Edit file_path /repo/x)"
 record deny "implementer marker without a trailing newline" "$(marker_fmt='%s' decide implementer Bash command "$spawn_ticket")"
 
+# START Step 1 also records the session's Notify: target on a third line.
+three_line_implementer=$'implementer\nissue: 52\nnotify: repo planning'
+record deny "three-line implementer marker, spawn" "$(decide "$three_line_implementer" Bash command "$spawn_ticket")"
+record allow "three-line implementer marker, helper" "$(decide "$three_line_implementer" Bash command "$helper")"
+record ask "three-line planner marker, Edit" "$(decide $'planner\nnotify: repo planning' Edit file_path /repo/x)"
+
 # Other roles, or no marker: the implementer guard doesn't apply.
 bash_case allow none "no marker" "$spawn_ticket"
 bash_case allow epic-coordinator "coordinator spawns children" "$spawn_ticket"
@@ -179,12 +185,23 @@ record allow "no roles directory" "${out:-allow}"
 # role-session-start.sh re-injects the charter the marker's first line names.
 session_start="$here/../hooks/role-session-start.sh"
 
-# Prints the role whose charter the hook re-injected on resume, or none.
-injects() { # injects <marker content>
+# Prints what the hook injects on resume for <marker content>.
+session_start_output() { # session_start_output <marker content>
 	printf '%s' "$1" >"$roles_dir/$sid"
 	jq -n --arg sid "$sid" '{session_id: $sid, source: "resume"}' |
-		CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_PLUGIN_ROOT="$here/.." CLAUDE_ENV_FILE='' bash "$session_start" |
+		CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_PLUGIN_ROOT="$here/.." CLAUDE_ENV_FILE='' bash "$session_start"
+}
+
+# Prints the role whose charter the hook re-injected, or none.
+injects() { # injects <marker content>
+	session_start_output "$1" |
 		sed -n 's/^This session is pinned to the \*\*\([a-z-]*\)\*\* role charter.*/\1/p' | grep . || echo none
+}
+
+# Prints the Notify: target the hook re-injected, or none.
+notifies() { # notifies <marker content>
+	session_start_output "$1" |
+		sed -n 's/^Your `Notify:` target is \*\*\(.*\)\*\*: .*/\1/p' | grep . || echo none
 }
 
 record implementer "session start: one-line marker" "$(injects $'implementer\n')"
@@ -192,6 +209,20 @@ record implementer "session start: two-line marker" "$(injects $'implementer\nis
 record epic-coordinator "session start: two-line coordinator marker" "$(injects $'epic-coordinator\nissue: 40\n')"
 record implementer "session start: no trailing newline" "$(injects 'implementer')"
 record none "session start: unknown role" "$(injects $'bogus\n')"
+
+# The Notify: target rides next to the charter (START Step 1 records it).
+record implementer "session start: three-line marker, role" "$(injects $'implementer\nissue: 52\nnotify: repo planning\n')"
+record "repo planning" "session start: three-line marker, notify" "$(notifies $'implementer\nissue: 52\nnotify: repo planning\n')"
+record "widgets #40: epic (auth)" "session start: coordinator notify with #, colon, parens" "$(notifies $'epic-coordinator\nnotify: widgets #40: epic (auth)\n')"
+record "repo planning" "session start: notify without a trailing newline" "$(notifies $'implementer\nnotify: repo planning')"
+record "second" "session start: last notify line wins" "$(notifies $'implementer\nnotify: first\nnotify: second\n')"
+record none "session start: no notify line" "$(notifies $'implementer\nissue: 52\n')"
+record none "session start: notify with a backtick" "$(notifies $'implementer\nnotify: x`id`\n')"
+record none "session start: notify with a dollar sign" "$(notifies $'implementer\nnotify: $(id)\n')"
+record none "session start: notify with markup" "$(notifies $'implementer\nnotify: a**b\n')"
+record none "session start: overlong notify" "$(notifies "$(printf 'implementer\nnotify: %0101d\n' 0)")"
+record none "session start: notify on the role line is no role" "$(injects $'notify: repo planning\nimplementer\n')"
+record none "session start: notify without a valid role" "$(notifies $'bogus\nnotify: repo planning\n')"
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

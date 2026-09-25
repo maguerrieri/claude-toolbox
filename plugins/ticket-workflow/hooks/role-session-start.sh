@@ -80,3 +80,14 @@ printf 'This session is pinned to the **%s** role charter (set earlier via `/rol
 # here: a Bash excerpt of the plugin cache stops on an unapprovable prompt.
 printf 'Skill files the charter names (`messaging.md`, `phases/…`, `roles/…`) live under `%s/skills/ticket-workflow/`. Read any of them whole with the Read tool at that absolute path, never through Bash: the plugin cache is a protected path, and a Bash excerpt of it stops on a permission prompt no allow rule can pre-approve.\n\n' "${CLAUDE_PLUGIN_ROOT:-}"
 cat "$charter"
+
+# The Notify: target. START/EPIC Step 1 record the briefing's `Notify:` on a
+# `notify: <session name>` line, because the briefing is gone after compaction
+# and the pings go with it. The last such line wins. Whitelist it like the
+# role: the name is printed into session context, so only characters a spawn
+# name uses (`<repo> <ID>: <desc>`) pass, and no markup or shell syntax.
+notify=$(sed -n 's/^notify: //p' "$marker" 2>/dev/null | tail -n 1) || exit 0
+notify_re='^[A-Za-z0-9][A-Za-z0-9 ._:#/()@+,-]*$'
+if [ "${#notify}" -le 100 ] && [[ $notify =~ $notify_re ]]; then
+	printf '\nYour `Notify:` target is **%s**: the spawner session named in your briefing, kept in the role marker so it survives compaction. Ping it via SendMessage at the state changes listed in the ticket-workflow skill `messaging.md` (`pushed:`, `done:`, `blocked:`, `filed:`).\n' "$notify"
+fi
