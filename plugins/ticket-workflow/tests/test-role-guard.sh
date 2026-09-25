@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Tests for hooks/role-guard.sh: pipe crafted PreToolUse payloads in, with an
 # isolated CLAUDE_SESSION_ROLES_DIR, and check the decision it prints (no
-# output = allow). The last section checks that hooks/role-session-start.sh
-# reads the role, and the Notify: target, from the same markers. Needs jq, like
-# the hooks themselves.
+# output = allow). The last sections check that hooks/role-session-start.sh
+# reads the role, and the Notify: target, from the same markers, and that
+# scripts/record-notify.sh writes that target. Needs jq, like the hooks.
 #
 #   bash plugins/ticket-workflow/tests/test-role-guard.sh
 set -u
@@ -202,7 +202,7 @@ injects() { # injects <marker content>
 # Prints the Notify: target the hook re-injected, or none.
 notifies() { # notifies <marker content>
 	session_start_output "$1" |
-		sed -n 's/^Your `Notify:` target is \*\*\(.*\)\*\*: .*/\1/p' | grep . || echo none
+		sed -n 's/^Your `Notify:` target is `\(.*\)`: .*/\1/p' | grep . || echo none
 }
 
 record implementer "session start: one-line marker" "$(injects $'implementer\n')"
@@ -214,31 +214,51 @@ record none "session start: unknown role" "$(injects $'bogus\n')"
 # The Notify: target rides next to the charter (START Step 1 records it).
 record implementer "session start: three-line marker, role" "$(injects $'implementer\nissue: 52\nnotify: repo planning\n')"
 record "repo planning" "session start: three-line marker, notify" "$(notifies $'implementer\nissue: 52\nnotify: repo planning\n')"
-record "widgets #40: epic (auth)" "session start: coordinator notify with #, colon, parens" "$(notifies $'epic-coordinator\nnotify: widgets #40: epic (auth)\n')"
+record "widgets #40: epic — auth" "session start: /spawn-epic coordinator name (em dash)" "$(notifies $'epic-coordinator\nnotify: widgets #40: epic — auth\n')"
+record "app #7: fix user's login & CI [ad63a1]" "session start: apostrophe, ampersand, [ref]" "$(notifies $'implementer\nnotify: app #7: fix user\'s login & CI [ad63a1]\n')"
 record "repo planning" "session start: notify without a trailing newline" "$(notifies $'implementer\nnotify: repo planning')"
 record "second" "session start: last notify line wins" "$(notifies $'implementer\nnotify: first\nnotify: second\n')"
 record none "session start: no notify line" "$(notifies $'implementer\nissue: 52\n')"
 record none "session start: notify with a backtick" "$(notifies $'implementer\nnotify: x`id`\n')"
-record none "session start: notify with a dollar sign" "$(notifies $'implementer\nnotify: $(id)\n')"
-record none "session start: notify with markup" "$(notifies $'implementer\nnotify: a**b\n')"
-record none "session start: overlong notify" "$(notifies "$(printf 'implementer\nnotify: %0101d\n' 0)")"
+record none "session start: notify with a tab" "$(notifies $'implementer\nnotify: a\tb\n')"
+record none "session start: notify with a carriage return" "$(notifies $'implementer\nnotify: repo planning\r\n')"
+record none "session start: notify with a trailing space" "$(notifies $'implementer\nnotify: repo planning \n')"
+record none "session start: empty notify" "$(notifies $'implementer\nnotify: \n')"
+record none "session start: overlong notify" "$(notifies "$(printf 'implementer\nnotify: %0201d\n' 0)")"
+record "$(printf '%0200d' 0)" "session start: notify at the length limit" "$(notifies "$(printf 'implementer\nnotify: %0200d\n' 0)")"
 record none "session start: notify on the role line is no role" "$(injects $'notify: repo planning\nimplementer\n')"
 record none "session start: notify without a valid role" "$(notifies $'bogus\nnotify: repo planning\n')"
 
-# START Step 1's *Note your notifier* write, verbatim but for the substituted
-# name: it replaces the notify line and keeps the role first.
-write_notify() { # write_notify <marker content> <session name>; prints the marker
-	printf '%s' "$1" >"$roles_dir/$sid"
-	marker="$roles_dir/$sid"
-	rest=$(grep -v '^notify: ' "$marker")
-	printf '%s\nnotify: %s\n' "$rest" "$2" >"$marker"
-	cat "$marker"
+# scripts/record-notify.sh writes the line START Step 1 records.
+record_notify="$here/../scripts/record-notify.sh"
+
+# Prints the marker after recording <session name> into <marker content>
+# (none: no marker), then the script's exit status on a last line.
+write_notify() { # write_notify <marker content | none> <session name>
+	rm -f "$roles_dir/$sid"
+	[ "$1" = none ] || printf '%s' "$1" >"$roles_dir/$sid"
+	printf '%s\n' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_SESSION_ID="$sid" bash "$record_notify" 2>/dev/null
+	local status=$?
+	cat "$roles_dir/$sid" 2>/dev/null || echo none
+	echo "exit $status"
 }
+
 rewritten=$(write_notify $'implementer\nissue: 52\nnotify: old\n' 'repo #52: new')
-record $'implementer\nissue: 52\nnotify: repo #52: new' "notify write: replaces the old line" "$rewritten"
+record $'implementer\nissue: 52\nnotify: repo #52: new\nexit 0' "notify write: replaces the old line" "$rewritten"
+rewritten=${rewritten%$'\n'exit 0}
 record implementer "notify write: role still first" "$(injects "$rewritten")"
 record "repo #52: new" "notify write: re-injected" "$(notifies "$rewritten")"
-record $'epic-coordinator\nnotify: planning' "notify write: marker without a trailing newline" "$(write_notify 'epic-coordinator' planning)"
+record $'epic-coordinator\nnotify: planning\nexit 0' "notify write: marker without a trailing newline" "$(write_notify 'epic-coordinator' planning)"
+tricky="widgets #40: epic — user's \"auth\" & CI [ad63a1] \$(touch $roles_dir/pwned)"
+record $'implementer\nnotify: '"$tricky"$'\nexit 0' "notify write: quotes and shell syntax stay data" "$(write_notify $'implementer\n' "$tricky")"
+record absent "notify write: nothing in the name ran" "$([ -e "$roles_dir/pwned" ] && echo present || echo absent)"
+record $'implementer\nnotify: repo planning\nexit 0' "notify write: surrounding whitespace trimmed" "$(write_notify $'implementer\n' $'  repo planning \t')"
+record $'none\nexit 1' "notify write: no marker, none created" "$(write_notify none 'repo planning')"
+record $'implementer\nnotify: old\nexit 1' "notify write: backtick rejected, marker untouched" "$(write_notify $'implementer\nnotify: old\n' 'x`id`')"
+record $'implementer\nexit 1' "notify write: blank name rejected" "$(write_notify $'implementer\n' '   ')"
+record $'implementer\nexit 1' "notify write: overlong name rejected" "$(write_notify $'implementer\n' "$(printf '%0201d' 0)")"
+printf 'repo planning\n' | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_SESSION_ID= bash "$record_notify" 2>/dev/null
+record 1 "notify write: CLAUDE_SESSION_ID unset" "$?"
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

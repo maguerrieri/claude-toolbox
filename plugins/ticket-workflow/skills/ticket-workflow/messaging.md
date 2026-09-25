@@ -27,13 +27,14 @@ grounding rule is what makes any lost or delayed message harmless.
   not: compaction or `/clear` drops it, and a session that forgets the name
   stops pinging. So a session that self-pins a role (START Step 1, EPIC Step 1)
   also writes the target into its role marker as a `notify: <session name>`
-  line, and the SessionStart hook re-injects it next to the charter after
-  resume, `/clear`, or compaction. The marker is the one place the name is
-  kept; `/role none` deletes it, and the `notify:` line goes with it. The hook
-  prints only a name made of letters, digits, spaces, and `._:#/()@+,-`, up
-  to 100 characters (every `<repo> <ID>: <desc>` spawn name fits), so the
-  line can't carry markup or shell syntax into context. A session with no
-  role marker keeps the name in context only.
+  line (`scripts/record-notify.sh`), and the SessionStart hook re-injects it
+  next to the charter after resume, `/clear`, or compaction. The marker is the
+  one place the name is kept; `/role none` deletes it, and the `notify:` line
+  goes with it. Any spawn name fits, em dash, apostrophe, and ` [ref]` suffix
+  included; the script and the hook refuse only control characters,
+  backticks, and names over 200 characters, so the re-injected name stays one
+  well-formed code span. A session with no role marker keeps the name in
+  context only.
 - **Each edge's `Notify:` names that edge's own spawner.** When you spawn,
   put *your* name in the child's `Notify:`, never the `Notify:` you inherited:
   a grandchild (an implementer's helper, say) never addresses its grandparent.
