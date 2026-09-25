@@ -33,6 +33,16 @@ Add your own: an adapter is a folder (`adapter.md` + `oracles/` + a sheet) — s
 
 Orthogonal to systems — any persona runs any game. Shipped: **house** (default), **grognard**, **thirsty-sword-lesbians**, **chronicler**. A persona shapes voice only, never numbers (`skills/gm/references/persona-contract.md`). Per-persona commit avatars are wired via `identity/` (follow-on infra).
 
+**Write your own — no PR against this plugin required.** A persona is one markdown file, and `persona:` in `campaign.md` resolves to a folder three ways:
+
+| Scope | Put it in | Then set |
+|---|---|---|
+| One campaign | `<campaign>/personas/<name>/persona.md` | `persona: <name>` — found first, versioned with the save |
+| All your campaigns | any dir, e.g. `~/rpg/personas/` | `export GM_PERSONA_PATH=~/rpg/personas` (direnv) |
+| Shared with others | a **persona pack** plugin shipping just `personas/` | its `SessionStart` hook appends to `GM_PERSONA_PATH` |
+
+A bare name searches campaign → `$GM_PERSONA_PATH` → this plugin, taking the first that holds a `persona.md` (so a shipped name can be deliberately shadowed); a value containing `/` or starting with `~`, `.`, or `/` is used as a literal path. `bin/validate-adapter --personas <dir>` lints personas anywhere, so an out-of-tree pack can run the same check in its own CI — but that check is a smoke test (front-matter, plus a short mechanic-phrase deny-list), not enforcement of the voice-only boundary. A persona is prose the GM adopts as instruction: read one before you run it, especially one you didn't write.
+
 ## Dice
 
 `bin/roll` is true-RNG (Python `secrets`), stdlib-only:
