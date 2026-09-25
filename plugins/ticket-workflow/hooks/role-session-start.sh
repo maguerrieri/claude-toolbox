@@ -3,10 +3,12 @@
 #
 # Two jobs:
 #
-# 1. Export CLAUDE_SESSION_ID. Claude Code does not expose the session id to the
-#    Bash tool, and CLAUDE_ENV_FILE is writable from SessionStart *only* — so
-#    this is the one place `/role` can be given a session-scoped key to write
-#    its marker under.
+# 1. Export CLAUDE_SESSION_ID, the fallback key for `/role`'s marker. Claude
+#    Code 2.1.132+ sets CLAUDE_CODE_SESSION_ID in every Bash call, and the
+#    marker snippets prefer it: the harness sets it per session, while this
+#    export is an ordinary variable that a child launched from the Bash tool
+#    inherits (so the spawn edges strip it). Older CLIs have only this export,
+#    and CLAUDE_ENV_FILE is writable from SessionStart *only*.
 #
 # 2. Re-inject the charter. A role pinned by `/role` lives in a marker file, but
 #    the charter text itself lives in the conversation — which `/compact` and
@@ -31,8 +33,9 @@ case "$session_id" in
 esac
 
 # 1. Hand the session id — and this plugin's root, which only a hook knows — to
-#    subsequent Bash commands. This is how /role keys its marker and locates the
-#    charters. CLAUDE_ENV_FILE expects `export KEY=value` lines.
+#    subsequent Bash commands. This is how /role locates the charters, and how
+#    it keys its marker on a CLI without CLAUDE_CODE_SESSION_ID.
+#    CLAUDE_ENV_FILE expects `export KEY=value` lines.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 	{
 		printf 'export CLAUDE_SESSION_ID=%q\n' "$session_id"
