@@ -61,6 +61,22 @@ emit() { # emit <decision> <reason>
 }'
 }
 
+# in_roles_dir <dir>: is <dir> the roles directory? -ef compares the directory
+# itself, so a `..` or `.` segment, a doubled slash, a symlink, or a case
+# variant on a case-insensitive disk can't slip past. A roles directory that
+# doesn't exist yet has nothing for -ef to find, so then the normalized paths
+# are compared, and the names (ignoring case) with their parents by -ef.
+in_roles_dir() {
+	[ "$1" -ef "$roles_dir" ] && return 0
+	[ -d "$roles_dir" ] && return 1
+	norm() { printf '%s' "$1" | sed -e 's://*:/:g' -e 's:/\./:/:g' -e 's:/\.$::' -e 's:/$::' | tr '[:upper:]' '[:lower:]'; }
+	local got want
+	got=$(norm "$1")
+	want=$(norm "$roles_dir")
+	[ "$got" = "$want" ] && return 0
+	[ "${got##*/}" = "${want##*/}" ] && [ "$(dirname -- "$1")" -ef "$(dirname -- "$roles_dir")" ]
+}
+
 # A subagent's marker write (the header's last bullet). This comes before the
 # pinned-session check below, because a subagent that pins an unpinned parent
 # makes the same mistake. The bash tests keep jq to subagent calls that could
@@ -72,22 +88,25 @@ if [[ $input =~ $agent_re ]]; then
 		[[ $input == *session-roles* || $input == *CLAUDE_SESSION_ROLES_DIR* || $input == *"$roles_dir"* ]] &&
 		printf '%s' "$input" | jq -e --arg dir "$roles_dir" -f "${BASH_SOURCE[0]%/*}/role-guard-marker-write.jq" >/dev/null 2>&1; then
 		subagent_write=yes
-	elif [[ $input == *'"file_path"'* || $input == *'"notebook_path"'* ]]; then
-		# -ef compares the directory itself, so a trailing slash, a `..`, a
-		# symlink, or a case variant on a case-insensitive disk can't slip past.
-		file_path=$(printf '%s' "$input" | jq -r '
-			if (.agent_id // "") != "" and (.tool_name | test("^(Edit|Write|MultiEdit|NotebookEdit)$"))
-			then .tool_input.file_path // .tool_input.notebook_path // "" else "" end' 2>/dev/null)
-		# The string test covers a roles directory that doesn't exist yet.
-		file_dir=${file_path%/*}
-		if [ -n "$file_path" ] && { [ "$file_dir" -ef "$roles_dir" ] || [ "${file_dir%/}" = "${roles_dir%/}" ]; }; then
+	else
+		# A file edit (Edit, Write, MultiEdit, NotebookEdit) in the roles
+		# directory. A bash regex reads the path, and jq only a path with JSON
+		# escapes in it, which the regex can't.
+		file_path=
+		path_re='"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"([^"\\]*)"'
+		if [[ $input =~ $path_re ]]; then
+			file_path=${BASH_REMATCH[2]}
+		elif [[ $input == *'"file_path"'* || $input == *'"notebook_path"'* ]]; then
+			file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null)
+		fi
+		if [ -n "$file_path" ] && in_roles_dir "${file_path%/*}"; then
 			subagent_write=yes
 		fi
 	fi
 	if [ "$subagent_write" = yes ]; then
 		emit deny "This call would write the role marker, and it comes from an in-process subagent or agent-team teammate (its hook input carries an agent_id). You run inside your parent's session and share its session id, so the marker is the parent session's, not yours.
 
-Skip the self-pin (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker is fine."
+Skip the self-pin (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker is fine. If this command only mentions a session-id variable and the roles directory (a grep pattern, a commit message), single-quote those names or pass the text through a file."
 		exit 0
 	fi
 fi
