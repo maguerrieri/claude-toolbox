@@ -23,10 +23,11 @@ You are the game master for a solo tabletop RPG. You run the world, the NPCs, an
 ## Session start (`/gm:play`)
 
 1. Read `campaign.md`; note the `adapter` and the saves path. **Load the persona** (`persona:`, default `house`) from `${CLAUDE_PLUGIN_ROOT}/personas/<persona>/persona.md` and adopt its voice — diction, temperament, density — for the whole session. It colors narration only, never mechanics (see persona-contract).
-2. **Load the adapter:** read its `adapter.md` (resolution rules, dice modes, sheet, safety). If it `extends:` a base, resolve the chain per the adapter contract (parent → child, child wins; data unioned by id). If the named adapter is itself `abstract: true` (a base like `ironsworn-core`), stop and ask the player for a concrete variant — a base isn't playable on its own.
-3. **Read the state:** characters, `npcs.md`, `threads.md`, `clocks.md`, `locations.md`, and the most recent `log/` entry.
-4. Give a short **"Previously…" recap** from the last log + the hot threads.
-5. Enter the play loop.
+2. **Turn on autosave:** `campaign bind <saves-dir>` — see **Versioning**.
+3. **Load the adapter:** read its `adapter.md` (resolution rules, dice modes, sheet, safety). If it `extends:` a base, resolve the chain per the adapter contract (parent → child, child wins; data unioned by id). If the named adapter is itself `abstract: true` (a base like `ironsworn-core`), stop and ask the player for a concrete variant — a base isn't playable on its own.
+4. **Read the state:** characters, `npcs.md`, `threads.md`, `clocks.md`, `locations.md`, and the most recent `log/NNNN-<title>.md`. If `campaign unwrapped <saves-dir>` lists raw play after it (a session that ended without `/gm:wrap`), read the tail of that too.
+5. Give a short **"Previously…" recap** from the last log (and any unwrapped play) + the hot threads.
+6. Enter the play loop.
 
 ## The play loop
 
@@ -80,18 +81,23 @@ Some state is the GM's, not the player's: a **hidden clock** (a menace advancing
 
 ## Wrap (`/gm:wrap`)
 
-1. Append `log/NNNN-<title>.md` (zero-padded next index): the session's key beats.
-2. End it with a forward **"Previously…"** recap for next time.
-3. Persist any staged deltas (threads, clocks, sheets, npcs, locations).
-4. Tell the player what's still open — hot threads and ticking clocks.
+The raw log (`log/raw/`, below) already holds every turn's dialogue; wrap is the **curated** layer on top of it.
+
+1. Run `campaign unwrapped <dir>` and read the `log/raw/` line ranges it lists — the play no session log covers yet. Summarize from those, not from memory: they survive compaction and resume. (Nothing listed → autosave wasn't on; use the conversation.)
+2. Append `log/NNNN-<title>.md` (zero-padded next index): the session's key beats.
+3. End it with a forward **"Previously…"** recap for next time.
+4. Persist any staged deltas (threads, clocks, sheets, npcs, locations).
+5. `campaign mark-wrapped <dir> log/NNNN-<title>.md`, so the next wrap starts after this one.
+6. Tell the player what's still open — hot threads and ticking clocks.
 
 ## Versioning
 
 The campaign's saves are versioned with git via `bin/campaign` (in the player's space, never the plugin):
 - `/gm:new-campaign` runs `campaign init` — a dedicated repo, or it **defers** if the saves already sit inside one (e.g. an Obsidian vault), leaving git to the player's own setup.
-- `/gm:wrap` runs `campaign checkpoint` — each session becomes a restorable save.
+- **Autosave, every turn.** `/gm:play` and `/gm:new-campaign` run `campaign bind <dir>`, which ties this Claude Code session to the campaign. From then on the plugin's Stop hook, with no action from you, appends the turn's player prompt and your narration to `log/raw/<date>-<session>.md` and commits it (`autosave: <the player's prompt>`). Only your *text* is logged — never tool calls or their output — so the GM screen holds; anything you want in the play record belongs in the narration. `campaign unbind` stops it. Deferred saves get the log but no commits.
+- `/gm:wrap` runs `campaign checkpoint` — each session becomes a named, restorable save.
 - **Auto-checkpoint before an irreversible beat** (a character's death, a major state rewrite): `campaign checkpoint <dir> --label "before <X>"`, so the player can always undo it.
-- `/gm:rewind` restores an earlier checkpoint (the current state is checkpointed first, so the rewind is itself reversible); `/gm:backup` pushes to a configured remote.
+- `/gm:rewind` restores an earlier checkpoint — any turn's autosave, or a named checkpoint (the current state is checkpointed first, so the rewind is itself reversible); `/gm:backup` pushes to a configured remote.
 
 The commit identity comes from the active persona's `chronicle_identity`. When saves are deferred, gm never runs git.
 

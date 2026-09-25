@@ -15,8 +15,8 @@ Enable the plugin from the `maguerrieri-toolbox` marketplace, then allowlist the
 ## Play
 
 - `/gm:new-campaign` — pick a **system** and a **persona**, choose a saves folder, set up the world + a character; starts a git repo for the saves.
-- `/gm:play` — start or continue a session.
-- `/gm:wrap` — end a session (writes the log + recap, checkpoints the save).
+- `/gm:play` — start or continue a session. It turns on **autosave**: after every turn, the plugin's Stop hook appends your prompt and the GM's narration to the campaign's `log/raw/` and checkpoints it — no `/gm:wrap` needed to keep the play record.
+- `/gm:wrap` — end a session (summarizes the raw log into the session log + recap, checkpoints the save).
 - `/gm:oracle` — a quick yes/no or inspiration pull.
 - `/gm:forge` — bulk-ideate a diverse pool via `generate` into a rollable table; converge-and-seal a canonical secret behind the screen.
 - `/gm:checkpoint` · `/gm:rewind` · `/gm:backup` — save-state the campaign (and undo a bad turn).
@@ -55,6 +55,7 @@ roll table <campaign>/tables/rumors.md   # campaign table (hand-authored or forg
 - **Personas** (`personas/`) — the GM's voice, orthogonal to the system.
 - **Dice** (`bin/roll`) + **campaign git** (`bin/campaign`) — the things an LLM can't fake: true randomness and durable, versioned state.
 - **Your saves** — git-versioned markdown in your own directory, never in the plugin. Ready-to-play example: `examples/embervale/`.
+- **Autosave** (`hooks/hooks.json`) — a session bound to a campaign (`campaign bind`, run by `/gm:play` and `/gm:new-campaign`) gets each turn's dialogue appended to `log/raw/<date>-<session>.md` and committed, so the play history lives in the campaign rather than in Claude Code's transcripts (deleted after 30 days by default). Text only — tool calls and their output never reach it, so the GM screen holds. Unbound sessions are untouched; hook failures go to the plugin's data dir (`autosave.log`), never to the turn.
 - **Forge** — bulk-ideate a diverse pool via `generate` into a rollable table; converge-and-seal a canonical secret behind the screen.
 - **The GM screen** — for systems that want one (`visibility: gm`, e.g. generic), hidden clocks and sealed answers are written through `bin/campaign gm-*` into a `.gm/` dir, so the write collapses to "Ran 1 shell command" in the transcript instead of spoiling a solo player. Player-facing systems (Ironsworn) keep everything in the open.
 

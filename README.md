@@ -38,7 +38,7 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   plus 7 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
   `/gm:oracle`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`). Pluggable system
   adapters (generic / Ironsworn / Starforged), true dice, and git-versioned
-  saves.
+  saves that autosave every turn's dialogue.
 
 ## Usage
 
