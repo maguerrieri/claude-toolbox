@@ -73,4 +73,8 @@ charter="${CLAUDE_PLUGIN_ROOT:-}/skills/ticket-workflow/roles/${role}.md"
 [ -f "$charter" ] || exit 0
 
 printf 'This session is pinned to the **%s** role charter (set earlier via `/role %s`; re-attached at session start — after resume, /clear, or compaction). It governs this session until `/role none`.\n\n' "$role" "$role"
+# The charter names sibling skill files (messaging.md, phases/, roles/) without
+# the skill being loaded, so give their base dir and the whole-file Read rule
+# here: a Bash excerpt of the plugin cache stops on an unapprovable prompt.
+printf 'Skill files the charter names (`messaging.md`, `phases/…`, `roles/…`) live under `%s/skills/ticket-workflow/`. Read any of them whole with the Read tool at that absolute path, never through Bash: the plugin cache is a protected path, and a Bash excerpt of it stops on a permission prompt no allow rule can pre-approve.\n\n' "${CLAUDE_PLUGIN_ROOT:-}"
 cat "$charter"
