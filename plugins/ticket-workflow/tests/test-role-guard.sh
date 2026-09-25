@@ -12,8 +12,7 @@ guard="$here/../hooks/role-guard.sh"
 roles_dir=$(mktemp -d)
 trap 'rm -rf "$roles_dir"' EXIT
 sid=test-session
-pass=0
-fail=0
+. "$here/lib.sh"
 
 # The marker is written with this format; '%s' drops the trailing newline.
 marker_fmt='%s\n'
@@ -35,15 +34,6 @@ decide_raw() {
 decide() {
 	decide_raw "$1" "$(jq -n --arg sid "$sid" --arg tool "$2" --arg field "$3" --arg value "$4" \
 		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}')"
-}
-
-record() { # record <expected> <label> <got>
-	if [ "$3" = "$1" ]; then
-		pass=$((pass + 1))
-	else
-		fail=$((fail + 1))
-		printf 'FAIL: %s: expected %s, got %s\n' "$2" "$1" "$3"
-	fi
 }
 
 bash_case() { # bash_case <expected> <role> <label> <command>
@@ -195,5 +185,4 @@ record epic-coordinator "session start: two-line coordinator marker" "$(injects 
 record implementer "session start: no trailing newline" "$(injects 'implementer')"
 record none "session start: unknown role" "$(injects $'bogus\n')"
 
-printf '%d passed, %d failed\n' "$pass" "$fail"
-[ "$fail" -eq 0 ]
+finish
