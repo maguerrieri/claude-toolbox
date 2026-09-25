@@ -35,11 +35,13 @@ esac
 
 # 1. Hand this plugin's root, which only a hook knows, to subsequent Bash
 #    commands, so /role can locate the charters. Hand them the session id too
-#    unless the harness already sets it for them: that is how /role keys its
-#    marker on an older CLI. CLAUDE_ENV_FILE expects `export KEY=value` lines.
+#    unless the harness sets CLAUDE_CODE_SESSION_ID (hooks and Bash get the
+#    same value), since the snippets would ignore the export then: that is how
+#    /role keys its marker on an older CLI. CLAUDE_ENV_FILE expects
+#    `export KEY=value` lines.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 	{
-		[ "${CLAUDE_CODE_SESSION_ID:-}" = "$session_id" ] ||
+		[ -n "${CLAUDE_CODE_SESSION_ID:-}" ] ||
 			printf 'export CLAUDE_SESSION_ID=%q\n' "$session_id"
 		[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] &&
 			printf 'export CLAUDE_TICKET_WORKFLOW_ROOT=%q\n' "$CLAUDE_PLUGIN_ROOT"
