@@ -51,10 +51,8 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    env var is unset) and **adopt it as governing for this session**, exactly as
    START Step 1 does for a spawned `Role:` directive. Read it **whole with the
    Read tool** on the expanded absolute path (`echo "$CLAUDE_TICKET_WORKFLOW_ROOT"`
-   first if you need the value), not with a shell `cat`/`sed` of the env-var
-   path: the plugin cache is a protected path, and a Bash excerpt of it stops
-   on a permission prompt no allow rule can pre-approve (the skill's Step 0,
-   "How to read these files").
+   first if you need the value), not through Bash — the skill's Step 0 ("How
+   to read these files") has the rule and why.
 
 6. Confirm to the user: role pinned, what it binds (`planner` also arms the
    edit guard — edits prompt for approval until `/role none`), and that it
