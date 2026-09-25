@@ -87,14 +87,14 @@ The raw log (`log/raw/`, below) already holds every turn's dialogue; wrap is the
 2. Append `log/NNNN-<title>.md` (zero-padded next index): the session's key beats.
 3. End it with a forward **"Previously…"** recap for next time.
 4. Persist any staged deltas (threads, clocks, sheets, npcs, locations).
-5. `campaign mark-wrapped <dir> log/NNNN-<title>.md`, so the next wrap starts after this one.
+5. `campaign mark-wrapped <dir> log/NNNN-<title>.md`, so the next wrap starts after this one (this session's own raw log is marked once the wrap turn is saved).
 6. Tell the player what's still open — hot threads and ticking clocks.
 
 ## Versioning
 
 The campaign's saves are versioned with git via `bin/campaign` (in the player's space, never the plugin):
 - `/gm:new-campaign` runs `campaign init` — a dedicated repo, or it **defers** if the saves already sit inside one (e.g. an Obsidian vault), leaving git to the player's own setup.
-- **Autosave, every turn.** `/gm:play` and `/gm:new-campaign` run `campaign bind <dir>`, which ties this Claude Code session to the campaign. From then on the plugin's Stop hook, with no action from you, appends the turn's player prompt and your narration to `log/raw/<date>-<session>.md` and commits it (`autosave: <the player's prompt>`). Only your *text* is logged — never tool calls or their output — so the GM screen holds; anything you want in the play record belongs in the narration. `campaign unbind` stops it. Deferred saves get the log but no commits.
+- **Autosave, every turn.** `/gm:play` and `/gm:new-campaign` run `campaign bind <dir>`, which ties this Claude Code session to the campaign. From then on the plugin's Stop hook, with no action from you, appends the turn's player prompt and your narration to `log/raw/<date>-<session>.md` and commits it (`autosave: <the player's prompt>`). Only your *text* is logged — never tool calls or their output — so the GM screen holds; anything you want in the play record belongs in the narration. `campaign unbind` stops it. Deferred saves get the log but no commits. The binding survives compaction and resume; `/clear` starts a new session, so run `/gm:play` again after it.
 - `/gm:wrap` runs `campaign checkpoint` — each session becomes a named, restorable save.
 - **Auto-checkpoint before an irreversible beat** (a character's death, a major state rewrite): `campaign checkpoint <dir> --label "before <X>"`, so the player can always undo it.
 - `/gm:rewind` restores an earlier checkpoint — any turn's autosave, or a named checkpoint (the current state is checkpointed first, so the rewind is itself reversible); `/gm:backup` pushes to a configured remote.

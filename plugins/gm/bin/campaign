@@ -128,9 +128,7 @@ def cmd_rewind(a):
     if git(a.dir, "rev-parse", "--verify", "--quiet", f"{a.to}^{{commit}}", check=False).returncode != 0:
         print(f"no such checkpoint: {a.to}")
         return
-    git(a.dir, "add", "-A")
-    if _staged_changes(a.dir):
-        git(a.dir, "commit", "-q", "-m", "checkpoint before rewind")
+    _commit_all(a.dir, "checkpoint before rewind")
     # make the index + working tree match the target EXACTLY (removes files added since),
     # without moving HEAD — so the rewind lands as a new, reversible commit.
     git(a.dir, "read-tree", "-u", "--reset", a.to)
@@ -316,11 +314,26 @@ def _parse_time(ts):
     return t if t.tzinfo else None
 
 
+AUTOSAVE_UNAVAILABLE = ("gm: autosave unavailable — the gm plugin's SessionStart hook hasn't "
+                        "run in this session (no GM_SESSION_ID / GM_DATA_DIR); /gm:wrap still "
+                        "saves the story")
+
+
+def _cli_session(explicit):
+    """This session's id for bind/unbind, or None when a binding couldn't reach the hook."""
+    sid = _session_id(explicit)
+    # The Stop hook reads CLAUDE_PLUGIN_DATA. Only an explicit data dir guarantees the
+    # binding lands there: the fallback in _data_dir() is not the dir Claude Code
+    # assigns the plugin (<plugin>-<marketplace>).
+    if sid and (os.environ.get("GM_DATA_DIR") or os.environ.get("CLAUDE_PLUGIN_DATA")):
+        return sid
+    return None
+
+
 def cmd_bind(a):
-    sid = _session_id(a.session)
+    sid = _cli_session(a.session)
     if not sid:
-        print("gm: autosave unavailable — no session id (the gm plugin's SessionStart hook "
-              "hasn't run in this session); /gm:wrap still saves the story")
+        print(AUTOSAVE_UNAVAILABLE)
         return
     d = os.path.realpath(os.path.expanduser(a.dir))
     if not os.path.isfile(os.path.join(d, "campaign.md")):
@@ -336,12 +349,15 @@ def cmd_bind(a):
 
 
 def cmd_unbind(a):
-    sid = _session_id(a.session)
-    if sid:
-        try:
-            os.remove(_binding_path(sid))
-        except FileNotFoundError:
-            pass
+    sid = _cli_session(a.session)
+    if not sid:
+        print(AUTOSAVE_UNAVAILABLE)
+        return
+    try:
+        os.remove(_binding_path(sid))
+    except FileNotFoundError:
+        print("gm: autosave was not on for this session")
+        return
     print("gm: autosave off for this session")
 
 
@@ -350,9 +366,10 @@ def cmd_unbind(a):
 _REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
 _COMMAND_RE = re.compile(r"<command-name>(.*?)</command-name>", re.S)
 _ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
-# Harness traffic arriving as a user message is wholly tag-wrapped
-# (<task-notification>, <local-command-stdout>, <bash-input>, ...).
-_TAGGED_ONLY_RE = re.compile(r"\s*(?:<([A-Za-z][\w-]*)\b[^>]*>.*?</\1>\s*)+", re.S)
+# Harness traffic arriving as a user message is wholly wrapped in hyphenated tags
+# (<task-notification>, <local-command-stdout>, <bash-input>, ...). A player's own
+# markup (<ooc>…</ooc>, <i>…</i>) has no hyphen, so it stays a prompt.
+_TAGGED_ONLY_RE = re.compile(r"\s*(?:<([A-Za-z]\w*(?:-\w+)+)\b[^>]*>.*?</\1>\s*)+", re.S)
 
 
 def _prompt_text(content):
@@ -428,37 +445,86 @@ def _parse_line(line):
         return None
 
 
-def _turn_start(lines, bound_at):
-    """Byte offset where the first autosave of a session starts: the prompt of the
-    turn that bound it (the last prompt at or before the bind), else the latest one."""
+def _entry_time(line):
+    e = _parse_line(line)
+    return _parse_time(e.get("timestamp")) if isinstance(e, dict) else None
+
+
+def _start_index(lines, binding):
+    """Where to start reading `lines` (a whole transcript) when there's no usable offset."""
+    through = _parse_time(binding.get("logged_through"))
+    if through:
+        # The session's transcript moved or was rewritten (a new path, or shorter than
+        # the offset): pick up after the last entry already logged, not from the bind.
+        for i, line in enumerate(lines):
+            ts = _entry_time(line)
+            if ts and ts > through:
+                return i
+        return len(lines)
+    # First autosave: the prompt of the turn that bound the session (the last prompt
+    # at or before the bind), else the latest prompt.
+    bound_at = _parse_time(binding.get("bound_at"))
     latest = before_bind = None
-    pos = 0
-    for line in lines:
+    for i, line in enumerate(lines):
         e = _parse_line(line)
         if isinstance(e, dict) and e.get("type") == "user" and _turn_block(e):
-            latest = pos
+            latest = i
             ts = _parse_time(e.get("timestamp"))
             if ts and bound_at and ts <= bound_at:
-                before_bind = pos
-        pos += len(line)
+                before_bind = i
     return before_bind if before_bind is not None else (latest or 0)
 
 
-def _read_new_blocks(transcript, offset, bound_at):
-    """Blocks appended to the transcript since `offset` (None: since the binding
-    turn's prompt) and the offset just past the last complete line read. A line
-    still being written waits for the next run, as does narration Claude Code
-    hasn't flushed yet when Stop fires: it lands with the next turn or SessionEnd."""
+def _read_new_blocks(transcript, binding):
+    """The blocks appended since the binding's last read, plus the progress to record.
+
+    Only complete lines count: one still being written waits for the next run, as does
+    narration that isn't in the file yet (see _await_turn_end) — it lands with the next
+    turn or SessionEnd."""
+    offset = binding.get("offset") if binding.get("transcript") == transcript else None
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        offset = None
     with open(transcript, "rb") as f:
         size = f.seek(0, os.SEEK_END)
-        first_run = offset is None or offset > size  # or a replaced transcript
-        base = 0 if first_run else offset
+        if offset is not None and offset > size:
+            offset = None
+        base = offset or 0
         f.seek(base)
         data = f.read()
-    data = data[:data.rfind(b"\n") + 1]  # complete lines only
-    start = _turn_start(data.splitlines(keepends=True), bound_at) if first_run else 0
-    blocks = [b for b in (_turn_block(_parse_line(ln)) for ln in data[start:].splitlines()) if b]
-    return blocks, base + len(data)
+    data = data[:data.rfind(b"\n") + 1]
+    lines = data.splitlines(keepends=True)
+    start = 0 if offset is not None else _start_index(lines, binding)
+    blocks = [b for b in (_turn_block(_parse_line(ln)) for ln in lines[start:]) if b]
+    progress = {"transcript": transcript, "offset": base + len(data)}
+    through = next((ts for ts in map(_entry_time, reversed(lines)) if ts), None)
+    if through:
+        progress["logged_through"] = through.isoformat()
+    return blocks, progress
+
+
+TURN_END_WAIT = 2.0  # seconds a Stop hook waits for the turn's closing message to land
+
+
+def _turn_ended(transcript):
+    """Whether the transcript's last message is the assistant's closing one: text, no
+    tool call. Claude Code can fire Stop before it writes that message."""
+    with open(transcript, "rb") as f:
+        size = f.seek(0, os.SEEK_END)
+        f.seek(max(0, size - 1024 * 1024))
+        tail = f.read()
+    for line in reversed(tail.splitlines()):
+        e = _parse_line(line)
+        if isinstance(e, dict) and e.get("type") in ("user", "assistant") and not e.get("isSidechain"):
+            content = (e.get("message") or {}).get("content")
+            kinds = {b.get("type") for b in content if isinstance(b, dict)} if isinstance(content, list) else {"text"}
+            return e["type"] == "assistant" and "text" in kinds and "tool_use" not in kinds
+    return True  # nothing recognizable to wait for
+
+
+def _await_turn_end(transcript):
+    deadline = time.monotonic() + TURN_END_WAIT
+    while not _turn_ended(transcript) and time.monotonic() < deadline:
+        time.sleep(0.1)
 
 
 def _render(blocks):
@@ -506,17 +572,19 @@ def _autosave(payload):
         raise RuntimeError(f"bound campaign has no campaign.md: {d}")
     if not (isinstance(transcript, str) and os.path.isfile(transcript)):
         raise RuntimeError(f"no transcript at {transcript}")
-    offset = binding.get("offset") if binding.get("transcript") == transcript else None
-    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
-        offset = None
-    blocks, offset = _read_new_blocks(transcript, offset, _parse_time(binding.get("bound_at")))
+    if payload.get("hook_event_name") == "Stop":
+        _await_turn_end(transcript)
+    blocks, progress = _read_new_blocks(transcript, binding)
     if blocks:
         _append_raw(d, sid, _render(blocks), datetime.datetime.now())
+    wrap = binding.pop("wrap_pending", None)
+    if wrap:  # /gm:wrap ran this turn: mark this session's log now that the turn is in it
+        _mark_wrapped([p for p in _raw_logs(d) if _own_raw_log(p, sid)], wrap)
     # Record progress before committing: a failed commit must not re-log the turn
     # (the next turn's checkpoint picks the log up anyway).
-    binding.update(transcript=transcript, offset=offset)
+    binding.update(progress)
     _save_binding(sid, binding)
-    if blocks and is_managed(d):  # deferred saves: the log, but never a commit
+    if (blocks or wrap) and is_managed(d):  # deferred saves: the log, but never a commit
         _commit_all(d, _autosave_label(blocks))
 
 
@@ -571,8 +639,10 @@ def _gc_bindings(keep):
 
 def cmd_hook_session_start(a):
     # Hands the session id (and the data dir, which only hooks know) to the Bash tool
-    # so `campaign bind` can key the binding the Stop hook will look up. For a bound
-    # session (resume, /clear, compaction) also re-names the active campaign as context.
+    # so `campaign bind` can key the binding the Stop hook will look up. /clear starts
+    # a new session id with no binding (the model forgot the game too; /gm:play binds
+    # it again). For a bound session (resume, compaction) also re-names the active
+    # campaign as context.
     try:
         payload = _hook_payload()
         sid = payload.get("session_id")
@@ -630,16 +700,40 @@ def cmd_unwrapped(a):
         print("gm: no unwrapped play in log/raw/")
 
 
-def cmd_mark_wrapped(a):
-    label = " ".join(a.log.split()).replace("-->", "")  # keep the marker one well-formed line
+def _own_raw_log(p, sid):
+    return os.path.basename(p).endswith(f"-{sid[:8]}.md")
+
+
+def _mark_wrapped(paths, label):
     marked = []
-    for p in _raw_logs(a.dir):
+    for p in paths:
         if _unwrapped_range(p):
             with open(p, "a", encoding="utf-8") as f:
                 f.write(WRAP_MARK.format(label) + "\n\n")
             marked.append(os.path.basename(p))
+    return marked
+
+
+def cmd_mark_wrapped(a):
+    label = " ".join(a.log.split()).replace("-->", "")  # keep the marker one well-formed line
+    paths = _raw_logs(a.dir)
+    sid = _cli_session(None)
+    binding = _load_binding(sid) if sid else None
+    if binding and binding.get("campaign") == os.path.realpath(a.dir):
+        # The Stop hook has yet to log this very turn — the wrap itself. Marking this
+        # session's log now would leave the wrap turn after the marker, reading as play
+        # no session log covers; the hook marks it once the turn is in.
+        binding["wrap_pending"] = label
+        _save_binding(sid, binding)
+        paths = [p for p in paths if not _own_raw_log(p, sid)]
+        pending = " (this session's raw log is marked once this turn is saved)"
+    else:
+        pending = ""
+    marked = _mark_wrapped(paths, label)
     if marked:
-        print(f"gm: marked wrapped into {label}: {', '.join(marked)}")
+        print(f"gm: marked wrapped into {label}: {', '.join(marked)}{pending}")
+    elif pending:
+        print(f"gm: marked wrapped into {label}{pending}")
     else:
         print("gm: nothing to mark — no unwrapped play in log/raw/")
 
