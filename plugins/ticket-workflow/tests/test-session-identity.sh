@@ -7,7 +7,7 @@
 #   the CLAUDE_SESSION_ID this plugin exports, and a child launched through the
 #   spawn edge's `env -u CLAUDE_SESSION_ID` can't write its parent's marker;
 # - the SessionStart hook exports CLAUDE_SESSION_ID only when the harness
-#   doesn't already set CLAUDE_CODE_SESSION_ID to the same id;
+#   doesn't set CLAUDE_CODE_SESSION_ID;
 # - in every code block of the ticket-workflow and spawn docs, each claude
 #   launch strips CLAUDE_SESSION_ID, and the marker is keyed only on the
 #   resolved id;
@@ -91,21 +91,22 @@ hook_exports() { # hook_exports [VAR=value ...]
 	sed -n 's/^export \([A-Z_]*\)=.*/\1/p' "$env_file" | tr '\n' ' '
 }
 
-record "CLAUDE_TICKET_WORKFLOW_ROOT " "hook skips the export when the harness sets the same id" \
+record "CLAUDE_TICKET_WORKFLOW_ROOT " "hook skips the export when the harness sets the id" \
 	"$(hook_exports CLAUDE_CODE_SESSION_ID=s1)"
 record "CLAUDE_SESSION_ID CLAUDE_TICKET_WORKFLOW_ROOT " "hook exports the id on an older CLI" \
 	"$(hook_exports)"
-record "CLAUDE_SESSION_ID CLAUDE_TICKET_WORKFLOW_ROOT " "hook exports the id when the harness's differs" \
-	"$(hook_exports CLAUDE_CODE_SESSION_ID=other)"
 
 # --- The docs' code blocks -----------------------------------------------
 
 # Scans every fenced code block in the given files and prints one line per
 # violation, then `launches=<n>`:
-# - a line that launches claude with --bg or -p must strip CLAUDE_SESSION_ID;
+# - each command (split on ; && || | ( ) and backticks, with line continuations
+#   joined) that runs claude with --bg, --background, -p or --print is a
+#   launch, and must strip CLAUDE_SESSION_ID;
 # - any other mention of CLAUDE_SESSION_ID or CLAUDE_CODE_SESSION_ID must be the
 #   resolve line itself, so the marker is keyed on nothing else;
-# - a block that uses $sid must assign it (a Bash call doesn't inherit it).
+# - a block that uses $sid must assign it (a Bash call doesn't inherit it);
+# - a block must be closed.
 scan_blocks() { # scan_blocks <file> ...
 	awk -v resolve="$resolve" '
 		function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
@@ -115,24 +116,60 @@ scan_blocks() { # scan_blocks <file> ...
 				if (index(block[i], "$sid")) uses = 1
 				if (trim(block[i]) == resolve) assigns = 1
 			}
-			if (uses && !assigns) printf "%s:%d: block uses $sid without assigning it\n", FILENAME, start
+			if (uses && !assigns) printf "%s:%d: block uses $sid without assigning it\n", file, start
 			in_block = 0
 		}
-		FNR == 1 { in_block = 0 }
-		/^[ \t]*```/ { if (in_block) end_block(); else { in_block = 1; n = 0; start = FNR } next }
+		function check_line(text, at,   segs, k, i, cmd, rest) {
+			k = split(text, segs, /;|&&|\|\||\||\(|\)|`/)
+			for (i = 1; i <= k; i++) {
+				cmd = " " segs[i] " "
+				if (cmd !~ /[ \t\/]claude[ \t]/ || cmd !~ /[ \t](--bg|--background|-p|--print)[ \t]/) continue
+				launches++
+				if (cmd !~ /env -u CLAUDE_SESSION_ID[ \t]+[^ \t]*claude[ \t]/)
+					printf "%s:%d: launch without env -u CLAUDE_SESSION_ID\n", file, at
+			}
+			rest = text
+			gsub(/env -u CLAUDE_SESSION_ID/, "", rest)
+			if (rest ~ /CLAUDE_(CODE_)?SESSION_ID/ && trim(text) != resolve)
+				printf "%s:%d: session id used outside the resolve line\n", file, at
+		}
+		FNR == 1 && in_block { printf "%s:%d: unterminated code block\n", file, start; end_block() }
+		/^[ \t]*```/ {
+			if (in_block) end_block()
+			else { in_block = 1; n = 0; start = FNR; file = FILENAME; pending = "" }
+			next
+		}
 		in_block {
 			block[++n] = $0
-			stripped = index($0, "env -u CLAUDE_SESSION_ID claude")
-			if ($0 ~ /claude (--bg|-p)( |$)/) {
-				launches++
-				if (!stripped) printf "%s:%d: launch without env -u CLAUDE_SESSION_ID\n", FILENAME, FNR
-			} else if ($0 ~ /CLAUDE_(CODE_)?SESSION_ID/ && trim($0) != resolve) {
-				printf "%s:%d: session id used outside the resolve line\n", FILENAME, FNR
-			}
+			if (pending == "") pending_at = FNR
+			if ($0 ~ /\\$/) { pending = pending substr($0, 1, length($0) - 1) " "; next }
+			check_line(pending $0, pending_at)
+			pending = ""
 		}
-		END { printf "launches=%d\n", launches }
+		END {
+			if (in_block) { printf "%s:%d: unterminated code block\n", file, start; end_block() }
+			printf "launches=%d\n", launches
+		}
 	' "$@"
 }
+
+# The scanner itself, on fixtures: each prints the number of violations.
+fixture="$roles_dir/fixture.md"
+scan_fixture() { # scan_fixture <block text>
+	printf '```bash\n%s\n```\n' "$1" >"$fixture"
+	scan_blocks "$fixture" | grep -vc '^launches='
+}
+record 0 "scan: a stripped launch passes" "$(scan_fixture 'env -u CLAUDE_SESSION_ID claude --bg "a"')"
+record 1 "scan: an unstripped launch" "$(scan_fixture 'claude --bg "a"')"
+record 1 "scan: --bg after other flags" "$(scan_fixture 'claude --name "x" --bg "$p"')"
+record 1 "scan: a launch split across lines" "$(scan_fixture "$(printf 'claude \\\n  --bg "$p"')")"
+record 1 "scan: a second launch on a stripped line" \
+	"$(scan_fixture 'env -u CLAUDE_SESSION_ID claude --bg "a"; claude -p "b"')"
+record 0 "scan: mkdir -p and .claude paths are not launches" "$(scan_fixture 'mkdir -p "$HOME/.claude/x" --bg')"
+record 1 "scan: a raw session-id marker path" "$(scan_fixture 'cat "$roles_dir/$CLAUDE_SESSION_ID"')"
+record 1 "scan: \$sid used without assigning it" "$(scan_fixture 'cat "$roles_dir/$sid"')"
+printf '```bash\n%s\n' "$resolve" >"$fixture"
+record 1 "scan: an unterminated block" "$(scan_blocks "$fixture" | grep -vc '^launches=')"
 
 docs=()
 while IFS= read -r f; do docs+=("$f"); done < <(find "$plugin" "$spawn_plugin" -name '*.md' | sort)
