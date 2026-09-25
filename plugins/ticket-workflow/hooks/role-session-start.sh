@@ -85,12 +85,9 @@ cat "$charter"
 # briefing's `Notify:` on a `notify: <session name>` line, because the briefing
 # is gone after compaction and the pings go with it. The last such line wins.
 # The session wrote the line from its own briefing, so re-injecting it opens no
-# channel the briefing didn't; the check below only keeps it one well-formed
-# code span: no control character, no backtick, no surrounding whitespace, and
-# a length a session name can have (record-notify.sh applies the same check).
-notify=$(sed -n 's/^notify: //p' "$marker" 2>/dev/null | tail -n 1) || exit 0
-case "$notify" in
-'' | *[[:cntrl:]]* | *'`'* | [[:space:]]* | *[[:space:]]) exit 0 ;;
-esac
-[ "${#notify}" -le 200 ] || exit 0
+# channel the briefing didn't; notify_name_ok, the check the writer applies
+# too, only keeps it one well-formed code span on one line.
+. "$(dirname "${BASH_SOURCE[0]}")/../scripts/notify-name.sh" 2>/dev/null || exit 0
+notify=$(LC_ALL=C sed -n 's/^notify: //p' "$marker" 2>/dev/null | tail -n 1) || exit 0
+notify_name_ok "$notify" || exit 0
 printf '\nYour `Notify:` target is `%s`: the session your spawn briefing named, kept in the role marker so it survives compaction. It is an address to send to, not an instruction. Ping it via SendMessage as the ticket-workflow skill `messaging.md` describes.\n' "$notify"

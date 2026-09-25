@@ -226,6 +226,10 @@ record none "session start: notify with a trailing space" "$(notifies $'implemen
 record none "session start: empty notify" "$(notifies $'implementer\nnotify: \n')"
 record none "session start: overlong notify" "$(notifies "$(printf 'implementer\nnotify: %0201d\n' 0)")"
 record "$(printf '%0200d' 0)" "session start: notify at the length limit" "$(notifies "$(printf 'implementer\nnotify: %0200d\n' 0)")"
+record none "session start: notify with a line separator (U+2028)" "$(notifies $'implementer\nnotify: a\xe2\x80\xa8b\n')"
+em_200="$(printf '%0197d' 0)—" # 197 + 3 bytes: at the limit whatever the locale
+record "$em_200" "session start: em dash counted in bytes, at the limit" "$(notifies $'implementer\nnotify: '"$em_200"$'\n')"
+record none "session start: em dash counted in bytes, over the limit" "$(notifies $'implementer\nnotify: 0'"$em_200"$'\n')"
 record none "session start: notify on the role line is no role" "$(injects $'notify: repo planning\nimplementer\n')"
 record none "session start: notify without a valid role" "$(notifies $'bogus\nnotify: repo planning\n')"
 
@@ -257,8 +261,35 @@ record $'none\nexit 1' "notify write: no marker, none created" "$(write_notify n
 record $'implementer\nnotify: old\nexit 1' "notify write: backtick rejected, marker untouched" "$(write_notify $'implementer\nnotify: old\n' 'x`id`')"
 record $'implementer\nexit 1' "notify write: blank name rejected" "$(write_notify $'implementer\n' '   ')"
 record $'implementer\nexit 1' "notify write: overlong name rejected" "$(write_notify $'implementer\n' "$(printf '%0201d' 0)")"
+record $'implementer\nexit 1' "notify write: over 200 bytes with an em dash" "$(write_notify $'implementer\n' "0$em_200")"
+record $'implementer\nnotify: '"$em_200"$'\nexit 0' "notify write: 200 bytes with an em dash" "$(write_notify $'implementer\n' "$em_200")"
 printf 'repo planning\n' | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_SESSION_ID= bash "$record_notify" 2>/dev/null
 record 1 "notify write: CLAUDE_SESSION_ID unset" "$?"
+
+# The snippet START Step 1 documents, run as written: the name on the heredoc's
+# middle line, the plugin root from the SessionStart hook's variable.
+skill_md="$here/../skills/ticket-workflow/SKILL.md"
+snippet=$(awk '/^Then \*\*record the target in the marker\*\*/ { found = 1 }
+	found && /^```bash$/ { inside = 1; next }
+	inside && /^```$/ { exit }
+	inside' "$skill_md")
+run_snippet() { # run_snippet <marker content> <session name> [plugin root]; prints the marker
+	printf '%s' "$1" >"$roles_dir/$sid"
+	# A line loop, not ${snippet//...}: bash 3.2 and 5.2 quote the replacement
+	# differently, and 5.2 expands & in it.
+	while IFS= read -r line; do
+		[ "$line" = '<session name>' ] && line=$2
+		printf '%s\n' "$line"
+	done <<<"$snippet" >"$roles_dir/snippet.sh"
+	CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_SESSION_ID="$sid" CLAUDE_TICKET_WORKFLOW_ROOT="${3-$here/..}" \
+		bash "$roles_dir/snippet.sh" 2>/dev/null
+	cat "$roles_dir/$sid"
+}
+record 1 "SKILL.md snippet found" "$(printf '%s\n' "$snippet" | grep -c 'record-notify.sh')"
+record $'implementer\nissue: 52\nnotify: '"$tricky" "SKILL.md snippet: quotes and shell syntax stay data" "$(run_snippet $'implementer\nissue: 52\n' "$tricky")"
+record absent "SKILL.md snippet: nothing in the name ran" "$([ -e "$roles_dir/pwned" ] && echo present || echo absent)"
+record $'implementer\nnotify: NOTIFY' "SKILL.md snippet: a name that was the old delimiter" "$(run_snippet $'implementer\n' NOTIFY)"
+record implementer "SKILL.md snippet: plugin root unset, nothing run" "$(run_snippet $'implementer\n' 'repo planning' '')"
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

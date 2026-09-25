@@ -102,9 +102,11 @@ the poll. The write is a script, `scripts/record-notify.sh`, that reads the
 name from a quoted heredoc: a name can hold anything a spawn name holds (the
 em dash in `/spawn-epic`'s coordinator name, an apostrophe, a ` [ref]`
 suffix), so it must never be spliced into shell text, and the check must be
-code rather than prose. The writer and the hook refuse the same names: a
-control character, a backtick, or over 200 characters, which keeps the
-re-injected name one code span. That check is about format, not trust: the
+code rather than prose. The writer and the hook source one check,
+`scripts/notify-name.sh`, which refuses a control character, a backtick, a
+Unicode line break, surrounding whitespace, or over 200 bytes. It runs in the
+C locale so the two can't disagree about a name, and it keeps the re-injected
+name one code span on one line. That check is about format, not trust: the
 session writes the line from its own briefing, so re-injecting it opens no
 channel the briefing didn't. The alternative considered was the PR body. It was rejected
 because reading it back depends on the session remembering to look, which is
