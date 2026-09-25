@@ -5,11 +5,17 @@ on:
     paths:
       - "plugins/ticket-workflow/hooks/**"
       - "plugins/ticket-workflow/tests/**"
+      - "plugins/ticket-workflow/commands/**"
+      - "plugins/ticket-workflow/skills/**"
+      - "plugins/spawn/skills/spawn/backends/local.md"
       - ".github/workflows/ticket-workflow-ci.yml"
   pull_request:
     paths:
       - "plugins/ticket-workflow/hooks/**"
       - "plugins/ticket-workflow/tests/**"
+      - "plugins/ticket-workflow/commands/**"
+      - "plugins/ticket-workflow/skills/**"
+      - "plugins/spawn/skills/spawn/backends/local.md"
       - ".github/workflows/ticket-workflow-ci.yml"
 
 jobs:
@@ -19,3 +25,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Role-guard hook tests
         run: bash plugins/ticket-workflow/tests/test-role-guard.sh
+      - name: Session-identity tests
+        run: bash plugins/ticket-workflow/tests/test-session-identity.sh
