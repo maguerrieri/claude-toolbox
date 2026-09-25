@@ -168,7 +168,7 @@ out=$(printf '%s' '{"session_id":"s","tool_name":"Bash","tool_input":{"command":
 	CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$guard")
 record allow "no roles directory" "${out:-allow}"
 
-# An in-process subagent or teammate shares this session's id, so a call of
+# An in-process subagent shares this session's id, so a call of
 # its that would write the marker is denied, pinned or not, while its reads
 # pass. These cases run each command the guard allows, with the parent's id in
 # the environment as the Bash tool would have it, and check the parent's
