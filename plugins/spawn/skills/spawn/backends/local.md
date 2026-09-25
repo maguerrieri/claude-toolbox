@@ -51,10 +51,11 @@ your session:
   ( cd "$launch_dir" && env -u CLAUDE_SESSION_ID claude --bg --name "<context> <desc>" "$p" )
   ```
 - `env -u CLAUDE_SESSION_ID` keeps the spawner's session identity out of the child.
-  The `ticket-workflow` plugin's SessionStart hook exports that variable to key its
-  role markers, and a child launched from the Bash tool inherits every exported
-  variable: a child whose own hook didn't run would key its marker to the
-  spawner's session. Where the variable isn't set, the prefix does nothing.
+  On CLIs older than Claude Code 2.1.132, the `ticket-workflow` plugin's
+  SessionStart hook exports that variable to key its role markers, and a child
+  launched from the Bash tool inherits every exported variable: a child whose own
+  hook didn't run would key its marker to the spawner's session. Where the
+  variable isn't set, the prefix does nothing.
 - `claude --bg` prints a **session handle** at spawn — record it per unit; it
   survives the user renaming the session and is how you inspect a stuck one later.
 
