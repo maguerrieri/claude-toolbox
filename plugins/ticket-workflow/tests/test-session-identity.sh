@@ -26,17 +26,6 @@ trap 'rm -rf "$roles_dir"' EXIT
 
 resolve='sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"'
 
-# Prints the fenced code block of <file> that contains the fixed string <text>.
-extract_block() { # extract_block <file> <text>
-	awk -v text="$2" '
-		/^[ \t]*```/ {
-			if (in_block) { if (hit) { printf "%s", buf; exit } in_block = 0; next }
-			in_block = 1; buf = ""; hit = 0; next
-		}
-		in_block { buf = buf $0 "\n"; if (index($0, text)) hit = 1 }
-	' "$1"
-}
-
 # --- The self-pin, run as a child session --------------------------------
 
 # START Step 1's self-pin, as an implementer recording issue 52.
