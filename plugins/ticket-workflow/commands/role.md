@@ -6,7 +6,9 @@ Pin (or unpin) this session's role charter: **$ARGUMENTS**
 
 A role set here is durable: it's recorded in a per-session marker file that the
 plugin's hooks consume — the SessionStart hook re-injects the charter after
-`--resume`, `/clear`, and compaction, and the PreToolUse guard turns file edits
+`--resume`, `/clear`, and compaction (but `/clear` and forks start a new
+session id the marker may not follow: the skill's Session roles, *Session
+identity*, and #160), and the PreToolUse guard turns file edits
 into a permission prompt while the `planner` charter is pinned, and denies a
 `claude --bg`/`-p` or `create_session` launch that leads with an issue-spawning
 command while `implementer` is. This is the

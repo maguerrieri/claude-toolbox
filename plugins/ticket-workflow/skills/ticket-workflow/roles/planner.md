@@ -49,7 +49,8 @@ keeps you from *drifting* into implementation, not from *choosing* it.
 Unlike the tiers below it, the planner isn't reached by a spawn edge, so nothing
 injects this charter automatically. Run **`/role planner`** in the top session:
 it pins the charter in a per-session marker that the plugin's hooks consume —
-the charter is re-injected after resume/`/clear`/compaction, and file edits
+the charter is re-injected after resume/`/clear`/compaction (re-pin after a
+`/clear` or fork if the guard is gone: the skill's *Session identity*), and file edits
 prompt for approval while pinned (the drift guard made mechanical; approve one
 to drop a tier deliberately, or `/role none` to unpin). Set it once; every
 `/spawn-epic` and `/spawn-tickets` below propagates the lower tiers on its own.
