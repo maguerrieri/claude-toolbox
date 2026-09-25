@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 
 HERE = os.path.dirname(__file__)
 FIXTURE = os.path.join(HERE, "fixtures", "transcripts", "play-session.jsonl")
@@ -357,6 +358,95 @@ def test_hook_survives_a_corrupt_transcript_line(campaign_path, tmp_path):
     assert "The road bends." in raw_text(d)
 
 
+def test_player_markup_is_a_prompt_not_harness_traffic(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    t = str(tmp_path / "transcript.jsonl")
+    append_lines(t, user("<ooc>can we pause the chase?</ooc>"), gm("Of course."))
+    hook(campaign_path, e, t)
+    assert "### Player\n\n<ooc>can we pause the chase?</ooc>" in raw_text(d)
+
+
+def stamped(entry, when):
+    return dict(entry, timestamp=when)
+
+
+def test_a_moved_transcript_resumes_after_the_last_logged_entry(campaign_path, tmp_path):
+    """Claude Code can move a session's transcript (e.g. into a worktree's project dir):
+    the new file repeats the history, which must not be logged twice."""
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    old = str(tmp_path / "old.jsonl")
+    append_lines(old, stamped(user("<command-name>/gm:play</command-name>"), "2000-01-01T00:00:00.000Z"),
+                 stamped(gm("The fog lifts."), "2000-01-01T00:00:01.000Z"))
+    run(campaign_path, "bind", d, env=e)
+    hook(campaign_path, e, old)
+    new = str(tmp_path / "new.jsonl")
+    shutil.copy(old, new)
+    append_lines(new, stamped(user("I walk on."), "2999-01-01T00:00:00.000Z"),
+                 stamped(gm("The road."), "2999-01-01T00:00:01.000Z"))
+    hook(campaign_path, e, new)
+    text = raw_text(d)
+    assert text.count("The fog lifts.") == 1
+    assert text.rstrip().endswith("### Player\n\nI walk on.\n\n### GM\n\nThe road.")
+
+
+def test_a_fresh_transcript_file_is_logged_from_its_start(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    old = str(tmp_path / "old.jsonl")
+    append_lines(old, stamped(user("<command-name>/gm:play</command-name>"), "2000-01-01T00:00:00.000Z"),
+                 stamped(gm("The fog lifts."), "2000-01-01T00:00:01.000Z"))
+    run(campaign_path, "bind", d, env=e)
+    hook(campaign_path, e, old)
+    new = str(tmp_path / "new.jsonl")  # only the entries written since
+    append_lines(new, stamped(user("I walk on."), "2999-01-01T00:00:00.000Z"),
+                 stamped(gm("The road."), "2999-01-01T00:00:01.000Z"),
+                 stamped(user("I rest."), "2999-01-01T00:01:00.000Z"),
+                 stamped(gm("Night falls."), "2999-01-01T00:01:01.000Z"))
+    hook(campaign_path, e, new)
+    text = raw_text(d)
+    assert text.count("The fog lifts.") == 1
+    assert "I walk on." in text and "Night falls." in text
+
+
+def test_stop_waits_for_the_closing_narration_to_land(campaign_path, tmp_path):
+    """Claude Code can fire Stop before it writes the turn's last message."""
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    t = str(tmp_path / "transcript.jsonl")
+    append_lines(t, user("I pick the lock."),
+                 {"type": "assistant", "message": {"model": "m", "content": [
+                     {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "roll 1d20"}}]}},
+                 {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "t1",
+                                                           "content": "14"}]}})
+    payload = json.dumps({"session_id": SID, "transcript_path": t, "hook_event_name": "Stop"})
+    proc = subprocess.Popen([campaign_path, "hook-autosave"], stdin=subprocess.PIPE, text=True, env=e)
+    proc.stdin.write(payload)
+    proc.stdin.close()
+    time.sleep(0.5)
+    append_lines(t, gm("The lock clicks open."))
+    assert proc.wait(timeout=10) == 0
+    assert "The lock clicks open." in raw_text(d)
+
+
+def test_bind_needs_the_exported_data_dir(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    del e["GM_DATA_DIR"]
+    e["HOME"] = str(tmp_path / "home")
+    d = new_campaign(campaign_path, tmp_path, e)
+    assert "autosave unavailable" in run(campaign_path, "bind", d, env=e).stdout
+    assert "autosave unavailable" in run(campaign_path, "unbind", env=e).stdout
+    assert not os.path.exists(tmp_path / "home" / ".claude")
+
+
+def test_unbind_says_when_nothing_was_bound(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    assert "was not on" in run(campaign_path, "unbind", env=e).stdout
+
+
 # ---- SessionStart ---------------------------------------------------------
 
 def test_session_start_exports_the_session_id_and_data_dir(campaign_path, tmp_path):
@@ -410,10 +500,17 @@ def test_unwrapped_lists_raw_play_since_the_last_wrap(campaign_path, tmp_path):
     assert p.returncode == 0
     assert f"{f}:1-" in p.stdout  # a never-wrapped file is unwrapped in full
 
+    # the /gm:wrap turn: this session's marker waits until the wrap turn itself is logged
+    append_lines(t, user("<command-name>/gm:wrap</command-name>"))
     p = run(campaign_path, "mark-wrapped", d, "log/0001-the-ledger.md", env=e)
     assert p.returncode == 0
-    assert "<!-- gm:wrapped log/0001-the-ledger.md -->" in open(f).read()
+    assert "gm:wrapped" not in open(f).read()
+    append_lines(t, gm("Session logged as 0001-the-ledger."))
+    hook(campaign_path, e, t)
+    text = open(f).read()
+    assert text.index("Session logged as") < text.index("<!-- gm:wrapped log/0001-the-ledger.md -->")
     assert "no unwrapped play" in run(campaign_path, "unwrapped", d, env=e).stdout
+    assert "gm:wrapped" in git(d, "show", "HEAD:" + os.path.relpath(f, d))  # committed
 
     append_lines(t, user("I set out at dawn."), gm("Frost on the road."))
     hook(campaign_path, e, t)
@@ -422,18 +519,40 @@ def test_unwrapped_lists_raw_play_since_the_last_wrap(campaign_path, tmp_path):
     lines = open(f).read().splitlines()[start - 1:end]
     body = "\n".join(lines)
     assert "I set out at dawn." in body and "Frost on the road." in body
-    assert "Rain hammers" not in body and "gm:wrapped" not in body
+    assert "Rain hammers" not in body and "gm:wrapped" not in body and "Session logged" not in body
 
 
-def test_mark_wrapped_leaves_fully_wrapped_files_alone(campaign_path, tmp_path):
+def test_mark_wrapped_marks_immediately_outside_a_bound_session(campaign_path, tmp_path):
     e = gm_env(tmp_path, GM_SESSION_ID=SID)
     d = new_campaign(campaign_path, tmp_path, e)
     run(campaign_path, "bind", d, env=e)
     hook(campaign_path, e, copy_fixture(tmp_path))
-    run(campaign_path, "mark-wrapped", d, "log/0001-a.md", env=e)
-    p = run(campaign_path, "mark-wrapped", d, "log/0002-b.md", env=e)
+    other = gm_env(tmp_path)  # e.g. wrapping from a later session with autosave off
+    p = run(campaign_path, "mark-wrapped", d, "log/0001-a.md", env=other)
+    assert "marked wrapped into log/0001-a.md" in p.stdout
+    assert "<!-- gm:wrapped log/0001-a.md -->" in raw_text(d)
+    p = run(campaign_path, "mark-wrapped", d, "log/0002-b.md", env=other)
     assert "nothing to mark" in p.stdout
     assert "gm:wrapped log/0002-b.md" not in raw_text(d)
+
+
+def test_mark_wrapped_marks_other_sessions_logs_right_away(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    hook(campaign_path, e, copy_fixture(tmp_path))  # an earlier session, never wrapped
+    [earlier] = raw_files(d)
+    sid2 = "5ec0ad00-0000-4000-8000-000000000002"
+    e2 = gm_env(tmp_path, GM_SESSION_ID=sid2)
+    run(campaign_path, "bind", d, env=e2)
+    t2 = str(tmp_path / "t2.jsonl")
+    append_lines(t2, user("<command-name>/gm:play</command-name>"), gm("Where were we?"))
+    hook(campaign_path, e2, t2, sid=sid2)
+    p = run(campaign_path, "mark-wrapped", d, "log/0001-a.md", env=e2)
+    assert os.path.basename(earlier) in p.stdout and "once this turn is saved" in p.stdout
+    assert "gm:wrapped" in open(earlier).read()
+    [mine] = [f for f in raw_files(d) if f.endswith(f"-{sid2[:8]}.md")]
+    assert "gm:wrapped" not in open(mine).read()
 
 
 # ---- hooks.json -----------------------------------------------------------
