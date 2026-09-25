@@ -87,7 +87,7 @@ The raw log (`log/raw/`, below) already holds every turn's dialogue; wrap is the
 2. Append `log/NNNN-<title>.md` (zero-padded next index): the session's key beats.
 3. End it with a forward **"Previously…"** recap for next time.
 4. Persist any staged deltas (threads, clocks, sheets, npcs, locations).
-5. `campaign mark-wrapped <dir> log/NNNN-<title>.md`, so the next wrap starts after this one (this session's own raw log is marked once the wrap turn is saved).
+5. `campaign mark-wrapped <dir> log/NNNN-<title>.md`, so the next wrap starts after this one (this session's own raw log is marked again once the wrap turn itself is saved).
 6. Tell the player what's still open — hot threads and ticking clocks.
 
 ## Versioning

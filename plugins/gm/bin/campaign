@@ -37,7 +37,9 @@ never the value; gm-reveal surfaces a secret when the fiction earns it. Expandin
 call to read ahead is a feature (dramatic irony), not a leak — so no encryption here.
 """
 import argparse
+import contextlib
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -47,6 +49,11 @@ import sys
 import tempfile
 import time
 import traceback
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 MARKER = ".gm-campaign"
 
@@ -264,14 +271,6 @@ def _valid_session(sid):
     return isinstance(sid, str) and bool(SESSION_RE.match(sid)) and ".." not in sid
 
 
-def _session_id(explicit=None):
-    # Only gm's own SessionStart export: it arrives together with GM_DATA_DIR, so a
-    # binding always lands in the dir the Stop hook reads (another plugin's
-    # CLAUDE_SESSION_ID would pair it with the fallback dir instead).
-    sid = explicit or os.environ.get("GM_SESSION_ID")
-    return sid if _valid_session(sid) else None
-
-
 def _binding_path(sid):
     return os.path.join(_data_dir(), "sessions", sid + ".json")
 
@@ -320,14 +319,20 @@ AUTOSAVE_UNAVAILABLE = ("gm: autosave unavailable — the gm plugin's SessionSta
 
 
 def _cli_session(explicit):
-    """This session's id for bind/unbind, or None when a binding couldn't reach the hook."""
-    sid = _session_id(explicit)
-    # The Stop hook reads CLAUDE_PLUGIN_DATA. Only an explicit data dir guarantees the
-    # binding lands there: the fallback in _data_dir() is not the dir Claude Code
-    # assigns the plugin (<plugin>-<marketplace>).
-    if sid and (os.environ.get("GM_DATA_DIR") or os.environ.get("CLAUDE_PLUGIN_DATA")):
+    """This session's id for the Bash-side commands, or None when a binding couldn't
+    reach the Stop hook. Only gm's own SessionStart export counts: it brings the data
+    dir along (GM_DATA_DIR), and the fallback in _data_dir() is not the dir Claude
+    Code assigns the plugin (<plugin>-<marketplace>) — nor would another plugin's
+    CLAUDE_SESSION_ID come with one."""
+    sid = explicit or os.environ.get("GM_SESSION_ID")
+    if _valid_session(sid) and (os.environ.get("GM_DATA_DIR") or os.environ.get("CLAUDE_PLUGIN_DATA")):
         return sid
     return None
+
+
+def _campaign_path(d):
+    """The canonical form a binding stores, so `~/rpg/x` (quoted) and symlinks compare equal."""
+    return os.path.realpath(os.path.expanduser(d))
 
 
 def cmd_bind(a):
@@ -335,7 +340,7 @@ def cmd_bind(a):
     if not sid:
         print(AUTOSAVE_UNAVAILABLE)
         return
-    d = os.path.realpath(os.path.expanduser(a.dir))
+    d = _campaign_path(a.dir)
     if not os.path.isfile(os.path.join(d, "campaign.md")):
         sys.exit(f"campaign: {d} has no campaign.md — not a gm campaign")
     binding = _load_binding(sid) or {}
@@ -392,8 +397,11 @@ def _prompt_text(content):
         return None
     command = _COMMAND_RE.search(text)
     if command:  # a slash command: log what the player typed, not the wrapper
+        name = command.group(1).strip()
+        if not name.startswith("/gm:"):
+            return None  # /compact, /model, another plugin's command: not play
         args = _ARGS_RE.search(text)
-        return " ".join(s for s in (command.group(1).strip(), args.group(1).strip() if args else "") if s) or None
+        return " ".join(s for s in (name, args.group(1).strip() if args else "") if s)
     if not text or text.startswith("[Request interrupted"):
         return None
     if text.startswith("<") and _TAGGED_ONLY_RE.fullmatch(text):
@@ -552,11 +560,27 @@ def _append_raw(d, sid, text, now):
 
 
 def _autosave_label(blocks):
+    """`autosave: <the turn's prompt>` — the latest one when a run catches up several."""
     prompts = [text for role, text in blocks if role == "Player"]
     if not prompts:
         return "autosave: (narration)"
-    first = prompts[-1].strip().splitlines()[0].strip()
-    return "autosave: " + (first if len(first) <= 60 else first[:59].rstrip() + "…")
+    latest = prompts[-1].strip().splitlines()[0].strip()
+    return "autosave: " + (latest if len(latest) <= 60 else latest[:59].rstrip() + "…")
+
+
+@contextlib.contextmanager
+def _campaign_lock(d):
+    """One autosave at a time per campaign: Stop and SessionEnd can overlap, and so can
+    two sessions bound to one campaign (one git index between them)."""
+    if fcntl is None:  # not POSIX: autosaves just aren't serialized
+        yield
+        return
+    locks = os.path.join(_data_dir(), "locks")
+    os.makedirs(locks, exist_ok=True)
+    name = hashlib.sha256(d.encode("utf-8")).hexdigest()[:16] + ".lock"
+    with open(os.path.join(locks, name), "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
 
 
 def _autosave(payload):
@@ -574,18 +598,27 @@ def _autosave(payload):
         raise RuntimeError(f"no transcript at {transcript}")
     if payload.get("hook_event_name") == "Stop":
         _await_turn_end(transcript)
-    blocks, progress = _read_new_blocks(transcript, binding)
-    if blocks:
-        _append_raw(d, sid, _render(blocks), datetime.datetime.now())
-    wrap = binding.pop("wrap_pending", None)
-    if wrap:  # /gm:wrap ran this turn: mark this session's log now that the turn is in it
-        _mark_wrapped([p for p in _raw_logs(d) if _own_raw_log(p, sid)], wrap)
-    # Record progress before committing: a failed commit must not re-log the turn
-    # (the next turn's checkpoint picks the log up anyway).
-    binding.update(progress)
-    _save_binding(sid, binding)
-    if (blocks or wrap) and is_managed(d):  # deferred saves: the log, but never a commit
-        _commit_all(d, _autosave_label(blocks))
+    with _campaign_lock(d):
+        # Re-read under the lock: an overlapping run may have advanced the offset.
+        binding = _load_binding(sid)
+        if not binding or binding.get("campaign") != d:
+            return
+        blocks, progress = _read_new_blocks(transcript, binding)
+        if blocks:
+            _append_raw(d, sid, _render(blocks), datetime.datetime.now())
+        wrap = binding.pop("wrap_pending", None)
+        remarked = []
+        if isinstance(wrap, dict) and wrap.get("campaign") == d:
+            # /gm:wrap ran this turn: its marker went in mid-turn, and the wrap turn
+            # itself was just logged below it. Mark again so it isn't left unwrapped.
+            remarked = _mark_wrapped([p for p in _raw_logs(d) if _own_raw_log(p, sid)],
+                                     str(wrap.get("label")))
+        # Record progress before committing: a failed commit must not re-log the turn
+        # (the next turn's checkpoint picks the log up anyway).
+        binding.update(progress)
+        _save_binding(sid, binding)
+        if (blocks or remarked) and is_managed(d):  # deferred saves: log, never commit
+            _commit_all(d, _autosave_label(blocks))
 
 
 def _hook_payload():
@@ -691,7 +724,7 @@ def _unwrapped_range(p):
 
 def cmd_unwrapped(a):
     found = False
-    for p in _raw_logs(a.dir):
+    for p in _raw_logs(os.path.expanduser(a.dir)):
         r = _unwrapped_range(p)
         if r:
             found = True
@@ -716,26 +749,23 @@ def _mark_wrapped(paths, label):
 
 def cmd_mark_wrapped(a):
     label = " ".join(a.log.split()).replace("-->", "")  # keep the marker one well-formed line
-    paths = _raw_logs(a.dir)
+    # Mark now, so the wrap's named checkpoint (taken later this turn) carries the marker.
+    marked = _mark_wrapped(_raw_logs(os.path.expanduser(a.dir)), label)
     sid = _cli_session(None)
     binding = _load_binding(sid) if sid else None
-    if binding and binding.get("campaign") == os.path.realpath(a.dir):
-        # The Stop hook has yet to log this very turn — the wrap itself. Marking this
-        # session's log now would leave the wrap turn after the marker, reading as play
-        # no session log covers; the hook marks it once the turn is in.
-        binding["wrap_pending"] = label
+    d = _campaign_path(a.dir)
+    note = ""
+    if binding and binding.get("campaign") == d:
+        # This turn — the wrap itself — reaches the raw log only when the Stop hook runs,
+        # below this marker. Have the hook mark again after it, so the wrap turn isn't
+        # left over as play no session log covers.
+        binding["wrap_pending"] = {"campaign": d, "label": label}
         _save_binding(sid, binding)
-        paths = [p for p in paths if not _own_raw_log(p, sid)]
-        pending = " (this session's raw log is marked once this turn is saved)"
-    else:
-        pending = ""
-    marked = _mark_wrapped(paths, label)
+        note = "; this turn is marked too once it's saved"
     if marked:
-        print(f"gm: marked wrapped into {label}: {', '.join(marked)}{pending}")
-    elif pending:
-        print(f"gm: marked wrapped into {label}{pending}")
+        print(f"gm: marked wrapped into {label}: {', '.join(marked)}{note}")
     else:
-        print("gm: nothing to mark — no unwrapped play in log/raw/")
+        print(f"gm: nothing to mark — no unwrapped play in log/raw/{note}")
 
 
 def main(argv=None):
