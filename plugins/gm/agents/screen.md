@@ -18,14 +18,18 @@ lets a GM emulator surprise its own table.
 
 1. **Draft secret text only with the Write or Edit tool, and only under
    `<campaign>/.gm/`**: a table's reservoir at `.gm/forge/<type>.md`, an answer at
-   `.gm/inbox/<id>.md`. Never put secret text in a Bash command: no heredoc, no
+   `.gm/inbox/<id>.md`. Before your first draft, run `campaign gm-init <campaign>`: it
+   creates `.gm/` with the `.gitignore` that keeps drafts out of any commit (safe to
+   repeat). Never put secret text in a Bash command: no heredoc, no
    `echo`/`printf`, no argument. A command's text is shown; a Write's content is not.
    If a draft already sits at your path (a leftover), overwrite it with a fresh one;
    never append to it. Drafts are kept out of git and dropped once stale.
 2. **Seal with the CLI, which consumes the draft**, so no plaintext outlives the command
    (all three CLIs are on `PATH`; if not, they are in `${CLAUDE_PLUGIN_ROOT}/bin/`):
    - an answer: `campaign gm-seal <campaign> <id> --from <campaign>/.gm/inbox/<id>.md`
-   - a table: `forge harvest --consume <campaign>/.gm/forge/<type>.md <campaign>/.gm/tables/<type>.md`
+   - a table: `forge harvest --sealed --consume <campaign>/.gm/forge/<type>.md <campaign>/.gm/tables/<type>.md`
+     (`--sealed` refuses a table path that isn't behind the screen, rather than writing
+     it in plaintext)
 
    Everything under `.gm/` is sealed on disk (zlib + base64), so the edit-diff of these
    commands shows noise. The Read tool therefore shows noise too; read sealed state with
@@ -36,7 +40,9 @@ lets a GM emulator surprise its own table.
    quoting any secret, and leave any draft where it is: git ignores it, and the gm
    plugin drops it once it is an hour stale.
 4. **Ids and paths are shown.** Use the id or type you were given. If you choose one,
-   make it neutral: `the-well`, not `marrow-poisoned-the-well`.
+   make it neutral: `the-well`, not `marrow-poisoned-the-well`. Either way it must be one
+   plain path component (letters, digits, `-`, `_`, `.`; no `/`, no `..`), since it
+   becomes a file name under `.gm/`. If you're given one that isn't, stop and say so.
 5. **Stay consistent with the campaign.** Read `campaign.md` (truths, tone, lines and
    veils), `npcs.md`, `threads.md` and `locations.md` as needed; a secret must fit what
    the table already knows and honor every line and veil.

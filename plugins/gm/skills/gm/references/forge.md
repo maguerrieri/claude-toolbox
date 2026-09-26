@@ -41,11 +41,13 @@ in the GM's own session. The GM hands the whole pipeline to the **`gm:screen` su
 (`${CLAUDE_PLUGIN_ROOT}/agents/screen.md`), passing only the type, N and the frame. The
 subagent:
 
-1. drafts the reservoir at `<campaign>/.gm/forge/<type>.md` with the Write tool (following
+1. runs `campaign gm-init <campaign>` (so `.gm/.gitignore` keeps the draft out of git),
+   then drafts the reservoir at `<campaign>/.gm/forge/<type>.md` with the Write tool (following
    `generate`'s method but writing the pool itself, since `generate`'s own convention
    would put it at `docs/generation/`; or improvising the pool when `generate` is absent);
-2. runs `forge harvest --consume <campaign>/.gm/forge/<type>.md <campaign>/.gm/tables/<type>.md`,
-   which writes the table sealed and deletes the draft;
+2. runs `forge harvest --sealed --consume <campaign>/.gm/forge/<type>.md <campaign>/.gm/tables/<type>.md`,
+   which writes the table sealed and deletes the draft (`--sealed` refuses a table path
+   outside the screen rather than writing it in plaintext);
 3. replies with the count only: `sealed <n> entries → .gm/tables/<type>.md`.
 
 Everything under `.gm/` is sealed on disk (zlib + base64), so a diff or a `cat` of the
