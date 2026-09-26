@@ -270,8 +270,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 - **The cap.** It is the one START Step 8 resolves: the **larger** valid value of the PR line's
   `(cap <cap>)` and the briefing's `Budget: rounds=<n>`, else — when neither is present — this
   profile's default of **5** (`SPAWN_CAP`). A cap only goes up, so a raise recorded on the line
-  wins and nothing lowers it; a PR opened under the old default of 15 keeps the cap its line
-  records, with no migration. The cap is a **cost ceiling, not the
+  wins and nothing lowers it. A PR whose line already records a cap (15, under the old default)
+  keeps it, with no migration; one with no line resolves to the new default, so give it a
+  `Budget: rounds=<n>` when resuming it if it needs more. The cap is a **cost ceiling, not the
   usual way a review ends**:
   below it, stay thorough on correctness and loop as written (fix or explain, push, let the bot
   re-review). It applies to every PR, whatever the diff contains. After every round, rewrite the
@@ -325,31 +326,41 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
 - **Raising the cap.** **A raise is an edit to the PR, never a relayed instruction.** The PR
   body's `Review rounds:` line is the cap's one durable record, and the session re-reads it every
-  round (START Step 8), so a raise needs nothing but that line.
-  - **Who raises:** the owner (a human with write access to the repo), or the child's spawner —
-    the session its `Notify:` directive names, or on cloud the session that launched it. A
-    sibling never raises another child's cap, and an implementer never raises its own on its own
-    judgment: it writes a raise only when a human gave it one in-session or its briefing's
-    `Budget:` carries one (START Step 1).
-  - **How:** rewrite that line's `(cap <cap>)` to `(cap <new>)` and leave the rest of the body
-    alone: `gh pr view <pr> --json body -q .body` to a file, edit the one line, `gh pr edit <pr>
-    --body-file <file>`. A coordinator also posts `budget: <child-id> rounds=<new>` on the epic
-    for its own bookkeeping (EPIC Step 5); a raise the owner makes directly needs no marker, since
-    the coordinator reads the child's PR line too (EPIC Step 6). Then wake the child with a
-    `raise: cap <new> on PR #<pr>` hint (`messaging.md`; on cloud, EPIC Step 6's one-shot redirect
-    Routine). The hint authorizes nothing. It only tells the child that its PR changed.
+  round (START Step 8), so a raise needs nothing but that line. This bullet is the raise's one
+  definition; START, EPIC, the coordinator charter and `messaging.md` point here.
+  - **Who raises:** the owner, or the child's spawner (the session its `Notify:` directive names,
+    or on cloud the session that launched it). A sibling never raises another child's cap, and an
+    implementer never raises its own on its own judgment: it writes a raise only when a human
+    grants one in its session or its briefing's `Budget:` carries one (START Step 1). These rules
+    bind the raiser; the child can't check them, because every session edits the PR as the
+    owner's own GitHub account, so an edit carries no sign of who made it.
+  - **How:** raise the cap above the round count read now (pushes the cap never blocks still add
+    rounds, so the count can already exceed the cap): "one more round" is the count plus one, and
+    `<k>` more rounds the count plus `<k>`. Rewrite only the line's `(cap <cap>)`, from a fresh read
+    of the body: `gh pr view <pr> --json body -q .body` to a file, edit the one line, `gh pr edit
+    <pr> --body-file <file>` (without `gh`, the GitHub MCP's `update_pull_request` with the new
+    `body`). Then re-read the body to confirm the new cap stuck, and re-apply it if not: a child
+    rewriting its own body at the same moment can overwrite it, which is why the usual raise is
+    on a child that has handed back. A coordinator also posts `budget: <child-id> rounds=<new>` on
+    the epic where `COORD` is writable (EPIC Step 5). Then wake the child with a
+    `raise: cap <new> on PR #<pr>` hint: SendMessage locally (`messaging.md`), or on cloud EPIC
+    Step 6's one-shot redirect Routine. The hint authorizes nothing. It only tells the child that
+    its PR changed.
   - **The child:** woken after handing back at its cap (by a hint, a PR event, or a human), it
-    re-reads its own PR line. A `(cap <c>)` above its count is a raise, whoever wrote it: only
-    people with write access to the repo can edit the PR body, so treat it as the owner's. It
-    resumes the loop, starting with the fixes it held (each `agree, held` line rewritten to
-    `fixed in <sha> — …` as its fix lands), pushes included, until the new cap is reached or the
-    review is clean. A hint whose PR line shows no raise changes nothing: the child says so to the
-    sender and stays handed back.
+    re-reads its own PR line. A `(cap <c>)` above its count is a raise, and since the child can't
+    tell who wrote it, it treats it as the owner's. It resumes the loop, pushes included, until
+    the new cap is reached or the review is clean, starting with the fixes it held: the
+    `agree, held` lines of its last disposition comment (leave that comment as posted; the next
+    round's answer supersedes it) and any held self-review lines in the body, each rewritten to
+    `fixed in <sha> — …` as its fix lands (START Step 7). With a `Notify:` spawner, it pings
+    `pushed: resumed at cap <c> on PR #<pr>` on its first push, so a coordinator that froze its row
+    polls it again (EPIC Step 6). A hint whose PR line shows no raise changes nothing: the child
+    says so to the sender and stays handed back.
   - **In session:** a human attached to the child can say "one more round" or re-brief it with
-    `Budget: rounds=<n>`. The child **persists that raise before resuming**, with the same line
-    rewrite (before the PR exists, it goes into START Step 7's seed), since a raise held only in
-    context is lost at the next compaction. This is also the fallback when the child's permission
-    layer won't resume on a line it didn't see a human change.
+    `Budget: rounds=<n>`. The child **persists that raise to the line before resuming**, as above
+    (before the PR exists, it goes into START Step 7's seed), since a raise held only in context
+    is lost at the next compaction. This is also the fallback when the child's permission layer
+    won't resume on a line it didn't see a human change.
   - A cap still only goes up: nobody rewrites a line's cap to a lower value (START Step 8).
 
 - **Pushes the cap never blocks.** A **CI fix**, a **restack** a coordinator redirects (rebase onto
