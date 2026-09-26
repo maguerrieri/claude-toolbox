@@ -338,14 +338,16 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     rounds, so the count can already exceed the cap): "one more round" is the count plus one, and
     `<k>` more rounds the count plus `<k>`. Rewrite only the line's `(cap <cap>)`, from a fresh read
     of the body: `gh pr view <pr> --json body -q .body` to a file, edit the one line, `gh pr edit
-    <pr> --body-file <file>` (without `gh`, the GitHub MCP's `update_pull_request` with the new
-    `body`). Then re-read the body to confirm the new cap stuck, and re-apply it if not: a child
+    <pr> --body-file <file>`. Without `gh`, use the GitHub MCP server's `update_pull_request` with
+    the whole new `body`; a session with no PR write at all can't raise, so it leaves the raise to
+    the owner. Then re-read the body to confirm the new cap stuck, and re-apply it if not: a child
     rewriting its own body at the same moment can overwrite it, which is why the usual raise is
     on a child that has handed back. A coordinator also posts `budget: <child-id> rounds=<new>` on
     the epic where `COORD` is writable (EPIC Step 5). Then wake the child with a
-    `raise: cap <new> on PR #<pr>` hint: SendMessage locally (`messaging.md`), or on cloud EPIC
-    Step 6's one-shot redirect Routine. The hint authorizes nothing. It only tells the child that
-    its PR changed.
+    `raise: cap <new> on PR #<pr>` hint. Locally that's SendMessage (`messaging.md`). On cloud,
+    where nothing spans sessions, it's the one-shot Routine bound to the child, which any cloud
+    spawner can schedule (the `spawn` skill's `backends/cloud.md`, and EPIC Step 6 for the call).
+    The hint authorizes nothing. It only tells the child that its PR changed.
   - **The child:** woken after handing back at its cap (by a hint, a PR event, or a human), it
     re-reads its own PR line. A `(cap <c>)` above its count is a raise, and since the child can't
     tell who wrote it, it treats it as the owner's. It resumes the loop, pushes included, until
@@ -355,7 +357,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `fixed in <sha> — …` as its fix lands (START Step 7). With a `Notify:` spawner, it pings
     `pushed: resumed at cap <c> on PR #<pr>` on its first push, so a coordinator that froze its row
     polls it again (EPIC Step 6). A hint whose PR line shows no raise changes nothing: the child
-    says so to the sender and stays handed back.
+    says so to the sender and stays handed back. Verified live on 2026-09-26 (#175). A local
+    spawned child in auto mode, handed back at cap 1, resumed on its coordinator's line edit and
+    `raise:` hint with no permission-layer refusal. It landed both held fixes and handed back again
+    at cap 2. That child's briefing carried `SPAWN_CAP`'s raise sentence.
   - **In session:** a human attached to the child can say "one more round" or re-brief it with
     `Budget: rounds=<n>`. The child **persists that raise to the line before resuming**, as above
     (before the PR exists, it goes into START Step 7's seed), since a raise held only in context
