@@ -477,21 +477,28 @@ def test_a_symlinked_directory_is_never_a_draft_either(campaign_path, tmp_path):
     assert (elsewhere / "keep.md").read_text() == "not ours\n"  # only the link went
 
 
-def test_gm_init_refuses_a_symlinked_draft_dir(campaign_path, tmp_path):
-    """A symlinked .gm/inbox would route gm:screen's plaintext draft outside the screen:
-    gm-init stops the subagent before it drafts."""
+def test_a_symlinked_draft_dir_is_replaced_by_a_real_one(campaign_path, tmp_path):
+    """A symlinked .gm/inbox would route gm:screen's plaintext draft outside the screen.
+    A link is never a draft dir: gm-init and the sweep drop it (gm-init then makes a
+    real one), leaving the target alone. Only a symlinked .gm itself stops gm-init."""
     d = new_campaign(campaign_path, tmp_path)
-    os.makedirs(os.path.join(d, ".gm"))
+    run(campaign_path, "gm-init", d)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    os.symlink(str(elsewhere), os.path.join(d, ".gm", "inbox"))
-    p = run(campaign_path, "gm-init", d)
+    (elsewhere / "keep.md").write_text("not ours\n")
+    inbox = os.path.join(d, ".gm", "inbox")
+    os.rmdir(inbox)
+    os.symlink(str(elsewhere), inbox)  # linked after gm-init
+    assert "dropped 1 leftover draft" in run(campaign_path, "gm-migrate", d).stdout
+    assert not os.path.lexists(inbox)
+    os.symlink(str(elsewhere), inbox)
+    assert run(campaign_path, "gm-init", d).returncode == 0
+    assert os.path.isdir(inbox) and not os.path.islink(inbox)
+    assert (elsewhere / "keep.md").read_text() == "not ours\n"
+    linked = new_campaign(campaign_path, tmp_path / "linked")
+    os.symlink(str(elsewhere), os.path.join(linked, ".gm"))
+    p = run(campaign_path, "gm-init", linked)
     assert p.returncode != 0 and "symlink" in p.stderr
-    fresh = new_campaign(campaign_path, tmp_path / "fresh")
-    assert run(campaign_path, "gm-init", fresh).returncode == 0
-    for sub in ("forge", "inbox"):  # created as real directories
-        path = os.path.join(fresh, ".gm", sub)
-        assert os.path.isdir(path) and not os.path.islink(path)
 
 
 def test_sealed_harvest_refuses_a_table_outside_the_screen(campaign_path, forge_path, tmp_path):
