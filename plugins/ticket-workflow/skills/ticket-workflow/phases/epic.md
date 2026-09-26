@@ -156,7 +156,7 @@ Only if the request carries a **finish flag** (`--finish`, "merge when green", "
 
 A layer is **ready** when all of these hold:
 
-- its row is START-complete by Step 6's test, and for a dependent that means on the epic base, with its `restacked:` comment posted;
+- its row is START-complete by Step 6's test, and for a dependent that means on the epic base, with its `restacked:` comment posted. A merge below a layer, and its restack, give it a new base, head and review, so unfreeze its Step 6 row once anything below it merges and re-run the full test on it before clearing;
 - no unmerged PR sits below it (every parent has merged, and it has restacked);
 - it isn't a draft;
 - it passes the **round-cap halt**: no `Review rounds:` line with `<m>` above 0, and no `agree, held at the round cap` line in its `## Self-review` section (a self-review finding held at the cap, which `<m>` doesn't count; START Step 7's record). A layer holding either **fails the gate here**: the finish flag authorized landing reviewed layers, not findings its implementer agreed were bugs and held. Halt it (and everything above it) and report it for the owner, who can land it with `/finish-ticket` after weighing them. The child checks the same when cleared.
@@ -174,7 +174,7 @@ Clear the layers in **dependency order**:
 **Unreachable children.** A clearance needs a child that can answer it, and two kinds can't:
 
 - **A cloud child** can't be cleared at all, since no channel reaches it.
-- **A local child whose session has ended** gets your `finish:` only when it's next opened. Locally nothing wakes you for a child that never answers, so after each clearance start a background timer that re-invokes you (a `run_in_background` Bash `sleep 1800`). If it fires with no answer and no change on the PR, and `claude agents` shows the child isn't running, treat the child as unreachable.
+- **A local child whose session has ended** gets your `finish:` only when it's next opened. Locally nothing wakes you for a child that never answers, so after each clearance start a background timer: run `sleep 1800` with the Bash tool's `run_in_background` option. Claude Code re-invokes an idle session with a task notification when a background command exits. Where your harness has no such option, don't wait on a child that may never answer: report its layer as `ready; needs the owner (child not answering)` in the hand-back. If it fires with no answer and no change on the PR, and `claude agents` shows the child isn't running, treat the child as unreachable.
 
 You land an unreachable child's layer yourself, under your own grant (the FINISH intro's first grant form), but only once it's **ready** by the test above. For a dependent that means it has already restacked, and it has to do that itself, since you never push to its branch. A cloud dependent restacks when Step 6's one-shot Routine delivers its `restack:` line. An ended local dependent can't, so it's stuck: re-spawn it per Step 6 with the restack in its briefing. The new session restacks, goes back through review, and is then cleared like any other child.
 
