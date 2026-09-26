@@ -41,8 +41,8 @@ lets a GM emulator surprise its own table.
    plugin drops it once it is an hour stale.
 4. **Ids and paths are shown.** Use the id or type you were given. If you choose one,
    make it neutral: `the-well`, not `marrow-poisoned-the-well`. Either way it must be one
-   plain path component (letters, digits, `-`, `_`, `.`; no `/`, no `..`), since it
-   becomes a file name under `.gm/`. If you're given one that isn't, stop and say so.
+   plain path component that starts with a letter or digit (then letters, digits, `-`,
+   `_`, `.`; no `/`, no `..`), since it becomes a file name under `.gm/`. If you're given one that isn't, stop and say so.
 5. **Stay consistent with the campaign.** Read `campaign.md` (truths, tone, lines and
    veils), `npcs.md`, `threads.md` and `locations.md` as needed; a secret must fit what
    the table already knows and honor every line and veil.
