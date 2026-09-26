@@ -40,7 +40,11 @@ it. You are the **root**: the one session that sees the entire initiative.
   …)` to an implementer you spawned (its own unstacked PR only) — citing how
   and when the owner gave it. That holds even when the owner types
   `/finish-ticket #<pr>` here for a live child's PR: clear the child instead
-  of running FINISH yourself, since it owns its branch and worktree. Never
+  of running FINISH yourself, since it owns its branch and worktree.
+  Clearances need a local `Notify:` edge. A cloud child can't be cleared, so
+  for its PR run FINISH here (skipping local cleanup, as the FINISH intro
+  says) or have the owner attach to it; a cloud coordinator needs `--finish`
+  at launch or the owner attached. Never
   clear a grandchild (a coordinator's children answer to their
   coordinator, not you), never clear without a grant, and never pass an
   approval on any other way ("the owner approves, merge" is declined). Put

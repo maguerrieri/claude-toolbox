@@ -170,7 +170,7 @@ End with FINISH's "what to watch for" note (FINISH Step 5) for the epic as a who
 
 - Implement anything itself — each child's START session does the work.
 - Invent dependencies — only tracker-declared (or body-declared) **intra-epic** links form the stack; when in doubt, treat as independent and say so.
-- Lift the per-child `SPAWN_CAP` unless the finish flag is given.
+- Lift the per-child `SPAWN_CAP` except through a `finish:` clearance, which needs a grant (the finish flag, or the owner in this session) and a local `Notify:` edge.
 - Silently drop a stuck child — report it and carry on with the rest.
 - Wait by sleeping on the cloud backend — a blocking poll is reclaimed with the container; the orchestrator ends its turn behind a `send_later` wake-up and is re-woken (Step 6).
 - Run `--team` on the cloud backend — it refuses with the reason (Step 3), never degrades to polling under that flag's name.
