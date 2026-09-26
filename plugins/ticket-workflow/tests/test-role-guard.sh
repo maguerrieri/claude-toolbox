@@ -82,6 +82,21 @@ bash_case deny implementer "quoted \$HOME path" '"$HOME/.local/bin/claude" --bg 
 bash_case deny implementer "claude -p" 'claude -p "/start-ticket 5"'
 bash_case deny implementer "backgrounded claude -p" 'nohup claude -p "/start-ticket 5" &'
 bash_case deny implementer "prompt after a variadic option and another flag" 'claude --add-dir a b --bg "/start-ticket 5"'
+bash_case deny implementer "unquoted command-substitution heredoc" "$(printf '%s\n' "p=\$(cat <<'EOF'" '/spawn-tickets 3 5' 'EOF' ')' 'claude --bg "$p"')"
+bash_case deny implementer "prompt from a stdin heredoc" "$(printf '%s\n' "claude -p <<'EOF'" '/start-ticket 5' 'EOF')"
+bash_case deny implementer "stdin heredoc with a redirect on its line" "$(printf '%s\n' "claude -p <<'EOF' 2>/dev/null" '/start-ticket 5' 'EOF')"
+bash_case deny implementer "prompt from a here-string" 'claude -p <<< "/start-ticket 5"'
+bash_case deny implementer "prompt read from a here-string" 'read -r p <<< "/start-ticket 5"; claude --bg "$p"'
+bash_case deny implementer "prompt piped from echo" 'echo "/start-ticket 5" | claude -p'
+bash_case deny implementer "prompt piped from printf" "printf '%s\\n' '/start-ticket 5' | claude -p --output-format json"
+bash_case deny implementer "prompt piped from a heredoc" "$(printf '%s\n' "cat <<'EOF' | claude -p" '/start-ticket 5' 'EOF')"
+bash_case deny implementer "redirect before the prompt" 'claude --bg 2>/dev/null "/start-ticket 5"'
+bash_case deny implementer "spaced redirects before the prompt" 'claude --bg > /tmp/log 2>&1 "/start-ticket 5"'
+bash_case deny implementer "value of an option --help doesn't list" 'claude --bg --max-turns 5 "/start-ticket 5"'
+bash_case deny implementer "partly quoted prompt" 'for id in 3 5; do claude --bg "/start-ticket "$id; done'
+bash_case deny implementer "variable followed by more text" 'cmd=/spawn-tickets; claude --bg "$cmd 3 5"'
+bash_case deny implementer "/make-ticket --spawn with directive lines after it" "$(printf '%s\n' 'claude --bg "/make-ticket Fix flaky CI --spawn' 'Notify: repo x"')"
+bash_case deny implementer "stripped-identity launch" 'env -u CLAUDE_SESSION_ID claude --bg --name "x" "/start-ticket 5"'
 
 # Implementer: helpers and everything else pass.
 bash_case allow implementer "helper whose prompt leads with prose" "$helper"
@@ -104,6 +119,13 @@ bash_case allow implementer "issue command as a --name value" 'claude --bg --nam
 bash_case allow implementer "unquoted helper prompt mentioning a command" 'claude --bg Investigate why /start-ticket fails'
 bash_case allow implementer "last assignment wins (helper)" 'p="/start-ticket 5"; p="Investigate X"; claude --bg "$p"'
 bash_case allow implementer "launch only in a trailing comment" 'echo hi # claude --bg "/start-ticket 5"'
+bash_case allow implementer "piped input with a positional helper prompt" 'git log -5 | claude -p "Summarize these commits"'
+bash_case allow implementer "helper prompt piped from echo" 'echo "Investigate X" | claude -p'
+bash_case allow implementer "helper prompt after an unlisted option's value" 'claude --bg --max-turns 5 "Investigate X"'
+bash_case allow implementer "helper prompt with a trailing redirect" 'claude --bg "Investigate X" 2>/dev/null'
+bash_case allow implementer "variable assigned only after the launch" 'claude --bg "${cmd} 3 5"; cmd=/spawn-tickets'
+bash_case allow implementer "launch written to a file by a heredoc" "$(printf '%s\n' "cat <<'EOF' >notes.md" 'claude -p "/start-ticket 5"' 'EOF')"
+bash_case allow implementer "process substitutions" 'diff <(sort a) <(sort b)'
 cloud_case deny implementer "prompt leading with /start-ticket" '/start-ticket 52 Implement and test.  Role: implementer'
 cloud_case deny implementer "leading whitespace, namespaced /spawn-epic" '  /ticket-workflow:spawn-epic 40'
 cloud_case deny implementer "/make-ticket --spawn" '/make-ticket Fix flaky CI --spawn'
@@ -120,6 +142,18 @@ bash_case allow planner "planner spawns" "$spawn_ticket"
 cloud_case allow epic-coordinator "coordinator cloud spawn" '/start-ticket 52'
 record ask "planner Edit (existing guard)" "$(decide planner Edit file_path /repo/x)"
 record allow "coordinator Edit" "$(decide epic-coordinator Edit file_path /repo/x)"
+
+# The PreToolUse matcher names mcp__.*__create_session, so Claude Code reads it
+# as a regex and tests it unanchored: it must be anchored to keep tools that
+# merely contain a guarded name out.
+matcher=$(jq -r '.hooks.PreToolUse[0].matcher' "$here/../hooks/hooks.json")
+matches() { jq -rn --arg m "$matcher" --arg t "$1" 'if ($t | test($m)) then "match" else "no match" end'; }
+for tool in Edit Write MultiEdit NotebookEdit Bash create_session mcp__Claude_Code_Remote__create_session; do
+	record match "PreToolUse matcher: $tool" "$(matches "$tool")"
+done
+for tool in TodoWrite BashOutput KillBash mcp__ide__Edit_file mcp__x__create_session_log; do
+	record "no match" "PreToolUse matcher: $tool" "$(matches "$tool")"
+done
 
 # Fail open.
 record allow "unsafe session id" "$(decide_raw implementer '{"session_id":"../x","tool_name":"Bash","tool_input":{"command":"claude --bg \"/start-ticket 1\""}}')"

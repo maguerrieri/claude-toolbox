@@ -14,7 +14,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|create_session|mcp__.*__create_session",
+        "matcher": "^(Edit|Write|MultiEdit|NotebookEdit|Bash|create_session|mcp__.*__create_session)$",
         "hooks": [
           {
             "type": "command",
