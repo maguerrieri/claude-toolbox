@@ -8,9 +8,10 @@
   campaign backup <dir>
 
   campaign gm-clock <dir> <id> [--segments N] [--advance N] [--set N]
-  campaign gm-seal <dir> <id> [text]        # text from arg, or piped on stdin
+  campaign gm-seal <dir> <id> [text | --from FILE]   # text from arg, FILE (consumed), or stdin
   campaign gm-reveal <dir> [id]
   campaign gm-list <dir>
+  campaign gm-migrate <dir>                 # seal any plaintext left under .gm/
 
   campaign bind <dir> [--session ID]        # autosave this session's play into <dir>
   campaign unbind [--session ID]
@@ -30,11 +31,12 @@ narration to <dir>/log/raw/ and checkpoints it, so the play record never depends
 the model remembering /gm:wrap or on Claude Code keeping its transcript.
 
 The gm-* subcommands keep hidden GM state (secret clocks, sealed answers) in a .gm/
-sealed dir, written through THIS CLI rather than the Write/Edit tools — so in a solo
-session the writes collapse to "Ran 1 shell command" in the transcript instead of
-rendering their content inline (the GM screen). Writes print a neutral confirmation,
-never the value; gm-reveal surfaces a secret when the fiction earns it. Expanding the
-call to read ahead is a feature (dramatic irony), not a leak — so no encryption here.
+dir, SEALED at rest (lib/gm_screen.py: zlib + base64 — noise to a glance, not
+encryption). Claude Code shows a diff of every file a Bash command changes, so a
+plaintext .gm/ would spoil the player on every write; sealed, the diff is noise. Writes
+print a neutral confirmation, never the value; gm-reveal surfaces a secret when the
+fiction earns it. A secret's text must never be in a command either: the gm:screen
+subagent composes it and seals it (`gm-seal --from <draft>`), out of the player's view.
 """
 import argparse
 import contextlib
@@ -54,6 +56,9 @@ try:
     import fcntl
 except ImportError:
     fcntl = None
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import gm_screen  # noqa: E402
 
 MARKER = ".gm-campaign"
 
@@ -139,6 +144,10 @@ def cmd_rewind(a):
     # make the index + working tree match the target EXACTLY (removes files added since),
     # without moving HEAD — so the rewind lands as a new, reversible commit.
     git(a.dir, "read-tree", "-u", "--reset", a.to)
+    # A checkpoint from before sealing restores a plaintext .gm/: seal it within this
+    # same command, so the Bash edit-diff shows noise rather than the restored secrets.
+    if gm_screen.seal_tree(a.dir):
+        git(a.dir, "add", "-A")
     if not _staged_changes(a.dir):
         print(f"already at {a.to}; nothing to rewind")
         return
@@ -156,13 +165,14 @@ def cmd_backup(a):
     print("backup pushed")
 
 
-# ---- GM screen: hidden state under a .gm/ sealed dir ------------------------
-# Written via this CLI (not the Write tool) so the writes collapse to
-# "Ran 1 shell command" in the transcript instead of showing content inline.
-# Independent of git management: works in deferred campaigns too (plain files);
-# a managed campaign just commits .gm/ with the next checkpoint.
+# ---- GM screen: hidden state under a sealed .gm/ dir -------------------------
+# Every file under .gm/ is sealed at rest (lib/gm_screen.py), so the Bash edit-diff
+# view, `cat` or an editor shows noise; reads accept legacy plaintext, and the next
+# write (or `gm-migrate`, or the Stop hook's sweep) seals it. Independent of git
+# management: works in deferred campaigns too; a managed campaign commits .gm/ with
+# the next checkpoint.
 
-GM_DIR = ".gm"
+GM_DIR = gm_screen.SCREEN_DIR
 
 
 def _gm_state_path(d):
@@ -171,17 +181,14 @@ def _gm_state_path(d):
 
 def _gm_load(d):
     p = _gm_state_path(d)
-    state = json.load(open(p)) if os.path.isfile(p) else {}
+    state = json.loads(gm_screen.read(p)) if os.path.isfile(p) else {}
     state.setdefault("clocks", {})
     state.setdefault("secrets", {})
     return state
 
 
 def _gm_save(d, state):
-    os.makedirs(os.path.join(d, GM_DIR), exist_ok=True)
-    with open(_gm_state_path(d), "w") as f:
-        json.dump(state, f, indent=2, sort_keys=True)
-        f.write("\n")
+    gm_screen.write(_gm_state_path(d), json.dumps(state, indent=2, sort_keys=True) + "\n")
 
 
 def cmd_gm_clock(a):
@@ -204,10 +211,21 @@ def cmd_gm_clock(a):
 
 
 def cmd_gm_seal(a):
-    text = a.text if a.text is not None else sys.stdin.read()
+    if a.text is not None and a.from_file is not None:
+        sys.exit("campaign: gm-seal takes the text as an argument or --from FILE, not both")
+    if a.from_file is not None:
+        # The gm:screen subagent's draft: read it (sealed or not), seal it, delete it,
+        # so its plaintext never outlives this command.
+        text = gm_screen.read(a.from_file)
+    elif a.text is not None:
+        text = a.text
+    else:
+        text = sys.stdin.read()
     state = _gm_load(a.dir)
     state["secrets"][a.id] = text.rstrip("\n")
     _gm_save(a.dir, state)
+    if a.from_file is not None:
+        os.remove(a.from_file)
     print(f"gm: '{a.id}' sealed")
 
 
@@ -229,6 +247,12 @@ def cmd_gm_reveal(a):
         print(f"clock '{cid}': {c['filled']}/{c['segments']}")
     for sid, text in sorted(state["secrets"].items()):
         print(f"secret '{sid}': {text}")
+
+
+def cmd_gm_migrate(a):
+    n = gm_screen.seal_tree(a.dir)
+    print(f"gm: sealed {n} plaintext file{'' if n == 1 else 's'} behind the screen" if n
+          else "gm: nothing to seal — the screen is already sealed")
 
 
 def cmd_gm_list(a):
@@ -606,6 +630,7 @@ def _autosave(payload):
         blocks, progress = _read_new_blocks(transcript, binding)
         if blocks:
             _append_raw(d, sid, _render(blocks), datetime.datetime.now())
+        swept = _sweep_screen(d, "hook-autosave")
         wrap = binding.pop("wrap_pending", None)
         remarked = []
         if isinstance(wrap, dict) and wrap.get("campaign") == d:
@@ -617,8 +642,8 @@ def _autosave(payload):
         # (the next turn's checkpoint picks the log up anyway).
         binding.update(progress)
         _save_binding(sid, binding)
-        if (blocks or remarked) and is_managed(d):  # deferred saves: log, never commit
-            _commit_all(d, _autosave_label(blocks))
+        if (blocks or remarked or swept) and is_managed(d):  # deferred saves: log, never commit
+            _commit_all(d, _autosave_label(blocks) if blocks or remarked else "gm: seal the screen")
 
 
 def _hook_payload():
@@ -641,6 +666,17 @@ def _log_hook_error(where):
                     f"{traceback.format_exc()}")
     except Exception:
         pass
+
+
+def _sweep_screen(d, where):
+    """Seal any plaintext left under <d>/.gm/ — a legacy file, or a draft a crashed
+    gm:screen subagent never consumed. Hooks run outside every tool call, so no diff
+    view shows the plaintext going away. A failure is logged and never costs the turn."""
+    try:
+        return gm_screen.seal_tree(d)
+    except Exception:
+        _log_hook_error(where + " (sealing .gm/)")
+        return 0
 
 
 def cmd_hook_autosave(a):
@@ -690,6 +726,8 @@ def cmd_hook_session_start(a):
         binding = _load_binding(sid)
         if binding and isinstance(binding.get("campaign"), str):
             d = binding["campaign"]
+            if os.path.isdir(d):
+                _sweep_screen(d, "hook-session-start")
             print(f"gm autosave: this session is bound to the campaign at {d} — every turn's "
                   f"player prompt and GM narration is logged to {os.path.join(d, RAW_DIR)}/ "
                   f"automatically. It is the active campaign for /gm:wrap, /gm:checkpoint, "
@@ -779,8 +817,10 @@ def main(argv=None):
     p = sub.add_parser("gm-clock"); p.add_argument("dir"); p.add_argument("id")
     p.add_argument("--segments", type=int); p.add_argument("--advance", type=int); p.add_argument("--set", type=int)
     p = sub.add_parser("gm-seal"); p.add_argument("dir"); p.add_argument("id"); p.add_argument("text", nargs="?")
+    p.add_argument("--from", dest="from_file", metavar="FILE")
     p = sub.add_parser("gm-reveal"); p.add_argument("dir"); p.add_argument("id", nargs="?")
     p = sub.add_parser("gm-list"); p.add_argument("dir")
+    p = sub.add_parser("gm-migrate"); p.add_argument("dir")
     p = sub.add_parser("bind"); p.add_argument("dir"); p.add_argument("--session")
     p = sub.add_parser("unbind"); p.add_argument("--session")
     p = sub.add_parser("unwrapped"); p.add_argument("dir")
@@ -792,7 +832,7 @@ def main(argv=None):
         {"init": cmd_init, "checkpoint": cmd_checkpoint, "log": cmd_log,
          "rewind": cmd_rewind, "backup": cmd_backup,
          "gm-clock": cmd_gm_clock, "gm-seal": cmd_gm_seal,
-         "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list,
+         "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list, "gm-migrate": cmd_gm_migrate,
          "bind": cmd_bind, "unbind": cmd_unbind,
          "unwrapped": cmd_unwrapped, "mark-wrapped": cmd_mark_wrapped,
          "hook-session-start": cmd_hook_session_start,
@@ -800,6 +840,8 @@ def main(argv=None):
     except subprocess.CalledProcessError as e:
         sys.exit(f"campaign: git command failed: {' '.join(e.cmd)}")
     except FileNotFoundError as e:
+        sys.exit(f"campaign: {e}")
+    except ValueError as e:  # a corrupt sealed file
         sys.exit(f"campaign: {e}")
 
 

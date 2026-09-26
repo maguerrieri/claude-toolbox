@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 
+import gm_screen
+
 
 def run(campaign_path, *args):
     return subprocess.run([campaign_path, *args], capture_output=True, text=True)
@@ -109,7 +111,7 @@ def test_rewind_bad_ref_is_clean(campaign_path, tmp_path):
 # ---- GM screen: hidden state under .gm/ ------------------------------------
 
 def _gm_state(d):
-    return json.load(open(os.path.join(d, ".gm", "state.json")))
+    return json.loads(gm_screen.read(os.path.join(d, ".gm", "state.json")))
 
 
 def test_gm_clock_seal_advance_and_reveal(campaign_path, tmp_path):
@@ -179,19 +181,22 @@ def test_gm_reveal_all(campaign_path, tmp_path):
     run(campaign_path, "init", d)
     run(campaign_path, "gm-clock", d, "doom", "--segments", "4", "--advance", "3")
     run(campaign_path, "gm-seal", d, "twist", "it was a dream")
-    p = run(campaign_path, "gm-reveal", d)  # no id -> everything (GM reloads the screen)
+    p = run(campaign_path, "gm-reveal", d)  # no id -> everything
     assert "clock 'doom': 3/4" in p.stdout
     assert "it was a dream" in p.stdout
 
 
 def test_gm_state_lives_in_sealed_dir_not_stdout(campaign_path, tmp_path):
-    """The point: the value is on disk under .gm/, never in the write's stdout."""
+    """The point: the value is on disk under .gm/, sealed, and never in the write's stdout."""
     d = str(tmp_path / "camp")
     run(campaign_path, "init", d)
     p = run(campaign_path, "gm-seal", d, "answer", "Smith is the spy")
     assert os.path.isfile(os.path.join(d, ".gm", "state.json"))
-    assert "Smith is the spy" not in p.stdout  # not in the (collapsed) write output
-    assert "Smith is the spy" in open(os.path.join(d, ".gm", "state.json")).read()
+    assert "Smith is the spy" not in p.stdout  # not in the write's output
+    raw = open(os.path.join(d, ".gm", "state.json")).read()
+    assert raw.startswith(gm_screen.MAGIC)
+    assert "Smith" not in raw                  # sealed on disk: a diff view shows noise
+    assert _gm_state(d)["secrets"]["answer"] == "Smith is the spy"
 
 
 def test_gm_works_in_deferred_campaign(campaign_path, tmp_path):
