@@ -106,6 +106,24 @@ def test_screen_of_is_the_gm_dir_next_to_campaign_md(tmp_path):
     assert gm_screen.screen_of(str(tmp_path / ".gm" / "x.md")) is None  # no campaign.md beside it
 
 
+def test_a_symlink_never_turns_a_sealed_write_into_plaintext(campaign_path, forge_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    run(campaign_path, "gm-init", d)
+    os.makedirs(os.path.join(d, ".gm", "tables"))
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    res = tmp_path / "res.md"
+    # a link outside the screen that points into it...
+    (outside / "in.md").symlink_to(os.path.join(d, ".gm", "tables", "in.md"))
+    # ...and a link inside the screen that points out of it
+    os.symlink(str(outside / "out.md"), os.path.join(d, ".gm", "tables", "out.md"))
+    for table in (outside / "in.md", os.path.join(d, ".gm", "tables", "out.md")):
+        res.write_text(RESERVOIR)
+        p = run(forge_path, "harvest", "--sealed", str(res), str(table))
+        assert p.returncode == 0 and "(sealed)" in p.stdout, p.stderr
+    assert plaintext_hits(str(tmp_path), SECRET_ENTRIES[:1]) == [("res.md", SECRET_ENTRIES[0])]
+
+
 def test_an_open_table_under_some_other_gm_dir_stays_open(forge_path, tmp_path):
     camp = tmp_path / ".gm" / "campaigns" / "embervale"
     camp.mkdir(parents=True)
