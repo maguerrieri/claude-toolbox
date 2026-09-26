@@ -337,9 +337,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - **How:** raise the cap above the round count read now (pushes the cap never blocks still add
     rounds, so the count can already exceed the cap): "one more round" is the count plus one, and
     `<k>` more rounds the count plus `<k>`. Rewrite only the line's `(cap <cap>)`, from a fresh read
-    of the body: `gh pr view <pr> --json body -q .body` to a file, edit the one line, `gh pr edit
-    <pr> --body-file <file>`. Without `gh`, use the GitHub MCP server's `update_pull_request` with
-    the whole new `body`; a session with no PR write at all can't raise, so it leaves the raise to
+    of the body: `gh pr view <pr> -R <owner>/<repo> --json body -q .body` to a file, edit the one
+    line, `gh pr edit <pr> -R <owner>/<repo> --body-file <file>`. `-R` binds both calls to the
+    child's repo, since the raiser may sit in another checkout. Without `gh`, use the GitHub MCP
+    server's `update_pull_request` (its `owner`/`repo`, the whole new `body`); a session with no PR write at all can't raise, so it leaves the raise to
     the owner. Then re-read the body to confirm the new cap stuck, and re-apply it if not: a child
     rewriting its own body at the same moment can overwrite it, which is why the usual raise is
     on a child that has handed back. A coordinator also posts `budget: <child-id> rounds=<new>` on
