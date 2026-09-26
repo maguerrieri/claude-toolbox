@@ -11,15 +11,16 @@ and an unparseable version. New plugins only need a valid version. Stdlib only,
 no dependencies.
 
 External entries get the same rule. A marketplace entry whose `source` is an
-object (provenance: a `github` source pinned to a release by `ref` and `sha`) has no
-files under ./plugins/ to diff; its version lives in the other repo's
+object (provenance: a `github` source pinned to a release by `ref` and `sha`)
+has no files under ./plugins/ to diff; its version lives in the other repo's
 plugin.json. So for each such entry that is added or whose source changes
-between BASE and HEAD, the check fetches that plugin.json at the head pin, and
-at the base pin when the entry existed there, and compares them as above. That
-needs network access to github.com, and a pin it can't fetch fails. Other
-source types get a `skip` line, since only `github` is fetched. A removed entry
-needs no gate. An entry or a marketplace.json it can't parse is left to
-`claude plugin validate`.
+between BASE and HEAD, the check fetches that plugin.json at the head pin and
+compares it with the entry's base version, as above. An entry that moves
+between ./plugins/ and another repo is gated across the move: its base version
+is read from wherever the entry pointed at BASE. Fetching needs network access
+to github.com, and a pin it can't fetch fails. Other source types get a `skip`
+line, since only `github` is fetched, and a removed entry needs no gate. An
+entry or a marketplace.json it can't parse is left to `claude plugin validate`.
 
 Usage (from the repo root; CI passes the PR's base SHA and the merge commit):
   python3 .github/scripts/check-plugin-versions <base-ref> <head-ref>
@@ -91,8 +92,11 @@ def exists_at(ref, plugin):
     return bool(git("ls-tree", "-r", "--name-only", ref, "--", f"plugins/{plugin}/").strip())
 
 
-def external_sources(ref):
-    """{name: source} for the marketplace entries at <ref> whose source is an object.
+LOCAL = "./plugins/"
+
+
+def marketplace_sources(ref):
+    """{name: source} for the marketplace entries at <ref>: a string or an object.
 
     Skips any entry it can't read, and returns {} for a missing or malformed
     marketplace.json: validating those is `claude plugin validate`'s job.
@@ -109,7 +113,18 @@ def external_sources(ref):
         return {}
     return {e["name"]: e["source"] for e in entries
             if isinstance(e, dict) and isinstance(e.get("name"), str)
-            and isinstance(e.get("source"), dict)}
+            and isinstance(e.get("source"), (str, dict))}
+
+
+def local_dir(source):
+    """The plugins/ directory a local source names; None for any other source."""
+    if isinstance(source, str) and source.startswith(LOCAL):
+        return source[len(LOCAL):].strip("/") or None
+    return None
+
+
+def is_github(source):
+    return isinstance(source, dict) and source.get("source") == "github"
 
 
 def source_version(source):
@@ -162,37 +177,51 @@ def main(argv):
         sys.exit(__doc__)
     base, head = argv[1], argv[2]
     changed = git("diff", "--name-only", base, head, "--", "plugins/").split()
-    plugins = sorted({f.split("/")[1] for f in changed if f.count("/") >= 2})
+    old_sources, new_sources = marketplace_sources(base), marketplace_sources(head)
+    # Local plugins whose entry pointed at another repo at base: their base
+    # version is that repo's, and they're gated even if no file here changed.
+    moved_in = {local_dir(source): old_sources[name] for name, source in new_sources.items()
+                if local_dir(source) and isinstance(old_sources.get(name), dict)}
+    plugins = sorted({f.split("/")[1] for f in changed if f.count("/") >= 2} | moved_in.keys())
     failures = []
     for plugin in plugins:
-        old, new = version_at(base, plugin), version_at(head, plugin)
+        new = version_at(head, plugin)
         if new is None:
             if exists_at(head, plugin):
                 failures.append(f"{plugin}: plugin files changed but"
                                 " .claude-plugin/plugin.json is missing on head")
             continue  # whole plugin removed on head: nothing to gate
-        gate(plugin, old, new, failures)
-    old_external, new_external = external_sources(base), external_sources(head)
-    external = sorted(name for name in old_external.keys() | new_external.keys()
-                      if old_external.get(name) != new_external.get(name))
-    for name in external:
-        old_source, new_source = old_external.get(name), new_external.get(name)
-        if new_source is None:
-            print(f"ok   {name}: external entry removed")
+        prior = moved_in.get(plugin)
+        try:
+            old = ((source_version(prior) if is_github(prior) else None) if prior
+                   else version_at(base, plugin))
+        except LookupError as exc:
+            failures.append(f"{plugin}: {exc}")
             continue
-        if new_source.get("source") != "github":
+        gate(plugin, old, new, failures)
+    removed = sorted(name for name, source in old_sources.items()
+                     if isinstance(source, dict) and name not in new_sources)
+    for name in removed:
+        print(f"ok   {name}: external entry removed")
+    external = sorted(name for name, source in new_sources.items()
+                      if isinstance(source, dict) and old_sources.get(name) != source)
+    for name in external:
+        old_source, new_source = old_sources.get(name), new_sources[name]
+        if not is_github(new_source):
             print(f"skip {name}: only github sources are version-checked, not"
                   f" {json.dumps(new_source, sort_keys=True)}")
             continue
         try:
             new = source_version(new_source)
-            old = (source_version(old_source)
-                   if old_source and old_source.get("source") == "github" else None)
+            if local_dir(old_source):  # moved out of ./plugins/: gate against the local version
+                old = version_at(base, local_dir(old_source))
+            else:
+                old = source_version(old_source) if is_github(old_source) else None
         except LookupError as exc:
             failures.append(f"{name}: {exc}")
             continue
         gate(name, old, new, failures)
-    if not plugins and not external:
+    if not plugins and not removed and not external:
         print("ok   no plugin touched")
     for failure in failures:
         print(f"FAIL {failure}")

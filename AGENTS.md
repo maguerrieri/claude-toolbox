@@ -166,5 +166,6 @@ version and keeps the old commit (verified on Claude Code 2.1.282). The `plugin 
 check gates this too. For each external `github` entry that is added or whose source
 changes, it fetches `plugin.json` at the base and head pins (the `sha`, else the `ref`)
 and applies the same rule, so moving `ref` without `sha` fails as an unchanged version.
-Other source types get a `skip` line. `provenance` isn't a `defaults` dependency (neither
+An entry that moves between `./plugins/` and another repo is gated across the move. Other
+source types get a `skip` line. `provenance` isn't a `defaults` dependency (neither
 is `gm`).
