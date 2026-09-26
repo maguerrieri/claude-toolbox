@@ -97,7 +97,7 @@ over the whole file would run the issue line into the role
 `Notify:` target as a `notify: <session name>` line (START Step 1's *Note your
 notifier*; EPIC Step 1 for a coordinator's own), replacing any earlier one.
 `role-session-start.sh` re-injects it after the charter, so a spawned session
-that compacts or is `/clear`ed keeps pinging its spawner instead of dropping to
+that compacts or resumes keeps pinging its spawner instead of dropping to
 the poll. The write is a script, `scripts/record-notify.sh`, that reads the
 name from a quoted heredoc: a name can hold anything a spawn name holds (the
 em dash in `/spawn-epic`'s coordinator name, an apostrophe, a ` [ref]`

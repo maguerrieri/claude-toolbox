@@ -2,16 +2,21 @@
 # Record this session's Notify: target in its role marker, as a
 # `notify: <session name>` line (START Step 1's *Note your notifier*; EPIC
 # Step 1 for a coordinator's own). role-session-start.sh re-injects it next to
-# the charter after resume, /clear, or compaction, which the briefing that
-# named it does not survive.
+# the charter after resume or compaction, which the briefing that named it
+# does not survive.
 #
 # The name comes on stdin from a quoted heredoc, so no character in it ever
 # reaches the shell as syntax:
 #
-#   [ -n "${CLAUDE_TICKET_WORKFLOW_ROOT:-}" ] &&
-#     bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<'NOTIFY_NAME_EOF'
+#   bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<'NOTIFY_NAME_EOF'
 #   <session name>
 #   NOTIFY_NAME_EOF
+#
+# (SKILL.md's snippet also says why when the plugin root is unset.) The marker
+# is found by the harness's own CLAUDE_CODE_SESSION_ID (Claude Code 2.1.132+)
+# first, since a child launched from the Bash tool can inherit its parent's
+# CLAUDE_SESSION_ID, then by the SessionStart hook's CLAUDE_SESSION_ID export
+# on older CLIs.
 #
 # It replaces any earlier notify: line (a re-brief naming a new spawner wins)
 # and keeps the role (first line) and issue: lines in place. It records
@@ -36,13 +41,14 @@ name=$(head -n 1)
 name=${name#"${name%%[![:space:]]*}"}
 name=${name%"${name##*[![:space:]]}"}
 
-[ -n "${CLAUDE_SESSION_ID:-}" ] || skip 'CLAUDE_SESSION_ID is unset (the SessionStart hook did not run)'
-case "$CLAUDE_SESSION_ID" in
-*[!A-Za-z0-9._-]* | *..*) skip 'CLAUDE_SESSION_ID is not a plain token' ;;
+sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+[ -n "$sid" ] || skip 'no session id (neither CLAUDE_CODE_SESSION_ID nor CLAUDE_SESSION_ID is set)'
+case "$sid" in
+*[!A-Za-z0-9._-]* | *..*) skip 'the session id is not a plain token' ;;
 esac
 [ -n "${CLAUDE_SESSION_ROLES_DIR:-}${HOME:-}" ] || skip 'neither CLAUDE_SESSION_ROLES_DIR nor HOME is set'
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-marker="$roles_dir/$CLAUDE_SESSION_ID"
+marker="$roles_dir/$sid"
 [ -f "$marker" ] || skip 'this session has no role marker, so the target stays in context only'
 
 notify_name_ok "$name" ||
