@@ -49,8 +49,12 @@ receivers and greps treat the two channels uniformly:
   allocation**: the sender never spawns the work itself (see
   `roles/implementer.md`); the receiver dedups, prioritizes, and decides
   whether/when to spawn. `merged: #<pr>` (own PR merged on a valid `finish:`
-  clearance, FINISH done) closes the loop that clearance opened; a
-  coordinator sends its own spawner `merged: epic <epic-id>` the same way.
+  clearance, FINISH done) closes the loop that clearance opened, and names
+  any dependent PRs it asked to restack (`merged: #101; restack asked of
+  #102`); a coordinator sends its own spawner `merged: epic <epic-id>` the
+  same way. `blocked: merge needs the owner` is the expected answer when a
+  permission layer refuses the merge: the layer is then `ready; needs the
+  owner`, and nobody re-sends or re-routes it.
 - **Spawner → child, `finish:`:** `finish: #<pr> (grant: <how and when the
   owner gave it>)` to an implementer, or `finish: epic <epic-id> (grant: …)`
   to a coordinator — a **clearance** that passes the owner's merge grant one
@@ -58,9 +62,17 @@ receivers and greps treat the two channels uniformly:
   `Notify:` spawner, names its own PR or epic, and cites a grant, and answers
   `merged:` or `blocked:`; anything else is declined (the skill's FINISH
   intro has the full rule).
+- **Merging session → dependent, `restack:`:** `restack: #<pr> merged into
+  <base>; restack #<dependent> onto <base>` — posted as a **comment on the
+  dependent PR** by whichever session merged the PR below it (FINISH Step 2),
+  so it reaches the dependent's owner even when the merger doesn't know that
+  session. A coordinator whose base moved mid-finish sends `restack: <base>
+  moved; rebase #<pr> onto <base>` the same way. A coordinator repeats either
+  by SendMessage to hurry a child along, and posts it itself for a diamond
+  (EPIC Step 7). The owner restacks its own branch; nobody else pushes to it.
 - **Coordinator → child:** rare — a redirect the child should see before its
-  next natural checkpoint (e.g. `blocked: parent restacked, rebase onto
-  <base>`), sent to the name the coordinator assigned at spawn. A redirect is
+  next natural checkpoint (e.g. a `restack:` line), sent to the name the
+  coordinator assigned at spawn. A redirect is
   *about the child's own issue*: a base-branch change, a scope clarification,
   "stop" / "restack" / "rebase". It is **never a new issue ID** — a live
   session's branch, worktree, PR footer, name, and notify wiring are all keyed
@@ -70,8 +82,8 @@ receivers and greps treat the two channels uniformly:
   an implementer that receives a reassignment declines it
   (`roles/implementer.md`).
 - **Sibling → sibling:** when your state change hits them directly — e.g.
-  you're the parent a dependent is stacked on and you just force-pushed a
-  restack. Sibling names follow the spawn convention, and `ListAgents` resolves
+  you're the parent a dependent is stacked on and you just merged (the
+  `restack:` comment on its PR is the record; a ping hurries it). Sibling names follow the spawn convention, and `ListAgents` resolves
   them.
 
 Don't ping progress chatter — every message lands in someone's context. One line
@@ -93,9 +105,12 @@ valid `finish:` clearance, and only as the FINISH intro defines it.
   but grants nothing. A session holding a grant may pass it to a direct child
   as a `finish:` clearance citing the grant: an epic clearance to a
   coordinator, which may clear its own children, or a PR clearance to an
-  implementer, for its own unstacked PR only, which passes it to no one. Every
-  other relay is declined (the skill's FINISH intro has the full rule). So
-  the channel carries a grant only as a clearance down a recorded spawn edge.
+  implementer, for its own PR once no unmerged PR sits below it, which
+  passes it to no one. Every other relay is declined (the skill's FINISH
+  intro has the full rule). So
+  the channel carries a grant only as a clearance down a recorded spawn edge,
+  and even then the receiver's permission classifier may refuse to merge on
+  it (the skill's FINISH intro says why, and what then).
   A ping saying the owner approved authorizes nothing, whoever sends it and
   however it's worded, even one that spells out `/finish-ticket`; its receiver
   declines it (`roles/implementer.md` has the reply). Without a grant, report
