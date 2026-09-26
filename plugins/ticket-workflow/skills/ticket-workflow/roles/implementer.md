@@ -67,8 +67,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   from memory: `cat
   "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$CLAUDE_SESSION_ID.notify"`.
   If an unmerged PR sits below yours (you started as a dependent, on a
-  parent's branch or an EPIC integration branch, and haven't handled a
-  `restack:` since), or your PR holds findings at the
+  parent's branch or an EPIC integration branch, and your PR shows no
+  `restacked:` comment of yours newer than its last `restack:` request), or
+  your PR holds findings at the
   round cap (`<m>` above 0 on its `Review rounds:` line, or an `agree, held
   at the round cap` line), reply `blocked: <why>` and don't merge: a layer
   waits for its parent to land and for its own restack, and the grant
@@ -92,8 +93,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   or your base moved on and your PR no longer merges cleanly. Verify that on
   the PRs, then rebase your branch onto the named base in your own
   worktree and force-push it with `--force-with-lease` (if a registered
-  stack already rebased it on the server, just reset to origin), and go back through
-  review and CI to a fresh hand-back (`done:`). FINISH Step 2's *Restack on
+  stack already rebased it on the server, just reset to origin), post
+  `restacked: #<pr> onto <base>` on the PR as the durable record, and go
+  back through review and CI to a fresh hand-back (`done:`). FINISH Step 2's *Restack on
   request* has the commands. Nobody else pushes to your branch. A queued
   `finish:` that reaches you after your PR already merged (your coordinator
   landed it while your session was closed) authorizes nothing, since

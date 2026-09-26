@@ -70,6 +70,9 @@ receivers and greps treat the two channels uniformly:
   moved; rebase #<pr> onto <base>` the same way. A coordinator repeats either
   by SendMessage to hurry a child along, and posts it itself for a diamond
   (EPIC Step 7). The owner restacks its own branch; nobody else pushes to it.
+  When it's done, it posts `restacked: #<dependent> onto <base>` on its own
+  PR: that comment, not a ping, is the record the coordinator's done test
+  reads.
 - **Coordinator → child:** rare — a redirect the child should see before its
   next natural checkpoint (e.g. a `restack:` line), sent to the name the
   coordinator assigned at spawn. A redirect is
