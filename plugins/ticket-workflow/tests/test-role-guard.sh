@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for hooks/role-guard.sh: pipe crafted PreToolUse payloads in, with an
 # isolated CLAUDE_SESSION_ROLES_DIR, and check the decision it prints (no
-# output = allow). Needs jq, like the hook itself.
+# output = allow). The last section checks that hooks/role-session-start.sh
+# reads the role from the same markers. Needs jq, like the hooks themselves.
 #
 #   bash plugins/ticket-workflow/tests/test-role-guard.sh
 set -u
@@ -14,10 +15,14 @@ sid=test-session
 pass=0
 fail=0
 
+# The marker is written with this format; '%s' drops the trailing newline.
+marker_fmt='%s\n'
+
 # Prints allow, ask, or deny for a raw payload, with <role> pinned (or none).
+# <role> is the whole marker content, so it can carry an issue line.
 decide_raw() {
 	rm -f "$roles_dir/$sid"
-	[ "$1" = none ] || printf '%s\n' "$1" >"$roles_dir/$sid"
+	[ "$1" = none ] || printf "$marker_fmt" "$1" >"$roles_dir/$sid"
 	out=$(printf '%s' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$guard")
 	if [ -z "$out" ]; then
 		echo allow
@@ -135,6 +140,15 @@ record allow "implementer bare create_session" "$(decide implementer create_sess
 record deny "implementer bare create_session" "$(decide implementer create_session prompt '/start-ticket 9')"
 record allow "implementer Edit" "$(decide implementer Edit file_path /repo/x)"
 
+# A self-pinned implementer's marker records its issue on a second line (START
+# Step 1). The role is the first line only, so both guards still fire.
+two_line_implementer=$'implementer\nissue: 52'
+record deny "two-line implementer marker, spawn" "$(decide "$two_line_implementer" Bash command "$spawn_ticket")"
+record allow "two-line implementer marker, helper" "$(decide "$two_line_implementer" Bash command "$helper")"
+record allow "two-line implementer marker, Edit" "$(decide "$two_line_implementer" Edit file_path /repo/x)"
+record ask "two-line planner marker, Edit" "$(decide $'planner\nissue: 52' Edit file_path /repo/x)"
+record deny "implementer marker without a trailing newline" "$(marker_fmt='%s' decide implementer Bash command "$spawn_ticket")"
+
 # Other roles, or no marker: the implementer guard doesn't apply.
 bash_case allow none "no marker" "$spawn_ticket"
 bash_case allow epic-coordinator "coordinator spawns children" "$spawn_ticket"
@@ -161,6 +175,23 @@ record allow "malformed payload" "$(decide_raw implementer 'not json')"
 out=$(printf '%s' '{"session_id":"s","tool_name":"Bash","tool_input":{"command":"claude --bg /start-ticket 1"}}' |
 	CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$guard")
 record allow "no roles directory" "${out:-allow}"
+
+# role-session-start.sh re-injects the charter the marker's first line names.
+session_start="$here/../hooks/role-session-start.sh"
+
+# Prints the role whose charter the hook re-injected on resume, or none.
+injects() { # injects <marker content>
+	printf '%s' "$1" >"$roles_dir/$sid"
+	jq -n --arg sid "$sid" '{session_id: $sid, source: "resume"}' |
+		CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_PLUGIN_ROOT="$here/.." CLAUDE_ENV_FILE='' bash "$session_start" |
+		sed -n 's/^This session is pinned to the \*\*\([a-z-]*\)\*\* role charter.*/\1/p' | grep . || echo none
+}
+
+record implementer "session start: one-line marker" "$(injects $'implementer\n')"
+record implementer "session start: two-line marker" "$(injects $'implementer\nissue: 52\n')"
+record epic-coordinator "session start: two-line coordinator marker" "$(injects $'epic-coordinator\nissue: 40\n')"
+record implementer "session start: no trailing newline" "$(injects 'implementer')"
+record none "session start: unknown role" "$(injects $'bogus\n')"
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

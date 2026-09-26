@@ -60,7 +60,9 @@ esac
 marker="$roles_dir/$session_id"
 [ -f "$marker" ] || exit 0
 
-role=$(tr -d '[:space:]' <"$marker" 2>/dev/null) || exit 0
+# The role is the first line: a self-pinned implementer's marker records its
+# issue on a second line (`issue: <id>`), which must not run into the role.
+role=$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]') || exit 0
 
 # Defense in depth: hooks.json already filters on `matcher`, but a future
 # matcher change shouldn't silently widen either guard.

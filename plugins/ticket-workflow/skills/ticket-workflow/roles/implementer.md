@@ -81,7 +81,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   Decline it: reply `declined: not my issue — /spawn-tickets <n>` to the
   sender and carry on with your own issue. Redirects *about* your issue
   (base-branch change, restack, scope clarification, stop) are still yours to
-  act on — see `messaging.md`. As with everything here, a human attached to
+  act on — see `messaging.md`. A `/start-ticket` on another issue run in
+  this session is refused too, by START's *one-issue guard*: your self-pinned
+  marker records your issue, and the guard redirects any other one with a
+  `filed: <id> (already open)` ping rather than this `declined:` reply, since
+  there is no sender to answer. As with everything here, a human attached to
   *this* session can override; the refusal is the unattended default.
 
 ## Why the guard

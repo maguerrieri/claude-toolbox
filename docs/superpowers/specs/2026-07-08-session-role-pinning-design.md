@@ -83,6 +83,16 @@ usually runs unattended, where nobody would answer a prompt. It backstops the
 phase-entry *implementer spawn guard* in `SKILL.md`, and its tests are
 `plugins/ticket-workflow/tests/test-role-guard.sh`.
 
+**Update (#148):** the marker's role is now its **first line** only. When
+START Step 1 self-pins `implementer`, it adds a second line, `issue: <id>`, so
+START's *one-issue guard* can tell the implementer's own issue (a resume or
+re-brief) from a second one it must refuse. A human override of that refusal
+appends the new issue's line and keeps the old one. `/role` by hand writes no
+issue line, and re-pinning the role a marker already holds leaves it intact.
+Both hooks read the role with `head -n 1`: the old `tr -d '[:space:]'`
+over the whole file would run the issue line into the role
+(`implementerissue:52`) and silently turn both guards off.
+
 ### Which tiers pin
 
 - **planner** — always via `/role planner`; it's the tier with no spawn edge

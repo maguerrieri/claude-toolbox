@@ -60,7 +60,9 @@ fi
 
 [ -f "$marker" ] || exit 0
 
-role=$(tr -d '[:space:]' <"$marker" 2>/dev/null) || exit 0
+# The role is the first line: a self-pinned implementer's marker records its
+# issue on a second line (`issue: <id>`), which must not run into the role.
+role=$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]') || exit 0
 
 # Whitelist the role before using it in a path or printf: a corrupt/hostile
 # marker must not become a traversal or context-injection channel.
