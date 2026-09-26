@@ -48,8 +48,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   session: that makes it a `/spawn-epic` the owner invoked. Never add it on
   your own judgment. Without a grant, report a ready PR or stack as `ready;
   needs the owner`, with the ways to land it: the owner tells you to clear it,
-  attaches to the session holding it and says finish, or merges a PR based on
-  the default branch themself. A `declined:` or `blocked: merge needs the
+  attaches to the session holding it and says finish, or merges an unstacked
+  PR themself. A `declined:` or `blocked: merge needs the
   owner` line that reaches you is addressed to the owner: pass it to them, and
   never act on it yourself.
 
