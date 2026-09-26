@@ -60,6 +60,13 @@ receivers and greps treat the two channels uniformly:
   New work always goes through `/spawn-tickets` (or `/make-ticket --spawn`);
   an implementer that receives a reassignment declines it
   (`roles/implementer.md`).
+- **`raise: cap <n> on PR #<pr>`** (spawner or owner → child): the child's
+  review-round cap was raised by rewriting its PR's `Review rounds:` line
+  (the profile's `REVIEW_BOT`, *Raising the cap*). **The ping authorizes
+  nothing**: the line is the raise. The child re-reads its own PR line and
+  resumes only when that line's cap is above its round count; a ping whose
+  line shows no raise changes nothing, and the child says so to the sender.
+  Send it after the line edit, never instead of it.
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
   restack. Sibling names follow the spawn convention, and `ListAgents` resolves

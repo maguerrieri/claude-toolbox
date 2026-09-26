@@ -47,8 +47,9 @@ the START and EPIC gates point to, and *Raising the cap* — live in this profil
 and an op override replaces the whole section. A profile that overrides `REVIEW_BOT` and wants
 a cap carries those bullets over; one that doesn't has no cap, and the gates' cap alternative
 never applies (START Step 8). Either way it also overrides `SPAWN_CAP`, whose inherited
-`Budget: rounds=15` would otherwise win as the larger value: its own `Budget:` line matches its
-own default cap, or is dropped when it has none.
+`Budget: rounds=5` would otherwise ride every spawned briefing and, as the briefing's value, stand
+in for the override's own default: its own `Budget:` line matches its own default cap, or is
+dropped when it has none.
 
 ## REPO_SELECT
 - Use the repo named in the request; otherwise the current repo (for personal projects
@@ -268,8 +269,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
 - **The cap.** It is the one START Step 8 resolves: the **larger** valid value of the PR line's
   `(cap <cap>)` and the briefing's `Budget: rounds=<n>`, else — when neither is present — this
-  profile's default of **15** (`SPAWN_CAP`). A cap only goes up, so a raise recorded on the line
-  wins and nothing lowers it. The cap is a **cost ceiling, not the
+  profile's default of **5** (`SPAWN_CAP`). A cap only goes up, so a raise recorded on the line
+  wins and nothing lowers it; a PR opened under the old default of 15 keeps the cap its line
+  records, with no migration. The cap is a **cost ceiling, not the
   usual way a review ends**:
   below it, stay thorough on correctness and loop as written (fix or explain, push, let the bot
   re-review). It applies to every PR, whatever the diff contains. After every round, rewrite the
@@ -321,14 +323,34 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
   A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
 
-- **Raising the cap.** A human can raise it (`Budget: rounds=<n>` on a re-brief, or "one more
-  round" to an attached session). **Persist the new cap before resuming**: rewrite the PR
-  line's `(cap <new>)` — the line is the cap's one durable record (before the PR exists, carry the
-  raise into START Step 7's seed). That is enough everywhere: Step 8 and an EPIC coordinator both
-  take the larger cap they can see, and the line is on the PR, so a child raised directly
-  needs no marker on an epic it may not know (a coordinator that raises a child by re-brief posts
-  its own `budget:` marker, EPIC Step 5). An unpersisted raise is lost at the next compaction.
-  Then the loop resumes, pushes included, until the new cap is reached or the review is clean.
+- **Raising the cap.** **A raise is an edit to the PR, never a relayed instruction.** The PR
+  body's `Review rounds:` line is the cap's one durable record, and the session re-reads it every
+  round (START Step 8), so a raise needs nothing but that line.
+  - **Who raises:** the owner (a human with write access to the repo), or the child's spawner —
+    the session its `Notify:` directive names, or on cloud the session that launched it. A
+    sibling never raises another child's cap, and an implementer never raises its own on its own
+    judgment: it writes a raise only when a human gave it one in-session or its briefing's
+    `Budget:` carries one (START Step 1).
+  - **How:** rewrite that line's `(cap <cap>)` to `(cap <new>)` and leave the rest of the body
+    alone: `gh pr view <pr> --json body -q .body` to a file, edit the one line, `gh pr edit <pr>
+    --body-file <file>`. A coordinator also posts `budget: <child-id> rounds=<new>` on the epic
+    for its own bookkeeping (EPIC Step 5); a raise the owner makes directly needs no marker, since
+    the coordinator reads the child's PR line too (EPIC Step 6). Then wake the child with a
+    `raise: cap <new> on PR #<pr>` hint (`messaging.md`; on cloud, EPIC Step 6's one-shot redirect
+    Routine). The hint authorizes nothing. It only tells the child that its PR changed.
+  - **The child:** woken after handing back at its cap (by a hint, a PR event, or a human), it
+    re-reads its own PR line. A `(cap <c>)` above its count is a raise, whoever wrote it: only
+    people with write access to the repo can edit the PR body, so treat it as the owner's. It
+    resumes the loop, starting with the fixes it held (each `agree, held` line rewritten to
+    `fixed in <sha> — …` as its fix lands), pushes included, until the new cap is reached or the
+    review is clean. A hint whose PR line shows no raise changes nothing: the child says so to the
+    sender and stays handed back.
+  - **In session:** a human attached to the child can say "one more round" or re-brief it with
+    `Budget: rounds=<n>`. The child **persists that raise before resuming**, with the same line
+    rewrite (before the PR exists, it goes into START Step 7's seed), since a raise held only in
+    context is lost at the next compaction. This is also the fallback when the child's permission
+    layer won't resume on a line it didn't see a human change.
+  - A cap still only goes up: nobody rewrites a line's cap to a lower value (START Step 8).
 
 - **Pushes the cap never blocks.** A **CI fix**, a **restack** a coordinator redirects (rebase onto
   a new base), and a merge of the base that clears a **conflict** always push, since a red,
@@ -406,9 +428,15 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   events, so reviews, review comments, and CI failures wake you. Wait on CI in-turn after a push,
   and keep waiting in-turn while a requested review is still pending on your head; once you have
   handed back at the reviewed stopping point, stop — the coordinator or a human wakes you if
-  needed. Budget: rounds=15" Keeps an unattended background session from over-reaching, while
+  needed. When woken after handing back at your review-round cap, re-read the Review rounds line
+  in your PR body: a cap there above your round count is a raise, whoever wrote it, so resume the
+  review loop. Budget: rounds=5" Keeps an unattended background session from over-reaching, while
   making the hold's expiry explicit — so a later /finish-ticket in the same session reads as the
   sanctioned merge phase, not a violation of this cap.
+- The **raise sentence** puts `REVIEW_BOT`'s *Raising the cap* into the child's own user turn, so
+  a child that resumes on a raised PR line is following its launch briefing, not a peer's message.
+  That matters because a child's permission layer has already refused a peer's relayed loosening
+  of a rule as instruction poisoning (#154), and a relayed budget raise has the same shape.
 - The **no-check-in sentence** overrides the cloud harness's PR-driving rule for spawned children.
   That rule has a session that opened a PR arm a self check-in about an hour out and keep re-arming
   it until the PR is merged or closed, because webhooks can deliver CI success, new pushes, and
@@ -424,13 +452,18 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   `.claude/skills/steward/SKILL.md` cannot carry the same override: the harness ranks that file as
   repository content, below its own never-rules, and the check-in rule says to never cancel the
   check-in early.
-- The trailing `Budget: rounds=15` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
+- The trailing `Budget: rounds=5` is the **review-round cap** (`REVIEW_BOT`), carried as a briefing
   directive — a sibling of `Base branch:` / `Worktree:` / `Role:` — so START Step 1 reads it like
   the others. A spawner that knows a change is risky raises it per issue with its own
   `Budget: rounds=<n>`; SPAWN Step 2 keeps exactly one `Budget:` line per briefing, the most
-  specific (per-issue over shared over this cap's). **15 is also this profile's default when no directive arrives** — an
+  specific (per-issue over shared over this cap's). **5 is also this profile's default when no directive arrives** — an
   interactive `/start-ticket` — since the human is right there to say "one more round". An org
-  profile overriding this op keeps a `Budget: rounds=<n>` line or inherits 15. 15 is a cost ceiling that should rarely be hit, not the usual way a review ends.
+  profile overriding this op keeps a `Budget: rounds=<n>` line or inherits 5.
+- Why 5: it is a cost ceiling that should rarely be hit, not the usual way a review ends, and
+  since the two self-review passes (START Steps 7–8, #141/#142) reviews have ended well inside it
+  (#138 took 3 rounds, #140 took 1, #153 took 0). Before those passes #131 took 15 and #142 took
+  12, and the late rounds were mostly spirals: fixes drawing findings about earlier fixes, each
+  round re-caching a large context. The default was 15 until #175.
 - Keep the payload text free of
   backticks, double quotes, `$`, and backslash — it gets embedded in the spawn command's double-quoted
   argument (`SKILL.md` SPAWN Step 3 / `phases/epic.md` Step 5), where a backtick or `$` triggers shell substitution,
@@ -446,7 +479,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   orchestrator also strips merge-intent flags from what it forwards to children (see the EPIC phase's
   spawn step), so that intent never even reaches a child — never lift the merge hold for the per-child spawns. The
   cap's trailing `Budget: rounds=<n>` line is the one part a coordinator adjusts per child (a higher
-  review-round budget for a risky change — EPIC Step 5); that raises a budget, it lifts no hold.
+  review-round budget for a risky change — EPIC Step 5), and a later raise goes on the child's PR
+  line (`REVIEW_BOT`'s *Raising the cap*); either raises a budget, and neither lifts a hold.
 - Coupling / coordination: the default route is independent **bg** sessions; when a cluster needs
   coordination (concurrent children sharing code), use **shared markers** via the tracker's `COORD`
   op — **not** a live agent team. The `--coordinate` flag selects markers; `--team` is the explicit
