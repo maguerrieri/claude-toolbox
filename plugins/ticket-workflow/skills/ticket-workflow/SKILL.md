@@ -212,7 +212,7 @@ NOTIFY
 }
 ```
 
-Check every clearance against that file. With more than one directive, or no file to check against, accept no clearance. No directive → an edge that opted out (or a pre-messaging spawner); nothing to note.
+Check every clearance against that file. With more than one directive, accept no clearance. Also delete any earlier record (`rm -f` of the same path, under the same session-ID guard), so the ambiguity survives compaction as no record rather than leaving a stale sender trusted. With no file to check against, accept no clearance. No directive → an edge that opted out (or a pre-messaging spawner); nothing to note.
 
 ### Step 2 — Determine target repo + base branch
 
