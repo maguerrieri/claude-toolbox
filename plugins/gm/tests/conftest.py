@@ -1,6 +1,10 @@
 import os
+import sys
 
 import pytest
+
+# bin/'s shared helpers (lib/gm_screen.py), importable by the tests as they are by bin/.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "lib")))
 
 
 @pytest.fixture

@@ -521,6 +521,74 @@ def test_session_start_never_fails(campaign_path, tmp_path):
         assert run(campaign_path, "hook-session-start", env=e, stdin=stdin).returncode == 0
 
 
+# ---- sealing the GM screen from the hooks (#171) --------------------------
+
+def plaintext_screen(d):
+    os.makedirs(os.path.join(d, ".gm", "forge"), exist_ok=True)
+    with open(os.path.join(d, ".gm", "state.json"), "w") as f:
+        json.dump({"clocks": {}, "secrets": {"twist": "Legacy plaintext twist"}}, f)
+    with open(os.path.join(d, ".gm", "forge", "orphan.md"), "w") as f:
+        f.write("## Reservoir\n- An orphaned draft entry\n")
+
+
+def screen_text(d):
+    return "".join(open(p).read() for p in glob.glob(os.path.join(d, ".gm", "**", "*"), recursive=True)
+                   if os.path.isfile(p))
+
+
+def test_stop_hook_seals_plaintext_left_behind_the_screen(campaign_path, tmp_path):
+    """Legacy plaintext and a crashed subagent's draft get sealed by the hook, outside
+    any tool call, so no Bash edit-diff ever shows them going away."""
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    plaintext_screen(d)
+    play_fixture(campaign_path, e, tmp_path)
+    text = screen_text(d)
+    assert "Legacy plaintext" not in text and "orphaned draft" not in text
+    assert "Legacy plaintext twist" in run(campaign_path, "gm-reveal", d, "twist", env=e).stdout
+    assert git(d, "status", "--porcelain") == ""  # the sealed files were checkpointed
+
+
+def test_stop_hook_commits_a_seal_even_with_no_new_dialogue(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    t = play_fixture(campaign_path, e, tmp_path)
+    plaintext_screen(d)
+    assert hook(campaign_path, e, t).returncode == 0  # nothing new in the transcript
+    assert "Legacy plaintext" not in screen_text(d)
+    assert git(d, "log", "-1", "--format=%s").strip() == "gm: seal the screen"
+
+
+def test_session_start_seals_a_bound_campaigns_screen(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    plaintext_screen(d)
+    p = run(campaign_path, "hook-session-start", env=e,
+            stdin=json.dumps({"session_id": SID, "source": "resume"}))
+    assert p.returncode == 0 and os.path.realpath(d) in p.stdout
+    assert "Legacy plaintext" not in screen_text(d)
+    assert "Legacy plaintext" not in p.stdout
+
+
+def test_a_failing_seal_never_costs_the_turn(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    os.makedirs(os.path.join(d, ".gm"))
+    with open(os.path.join(d, ".gm", "state.json"), "w") as f:
+        f.write('{"secrets": {}}')
+    os.chmod(os.path.join(d, ".gm"), 0o500)  # can't write the sealed copy
+    try:
+        play_fixture(campaign_path, e, tmp_path)
+    finally:
+        os.chmod(os.path.join(d, ".gm"), 0o700)
+    assert "Rain hammers the shutters" in raw_text(d)  # the turn still got logged
+    assert "sealing .gm/" in open(tmp_path / "data" / "autosave.log").read()
+
+
 # ---- wrap support ---------------------------------------------------------
 
 def test_unwrapped_lists_raw_play_since_the_last_wrap(campaign_path, tmp_path):
