@@ -42,7 +42,12 @@
     },
     {
       "name": "provenance",
-      "source": { "source": "github", "repo": "maguerrieri/provenance", "ref": "v0.1.0" },
+      "source": {
+        "source": "github",
+        "repo": "maguerrieri/provenance",
+        "ref": "v0.1.0",
+        "sha": "8da822ab701573078bdf7bd0996439ba66ea84ba"
+      },
       "description": "Researcher and verifier agents and the orchestration skill for provenance, a cited-research pipeline whose citations a machine checks and a person reviews."
     }
   ]
