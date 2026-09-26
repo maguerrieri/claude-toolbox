@@ -90,12 +90,7 @@ def write(path, text):
     _write_atomic(path, seal(text))
 
 
-def screen_of(path):
-    """The campaign screen (`<campaign>/.gm`) that `path` lies inside, or None.
-
-    Only the .gm/ next to a campaign's campaign.md counts, so a campaign that merely
-    lives under some other `.gm` directory keeps its open tables open."""
-    p = os.path.dirname(os.path.abspath(path))
+def _screen_above(p):
     while True:
         if (os.path.basename(p) == SCREEN_DIR
                 and os.path.isfile(os.path.join(os.path.dirname(p), "campaign.md"))):
@@ -104,6 +99,17 @@ def screen_of(path):
         if parent == p:
             return None
         p = parent
+
+
+def screen_of(path):
+    """The campaign screen (`<campaign>/.gm`) that `path` lies inside, or None.
+
+    Only the .gm/ next to a campaign's campaign.md counts, so a campaign that merely
+    lives under some other `.gm` directory keeps its open tables open. Symlinks count in
+    both directions: a path is behind the screen if it resolves there, or if it sits
+    there and resolves elsewhere, so no link turns a sealed write into a plaintext one."""
+    return (_screen_above(os.path.dirname(os.path.realpath(path)))
+            or _screen_above(os.path.dirname(os.path.abspath(path))))
 
 
 IGNORE_HEADER = ("# gm: the gm:screen subagent's plaintext drafts and the screen's lock\n"
