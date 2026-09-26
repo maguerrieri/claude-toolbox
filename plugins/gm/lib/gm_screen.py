@@ -125,6 +125,20 @@ def _maintainable(screen):
     return os.path.isdir(screen) and not os.path.islink(screen)
 
 
+def _own_file(path):
+    """Upkeep never writes through a symlinked file: swap the link for a local regular
+    copy of the text it pointed to (empty if none), leaving its target alone. The sweep
+    applies the same rule to secrets, with a sealed copy."""
+    if not os.path.islink(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = f.read()
+    except (OSError, UnicodeDecodeError):
+        data = ""
+    _write_atomic(path, data)  # os.replace swaps the link itself for the copy
+
+
 def ignore_drafts(screen):
     """Make the screen's .gitignore keep drafts and the lock out of any commit: gm's own
     checkpoints, and a deferred campaign's host repo (an Obsidian vault) alike. Rules
@@ -132,6 +146,7 @@ def ignore_drafts(screen):
     if not _maintainable(screen):
         return
     p = os.path.join(screen, ".gitignore")
+    _own_file(p)
     try:
         with open(p, encoding="utf-8") as f:
             existing = f.read()
@@ -155,7 +170,10 @@ def locked(screen):
     if fcntl is None:
         yield
         return
-    with open(os.path.join(screen, LOCK), "a") as f:
+    lock = os.path.join(screen, LOCK)
+    if _maintainable(screen):
+        _own_file(lock)
+    with open(lock, "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
         yield
 
