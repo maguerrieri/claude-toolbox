@@ -168,6 +168,117 @@ out=$(printf '%s' '{"session_id":"s","tool_name":"Bash","tool_input":{"command":
 	CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$guard")
 record allow "no roles directory" "${out:-allow}"
 
+# An in-process subagent or teammate shares this session's id, so a call of
+# its that would write the marker is denied, pinned or not, while its reads
+# pass. These cases run each command the guard allows, with the parent's id in
+# the environment as the Bash tool would have it, and check the parent's
+# marker afterwards. The snippets are the docs' own.
+skill="$here/../skills/ticket-workflow"
+self_pin=$(extract_block "$skill/SKILL.md" "grep -qxF 'issue: <id>'" | sed -e 's/<role>/implementer/g' -e 's/<id>/52/g')
+role_pin=$(extract_block "$here/../commands/role.md" '"<role>" >"$marker"' | sed 's/<role>/planner/g')
+role_none=$(extract_block "$here/../commands/role.md" 'rm -f "$roles_dir/$sid"')
+role_read=$(extract_block "$skill/SKILL.md" 'head -n 1 "$roles_dir/$sid"')
+issue_read=$(extract_block "$skill/SKILL.md" 'cat "$roles_dir/$sid"')
+for snippet in self_pin role_pin role_none role_read issue_read; do
+	record yes "doc snippet $snippet found" "$([ -n "${!snippet}" ] && echo yes || echo no)"
+done
+
+# as_agent <marker content or none> <agent id> <command>: runs the guard on a
+# Bash call carrying <agent id> (empty: the main thread's own call), then runs
+# the command unless the call was denied. Prints <decision> <marker after,
+# newlines as |>.
+as_agent() {
+	rm -f "$roles_dir"/*
+	[ "$1" = none ] || printf '%s\n' "$1" >"$roles_dir/$sid"
+	decision=$(decide_raw "$1" "$(jq -n --arg sid "$sid" --arg agent "$2" --arg c "$3" '{session_id: $sid, tool_name: "Bash", tool_input: {command: $c}}
+		+ (if $agent == "" then {} else {agent_id: $agent, agent_type: "general-purpose"} end)')")
+	[ "$decision" = deny ] || CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" CLAUDE_SESSION_ID="$sid" \
+		bash -c "$3" >/dev/null 2>&1
+	printf '%s %s' "$decision" "$([ -f "$roles_dir/$sid" ] && tr '\n' '|' <"$roles_dir/$sid" || echo none)"
+}
+
+# A subagent's marker writes are denied, however they reach the marker.
+record "deny epic-coordinator|" "subagent START self-pin" "$(as_agent epic-coordinator a1 "$self_pin")"
+record "deny none" "subagent self-pin, unpinned parent" "$(as_agent none a1 "$self_pin")"
+record "deny implementer|issue: 7|" "subagent self-pin for another issue" "$(as_agent $'implementer\nissue: 7' a1 "$self_pin")"
+record "deny planner|" "subagent /role none" "$(as_agent planner a1 "$role_none")"
+record "deny epic-coordinator|" "subagent /role pin" "$(as_agent epic-coordinator a1 "$role_pin")"
+record "deny planner|" "subagent find -delete" "$(as_agent planner a1 'find "$CLAUDE_SESSION_ROLES_DIR" -name "$CLAUDE_CODE_SESSION_ID" -delete')"
+record "deny planner|" "subagent sed -E -i" "$(as_agent planner a1 'sed -E -i.bak "1s/.*/implementer/" "$CLAUDE_SESSION_ROLES_DIR/${CLAUDE_CODE_SESSION_ID}"')"
+record "deny planner|" "subagent perl -p -i" "$(as_agent planner a1 'perl -p -i -e "s/planner/implementer/" "$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_CODE_SESSION_ID"')"
+record "deny planner|" "subagent redirect via the fallback variable" "$(as_agent planner a1 'echo implementer >"$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_SESSION_ID"')"
+record "deny planner|" "subagent write through printenv" "$(as_agent planner a1 'sid=$(printenv CLAUDE_CODE_SESSION_ID); echo implementer > "$CLAUDE_SESSION_ROLES_DIR/$sid"')"
+record "deny planner|" "subagent python write" "$(as_agent planner a1 "python3 -c 'import os; open(os.environ[\"CLAUDE_SESSION_ROLES_DIR\"] + \"/\" + os.environ[\"CLAUDE_CODE_SESSION_ID\"], \"w\").write(\"implementer\")'")"
+record "deny planner|" "subagent write in a backgrounded command" "$(as_agent planner a1 '(echo implementer >"$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_CODE_SESSION_ID") & wait')"
+
+# Its reads pass, and still see the parent's role: an implementer's subagent
+# is refused by the skill's guards just as the implementer is.
+record "allow epic-coordinator|" "subagent spawn-guard read" "$(as_agent epic-coordinator a1 "$role_read")"
+record "allow implementer|issue: 52|" "subagent one-issue-guard read" "$(as_agent $'implementer\nissue: 52' a1 "$issue_read")"
+record "implementer" "subagent's spawn-guard read sees the parent's role" \
+	"$(CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" bash -c "$role_read")"
+
+# Other commands pass: all three of the id, the roles directory, and a write
+# are needed.
+record "allow epic-coordinator|" "subagent grep piped to tee" "$(as_agent epic-coordinator a1 'grep -rn session-roles /dev/null | tee /dev/null')"
+record "allow epic-coordinator|" "subagent commit quoting the variables" "$(as_agent epic-coordinator a1 'git -C /nonexistent commit -m "Unset \$CLAUDE_CODE_SESSION_ID for session-roles writes" 2>/dev/null; true')"
+record "allow none" "subagent test run with a roles-dir override" "$(as_agent none a1 'CLAUDE_SESSION_ROLES_DIR=/nonexistent true < /dev/null > /dev/null')"
+record "allow none" "subagent command, a longer variable name" "$(as_agent none a1 'echo "$CLAUDE_CODE_SESSION_IDX $CLAUDE_SESSION_ROLES_DIR" | tee /dev/null')"
+record "allow epic-coordinator|" "subagent commit whose message has -> and tee" "$(as_agent epic-coordinator a1 'git -C /nonexistent commit -m "Keep $CLAUDE_SESSION_ID -> session-roles; tee and rm stay" 2>/dev/null; true')"
+record "allow epic-coordinator|" "subagent commit through a heredoc" "$(as_agent epic-coordinator a1 "$(printf '%s\n' "git -C /nonexistent commit -F - <<'EOF' 2>/dev/null; true" 'Write $CLAUDE_CODE_SESSION_ID > session-roles/x' 'EOF')")"
+record "allow epic-coordinator|" "subagent single-quoted pattern into sed -i" "$(as_agent epic-coordinator a1 "grep -rl 'session-roles|CLAUDE_CODE_SESSION_ID' /dev/null | xargs sed -i.bak s/x/y/")"
+
+# decide_agent <command>: the decision alone, for a command that shouldn't run.
+decide_agent() {
+	decide_raw none "$(jq -n --arg sid "$sid" --arg c "$1" '{session_id: $sid, agent_id: "a1", tool_name: "Bash", tool_input: {command: $c}}')"
+}
+record allow "subagent write to a file beside the roles directory" "$(decide_agent 'echo "role for ${CLAUDE_CODE_SESSION_ID}" >> ~/.claude/session-roles.log')"
+record deny "subagent chmod of the marker" "$(decide_agent 'chmod 000 "$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_CODE_SESSION_ID"')"
+record deny "subagent sponge into the marker" "$(decide_agent 'echo implementer | sponge ~/.claude/session-roles/$CLAUDE_CODE_SESSION_ID')"
+record deny "subagent ex edit of the marker" "$(decide_agent "ex -sc '%s/planner/implementer/|x' \"\$CLAUDE_SESSION_ROLES_DIR/\$CLAUDE_CODE_SESSION_ID\"")"
+record deny "subagent python with single-quoted code" "$(decide_agent "python3 -c 'import os; open(os.environ[\"CLAUDE_SESSION_ROLES_DIR\"] + \"/\" + os.environ[\"CLAUDE_CODE_SESSION_ID\"], \"w\")'")"
+
+# The main thread's own calls pass: its self-pin still writes.
+record "allow implementer|issue: 52|" "main thread's self-pin" "$(as_agent epic-coordinator '' "$self_pin")"
+record "allow none" "main thread's /role none" "$(as_agent planner '' "$role_none")"
+record allow "empty agent_id is the main thread's call" \
+	"$(decide_raw planner "$(jq -n --arg sid "$sid" --arg c "$role_none" '{session_id: $sid, agent_id: "", tool_name: "Bash", tool_input: {command: $c}}')")"
+
+# The role guards still apply to a subagent's calls, keyed on the parent's pin.
+record "deny implementer|" "subagent issue spawn under an implementer" "$(as_agent implementer a1 "$spawn_ticket")"
+record ask "subagent Edit under a planner" "$(decide_raw planner "$(jq -n --arg sid "$sid" '{session_id: $sid, agent_id: "a1", tool_name: "Edit", tool_input: {file_path: "/repo/x"}}')")"
+
+# A subagent's file edit in the roles directory is denied, however the path
+# spells the directory.
+agent_edit() { # agent_edit <marker or none> <tool> <path>
+	decide_raw "$1" "$(jq -n --arg sid "$sid" --arg tool "$2" --arg p "$3" '{session_id: $sid, agent_id: "a1", tool_name: $tool, tool_input: {file_path: $p}}')"
+}
+record deny "subagent Write to the marker" "$(agent_edit none Write "$roles_dir/$sid")"
+record deny "subagent Edit of the marker under a coordinator" "$(agent_edit epic-coordinator Edit "$roles_dir/$sid")"
+record deny "subagent Write through the physical path" "$(agent_edit none Write "$(cd -P "$roles_dir" && pwd)/other")"
+ln -s "$roles_dir" "$roles_dir/link"
+record deny "subagent Write through a symlink to the directory" "$(agent_edit none Write "$roles_dir/link/$sid")"
+rm "$roles_dir/link"
+mkdir "$roles_dir/sub"
+record deny "subagent Write through a .. segment" "$(agent_edit none Write "$roles_dir/sub/../$sid")"
+rmdir "$roles_dir/sub"
+record deny "subagent Write with a doubled slash" "$(agent_edit none Write "$roles_dir//$sid")"
+record allow "subagent Write beside the roles directory" "$(agent_edit none Write "${roles_dir}-notes.md")"
+record allow "main thread Write to the marker" "$(decide_raw none "$(jq -n --arg sid "$sid" --arg p "$roles_dir/$sid" '{session_id: $sid, tool_name: "Write", tool_input: {file_path: $p}}')")"
+# A roles directory that doesn't exist yet (a never-pinned install).
+new_dir() { # new_dir <roles dir> <path>: the decision for a subagent Write
+	out=$(printf '%s' "$(jq -n --arg p "$2" '{session_id: "s", agent_id: "a1", tool_name: "Write", tool_input: {file_path: $p}}')" |
+		CLAUDE_SESSION_ROLES_DIR="$1" bash "$guard" | jq -r '.hookSpecificOutput.permissionDecision')
+	echo "${out:-allow}"
+}
+record deny "new roles dir, trailing slash" "$(new_dir /nowhere/roles/ /nowhere/roles/s)"
+record deny "new roles dir, a . segment" "$(new_dir /nowhere/roles /nowhere/./roles/s)"
+record deny "new roles dir, a case variant" "$(new_dir /nowhere/roles /nowhere/Roles/s)"
+mkdir "$roles_dir/x"
+record deny "new roles dir, an existing parent spelled with .." "$(new_dir "$roles_dir/new" "$roles_dir/x/../new/s")"
+rmdir "$roles_dir/x"
+record allow "new roles dir, a sibling" "$(new_dir "$roles_dir/new" "$roles_dir/newer/s")"
+
 # role-session-start.sh re-injects the charter the marker's first line names.
 session_start="$here/../hooks/role-session-start.sh"
 
