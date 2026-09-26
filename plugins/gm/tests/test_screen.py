@@ -335,7 +335,7 @@ def test_a_checkpoint_never_commits_a_draft(campaign_path, tmp_path):
     assert "checkpoint: mid-seal" in run(campaign_path, "checkpoint", d, "--label", "mid-seal").stdout
     tracked = git(d, "ls-files").split()
     assert ".gm/state.json" in tracked
-    assert not [t for t in tracked if t.startswith((".gm/inbox", ".gm/forge")) or t == ".gm/.lock"]
+    assert not [t for t in tracked if t.startswith((".gm/inbox", ".gm/forge"))]
     assert "Marrow" not in git(d, "log", "-p", "--all")
 
 
@@ -354,7 +354,7 @@ def test_a_deferred_campaigns_host_repo_ignores_drafts_too(campaign_path, tmp_pa
     open(draft, "w").write("## Reservoir\n- Draft entry\n")
     status = git(str(vault), "status", "--porcelain", "--untracked-files=all")
     assert "camp/.gm/state.json" in status and "camp/.gm/.gitignore" in status
-    assert "forge" not in status and ".lock" not in status
+    assert "forge" not in status
 
 
 def test_an_existing_screen_gitignore_gains_the_missing_rules(campaign_path, tmp_path):
@@ -365,7 +365,7 @@ def test_an_existing_screen_gitignore_gains_the_missing_rules(campaign_path, tmp
     run(campaign_path, "gm-clock", d, "c", "--segments", "4")
     lines = open(ignore).read().splitlines()
     assert lines[:2] == ["*.bak", "/inbox/"]
-    assert sorted(lines[2:]) == ["/.lock", "/forge/"]
+    assert lines[2:] == ["/forge/"]
     run(campaign_path, "gm-clock", d, "c", "--advance", "1")
     assert open(ignore).read().splitlines() == lines  # idempotent
 
@@ -375,7 +375,7 @@ def test_gm_init_readies_the_screen_before_any_draft(campaign_path, tmp_path):
     p = run(campaign_path, "gm-init", d)
     assert p.returncode == 0 and "screen ready" in p.stdout
     rules = open(os.path.join(d, ".gm", ".gitignore")).read().splitlines()
-    assert {"/forge/", "/inbox/", "/.lock"} <= set(rules)
+    assert {"/forge/", "/inbox/"} <= set(rules)
     assert run(campaign_path, "gm-init", d).returncode == 0  # safe to repeat
     assert open(os.path.join(d, ".gm", ".gitignore")).read().splitlines() == rules
 
@@ -390,25 +390,25 @@ def test_upkeep_never_follows_a_symlinked_screen_out_of_the_campaign(campaign_pa
     os.symlink(str(elsewhere), os.path.join(d, ".gm"))
     assert "nothing to seal" in run(campaign_path, "gm-migrate", d).stdout
     run(campaign_path, "checkpoint", d, "--label", "linked")
-    assert sorted(os.listdir(elsewhere)) == ["notes.md"]  # no .gitignore, no lock
+    assert sorted(os.listdir(elsewhere)) == ["notes.md"]  # no .gitignore written through
     assert (elsewhere / "notes.md").read_text() == "Someone else's plaintext\n"
 
 
-def test_upkeep_swaps_a_symlinked_gitignore_or_lock_for_a_local_copy(campaign_path, tmp_path):
+def test_upkeep_swaps_a_symlinked_gitignore_for_a_local_copy(campaign_path, tmp_path):
     """Inside a real .gm/, upkeep never writes through a symlinked file: the screen gets
-    its own .gitignore (the target's rules plus gm's) and lock, the targets untouched."""
+    its own .gitignore (the target's rules plus gm's), the target untouched. The lock is
+    held on the .gm directory itself, so there is no lock file to link."""
     d = new_campaign(campaign_path, tmp_path)
     os.makedirs(os.path.join(d, ".gm"))
     shared = tmp_path / "shared-ignore"
     shared.write_text("*.bak\n")
-    lock_target = tmp_path / "shared-lock"
     os.symlink(str(shared), os.path.join(d, ".gm", ".gitignore"))
-    os.symlink(str(lock_target), os.path.join(d, ".gm", ".lock"))
     assert run(campaign_path, "gm-init", d).returncode == 0
     ignore = os.path.join(d, ".gm", ".gitignore")
-    assert not os.path.islink(ignore) and not os.path.islink(os.path.join(d, ".gm", ".lock"))
-    assert {"*.bak", "/forge/", "/inbox/", "/.lock"} <= set(open(ignore).read().splitlines())
-    assert shared.read_text() == "*.bak\n" and not lock_target.exists()
+    assert not os.path.islink(ignore)
+    assert {"*.bak", "/forge/", "/inbox/"} <= set(open(ignore).read().splitlines())
+    assert shared.read_text() == "*.bak\n"
+    assert not os.path.exists(os.path.join(d, ".gm", ".lock"))
 
 
 def test_a_symlink_is_never_a_draft(campaign_path, forge_path, tmp_path):
@@ -437,6 +437,44 @@ def test_a_symlink_is_never_a_draft(campaign_path, forge_path, tmp_path):
     os.symlink(str(outside), inbox_link)
     assert "dropped 1 leftover draft" in run(campaign_path, "gm-migrate", d).stdout
     assert not os.path.lexists(inbox_link)
+
+
+def test_an_explicit_write_goes_through_a_symlinked_state_file(campaign_path, tmp_path):
+    """gm-clock / gm-seal follow the player's filesystem: a linked state.json (a synced
+    copy, say) is written through, sealed, not replaced by a local file."""
+    d = new_campaign(campaign_path, tmp_path)
+    os.makedirs(os.path.join(d, ".gm"))
+    synced = tmp_path / "synced-state.json"
+    synced.write_text('{"clocks": {}, "secrets": {}}')
+    link = os.path.join(d, ".gm", "state.json")
+    os.symlink(str(synced), link)
+    run(campaign_path, "gm-seal", d, "x", "Through the link")
+    assert os.path.islink(link)
+    assert gm_screen.is_sealed(synced.read_text()) and "Through" not in synced.read_text()
+    assert "Through the link" in run(campaign_path, "gm-reveal", d, "x").stdout
+
+
+def test_rewrites_keep_the_files_permissions(campaign_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    run(campaign_path, "gm-clock", d, "c", "--segments", "4")
+    state = os.path.join(d, ".gm", "state.json")
+    assert os.stat(state).st_mode & 0o777 != 0o600  # not mkstemp's private default
+    os.chmod(state, 0o640)
+    run(campaign_path, "gm-clock", d, "c", "--advance", "1")
+    assert os.stat(state).st_mode & 0o777 == 0o640
+
+
+def test_a_symlinked_directory_is_never_a_draft_either(campaign_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    run(campaign_path, "gm-init", d)
+    elsewhere = tmp_path / "dropbox"
+    elsewhere.mkdir()
+    (elsewhere / "keep.md").write_text("not ours\n")
+    linked = os.path.join(d, ".gm", "inbox", "notes")
+    os.symlink(str(elsewhere), linked)
+    assert run(campaign_path, "gm-init", d).returncode == 0
+    assert not os.path.lexists(linked)
+    assert (elsewhere / "keep.md").read_text() == "not ours\n"  # only the link went
 
 
 def test_gm_init_refuses_a_symlinked_draft_dir(campaign_path, tmp_path):

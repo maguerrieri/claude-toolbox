@@ -117,8 +117,12 @@ def _require_managed(d):
 
 def _stage_all(d):
     """Stage everything but the gm:screen subagent's drafts (plaintext, and gone once
-    sealed: never history) and the screen's lock, which .gm/.gitignore leaves out."""
-    gm_screen.ignore_drafts(os.path.join(d, gm_screen.SCREEN_DIR))
+    sealed: never history), which .gm/.gitignore leaves out; taking the screen's lock
+    brings that .gitignore up to date first."""
+    screen = os.path.join(d, gm_screen.SCREEN_DIR)
+    if os.path.isdir(screen):
+        with gm_screen.locked(screen):
+            pass
     git(d, "add", "-A")
 
 
@@ -155,13 +159,21 @@ def cmd_rewind(a):
     git(a.dir, "read-tree", "-u", "--reset", a.to)
     # A checkpoint from before sealing restores a plaintext .gm/: seal it within this
     # same command, so the Bash edit-diff shows noise rather than the restored secrets.
-    gm_screen.sweep(a.dir)
+    # The tree is already rewound: a sealing failure must not strand it uncommitted.
+    unsealed = None
+    try:
+        gm_screen.sweep(a.dir)
+    except (OSError, ValueError) as e:
+        unsealed = e
     _stage_all(a.dir)
     if not _staged_changes(a.dir):
         print(f"already at {a.to}; nothing to rewind")
         return
     git(a.dir, "commit", "-q", "-m", f"rewind to {a.to}")
     print(f"rewound to {a.to}")
+    if unsealed is not None:
+        print(f"gm: warning — couldn't seal the restored .gm/ ({unsealed}); the plugin's hooks "
+              f"retry every turn, or run: campaign gm-migrate {a.dir}")
 
 
 def cmd_backup(a):

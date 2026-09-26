@@ -16,6 +16,7 @@ harvested with --consume, which deletes the reservoir once the table is written 
 plaintext pool outlives the command.
 """
 import argparse
+import contextlib
 import os
 import re
 import sys
@@ -50,24 +51,24 @@ def cmd_harvest(a):
         gm_screen.refuse_link(a.reservoir, "the reservoir")
     if a.consume and os.path.realpath(a.reservoir) == os.path.realpath(a.table):
         sys.exit("forge: --consume would delete the table it just wrote (reservoir and table are one file)")
-    block = reservoir_block(gm_screen.read(a.reservoir))
-    if not any(line.startswith("- ") for line in block):
-        sys.exit(f"forge: no '## Reservoir' entries in {a.reservoir}")
-    title = os.path.splitext(os.path.basename(a.table))[0]
-    text = f"# {title}\n" + "\n".join(block) + "\n"
     screen = gm_screen.screen_of(a.table)
     if a.sealed and not screen:
         sys.exit(f"forge: --sealed, but {a.table} isn't inside a campaign's .gm/ (the one next "
                  f"to its campaign.md); refusing to write the table in plaintext")
-    if screen:
-        with gm_screen.locked(screen):  # never while the hooks' sweep is at it
+    # A sealed harvest reads, writes and consumes under the screen's lock, like gm-seal
+    # --from, so the hooks' sweep can't drop the draft between the read and the consume.
+    with gm_screen.locked(screen) if screen else contextlib.nullcontext():
+        block = reservoir_block(gm_screen.read(a.reservoir))
+        if not any(line.startswith("- ") for line in block):
+            sys.exit(f"forge: no '## Reservoir' entries in {a.reservoir}")
+        title = os.path.splitext(os.path.basename(a.table))[0]
+        text = f"# {title}\n" + "\n".join(block) + "\n"
+        if screen:
             gm_screen.write(a.table, text)
-            if a.consume:
-                os.remove(a.reservoir)
-    else:
-        os.makedirs(os.path.dirname(os.path.abspath(a.table)), exist_ok=True)
-        with open(a.table, "w", encoding="utf-8") as f:
-            f.write(text)
+        else:
+            os.makedirs(os.path.dirname(os.path.abspath(a.table)), exist_ok=True)
+            with open(a.table, "w", encoding="utf-8") as f:
+                f.write(text)
         if a.consume:
             os.remove(a.reservoir)
     n = sum(1 for line in block if line.startswith("- "))
