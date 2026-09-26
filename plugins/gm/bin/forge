@@ -46,6 +46,8 @@ def reservoir_block(text):
 
 
 def cmd_harvest(a):
+    if a.consume:
+        gm_screen.refuse_link(a.reservoir, "the reservoir")
     if a.consume and os.path.realpath(a.reservoir) == os.path.realpath(a.table):
         sys.exit("forge: --consume would delete the table it just wrote (reservoir and table are one file)")
     block = reservoir_block(gm_screen.read(a.reservoir))

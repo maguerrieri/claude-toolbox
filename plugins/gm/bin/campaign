@@ -233,6 +233,7 @@ def cmd_gm_seal(a):
         if a.from_file is not None:
             # The gm:screen subagent's draft: read it (sealed or not), seal it, delete
             # it, so its plaintext never outlives this command.
+            gm_screen.refuse_link(a.from_file, "the draft")
             text = gm_screen.read(a.from_file)
         state = _gm_load(a.dir)
         state["secrets"][a.id] = text.rstrip("\n")
@@ -276,6 +277,7 @@ def cmd_gm_init(a):
     with gm_screen.locked(screen):
         for p in drafts:
             os.makedirs(p, exist_ok=True)
+        gm_screen.drop_draft_links(screen)  # a Write would follow a link out of the screen
     print("gm: screen ready — drafts under .gm/forge/ and .gm/inbox/ stay out of git")
 
 
@@ -285,7 +287,7 @@ def cmd_gm_migrate(a):
     if n:
         done.append(f"sealed {n} plaintext file{'' if n == 1 else 's'} behind the screen")
     if dropped:
-        done.append(f"dropped {dropped} stale draft{'' if dropped == 1 else 's'}")
+        done.append(f"dropped {dropped} leftover draft{'' if dropped == 1 else 's'}")
     print("gm: " + "; ".join(done) if done else "gm: nothing to seal — the screen is already sealed")
 
 
