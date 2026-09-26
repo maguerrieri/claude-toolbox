@@ -43,7 +43,8 @@ receivers and greps treat the two channels uniformly:
 - **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks
   a dependent's spawn), `done:` (START-complete: CI green, review clean, self-review record
   complete — START Step 7),
-  `blocked:` (stuck; say on what), `filed:` (a follow-up ticket filed for
+  `blocked:` (stuck; say on what), `resumed:` (back in the review loop after
+  a cap raise — the `raise:` bullet below), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
   acceptance criteria` when it's urgent). A `filed:` ping is a **request, not an
   allocation**: the sender never spawns the work itself (see
@@ -60,6 +61,14 @@ receivers and greps treat the two channels uniformly:
   New work always goes through `/spawn-tickets` (or `/make-ticket --spawn`);
   an implementer that receives a reassignment declines it
   (`roles/implementer.md`).
+- **`raise: cap <n> on PR #<pr>`** (spawner → child, sent after editing the
+  child's PR `Review rounds:` line, never instead of it): **the ping
+  authorizes nothing** — the line is the raise, and the child acts only on
+  what it reads there (the profile's `REVIEW_BOT`, *Raising the cap*). On a
+  local edge the child answers `resumed: cap <n> on PR #<pr>` when it resumes,
+  a prefix of its own so it isn't mistaken for a first `pushed:`. A cloud
+  child has no channel back (below), so its spawner reads the resume off the
+  PR, where the child also posts it as a comment.
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
   restack. Sibling names follow the spawn convention, and `ListAgents` resolves
