@@ -1,18 +1,28 @@
 #!/usr/bin/env python3
 """gm forge — harvest a generate reservoir into a rollable table.
 
-  forge harvest <reservoir-file> <table-file>
+  forge harvest [--consume] [--sealed] <reservoir-file> <table-file>
 
 Reads the markdown under the reservoir's `## Reservoir` heading (the diverse pool
 `generate` produced) and writes it to <table-file> as a foundation table — one
 `- ` entry per candidate, block-rule continuations preserved. The reservoir is
-scratch; the table is the durable, rollable artifact. Run via Bash (not the Write
-tool) so a sealed table (`.gm/tables/...`) stays collapsed behind the GM screen.
+scratch; the table is the durable, rollable artifact.
+
+A table under a campaign's .gm/ (the one next to its campaign.md) is SEALED on disk
+(lib/gm_screen.py), so the Bash edit-diff view shows noise, not the entries; `roll
+table` reads it all the same. A sealed forge
+runs inside the gm:screen subagent with its reservoir drafted under .gm/forge/ and
+harvested with --consume, which deletes the reservoir once the table is written — no
+plaintext pool outlives the command.
 """
 import argparse
+import contextlib
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import gm_screen  # noqa: E402
 
 HEADING = re.compile(r"^##\s+", )
 RESERVOIR = re.compile(r"^##\s+Reservoir\b", re.I)
@@ -37,27 +47,50 @@ def reservoir_block(text):
 
 
 def cmd_harvest(a):
-    with open(a.reservoir) as f:
-        block = reservoir_block(f.read())
-    if not any(line.startswith("- ") for line in block):
-        sys.exit(f"forge: no '## Reservoir' entries in {a.reservoir}")
-    parent = os.path.dirname(os.path.abspath(a.table))
-    os.makedirs(parent, exist_ok=True)
-    title = os.path.splitext(os.path.basename(a.table))[0]
-    with open(a.table, "w") as f:
-        f.write(f"# {title}\n" + "\n".join(block) + "\n")
+    if a.consume:
+        gm_screen.refuse_link(a.reservoir, "the reservoir")
+    if a.consume and os.path.realpath(a.reservoir) == os.path.realpath(a.table):
+        sys.exit("forge: --consume would delete the table it just wrote (reservoir and table are one file)")
+    screen = gm_screen.screen_of(a.table)
+    if a.sealed and not screen:
+        sys.exit(f"forge: --sealed, but {a.table} isn't inside a campaign's .gm/ (the one next "
+                 f"to its campaign.md); refusing to write the table in plaintext")
+    # A sealed harvest reads, writes and consumes under the screen's lock, like gm-seal
+    # --from, so the hooks' sweep can't drop the draft between the read and the consume.
+    with gm_screen.locked(screen) if screen else contextlib.nullcontext():
+        block = reservoir_block(gm_screen.read(a.reservoir))
+        if not any(line.startswith("- ") for line in block):
+            sys.exit(f"forge: no '## Reservoir' entries in {a.reservoir}")
+        title = os.path.splitext(os.path.basename(a.table))[0]
+        text = f"# {title}\n" + "\n".join(block) + "\n"
+        if screen:
+            gm_screen.write(a.table, text)
+        else:
+            os.makedirs(os.path.dirname(os.path.abspath(a.table)), exist_ok=True)
+            with open(a.table, "w", encoding="utf-8") as f:
+                f.write(text)
+        if a.consume:
+            os.remove(a.reservoir)
     n = sum(1 for line in block if line.startswith("- "))
-    print(f"forge: harvested {n} entries -> {a.table}")
+    print(f"forge: harvested {n} entries -> {a.table}{' (sealed)' if screen else ''}")
+    if screen and not a.consume and not gm_screen.screen_of(a.reservoir):
+        print(f"forge: warning — the reservoir {a.reservoir} is outside the GM screen and "
+              f"still holds the pool in plaintext; delete it (or harvest with --consume)",
+              file=sys.stderr)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="forge")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("harvest"); p.add_argument("reservoir"); p.add_argument("table")
+    p.add_argument("--sealed", action="store_true",
+                   help="refuse unless the table is inside a campaign's .gm/ (sealed forges)")
+    p.add_argument("--consume", action="store_true",
+                   help="delete the reservoir once the table is written (sealed forges)")
     a = ap.parse_args(argv)
     try:
         {"harvest": cmd_harvest}[a.cmd](a)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         sys.exit(f"forge: {e}")
 
 
