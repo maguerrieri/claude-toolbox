@@ -201,6 +201,18 @@ def test_combined_lines_and_veils_labels_are_safety_too(campaign_path, tmp_path)
     assert p.returncode == 0, p.stdout
 
 
+def test_a_safety_list_runs_to_the_end_of_its_line(campaign_path, tmp_path):
+    # Players list lines & veils with semicolons and periods; the whole list is theirs.
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS)
+    with open(os.path.join(d, "campaign.md"), "a") as f:
+        f.write("Grim war. **Lines:** harm to animals; anything like Osk's ending. Pell. "
+                "**Veils:** the salt road was paved by giants and no one has repaired it since\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
 def test_lines_in_ordinary_prose_is_not_a_label(campaign_path, tmp_path):
     ex = examples(str(tmp_path))
     d = str(tmp_path / "camp")
