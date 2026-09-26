@@ -106,17 +106,30 @@ def screen_of(path):
         p = parent
 
 
-IGNORE = ("# gm: the gm:screen subagent's plaintext drafts and the screen's lock\n"
-          "# never belong in history\n/forge/\n/inbox/\n/.lock\n")
+IGNORE_HEADER = ("# gm: the gm:screen subagent's plaintext drafts and the screen's lock\n"
+                 "# never belong in history\n")
+IGNORED = ["/" + d + "/" for d in DRAFT_DIRS] + ["/" + LOCK]
 
 
 def ignore_drafts(screen):
-    """Give the screen a .gitignore keeping drafts and the lock out of any commit: gm's
-    own checkpoints, and a deferred campaign's host repo (an Obsidian vault) alike."""
+    """Make the screen's .gitignore keep drafts and the lock out of any commit: gm's own
+    checkpoints, and a deferred campaign's host repo (an Obsidian vault) alike. Rules
+    already in the file are kept; only the missing ones are added."""
+    if not os.path.isdir(screen):
+        return
     p = os.path.join(screen, ".gitignore")
-    if os.path.isdir(screen) and not os.path.exists(p):
-        with open(p, "w", encoding="utf-8") as f:
-            f.write(IGNORE)
+    try:
+        with open(p, encoding="utf-8") as f:
+            existing = f.read()
+    except FileNotFoundError:
+        existing = ""
+    have = {line.strip() for line in existing.splitlines()}
+    missing = [rule for rule in IGNORED if rule not in have]
+    if not missing:
+        return
+    lead = "" if not existing or existing.endswith("\n") else "\n"
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(lead + (IGNORE_HEADER if not existing else "") + "\n".join(missing) + "\n")
 
 
 @contextlib.contextmanager

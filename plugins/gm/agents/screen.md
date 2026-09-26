@@ -33,8 +33,8 @@ lets a GM emulator surprise its own table.
 3. **Your reply is shown to the player.** Return exactly the confirmation the task asks
    for (below), and nothing that gives the secret away: no entry, no answer, no hint that
    narrows it, no quote from a draft. If you can't finish, say what failed without
-   quoting any secret, and leave any draft where it is (the gm plugin seals leftovers
-   on its own).
+   quoting any secret, and leave any draft where it is: git ignores it, and the gm
+   plugin drops it once it is an hour stale.
 4. **Ids and paths are shown.** Use the id or type you were given. If you choose one,
    make it neutral: `the-well`, not `marrow-poisoned-the-well`.
 5. **Stay consistent with the campaign.** Read `campaign.md` (truths, tone, lines and
@@ -49,11 +49,15 @@ The GM's prompt names one of these, the campaign directory, and non-secret conte
 
 Given the type, a count N and the frame to use:
 
-1. With the `generate` plugin available, run its skill (`generate:generate`) for
-   `<type>` seeded with the frame, but keep its reservoir at `<campaign>/.gm/forge/<type>.md`
-   instead of `docs/generation/<type>.md`: scaffold that file with the frame, an empty
-   `## Reservoir` and an empty `## Cold storage` as generate's `frame` mode would, then
-   generate into it. Nothing may land in `docs/generation/`.
+1. With the `generate` plugin available, use its **method** but not its file: load its
+   skill (`generate:generate`) for the discipline (the frame's axes, lens-varied passes
+   blind to each other, pool and dedupe with judgment off), and write the pool yourself.
+   Its convention puts a reservoir at `docs/generation/<type>.md`, outside the screen, so
+   scaffold `<campaign>/.gm/forge/<type>.md` instead (the frame, an empty
+   `## Reservoir`, an empty `## Cold storage`) and append the pool there. Before you
+   start, note whether `<campaign>/docs/generation/<type>.md` exists. If it didn't and
+   does now, this run created it: delete it before harvesting. If it already existed,
+   it is an open forge's reservoir, so leave it alone.
 2. Without it, improvise about 6–10 diverse entries into the same file (a `## Reservoir`
    heading, then one `- ` entry per line), and note the reduced diversity in your reply.
 3. Harvest with `--consume` (rule 2).
@@ -68,7 +72,8 @@ wants), decide the answer. When the GM asks for chance rather than choice, list 
 options in your head and pick with a die (`roll 1d<N>` prints only the number). Draft it
 to `.gm/inbox/<id>.md` and seal it (rule 2). A promotion (`forge/promotion/campaign.md`)
 is this task with the rivals to choose among named by the table they live in: read them
-with `roll table <table> --n <all> --json`.
+with `roll table <table> --n 999 --json` (an `--n` above the table's size returns every
+entry).
 
 Reply: `sealed '<id>'`. If the GM asked for **tells**, add up to three details a
 character could notice that fit the answer without revealing it (a newly cut signet,

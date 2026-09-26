@@ -11,7 +11,7 @@ the campaign dir, `slot` as the id, and where the rivals live (the reservoir or
 table they came from) — never the winner, and never a rival you've marked as the
 favorite. If you already *are* `gm:screen` (a promotion inside a sealed forge),
 do that task yourself rather than spawning another, and do it after the harvest,
-from the sealed table (`roll table <table> --n <all> --json`): `--consume` deletes
+from the sealed table (`roll table <table> --n 999 --json`): `--consume` deletes
 the draft reservoir, and the table is where a sealed forge's rivals stay. It
 picks the canonical winner (or rolls among the rivals when the GM asks for
 chance), drafts it under `.gm/inbox/` and seals it, consuming the draft:
