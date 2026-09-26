@@ -56,21 +56,21 @@ The GM's prompt names one of these, the campaign directory, and non-secret conte
 
 Given the type, a count N and the frame to use:
 
-1. With the `generate` plugin available, use its **method** but not its file: load its
-   skill (`generate:generate`) for the discipline (the frame's axes, lens-varied passes
-   blind to each other, pool and dedupe with judgment off), and write the pool yourself.
-   Its convention puts a reservoir at `docs/generation/<type>.md`, outside the screen, so
-   scaffold `<campaign>/.gm/forge/<type>.md` instead (the frame, an empty
-   `## Reservoir`, an empty `## Cold storage`) and append the pool there. Before you
-   start, note whether `<campaign>/docs/generation/<type>.md` exists. If it didn't and
-   does now, this run created it: delete it before harvesting. If it already existed,
-   it is an open forge's reservoir, so leave it alone.
-2. Without it, improvise about 6–10 diverse entries into the same file (a `## Reservoir`
-   heading, then one `- ` entry per line), and note the reduced diversity in your reply.
-3. Harvest with `--consume` (rule 2).
+1. **Generate the pool with `generate`'s method, not its skill.** Don't invoke
+   `generate:generate`: it follows its own file convention, and would write or append a
+   reservoir at `docs/generation/<type>.md` (relative to the cwd), outside the screen. Do
+   its loop yourself instead, judgment off throughout. Take the frame's axes. Run 3–4
+   passes, each seeing only the frame and one distinct lens (a persona, or a random seed
+   word) and none of the others' output: nested subagents if you can spawn them, else
+   sequential passes that don't look back. In each pass, list N short entries as
+   distinct paths through the axes, make them bolder and more different (no two
+   alike), then expand each to 1–3 sentences tagged with its axis values. Pool the
+   passes, merging only near-duplicates.
+2. Write the pool to `<campaign>/.gm/forge/<type>.md`: a `## Reservoir` heading, then one
+   `- ` entry per candidate. That file is the only one you write.
+3. Harvest with `--sealed --consume` (rule 2).
 
-Reply: `sealed <n> entries → .gm/tables/<type>.md` (plus `(improvised: generate absent)`
-when step 2 ran).
+Reply: `sealed <n> entries → .gm/tables/<type>.md`.
 
 ### Seal an answer
 
