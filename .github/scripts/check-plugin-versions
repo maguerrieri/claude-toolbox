@@ -13,14 +13,19 @@ no dependencies.
 External entries get the same rule. A marketplace entry whose `source` is an
 object (provenance: a `github` source pinned to a release by `ref` and `sha`)
 has no files under ./plugins/ to diff; its version lives in the other repo's
-plugin.json. So for each such entry that is added or whose source changes
-between BASE and HEAD, the check fetches that plugin.json at the head pin and
-compares it with the entry's base version, as above. An entry that moves
-between ./plugins/ and another repo is gated across the move: its base version
-is read from wherever the entry pointed at BASE. Fetching needs network access
-to github.com, and a pin it can't fetch fails. Other source types get a `skip`
-line, since only `github` is fetched, and a removed entry needs no gate. An
-entry or a marketplace.json it can't parse is left to `claude plugin validate`.
+plugin.json. So for each entry whose source changes between BASE and HEAD
+(added, re-pinned, or moved into or out of ./plugins/), the check reads the
+version the entry installs at each side, from ./plugins/ here or by fetching
+the pinned commit, and compares them as above:
+- a re-pin that still installs the same commit (a `ref` label fixed, a `sha`
+  added for the same commit) passes without a bump;
+- when a head pin sets both `sha` and `ref`, `ref` must name that commit;
+- a base pin it can't fetch (the repo gone, the commit collected) is reported
+  and head is checked alone, since the PR can't fix its base.
+Fetching needs network access to github.com, and a head pin it can't fetch
+fails. Other source types get a `skip` line, since only `github` is fetched,
+and a removed entry needs no gate. An entry or a marketplace.json it can't
+parse is left to `claude plugin validate`.
 
 Usage (from the repo root; CI passes the PR's base SHA and the merge commit):
   python3 .github/scripts/check-plugin-versions <base-ref> <head-ref>
@@ -33,6 +38,8 @@ import subprocess
 import sys
 import tempfile
 
+LOCAL = "./plugins/"
+
 # The official grammar from semver.org: no leading zeros in numeric identifiers,
 # no empty prerelease/build identifiers.
 SEMVER = re.compile(
@@ -40,6 +47,10 @@ SEMVER = re.compile(
     r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
     r"(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$"
 )
+
+
+class Unchecked(Exception):
+    """A source type this check can't read a version from."""
 
 
 def parse(version):
@@ -62,6 +73,12 @@ def git(*args):
     return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
 
 
+def show_at(ref, file_path):
+    """Text of <file_path> at <ref>; None if it doesn't exist there."""
+    result = subprocess.run(["git", "show", f"{ref}:{file_path}"], capture_output=True, text=True)
+    return result.stdout if result.returncode == 0 else None
+
+
 def manifest_version(text):
     """Version string from plugin.json text.
 
@@ -79,20 +96,14 @@ def manifest_version(text):
 
 
 def version_at(ref, plugin):
-    """Version string from plugin.json at <ref>; None if the file doesn't exist there."""
-    manifest = f"plugins/{plugin}/.claude-plugin/plugin.json"
-    result = subprocess.run(["git", "show", f"{ref}:{manifest}"], capture_output=True, text=True)
-    if result.returncode != 0:
-        return None
-    return manifest_version(result.stdout)
+    """Version string from plugins/<plugin>'s plugin.json at <ref>; None if it isn't there."""
+    text = show_at(ref, f"plugins/{plugin}/.claude-plugin/plugin.json")
+    return None if text is None else manifest_version(text)
 
 
 def exists_at(ref, plugin):
     """True if plugins/<plugin>/ has any tracked file at <ref>."""
     return bool(git("ls-tree", "-r", "--name-only", ref, "--", f"plugins/{plugin}/").strip())
-
-
-LOCAL = "./plugins/"
 
 
 def marketplace_sources(ref):
@@ -101,12 +112,8 @@ def marketplace_sources(ref):
     Skips any entry it can't read, and returns {} for a missing or malformed
     marketplace.json: validating those is `claude plugin validate`'s job.
     """
-    result = subprocess.run(["git", "show", f"{ref}:.claude-plugin/marketplace.json"],
-                            capture_output=True, text=True)
-    if result.returncode != 0:
-        return {}
     try:
-        entries = json.loads(result.stdout).get("plugins")
+        entries = json.loads(show_at(ref, ".claude-plugin/marketplace.json") or "").get("plugins")
     except (ValueError, AttributeError):
         return {}
     if not isinstance(entries, list):
@@ -123,17 +130,16 @@ def local_dir(source):
     return None
 
 
-def is_github(source):
-    return isinstance(source, dict) and source.get("source") == "github"
-
-
-def source_version(source):
-    """Version string from the plugin.json a `github` source pins.
+def fetch_pin(source, check_ref):
+    """(commit, version) for the plugin.json a `github` source pins.
 
     Fetches only the pinned commit (`sha`, else `ref`, else the default branch)
-    into a throwaway bare repo. Raises LookupError when it can't.
+    into a throwaway bare repo. With <check_ref>, a `ref` set beside `sha` must
+    name that same commit. Raises LookupError when it can't read the pin, or
+    the `ref` disagrees.
     """
-    rev = source.get("sha") or source.get("ref") or "HEAD"
+    sha, ref = source.get("sha"), source.get("ref")
+    rev = sha or ref or "HEAD"
     url = f"https://github.com/{source.get('repo')}.git"
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     with tempfile.TemporaryDirectory() as scratch:
@@ -143,21 +149,48 @@ def source_version(source):
         try:
             run("init", "-q", "--bare")
             fetched = run("fetch", "-q", "--depth", "1", url, rev)
+            commit = run("rev-parse", "FETCH_HEAD").stdout.strip()
             shown = run("show", "FETCH_HEAD:.claude-plugin/plugin.json")
+            # A tag's peeled line (`^{}`) carries the commit an annotated tag points at.
+            listed = run("ls-remote", url, ref, f"{ref}^{{}}") if check_ref and sha and ref else None
         except subprocess.TimeoutExpired:
-            raise LookupError(f"timed out fetching {rev} from {url}") from None
+            raise LookupError(f"timed out reading {rev} from {url}") from None
     if fetched.returncode != 0:
         raise LookupError(f"could not fetch {rev} from {url}: {fetched.stderr.strip()}")
     if shown.returncode != 0:
         raise LookupError(f"no .claude-plugin/plugin.json at {rev} in {url}")
-    return manifest_version(shown.stdout)
+    if listed is not None and sha not in listed.stdout.split():
+        raise LookupError(f"ref {ref} in {url} doesn't point at the pinned sha {sha}")
+    return commit, manifest_version(shown.stdout)
 
 
-def gate(name, old, new, failures):
-    """Require head version <new> to be valid semver above base's <old> (None: new plugin)."""
+def pinned(ref, source, check_ref=False):
+    """(commit, version) that <source> installs at <ref>.
+
+    A local source reads ./plugins/ here (commit None, version None if absent);
+    a `github` source is fetched (fetch_pin). Raises Unchecked for any other
+    source type.
+    """
+    directory = local_dir(source)
+    if directory:
+        return None, version_at(ref, directory)
+    if isinstance(source, dict) and source.get("source") == "github":
+        return fetch_pin(source, check_ref)
+    raise Unchecked(json.dumps(source, sort_keys=True))
+
+
+def gate(name, old, new, failures, unread=None):
+    """Require head version <new> to be valid semver above base's <old>.
+
+    <old> None means there's no base version to compare, and <new> only has to
+    be valid: a new plugin, or a base this check couldn't read (<unread> says
+    why, on a `skip` line).
+    """
     new_key = parse(new)
     if new_key is None:
         failures.append(f"{name}: head version {new!r} is not valid semver")
+    elif old is None and unread:
+        print(f"skip {name}: {unread}; head checked alone at {new}")
     elif old is None:
         print(f"ok   {name}: new plugin at {new}")
     elif parse(old) is None:
@@ -178,50 +211,50 @@ def main(argv):
     base, head = argv[1], argv[2]
     changed = git("diff", "--name-only", base, head, "--", "plugins/").split()
     old_sources, new_sources = marketplace_sources(base), marketplace_sources(head)
-    # Local plugins whose entry pointed at another repo at base: their base
-    # version is that repo's, and they're gated even if no file here changed.
-    moved_in = {local_dir(source): old_sources[name] for name, source in new_sources.items()
-                if local_dir(source) and isinstance(old_sources.get(name), dict)}
-    plugins = sorted({f.split("/")[1] for f in changed if f.count("/") >= 2} | moved_in.keys())
-    failures = []
-    for plugin in plugins:
-        new = version_at(head, plugin)
-        if new is None:
-            if exists_at(head, plugin):
-                failures.append(f"{plugin}: plugin files changed but"
-                                " .claude-plugin/plugin.json is missing on head")
-            continue  # whole plugin removed on head: nothing to gate
-        prior = moved_in.get(plugin)
-        try:
-            old = ((source_version(prior) if is_github(prior) else None) if prior
-                   else version_at(base, plugin))
-        except LookupError as exc:
-            failures.append(f"{plugin}: {exc}")
-            continue
-        gate(plugin, old, new, failures)
+    # What to gate, as {label: (base source, head source)}. Every changed
+    # directory under plugins/ reads its own plugin.json on both sides. An entry
+    # whose source changed with an object on either side is gated from wherever
+    # it pointed at base; a move into plugins/ takes the directory's label, so
+    # its base is the external pin even if no file here changed.
+    items = {d: (f"{LOCAL}{d}", f"{LOCAL}{d}")
+             for d in {f.split("/")[1] for f in changed if f.count("/") >= 2}}
+    for name, source in new_sources.items():
+        old_source = old_sources.get(name)
+        if old_source != source and (isinstance(source, dict) or isinstance(old_source, dict)):
+            items[local_dir(source) or name] = (old_source, source)
     removed = sorted(name for name, source in old_sources.items()
                      if isinstance(source, dict) and name not in new_sources)
+    failures = []
+    for label in sorted(items):
+        old_source, new_source = items[label]
+        try:
+            new_commit, new = pinned(head, new_source, check_ref=True)
+        except Unchecked as exc:
+            print(f"skip {label}: only github sources are version-checked, not {exc}")
+            continue
+        except LookupError as exc:
+            failures.append(f"{label}: {exc}")
+            continue
+        if new is None:
+            if exists_at(head, local_dir(new_source)):
+                failures.append(f"{label}: plugin files changed but"
+                                " .claude-plugin/plugin.json is missing on head")
+            continue  # whole plugin removed on head: nothing to gate
+        old_commit, old, unread = None, None, None
+        if old_source is not None:
+            try:
+                old_commit, old = pinned(base, old_source)
+            except Unchecked as exc:
+                unread = f"base source {exc} isn't version-checked"
+            except LookupError as exc:
+                unread = f"base pin unreadable ({exc})"
+        if new_commit and new_commit == old_commit:
+            print(f"ok   {label}: still installs {new_commit[:12]} ({new})")
+            continue
+        gate(label, old, new, failures, unread)
     for name in removed:
         print(f"ok   {name}: external entry removed")
-    external = sorted(name for name, source in new_sources.items()
-                      if isinstance(source, dict) and old_sources.get(name) != source)
-    for name in external:
-        old_source, new_source = old_sources.get(name), new_sources[name]
-        if not is_github(new_source):
-            print(f"skip {name}: only github sources are version-checked, not"
-                  f" {json.dumps(new_source, sort_keys=True)}")
-            continue
-        try:
-            new = source_version(new_source)
-            if local_dir(old_source):  # moved out of ./plugins/: gate against the local version
-                old = version_at(base, local_dir(old_source))
-            else:
-                old = source_version(old_source) if is_github(old_source) else None
-        except LookupError as exc:
-            failures.append(f"{name}: {exc}")
-            continue
-        gate(name, old, new, failures)
-    if not plugins and not removed and not external:
+    if not items and not removed:
         print("ok   no plugin touched")
     for failure in failures:
         print(f"FAIL {failure}")
