@@ -809,16 +809,17 @@ def _format_words():
 
 
 def _example_names(d):
-    """Proper names in an example: its campaign and character titles, plus every capitalized
-    word it uses mid-sentence and never in lowercase (so "The" or a sentence-initial "Three"
-    aren't names, and "Wren" in "friendly to Wren" is). Sheet-template labels are excluded."""
+    """Proper names in an example: the capitalized words of its campaign and character titles,
+    and those it uses mid-sentence, that it never writes in lowercase (so "The" or a
+    sentence-initial "Three" aren't names, and "Wren" in "friendly to Wren" is).
+    Sheet-template labels are excluded."""
     texts = [open(p, encoding="utf-8").read() for p in _campaign_files(d)]
-    lower = {w.lower() for t in texts for w in re.findall(r"\b[a-z][a-z]+\b", t)}
+    lower = {w for t in texts for w in re.findall(r"\b[a-z][a-z]+\b", t)}
     names = set()
     for t in texts:
         for m in CAP_WORD.finditer(t):
             before = t[:m.start()].rsplit("\n", 1)[-1].rstrip(MD_LEAD)
-            if before and before[-1] not in ".!?:" and m.group().lower() not in lower:
+            if before and before[-1] not in ".!?:":
                 names.add(m.group())
     chars = os.path.join(d, "characters")
     titled = [os.path.join(d, "campaign.md")] + [
@@ -826,7 +827,7 @@ def _example_names(d):
         if f.endswith(".md")]
     for p in titled:
         names.update(CAP_WORD.findall(_title(p)))
-    return names - _format_words()
+    return {n for n in names if n.lower() not in lower} - _format_words()
 
 
 def _truths(p):
