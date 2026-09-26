@@ -35,10 +35,12 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   and carries one quoting decision rule, a mandatory parse/round-trip verify
   step, and a compact symptom→cause→fix gotcha table.
 - **gm** — system-agnostic, persona-driven solo-RPG game master: the `gm` skill
-  plus 7 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
-  `/gm:oracle`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`). Pluggable system
-  adapters (generic / Ironsworn / Starforged), true dice, and git-versioned
-  saves that autosave every turn's dialogue.
+  plus 8 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
+  `/gm:oracle`, `/gm:forge`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`).
+  Pluggable system adapters (generic / Ironsworn / Starforged), true dice,
+  git-versioned saves that autosave every turn's dialogue, and a GM screen (a
+  `gm:screen` subagent plus state sealed on disk) that keeps secrets out of the
+  player's transcript.
 
 ## Usage
 

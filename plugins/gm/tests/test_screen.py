@@ -3,6 +3,7 @@ and nothing a sealed forge leaves outside it. Claude Code's Bash edit-diff view 
 every file a command changes, so a sealed file has to read as noise."""
 import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -291,6 +292,32 @@ def test_harvest_reads_a_sealed_reservoir(forge_path, roll_path, tmp_path):
     table = tmp_path / ".gm" / "tables" / "x.md"
     assert run(forge_path, "harvest", "--consume", str(res), str(table)).returncode == 0
     assert SECRET_ENTRIES[1] in run(roll_path, "table", str(table), "--n", "3").stdout
+
+
+def test_no_doc_puts_a_secret_in_a_command(tmp_path):
+    """Regression guard for #171's second channel: the docs once told the GM to write a
+    sealed pool with a Bash heredoc and to seal an answer as a command argument."""
+    plugin = os.path.join(os.path.dirname(__file__), "..")
+    quoted_seal = re.compile(r"gm-seal\s+\S+\s+\S+\s+[\"'<]")  # gm-seal <dir> <id> "<text>"
+    offenders = []
+    for dirpath, dirs, files in os.walk(plugin):
+        dirs[:] = [x for x in dirs if x not in ("tests", "__pycache__")]
+        for name in files:
+            if not name.endswith(".md"):
+                continue
+            p = os.path.join(dirpath, name)
+            text = open(p, encoding="utf-8").read()
+            if "Bash heredoc" in text or quoted_seal.search(text):
+                offenders.append(os.path.relpath(p, plugin))
+    assert offenders == []
+
+
+def test_screen_subagent_is_shipped():
+    agent = os.path.join(os.path.dirname(__file__), "..", "agents", "screen.md")
+    head = open(agent, encoding="utf-8").read().split("---")[1]
+    assert re.search(r"^name: screen$", head, re.M)
+    for tool in ("Write", "Bash", "Skill"):
+        assert tool in re.search(r"^tools: (.*)$", head, re.M).group(1)
 
 
 def test_roll_reports_a_corrupt_sealed_table_cleanly(roll_path, tmp_path):
