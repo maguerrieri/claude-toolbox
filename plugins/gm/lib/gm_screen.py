@@ -157,6 +157,14 @@ def _is_draft(screen, path):
     return len(rel) > 1 and rel[0] in DRAFT_DIRS
 
 
+def _is_metadata(screen, path):
+    """The screen's own bookkeeping, never a secret: its .gitignore and lock at the top,
+    and a `_write_atomic` temp file (already sealed) anywhere."""
+    name = os.path.basename(path)
+    top = os.path.dirname(path) == screen
+    return name.startswith(".tmp-") or (top and name in (".gitignore", LOCK))
+
+
 def _starts_sealed(path):
     with open(path, "rb") as f:
         return f.read(len(MAGIC.encode("ascii"))) == MAGIC.encode("ascii")
@@ -167,8 +175,9 @@ def sweep(campaign, now=None):
 
     Returns (sealed, dropped). Leftover plaintext is a legacy file from before sealing;
     a stale draft is one a crashed gm:screen subagent never consumed. A fresh draft is
-    left alone (its subagent may still be writing it), as are dotfiles and anything that
-    isn't UTF-8 text."""
+    left alone (its subagent may still be writing it), as are the screen's own metadata
+    (`_is_metadata`) and anything that isn't UTF-8 text. Other dotfiles get no pass: a
+    hidden file can hold a secret as well as any other."""
     screen = os.path.join(campaign, SCREEN_DIR)
     if not os.path.isdir(screen):
         return 0, 0
@@ -178,7 +187,7 @@ def sweep(campaign, now=None):
         for dirpath, _dirs, files in os.walk(screen):
             for name in files:
                 p = os.path.join(dirpath, name)
-                if name.startswith(".") or os.path.islink(p) or not os.path.isfile(p):
+                if _is_metadata(screen, p) or os.path.islink(p) or not os.path.isfile(p):
                     continue
                 if _is_draft(screen, p):
                     if now - os.path.getmtime(p) > DRAFT_TTL:

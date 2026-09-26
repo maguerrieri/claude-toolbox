@@ -286,6 +286,23 @@ def test_the_sweep_leaves_a_fresh_draft_and_drops_a_stale_one(campaign_path, tmp
     assert not os.path.exists(stale)
 
 
+def test_the_sweep_seals_hidden_files_but_not_its_own_metadata(campaign_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    run(campaign_path, "gm-init", d)
+    hidden = os.path.join(d, ".gm", ".hidden")
+    open(hidden, "w").write("A hidden plaintext secret\n")
+    stale = os.path.join(d, ".gm", "inbox", ".dotted.md")
+    os.makedirs(os.path.dirname(stale))
+    open(stale, "w").write("A dotted draft\n")
+    age(stale, gm_screen.DRAFT_TTL + 60)
+    ignore = open(os.path.join(d, ".gm", ".gitignore")).read()
+    p = run(campaign_path, "gm-migrate", d)
+    assert "sealed 1 plaintext file" in p.stdout and "dropped 1 stale draft" in p.stdout
+    assert gm_screen.is_sealed(open(hidden).read())
+    assert not os.path.exists(stale)
+    assert open(os.path.join(d, ".gm", ".gitignore")).read() == ignore  # metadata untouched
+
+
 def test_a_checkpoint_never_commits_a_draft(campaign_path, tmp_path):
     d = new_campaign(campaign_path, tmp_path)
     draft = os.path.join(d, ".gm", "inbox", "the-well.md")
