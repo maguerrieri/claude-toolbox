@@ -1,0 +1,37 @@
+name: factory scripts
+
+# Unit tests for the scripts under .github/scripts, plus a self-check that this
+# repo's .github/factory-ci.yml and ci-gate.yml agree with the workflows on this
+# branch -- the same lint ci-gate runs on every PR, caught here before merge.
+
+on:
+  pull_request:
+    paths:
+      - ".github/**"
+
+# Runs PR-controlled test code, so the token it holds is read-only.
+#
+# This block is itself PR-controlled -- a `pull_request` workflow runs the PR's
+# own YAML -- and nothing caps it for a same-repository PR: GitHub starts from
+# the repository default and then *adjusts* it by the workflow and job blocks,
+# downgrading write to read only for pull requests from a *fork*. So this is
+# containment against mistakes, not a boundary against the PR's author, and the
+# real positions are: a same-repository PR comes from someone who already has
+# push access, while a fork PR gets a read-only token, no secrets, and (with
+# the fork-workflow approval setting) no run at all until a maintainer says so.
+# Spec 1d, manual step 7.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Do not leave the token in .git/config for the PR's own test code.
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Run script tests
+        run: uvx --with pyyaml pytest .github/scripts/tests -q
