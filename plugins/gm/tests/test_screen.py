@@ -293,14 +293,18 @@ def test_the_sweep_seals_hidden_files_but_not_its_own_metadata(campaign_path, tm
     run(campaign_path, "gm-init", d)
     hidden = os.path.join(d, ".gm", ".hidden")
     open(hidden, "w").write("A hidden plaintext secret\n")
+    temp_named = os.path.join(d, ".gm", "tables", ".tmp-looks-like-a-temp")
+    os.makedirs(os.path.dirname(temp_named))
+    open(temp_named, "w").write("A temp-named plaintext secret\n")
     stale = os.path.join(d, ".gm", "inbox", ".dotted.md")
     os.makedirs(os.path.dirname(stale), exist_ok=True)
     open(stale, "w").write("A dotted draft\n")
     age(stale, gm_screen.DRAFT_TTL + 60)
     ignore = open(os.path.join(d, ".gm", ".gitignore")).read()
     p = run(campaign_path, "gm-migrate", d)
-    assert "sealed 1 plaintext file" in p.stdout and "dropped 1 stale draft" in p.stdout
+    assert "sealed 2 plaintext files" in p.stdout and "dropped 1 stale draft" in p.stdout
     assert gm_screen.is_sealed(open(hidden).read())
+    assert gm_screen.is_sealed(open(temp_named).read())  # no name earns a pass
     assert not os.path.exists(stale)
     assert open(os.path.join(d, ".gm", ".gitignore")).read() == ignore  # metadata untouched
 

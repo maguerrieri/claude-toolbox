@@ -158,11 +158,10 @@ def _is_draft(screen, path):
 
 
 def _is_metadata(screen, path):
-    """The screen's own bookkeeping, never a secret: its .gitignore and lock at the top,
-    and a `_write_atomic` temp file (already sealed) anywhere."""
-    name = os.path.basename(path)
-    top = os.path.dirname(path) == screen
-    return name.startswith(".tmp-") or (top and name in (".gitignore", LOCK))
+    """The screen's own bookkeeping, never a secret: its .gitignore and lock, at the top.
+    (A `_write_atomic` temp needs no exemption: it is written sealed, and only under the
+    lock the sweep holds, so the sweep never sees one mid-write.)"""
+    return os.path.dirname(path) == screen and os.path.basename(path) in (".gitignore", LOCK)
 
 
 def _starts_sealed(path):

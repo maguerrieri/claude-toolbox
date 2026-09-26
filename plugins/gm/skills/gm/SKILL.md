@@ -64,9 +64,11 @@ pool is drafted and harvested behind the screen, and the table lands sealed in
 `<campaign>/.gm/tables/<type>.md`. You don't see its entries. `roll table` on it prints the
 entry it draws, so a roll *is* a reveal: roll it when the fiction earns one.
 
-**Degradation.** If the `generate` plugin is absent, `/gm:forge` improvises ~6–10 entries
-directly. Announce the reduced diversity. The table still works; reforge with `generate`
-present when pace allows.
+**Degradation.** If the `generate` plugin is absent, an open `/gm:forge` improvises ~6–10
+entries directly; a sealed one still goes to `gm:screen`, which improvises them behind the
+screen (never improvise a sealed pool yourself: it would be in the transcript). Announce
+the reduced diversity. The table still works; reforge with `generate` present when pace
+allows.
 
 ## The GM screen
 
