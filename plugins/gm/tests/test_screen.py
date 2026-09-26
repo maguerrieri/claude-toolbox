@@ -394,6 +394,23 @@ def test_upkeep_never_follows_a_symlinked_screen_out_of_the_campaign(campaign_pa
     assert (elsewhere / "notes.md").read_text() == "Someone else's plaintext\n"
 
 
+def test_upkeep_swaps_a_symlinked_gitignore_or_lock_for_a_local_copy(campaign_path, tmp_path):
+    """Inside a real .gm/, upkeep never writes through a symlinked file: the screen gets
+    its own .gitignore (the target's rules plus gm's) and lock, the targets untouched."""
+    d = new_campaign(campaign_path, tmp_path)
+    os.makedirs(os.path.join(d, ".gm"))
+    shared = tmp_path / "shared-ignore"
+    shared.write_text("*.bak\n")
+    lock_target = tmp_path / "shared-lock"
+    os.symlink(str(shared), os.path.join(d, ".gm", ".gitignore"))
+    os.symlink(str(lock_target), os.path.join(d, ".gm", ".lock"))
+    assert run(campaign_path, "gm-init", d).returncode == 0
+    ignore = os.path.join(d, ".gm", ".gitignore")
+    assert not os.path.islink(ignore) and not os.path.islink(os.path.join(d, ".gm", ".lock"))
+    assert {"*.bak", "/forge/", "/inbox/", "/.lock"} <= set(open(ignore).read().splitlines())
+    assert shared.read_text() == "*.bak\n" and not lock_target.exists()
+
+
 def test_gm_init_refuses_a_symlinked_draft_dir(campaign_path, tmp_path):
     """A symlinked .gm/inbox would route gm:screen's plaintext draft outside the screen:
     gm-init stops the subagent before it drafts."""
