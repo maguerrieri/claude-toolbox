@@ -16,6 +16,7 @@
   campaign unbind [--session ID]
   campaign unwrapped <dir>                  # raw play not yet summarized by /gm:wrap
   campaign mark-wrapped <dir> <log-file>
+  campaign example-overlap <dir> [--allow NAME]... # names/prose shared with bundled examples
   campaign hook-session-start               # plugin hooks (payload on stdin)
   campaign hook-autosave
 
@@ -37,8 +38,11 @@ never the value; gm-reveal surfaces a secret when the fiction earns it. Expandin
 call to read ahead is a feature (dramatic irony), not a leak — so no encryption here.
 """
 import argparse
+import collections
 import contextlib
 import datetime
+import difflib
+import glob
 import hashlib
 import json
 import os
@@ -768,6 +772,164 @@ def cmd_mark_wrapped(a):
         print(f"gm: nothing to mark — no unwrapped play in log/raw/{note}")
 
 
+# -- /gm:new-campaign: a fresh campaign borrows nothing from the bundled examples --
+
+EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "examples")
+ECHO_MIN_WORDS = 6     # a shorter sentence is too generic to call a copy
+ECHO = 0.7             # share of the shorter sentence found, in runs of 2+ words, in the other
+FRONT_MATTER = re.compile(r"^---\n(.*?)\n---(?:\n|$)", re.S)
+LIST_ITEM = re.compile(r"(?:[-*+]|\d+\.)\s")
+# A player's lines & veils are their own words, not the GM's to police, so both checks skip
+# them (_drop_safety). A label is "Lines:", "**Veils:**" or "Lines & veils (their words):" at
+# the start of a line or list item, or after a sentence break (mid-line after the tone);
+# "Battle lines:" and "fault-lines:" are not. A safety heading says only "Lines", "Veils" or
+# "Lines & veils" ("Veils of Ash" is prose).
+SAFETY_WORDS = r"(?:lines|veils)(?:\s*(?:&|and)\s*veils)?"
+SAFETY_LABEL = re.compile(r"(?:^\s*(?:(?:[-*+]|\d+\.)\s+)?|[.!?;:–—]\s*)"
+                          r"(?P<label>[*_]*%s\W*(?:\([^)]*\)\W*)?:)" % SAFETY_WORDS, re.I)
+SAFETY_HEADING = re.compile(r"^#+\W*%s\W*$" % SAFETY_WORDS, re.I)
+
+
+def _read(p):
+    with open(p, encoding="utf-8") as f:
+        return f.read()
+
+
+def _front_matter(text):
+    """(front-matter, body) of a markdown file; ("", text) when it has none."""
+    m = FRONT_MATTER.match(text)
+    return (m.group(1), text[m.end():]) if m else ("", text)
+
+
+def _content(d):
+    """A campaign's own content, front-matter stripped: its top-level files, sheets and session
+    logs. Not raw play, sealed .gm/ state, tables, or a forge's generate reservoir."""
+    d = glob.escape(d)
+    paths = [os.path.join(d, "*.md"), os.path.join(d, "characters", "*.md"), os.path.join(d, "log", "*.md")]
+    return [_front_matter(_read(p))[1] for pat in paths for p in sorted(glob.glob(pat))]
+
+
+def _declared_names(ex):
+    """An example lists its proper names in its front-matter (`names: A, B`): guessing them
+    from capitalization mistakes labels for names and misses names in labels."""
+    fm = _front_matter(_read(os.path.join(ex, "campaign.md")))[0]
+    line = re.search(r"^names:[ \t]*(.*)$", fm, re.M)
+    return [n.strip() for n in line.group(1).split(",") if n.strip()] if line else []
+
+
+def _drop_safety(text):
+    """The text without the player's lines & veils: each label through the end of its line
+    (lists run on with ";" and "."), the lines indented under it, the list under a bare label
+    that isn't itself a list item, and everything under a safety heading up to the next one."""
+    out, owner, bare, item, section = [], None, False, False, False
+    for line in text.splitlines():
+        s, indent = line.strip(), len(line) - len(line.lstrip())
+        if s.startswith("#"):
+            section, owner = bool(SAFETY_HEADING.match(s)), None
+            if not section:
+                out.append(line)
+            continue
+        if section:
+            continue
+        if owner is not None:
+            if s and (indent > owner or (bare and not item and LIST_ITEM.match(s))):
+                continue
+            owner = None
+        m = SAFETY_LABEL.search(line)
+        if m:
+            out.append(line[:m.start("label")])
+            owner, item = indent, bool(LIST_ITEM.match(s))
+            bare = not line[m.end():].strip(" \t*_")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _units(text):
+    """Lines, with hard-wrapped prose rejoined: a line continues the one above unless it opens
+    a heading, list item or quote, or the line above is a heading or blank."""
+    out = []
+    for line in text.splitlines():
+        s = line.strip()
+        opens = not s or s.startswith(("#", ">")) or LIST_ITEM.match(s)
+        if out and out[-1] and not out[-1].startswith("#") and not opens:
+            out[-1] += " " + s
+        else:
+            out.append(s)
+    return out
+
+
+def _prose(texts):
+    """The sentences of the text, split at sentence ends, semicolons and list items, with the
+    player's lines & veils left out."""
+    segments = (s.strip(" \t*_#>-+") for t in texts for u in _units(_drop_safety(t))
+                for s in re.split(r"[.!?;]+", u))
+    return [s for s in segments if s]
+
+
+def _sentences(texts):
+    """(sentence, words) for each prose sentence long enough to call a copy."""
+    return [(s, w) for s in _prose(texts)
+            for w in [re.findall(r"[a-z0-9]+", s.lower())] if len(w) >= ECHO_MIN_WORDS]
+
+
+def _echo_index(texts):
+    """One matcher per example sentence, which difflib indexes once (set_seq2), plus its words."""
+    index = []
+    for _, w in _sentences(texts):
+        sm = difflib.SequenceMatcher(None, autojunk=False)
+        sm.set_seq2(w)
+        index.append((sm, collections.Counter(w), len(w)))
+    return index
+
+
+def _echoes(words, index):
+    """True when the words copy an indexed sentence: runs of 2+ words, in order, cover ECHO of
+    the shorter of the two."""
+    bag = collections.Counter(words)
+    for sm, theirs, n in index:
+        need = ECHO * min(len(words), n)
+        if sum((bag & theirs).values()) < need:
+            continue               # too few shared words for any alignment to reach the bar
+        sm.set_seq1(words)
+        if sum(k.size for k in sm.get_matching_blocks() if k.size >= 2) >= need:
+            return True
+    return False
+
+
+def cmd_example_overlap(a):
+    d = os.path.realpath(os.path.expanduser(a.dir))
+    root = os.path.expanduser(a.examples) if a.examples else EXAMPLES_DIR
+    for ok, msg in ((os.path.isfile(os.path.join(d, "campaign.md")), f"no campaign.md in {a.dir}"),
+                    (os.path.isdir(root), f"no bundled examples at {root}")):
+        if not ok:
+            print(f"campaign: {msg}", file=sys.stderr)
+            sys.exit(2)        # 1 means "overlap found"
+    examples = sorted(os.path.join(root, n) for n in os.listdir(root)
+                      if os.path.isfile(os.path.join(root, n, "campaign.md"))
+                      and os.path.realpath(os.path.join(root, n)) != d)
+    mine = _content(d)
+    text, sentences = "\n".join(_prose(mine)), _sentences(mine)
+    found = []
+    for ex in examples:
+        name = os.path.basename(ex)
+        found += [f'gm: shares name "{n}" with bundled example {name}'
+                  for n in _declared_names(ex)
+                  if n not in a.allow
+                  and re.search(r"\b(?:%s|%s)\b" % (re.escape(n), re.escape(n.upper())), text)]
+        index = _echo_index(_content(ex))
+        # Quote the campaign's own sentence only: printing the example's would re-anchor on it.
+        found += [f'gm: "{s[:80]}" echoes prose in bundled example {name}'
+                  for s, w in sentences if _echoes(w, index)]
+    if found:
+        print("\n".join(found))
+        print("gm: rewrite what you invented; keep a name the player chose or the dice rolled "
+              "with --allow <name>")
+        sys.exit(1)
+    names = ", ".join(os.path.basename(ex) for ex in examples) or "none"
+    print(f"gm: no names or prose shared with the bundled examples (checked {len(mine)} files against: {names})")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="campaign")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -785,6 +947,8 @@ def main(argv=None):
     p = sub.add_parser("unbind"); p.add_argument("--session")
     p = sub.add_parser("unwrapped"); p.add_argument("dir")
     p = sub.add_parser("mark-wrapped"); p.add_argument("dir"); p.add_argument("log")
+    p = sub.add_parser("example-overlap"); p.add_argument("dir"); p.add_argument("--examples")
+    p.add_argument("--allow", action="append", default=[])
     sub.add_parser("hook-session-start")
     sub.add_parser("hook-autosave")
     a = ap.parse_args(argv)
@@ -795,6 +959,7 @@ def main(argv=None):
          "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list,
          "bind": cmd_bind, "unbind": cmd_unbind,
          "unwrapped": cmd_unwrapped, "mark-wrapped": cmd_mark_wrapped,
+         "example-overlap": cmd_example_overlap,
          "hook-session-start": cmd_hook_session_start,
          "hook-autosave": cmd_hook_autosave}[a.cmd](a)
     except subprocess.CalledProcessError as e:

@@ -1,6 +1,6 @@
 # Campaign state schema
 
-A campaign is a folder in **your** space (a directory or an Obsidian vault) — never inside the plugin. The plugin scaffolds it and ships *example* campaigns, but your saves are yours. Markdown throughout, so it stays readable and Obsidian-friendly.
+A campaign is a folder in **your** space (a directory or an Obsidian vault) — never inside the plugin. The plugin scaffolds it and ships *example* campaigns, but your saves are yours. This file is the format a new campaign follows; the examples are demos to play, not templates to copy (`/gm:new-campaign` never reads them). Markdown throughout, so it stays readable and Obsidian-friendly.
 
 ## Layout
 
@@ -27,12 +27,14 @@ Front-matter + prose. Required front-matter:
 ---
 adapter: generic         # which system adapter runs this campaign
 persona: house           # which GM persona (default: house; added in milestone 3)
-saves: ~/rpg/embervale   # ABSOLUTE path to this campaign in your space
+saves: ~/rpg/my-campaign # ABSOLUTE path to this campaign in your space
 ---
 ```
 `saves` is an **absolute** path in your own space. (The example campaigns bundled in the plugin use a repo-relative path only because they ship *inside* the plugin; real campaigns live in your directory or vault.)
 
-Body: the **premise** (a paragraph), the **truths** (established facts about this world), and **tone & safety** (genre, lines & veils).
+Body: `## Premise` (a paragraph), `## Truths` (a `- ` list of established facts about this world), and `## Tone & safety` (genre and tone, then the player's own **Lines:** and **Veils:** — asked at `/gm:new-campaign`, in their words, never defaulted).
+
+A bundled example also lists its proper names in its front-matter (`names: <place>, <person>, …`), for `campaign example-overlap`; your own campaigns don't need it.
 
 ### `characters/<name>.md`
 One file per PC, in the shape the active adapter's `sheet-template.md` defines. The core never invents a stat that isn't on the sheet (Rule 0).
@@ -44,13 +46,13 @@ A list; each NPC gets: name, a one-line description, **what they want** (every N
 Open threads. Each: a title, a one-line description, and a status (`open` / `hot` / `resolved`). The recap and scene-framing pull from here.
 
 ### `clocks.md`
-Progress clocks the world advances: `Bandits find the camp [▰▰▱▱] 2/4`. Note each clock's **trigger** so it ticks consistently — e.g. `The Ashwood creeps closer [▰▱▱▱] 1/4 — ticks when the party delves deeper or the threat acts`. The core ticks a clock when its trigger fires in the fiction.
+Progress clocks the world advances: `Bandits find the camp [▰▰▱▱] 2/4`. Note each clock's **trigger** so it ticks consistently — e.g. `The rival crew reaches the vault [▰▱▱▱] 1/4 — ticks when the party dawdles or the rivals act`. The core ticks a clock when its trigger fires in the fiction.
 
 ### `locations.md`
 Places visited or known, each with a line of sensory detail so scenes stay grounded.
 
 ### `log/NNNN-<title>.md`
-One per session, zero-padded index (`0001-the-ember-road.md`). Holds the session's beats and, at the end, a **forward recap** ("Previously…") the next `/gm:play` reads back. `/gm:wrap` writes it from the raw log below.
+One per session, zero-padded index (`0001-the-first-night.md`). Holds the session's beats and, at the end, a **forward recap** ("Previously…") the next `/gm:play` reads back. `/gm:wrap` writes it from the raw log below.
 
 ### `log/raw/<YYYY-MM-DD>-<session>.md`
 The **raw play log**, written by the plugin's Stop hook after every turn of a session bound to this campaign (`campaign bind`, run by `/gm:play` and `/gm:new-campaign`) — no model action involved. `<session>` is the first 8 characters of the Claude Code session id, and a new file starts each day. Each turn appends `### Player` (the prompt as typed, including a gm command like `/gm:play …`; other slash commands such as `/compact` or `/model` aren't play and are left out) and `### GM` (the GM's visible narration) blocks. **Text only:** tool calls and their results are never logged, so nothing written behind the GM screen (`campaign gm-*`, `.gm/`) reaches it. A managed campaign commits the log and the current state each turn (`autosave: <prompt>`), so every turn is a `/gm:rewind` target; a deferred campaign gets the log but no commits.
