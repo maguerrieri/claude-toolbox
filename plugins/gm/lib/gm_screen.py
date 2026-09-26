@@ -117,11 +117,19 @@ IGNORE_HEADER = ("# gm: the gm:screen subagent's plaintext drafts and the screen
 IGNORED = ["/" + d + "/" for d in DRAFT_DIRS] + ["/" + LOCK]
 
 
+def _maintainable(screen):
+    """Whether automatic upkeep (the sweep, the .gitignore) may touch this screen: a real
+    directory, not a symlink. Upkeep runs unprompted, from hooks and checkpoints, so it
+    never follows a link out of the campaign; an explicit gm-* command still writes
+    wherever the player's filesystem points."""
+    return os.path.isdir(screen) and not os.path.islink(screen)
+
+
 def ignore_drafts(screen):
     """Make the screen's .gitignore keep drafts and the lock out of any commit: gm's own
     checkpoints, and a deferred campaign's host repo (an Obsidian vault) alike. Rules
     already in the file are kept; only the missing ones are added."""
-    if not os.path.isdir(screen):
+    if not _maintainable(screen):
         return
     p = os.path.join(screen, ".gitignore")
     try:
@@ -177,13 +185,13 @@ def sweep(campaign, now=None):
     - Plaintext (a legacy file from before sealing, or any hidden file) is sealed in place.
     - A symlink is replaced by a sealed copy of the text it points to, so the screened
       path never reads as plaintext; the target itself, outside or not, is left alone.
-      Symlinked directories aren't followed.
+      Symlinked directories aren't followed, .gm itself included (`_maintainable`).
     - A draft (.gm/forge/, .gm/inbox/) is never sealed in place: a fresh one may still be
       being written by its gm:screen subagent, so it is left alone until it is stale,
       then dropped (it was a crashed subagent's scratch).
     Anything that isn't UTF-8 text (or a dangling link) is left as it is."""
     screen = os.path.join(campaign, SCREEN_DIR)
-    if not os.path.isdir(screen):
+    if not _maintainable(screen):
         return 0, 0
     now = time.time() if now is None else now
     sealed = dropped = 0

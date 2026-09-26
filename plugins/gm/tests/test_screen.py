@@ -380,6 +380,20 @@ def test_gm_init_readies_the_screen_before_any_draft(campaign_path, tmp_path):
     assert open(os.path.join(d, ".gm", ".gitignore")).read().splitlines() == rules
 
 
+def test_upkeep_never_follows_a_symlinked_screen_out_of_the_campaign(campaign_path, tmp_path):
+    """The sweep and the .gitignore run unprompted (hooks, checkpoints): a symlinked .gm
+    is the player's own arrangement, and upkeep doesn't write through it."""
+    d = new_campaign(campaign_path, tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "notes.md").write_text("Someone else's plaintext\n")
+    os.symlink(str(elsewhere), os.path.join(d, ".gm"))
+    assert "nothing to seal" in run(campaign_path, "gm-migrate", d).stdout
+    run(campaign_path, "checkpoint", d, "--label", "linked")
+    assert sorted(os.listdir(elsewhere)) == ["notes.md"]  # no .gitignore, no lock
+    assert (elsewhere / "notes.md").read_text() == "Someone else's plaintext\n"
+
+
 def test_gm_init_refuses_a_symlinked_draft_dir(campaign_path, tmp_path):
     """A symlinked .gm/inbox would route gm:screen's plaintext draft outside the screen:
     gm-init stops the subagent before it drafts."""
