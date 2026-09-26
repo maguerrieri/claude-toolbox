@@ -39,6 +39,11 @@
       "name": "ticket-workflow",
       "source": "./plugins/ticket-workflow",
       "description": "End-to-end issue workflow (make/start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile"
+    },
+    {
+      "name": "provenance",
+      "source": { "source": "github", "repo": "maguerrieri/provenance", "ref": "v0.1.0" },
+      "description": "Researcher and verifier agents and the orchestration skill for provenance, a cited-research pipeline whose citations a machine checks and a person reviews."
     }
   ]
 }
