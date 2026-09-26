@@ -1,7 +1,7 @@
 # {{name}}
 
 - **Concept:** {{a sentence — who they are and what they're about}}
-- **Descriptors:** {{2–4 short traits or skills, comma-separated, in the player's words — say, a talent, a flaw, a tie, a habit}}
+- **Descriptors:** {{2–4 short traits or skills, comma-separated — say, a talent, a flaw, a tie, a habit}}
 - **Bonds:** {{people, places, or things that matter to them}}
 - **Harm:** [ ] [ ] [ ] [ ]  {{mark a box as harm is taken; four filled = out of the fight}}
 - **Notes / Inventory:** {{freeform}}
