@@ -184,6 +184,30 @@ def test_names_in_the_players_safety_lines_are_not_flagged(campaign_path, tmp_pa
     assert p.returncode == 0, p.stdout
 
 
+def test_combined_lines_and_veils_labels_are_safety_too(campaign_path, tmp_path):
+    ex = examples(str(tmp_path))
+    with open(os.path.join(ex, "brindle", "campaign.md")) as f:
+        text = f.read().replace("Light adventure with a sting in the tail. **Lines:** harm to animals and "
+                                "children. **Veils:** none at all here.",
+                                "Light adventure — **Lines & veils** (the player's words): harm to animals "
+                                "and children, and none at all here")
+    with open(os.path.join(ex, "brindle", "campaign.md"), "w") as f:
+        f.write(text)
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS)
+    with open(os.path.join(d, "campaign.md"), "a") as f:
+        f.write("Grim war — Lines and veils (as told): harm to animals and children, and none at all here, Osk\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
+def test_lines_in_ordinary_prose_is_not_a_label(campaign_path, tmp_path):
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, ["The ley lines converge here: under Osk's tower."])
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+
+
 def test_prose_merely_starting_with_lines_or_veils_is_still_checked(campaign_path, tmp_path):
     ex = examples(str(tmp_path))
     d = str(tmp_path / "camp")
