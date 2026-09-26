@@ -113,9 +113,16 @@ def _require_managed(d):
         sys.exit(0)  # deferred is a normal state, not an error
 
 
+def _stage_all(d):
+    """Stage everything but the gm:screen subagent's drafts (plaintext, and gone once
+    sealed: never history) and the screen's lock, which .gm/.gitignore leaves out."""
+    gm_screen.ignore_drafts(os.path.join(d, gm_screen.SCREEN_DIR))
+    git(d, "add", "-A")
+
+
 def _commit_all(d, label):
     """Stage everything and commit it; False when there was nothing to commit."""
-    git(d, "add", "-A")
+    _stage_all(d)
     if not _staged_changes(d):
         return False
     git(d, "commit", "-q", "-m", label)
@@ -146,8 +153,8 @@ def cmd_rewind(a):
     git(a.dir, "read-tree", "-u", "--reset", a.to)
     # A checkpoint from before sealing restores a plaintext .gm/: seal it within this
     # same command, so the Bash edit-diff shows noise rather than the restored secrets.
-    if gm_screen.seal_tree(a.dir):
-        git(a.dir, "add", "-A")
+    gm_screen.sweep(a.dir)
+    _stage_all(a.dir)
     if not _staged_changes(a.dir):
         print(f"already at {a.to}; nothing to rewind")
         return
@@ -168,7 +175,8 @@ def cmd_backup(a):
 # ---- GM screen: hidden state under a sealed .gm/ dir -------------------------
 # Every file under .gm/ is sealed at rest (lib/gm_screen.py), so the Bash edit-diff
 # view, `cat` or an editor shows noise; reads accept legacy plaintext, and the next
-# write (or `gm-migrate`, or the Stop hook's sweep) seals it. Independent of git
+# write (or `gm-migrate`, or the hooks' sweep) seals it. Writers hold the screen's
+# lock (gm_screen.locked), so the sweep never races a write. Independent of git
 # management: works in deferred campaigns too; a managed campaign commits .gm/ with
 # the next checkpoint.
 
@@ -191,19 +199,24 @@ def _gm_save(d, state):
     gm_screen.write(_gm_state_path(d), json.dumps(state, indent=2, sort_keys=True) + "\n")
 
 
+def _gm_screen(d):
+    return os.path.join(d, GM_DIR)
+
+
 def cmd_gm_clock(a):
-    state = _gm_load(a.dir)
-    clocks = state["clocks"]
-    created = a.id not in clocks
-    c = clocks.setdefault(a.id, {"filled": 0, "segments": a.segments or 4})
-    if a.segments is not None:
-        c["segments"] = a.segments
-    if a.set is not None:
-        c["filled"] = a.set
-    if a.advance is not None:
-        c["filled"] += a.advance
-    c["filled"] = max(0, min(c["filled"], c["segments"]))
-    _gm_save(a.dir, state)
+    with gm_screen.locked(_gm_screen(a.dir)):
+        state = _gm_load(a.dir)
+        clocks = state["clocks"]
+        created = a.id not in clocks
+        c = clocks.setdefault(a.id, {"filled": 0, "segments": a.segments or 4})
+        if a.segments is not None:
+            c["segments"] = a.segments
+        if a.set is not None:
+            c["filled"] = a.set
+        if a.advance is not None:
+            c["filled"] += a.advance
+        c["filled"] = max(0, min(c["filled"], c["segments"]))
+        _gm_save(a.dir, state)
     # Neutral confirmation — never the fill value. Completion IS surfaced: the GM
     # must know a hidden clock just filled (it's about to act on the fiction).
     status = " (complete)" if c["filled"] >= c["segments"] else ""
@@ -213,19 +226,17 @@ def cmd_gm_clock(a):
 def cmd_gm_seal(a):
     if a.text is not None and a.from_file is not None:
         sys.exit("campaign: gm-seal takes the text as an argument or --from FILE, not both")
-    if a.from_file is not None:
-        # The gm:screen subagent's draft: read it (sealed or not), seal it, delete it,
-        # so its plaintext never outlives this command.
-        text = gm_screen.read(a.from_file)
-    elif a.text is not None:
-        text = a.text
-    else:
-        text = sys.stdin.read()
-    state = _gm_load(a.dir)
-    state["secrets"][a.id] = text.rstrip("\n")
-    _gm_save(a.dir, state)
-    if a.from_file is not None:
-        os.remove(a.from_file)
+    text = a.text if a.text is not None or a.from_file is not None else sys.stdin.read()
+    with gm_screen.locked(_gm_screen(a.dir)):
+        if a.from_file is not None:
+            # The gm:screen subagent's draft: read it (sealed or not), seal it, delete
+            # it, so its plaintext never outlives this command.
+            text = gm_screen.read(a.from_file)
+        state = _gm_load(a.dir)
+        state["secrets"][a.id] = text.rstrip("\n")
+        _gm_save(a.dir, state)
+        if a.from_file is not None:
+            os.remove(a.from_file)
     print(f"gm: '{a.id}' sealed")
 
 
@@ -250,9 +261,13 @@ def cmd_gm_reveal(a):
 
 
 def cmd_gm_migrate(a):
-    n = gm_screen.seal_tree(a.dir)
-    print(f"gm: sealed {n} plaintext file{'' if n == 1 else 's'} behind the screen" if n
-          else "gm: nothing to seal — the screen is already sealed")
+    n, dropped = gm_screen.sweep(a.dir)
+    done = []
+    if n:
+        done.append(f"sealed {n} plaintext file{'' if n == 1 else 's'} behind the screen")
+    if dropped:
+        done.append(f"dropped {dropped} stale draft{'' if dropped == 1 else 's'}")
+    print("gm: " + "; ".join(done) if done else "gm: nothing to seal — the screen is already sealed")
 
 
 def cmd_gm_list(a):
@@ -669,11 +684,12 @@ def _log_hook_error(where):
 
 
 def _sweep_screen(d, where):
-    """Seal any plaintext left under <d>/.gm/ — a legacy file, or a draft a crashed
-    gm:screen subagent never consumed. Hooks run outside every tool call, so no diff
-    view shows the plaintext going away. A failure is logged and never costs the turn."""
+    """Seal any plaintext left under <d>/.gm/ from an older version, and drop a draft a
+    crashed gm:screen subagent left (lib/gm_screen.py: sweep). Hooks run outside every
+    tool call, so no diff view shows the plaintext going away. Returns how many files
+    were sealed; a failure is logged and never costs the turn."""
     try:
-        return gm_screen.seal_tree(d)
+        return gm_screen.sweep(d)[0]
     except Exception:
         _log_hook_error(where + " (sealing .gm/)")
         return 0

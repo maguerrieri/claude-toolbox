@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import time
 
 import pytest
 
@@ -93,12 +94,29 @@ def test_corrupt_sealed_data_is_an_error_not_garbage():
         gm_screen.unseal(gm_screen.HEADER + "not base64 at all!!\n")
 
 
-def test_behind_screen():
-    assert gm_screen.behind_screen("/c/.gm/tables/x.md")
-    assert gm_screen.behind_screen("/c/.gm/state.json")
-    assert not gm_screen.behind_screen("/c/tables/x.md")
-    assert not gm_screen.behind_screen("/c/.gm")          # the dir itself, not a file in it
-    assert not gm_screen.behind_screen("/c/docs/generation/.gmx/x.md")
+def test_screen_of_is_the_gm_dir_next_to_campaign_md(tmp_path):
+    camp = tmp_path / ".gm" / "campaigns" / "embervale"  # saves under an unrelated .gm/
+    camp.mkdir(parents=True)
+    (camp / "campaign.md").write_text("---\nadapter: generic\n---\n")
+    screen = str(camp / ".gm")
+    assert gm_screen.screen_of(str(camp / ".gm" / "tables" / "x.md")) == screen
+    assert gm_screen.screen_of(str(camp / ".gm" / "state.json")) == screen
+    assert gm_screen.screen_of(str(camp / "tables" / "rumors.md")) is None
+    assert gm_screen.screen_of(str(camp / ".gm")) is None     # the dir itself, not a file in it
+    assert gm_screen.screen_of(str(tmp_path / ".gm" / "x.md")) is None  # no campaign.md beside it
+
+
+def test_an_open_table_under_some_other_gm_dir_stays_open(forge_path, tmp_path):
+    camp = tmp_path / ".gm" / "campaigns" / "embervale"
+    camp.mkdir(parents=True)
+    (camp / "campaign.md").write_text("x\n")
+    res = camp / "docs" / "generation" / "rumors.md"
+    res.parent.mkdir(parents=True)
+    res.write_text(RESERVOIR)
+    table = camp / "tables" / "rumors.md"
+    p = run(forge_path, "harvest", str(res), str(table))
+    assert p.returncode == 0 and "(sealed)" not in p.stdout and not p.stderr
+    assert SECRET_ENTRIES[0] in table.read_text()
 
 
 # ---- acceptance: no plaintext secret on disk ------------------------------
@@ -161,7 +179,7 @@ def test_gm_seal_from_consumes_the_draft(campaign_path, tmp_path):
     assert run(campaign_path, "gm-reveal", d, "twist").stdout == "line one\nline two\n"
 
 
-def test_gm_seal_from_reads_a_draft_the_sweep_already_sealed(campaign_path, tmp_path):
+def test_gm_seal_from_reads_a_sealed_draft(campaign_path, tmp_path):
     d = new_campaign(campaign_path, tmp_path)
     draft = os.path.join(d, ".gm", "inbox", "t.md")
     os.makedirs(os.path.dirname(draft))
@@ -228,6 +246,60 @@ def test_gm_migrate_seals_every_plaintext_file_once(campaign_path, roll_path, tm
     assert "nothing to seal" in run(campaign_path, "gm-migrate", d).stdout  # idempotent
 
 
+def age(path, seconds):
+    t = time.time() - seconds
+    os.utime(path, (t, t))
+
+
+def test_the_sweep_leaves_a_fresh_draft_and_drops_a_stale_one(campaign_path, tmp_path):
+    """A fresh draft may belong to a gm:screen subagent still writing it: sealing it in
+    place would break its next Edit, or leave plaintext appended to a sealed file."""
+    d = new_campaign(campaign_path, tmp_path)
+    fresh = os.path.join(d, ".gm", "forge", "omens.md")
+    stale = os.path.join(d, ".gm", "inbox", "lost.md")
+    for p in (fresh, stale):
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write("## Reservoir\n- Draft entry\n")
+    age(stale, gm_screen.DRAFT_TTL + 60)
+    p = run(campaign_path, "gm-migrate", d)
+    assert "dropped 1 stale draft" in p.stdout
+    assert open(fresh).read() == "## Reservoir\n- Draft entry\n"  # untouched
+    assert not os.path.exists(stale)
+
+
+def test_a_checkpoint_never_commits_a_draft(campaign_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    draft = os.path.join(d, ".gm", "inbox", "the-well.md")
+    os.makedirs(os.path.dirname(draft))
+    with open(draft, "w") as f:
+        f.write(SEALED_ANSWER + "\n")
+    run(campaign_path, "gm-clock", d, "the-watchers", "--segments", "4")
+    assert "checkpoint: mid-seal" in run(campaign_path, "checkpoint", d, "--label", "mid-seal").stdout
+    tracked = git(d, "ls-files").split()
+    assert ".gm/state.json" in tracked
+    assert not [t for t in tracked if t.startswith((".gm/inbox", ".gm/forge")) or t == ".gm/.lock"]
+    assert "Marrow" not in git(d, "log", "-p", "--all")
+
+
+def test_a_deferred_campaigns_host_repo_ignores_drafts_too(campaign_path, tmp_path):
+    """An Obsidian vault under git commits on its own schedule: .gm/.gitignore keeps
+    the drafts out of it as well."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    subprocess.run(["git", "-C", str(vault), "init", "-q"])
+    d = str(vault / "camp")
+    os.makedirs(d)
+    open(os.path.join(d, "campaign.md"), "w").write("x\n")
+    run(campaign_path, "gm-clock", d, "the-watchers", "--segments", "4")
+    draft = os.path.join(d, ".gm", "forge", "omens.md")
+    os.makedirs(os.path.dirname(draft))
+    open(draft, "w").write("## Reservoir\n- Draft entry\n")
+    status = git(str(vault), "status", "--porcelain", "--untracked-files=all")
+    assert "camp/.gm/state.json" in status and "camp/.gm/.gitignore" in status
+    assert "forge" not in status and ".lock" not in status
+
+
 def test_gm_migrate_without_a_screen_is_a_no_op(campaign_path, tmp_path):
     d = new_campaign(campaign_path, tmp_path)
     p = run(campaign_path, "gm-migrate", d)
@@ -267,6 +339,7 @@ def test_open_harvest_stays_plaintext(forge_path, tmp_path):
 def test_sealed_harvest_warns_about_a_plaintext_reservoir_left_outside(forge_path, tmp_path):
     res = tmp_path / "camp" / "docs" / "generation" / "x.md"
     res.parent.mkdir(parents=True)
+    (tmp_path / "camp" / "campaign.md").write_text("x\n")
     res.write_text(RESERVOIR)
     table = tmp_path / "camp" / ".gm" / "tables" / "x.md"
     p = run(forge_path, "harvest", str(res), str(table))
@@ -277,6 +350,7 @@ def test_sealed_harvest_warns_about_a_plaintext_reservoir_left_outside(forge_pat
 
 
 def test_consume_deletes_the_reservoir_only_after_a_good_harvest(forge_path, tmp_path):
+    (tmp_path / "campaign.md").write_text("x\n")
     res = tmp_path / ".gm" / "forge" / "x.md"
     res.parent.mkdir(parents=True)
     res.write_text("# frame\n## Axes\n")  # no entries: the harvest fails
@@ -285,12 +359,24 @@ def test_consume_deletes_the_reservoir_only_after_a_good_harvest(forge_path, tmp
     assert p.returncode != 0 and res.exists() and not table.exists()
 
 
+def test_consume_refuses_when_reservoir_and_table_are_one_file(forge_path, tmp_path):
+    (tmp_path / "campaign.md").write_text("x\n")
+    res = tmp_path / ".gm" / "tables" / "x.md"
+    res.parent.mkdir(parents=True)
+    res.write_text(RESERVOIR)
+    p = run(forge_path, "harvest", "--consume", str(res), str(res))
+    assert p.returncode != 0 and "one file" in p.stderr
+    assert res.read_text() == RESERVOIR  # untouched
+
+
 def test_harvest_reads_a_sealed_reservoir(forge_path, roll_path, tmp_path):
+    (tmp_path / "campaign.md").write_text("x\n")
     res = tmp_path / ".gm" / "forge" / "x.md"
     res.parent.mkdir(parents=True)
-    res.write_text(gm_screen.seal(RESERVOIR))  # the Stop hook's sweep got to it first
+    res.write_text(gm_screen.seal(RESERVOIR))  # sealed by hand; harvest reads it all the same
     table = tmp_path / ".gm" / "tables" / "x.md"
-    assert run(forge_path, "harvest", "--consume", str(res), str(table)).returncode == 0
+    p = run(forge_path, "harvest", "--consume", str(res), str(table))
+    assert p.returncode == 0 and "(sealed)" in p.stdout
     assert SECRET_ENTRIES[1] in run(roll_path, "table", str(table), "--n", "3").stdout
 
 
