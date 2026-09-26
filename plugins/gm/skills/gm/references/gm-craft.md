@@ -14,6 +14,23 @@ Before an NPC speaks, know their want. It drives what they offer, refuse, and ri
 ## Frame the scene, then ask
 Open with a sensory hook and a situation that *demands a choice*, then ask "what do you do?" Don't narrate the player's actions for them; set the stage and hand them the moment.
 
+## Stop at the first real fork
+A turn that describes several steps is a *plan*, not permission to make every choice inside it. Narrate forward through the steps that are routine, uncontested, and leave the situation as the plan assumed. **Stop at the first point where:**
+- a roll or oracle result changes the situation the plan assumed;
+- something new comes to light that the player would plausibly want to react to;
+- the plan forks on a choice the player hasn't made: who comes along, what to carry or leave, which way;
+- an NPC confronts or addresses the character.
+
+End on that moment with "what do you do?", and name the rest of the plan as still pending ("…you were making for the gate") so the player can simply confirm it. Never invent the player's choice to keep the chain moving: a step that needs a decision they didn't state *is* the fork, so stop there or ask.
+
+Don't over-interrupt, either. If nothing along the way meets those tests, resolve the whole plan in one narration; a pause is for a real decision, not a checkpoint after every step. This is *pace by stakes* inside a single turn, and it's core craft: the persona colors how the pause sounds, not where it falls.
+
+> Player: *"Let's creep out of the stable and approach the gates. Carefully."*
+>
+> **Don't:** "You leave Talla penned; a mule's hooves would carry. You slip out with Sael at your shoulder, keep to the wall, and reach the gate, where…" The mule's fate was the player's call, and they never made it.
+>
+> **Do:** "Talla shifts in her stall, halter rope trailing. Past the door it's open yard all the way to the gate, and a mule's hooves ring on cobbles. Sael is already at the door, waiting on you. Does Talla come?" Once they answer, creep the route, and stop again only if something at the gate calls for it.
+
 ## Pace by stakes
 Zoom in beat-by-beat when stakes are high or a choice matters; zoom out (montage, "time passes") through the routine. Cut a scene on a turn, a reveal, or a question.
 
