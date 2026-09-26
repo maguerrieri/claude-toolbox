@@ -28,7 +28,7 @@ chronicle_identity:
 
 Body — voice only, with no reference to any system's mechanics or terms:
 - **Voice** — how this GM sounds (diction, rhythm, register).
-- **Temperament** — how harsh a cost feels, how lethal the *narration* runs, how much it pushes vs. follows.
+- **Temperament** — how harsh a cost feels, how lethal the *narration* runs, how much it pushes vs. follows. Where a multi-step turn pauses is core craft, not temperament (gm-craft: stop at the first real fork); the persona voices the pause.
 - **Descriptive density** — terse vs. lush.
 - **Humor** — dry / warm / none / absurd.
 - **Content sensibilities** — default lines & veils leanings (the player's stated lines always win).
