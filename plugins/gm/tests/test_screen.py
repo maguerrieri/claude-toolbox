@@ -66,7 +66,7 @@ def sealed_forge(forge_path, d, kind="well-glimpse"):
     with open(draft, "w") as f:
         f.write(RESERVOIR)
     table = os.path.join(d, ".gm", "tables", f"{kind}.md")
-    return run(forge_path, "harvest", "--consume", draft, table), draft, table
+    return run(forge_path, "harvest", "--sealed", "--consume", draft, table), draft, table
 
 
 # ---- the codec ------------------------------------------------------------
@@ -311,6 +311,31 @@ def test_an_existing_screen_gitignore_gains_the_missing_rules(campaign_path, tmp
     assert sorted(lines[2:]) == ["/.lock", "/forge/"]
     run(campaign_path, "gm-clock", d, "c", "--advance", "1")
     assert open(ignore).read().splitlines() == lines  # idempotent
+
+
+def test_gm_init_readies_the_screen_before_any_draft(campaign_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    p = run(campaign_path, "gm-init", d)
+    assert p.returncode == 0 and "screen ready" in p.stdout
+    rules = open(os.path.join(d, ".gm", ".gitignore")).read().splitlines()
+    assert {"/forge/", "/inbox/", "/.lock"} <= set(rules)
+    assert run(campaign_path, "gm-init", d).returncode == 0  # safe to repeat
+    assert open(os.path.join(d, ".gm", ".gitignore")).read().splitlines() == rules
+
+
+def test_sealed_harvest_refuses_a_table_outside_the_screen(campaign_path, forge_path, tmp_path):
+    """A type like `../../tables/x` must not turn a sealed forge into a plaintext table."""
+    d = new_campaign(campaign_path, tmp_path)
+    run(campaign_path, "gm-init", d)
+    draft = os.path.join(d, ".gm", "forge", "x.md")
+    os.makedirs(os.path.dirname(draft))
+    with open(draft, "w") as f:
+        f.write(RESERVOIR)
+    escaped = os.path.join(d, ".gm", "tables", "..", "..", "tables", "x.md")
+    p = run(forge_path, "harvest", "--sealed", "--consume", draft, escaped)
+    assert p.returncode != 0 and "refusing" in p.stderr
+    assert not os.path.exists(os.path.join(d, "tables", "x.md"))
+    assert os.path.exists(draft)  # nothing consumed on a refused call
 
 
 def test_gm_migrate_without_a_screen_is_a_no_op(campaign_path, tmp_path):

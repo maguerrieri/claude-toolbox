@@ -12,12 +12,14 @@
   campaign gm-reveal <dir> [id]
   campaign gm-list <dir>
   campaign gm-migrate <dir>                 # seal any plaintext left under .gm/
+  campaign gm-init <dir>                    # create .gm/ + its .gitignore before a draft
 
   campaign bind <dir> [--session ID]        # autosave this session's play into <dir>
   campaign unbind [--session ID]
   campaign unwrapped <dir>                  # raw play not yet summarized by /gm:wrap
   campaign mark-wrapped <dir> <log-file>
   campaign hook-session-start               # plugin hooks (payload on stdin)
+  campaign hook-post-bash
   campaign hook-autosave
 
 A campaign dir gets its own dedicated git repo (marked by a .gm-campaign file),
@@ -258,6 +260,14 @@ def cmd_gm_reveal(a):
         print(f"clock '{cid}': {c['filled']}/{c['segments']}")
     for sid, text in sorted(state["secrets"].items()):
         print(f"secret '{sid}': {text}")
+
+
+def cmd_gm_init(a):
+    # gm:screen runs this before its first draft, so a fresh campaign's .gitignore
+    # keeps the draft out of git (a host vault's too) from the moment it's written.
+    with gm_screen.locked(_gm_screen(a.dir)):
+        pass
+    print("gm: screen ready — drafts under .gm/forge/ and .gm/inbox/ stay out of git")
 
 
 def cmd_gm_migrate(a):
@@ -722,6 +732,29 @@ def _gc_bindings(keep):
             pass
 
 
+BIND_RE = re.compile(r"(?:^|[\s/;&|(])campaign[\"']?\s+bind\b")
+
+
+def cmd_hook_post_bash(a):
+    # PostToolUse on Bash. Right after `campaign bind` (the first thing /gm:play and
+    # /gm:new-campaign run), seal the plaintext an older version left under the bound
+    # campaign's .gm/: out here, not inside the bind call, so no diff view shows the old
+    # secrets going away, and before a gameplay write (gm-clock) would rewrite them in
+    # view. hooks.json only starts Python for a payload that mentions "bind".
+    try:
+        payload = _hook_payload()
+        command = (payload.get("tool_input") or {}).get("command")
+        sid = payload.get("session_id")
+        if not (isinstance(command, str) and BIND_RE.search(command) and _valid_session(sid)):
+            return
+        binding = _load_binding(sid)
+        d = binding.get("campaign") if binding else None
+        if isinstance(d, str) and os.path.isdir(d):
+            _sweep_screen(d, "hook-post-bash")
+    except Exception:
+        _log_hook_error("hook-post-bash")
+
+
 def cmd_hook_session_start(a):
     # Hands the session id (and the data dir, which only hooks know) to the Bash tool
     # so `campaign bind` can key the binding the Stop hook will look up. /clear starts
@@ -837,18 +870,21 @@ def main(argv=None):
     p = sub.add_parser("gm-reveal"); p.add_argument("dir"); p.add_argument("id", nargs="?")
     p = sub.add_parser("gm-list"); p.add_argument("dir")
     p = sub.add_parser("gm-migrate"); p.add_argument("dir")
+    p = sub.add_parser("gm-init"); p.add_argument("dir")
     p = sub.add_parser("bind"); p.add_argument("dir"); p.add_argument("--session")
     p = sub.add_parser("unbind"); p.add_argument("--session")
     p = sub.add_parser("unwrapped"); p.add_argument("dir")
     p = sub.add_parser("mark-wrapped"); p.add_argument("dir"); p.add_argument("log")
     sub.add_parser("hook-session-start")
     sub.add_parser("hook-autosave")
+    sub.add_parser("hook-post-bash")
     a = ap.parse_args(argv)
     try:
         {"init": cmd_init, "checkpoint": cmd_checkpoint, "log": cmd_log,
          "rewind": cmd_rewind, "backup": cmd_backup,
          "gm-clock": cmd_gm_clock, "gm-seal": cmd_gm_seal,
          "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list, "gm-migrate": cmd_gm_migrate,
+         "gm-init": cmd_gm_init, "hook-post-bash": cmd_hook_post_bash,
          "bind": cmd_bind, "unbind": cmd_unbind,
          "unwrapped": cmd_unwrapped, "mark-wrapped": cmd_mark_wrapped,
          "hook-session-start": cmd_hook_session_start,
