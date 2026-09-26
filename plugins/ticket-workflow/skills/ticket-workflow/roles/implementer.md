@@ -66,10 +66,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   so read the record back from the file when a clearance arrives, never
   from memory: `cat
   "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$CLAUDE_SESSION_ID.notify"`.
-  If an unmerged PR sits below yours (you started as a dependent, on a
-  parent's branch or an EPIC integration branch, and your PR shows no
-  `restacked:` comment of yours newer than its last `restack:` request), or
-  your PR holds findings at the
+  If an unmerged PR sits below yours (your PR's base is still the head
+  branch of an open PR; or you started as a dependent, on a parent's branch
+  or an EPIC integration branch, and your PR shows no `restacked:` comment
+  of yours newer than its last `restack:` request), or your PR holds
+  findings at the
   round cap (`<m>` above 0 on its `Review rounds:` line, or an `agree, held
   at the round cap` line), reply `blocked: <why>` and don't merge: a layer
   waits for its parent to land and for its own restack, and the grant
@@ -102,9 +103,12 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   nothing is left to merge, so it needs none of the checks above, even if
   its sender is gone. Treat it as a tidy-up: skip the merge, don't re-post
   `restack:` comments your dependents' PRs already carry, and run FINISH
-  Steps 3–4, plus Step 5 if the issue is still open. Run `git status` in
-  your worktree before removing it: if anything is uncommitted, keep the
-  worktree and report what's there rather than force-removing it. Then ping
+  Steps 3–4, plus Step 5 if the issue is still open. Before removing the
+  worktree, check it holds nothing the merge didn't carry: `git status`
+  shows no uncommitted work, and `git log --oneline <merged head>..HEAD`
+  (the head from `gh pr view <pr> --json headRefOid`) lists no local
+  commit. If either finds something, keep the worktree and report what's
+  there rather than force-removing it. Then ping
   `merged: #<pr> (landed by <who>; tidied up)` if your spawner is still
   there.
 
