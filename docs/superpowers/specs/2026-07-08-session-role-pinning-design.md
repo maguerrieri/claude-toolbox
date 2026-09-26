@@ -70,8 +70,12 @@ issue-spawning command (`/start-ticket`, `/start-epic`, `/spawn-tickets`,
 `/spawn-epic`, or their `/ticket-workflow:` forms, or `/make-ticket` with
 `--spawn`/`--start`) gets `permissionDecision: "deny"` with a file-and-ping
 redirect. The Bash check (`hooks/role-guard-launch.jq`) tokenizes the command
-and reads only the launch's positional prompt, so a launch that is only quoted
-inside a message or a comment doesn't count. The hook finds the session id
+and reads only the words that can be the launch's prompt (the positional
+prompt, the word after an option `claude --help` doesn't list, and stdin as
+far as the command shows it), so a launch that is only quoted inside a
+message or a comment doesn't count. Naming `mcp__.*__create_session` makes the
+matcher a regex, which Claude Code tests unanchored, so it is anchored
+(`^(…)$`) to keep `TodoWrite` or `BashOutput` out. The hook finds the session id
 with a bash regex and exits before starting jq when the session has no marker,
 since the matcher now runs it before every Bash call. The planner's Bash
 stays ungated, as above. It denies rather than asks because an implementer

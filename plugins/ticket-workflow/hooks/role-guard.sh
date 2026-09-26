@@ -21,9 +21,10 @@
 # Both match the charters' stated philosophy: the guard is the unattended
 # default, not a lock. The implementer check is a heuristic over the command
 # text, not a shell parser. A prompt that opens with prose naming the skill
-# file (the cloud slash-command workaround), one assembled at run time, or a
-# launch nested in another shell's string (`bash -c "..."`) passes it. The
-# phase-entry guard in the skill is the primary check; this is the backstop.
+# file (the cloud slash-command workaround), one assembled at run time or
+# read from a file (`< prompt.txt`, `cat prompt.txt |`), or a launch nested in
+# another shell's string (`bash -c "..."`) passes it. The phase-entry guard in
+# the skill is the primary check; this is the backstop.
 #
 # Fails open: any missing dependency, unreadable marker, or unparseable payload
 # exits 0 (allow). This is a drift nudge, not a security control.
