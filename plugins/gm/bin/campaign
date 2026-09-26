@@ -38,6 +38,7 @@ never the value; gm-reveal surfaces a secret when the fiction earns it. Expandin
 call to read ahead is a feature (dramatic irony), not a leak — so no encryption here.
 """
 import argparse
+import collections
 import contextlib
 import datetime
 import difflib
@@ -776,14 +777,17 @@ def cmd_mark_wrapped(a):
 EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "examples")
 ECHO_MIN_WORDS = 6     # a shorter sentence is too generic to call a copy
 ECHO = 0.7             # share of the shorter sentence found, in runs of 2+ words, in the other
-# A player's lines & veils are their own words, not the GM's to police, so both checks skip
-# them (_drop_safety). A label is "Lines:", "**Veils:**" or "Lines & veils (their words):", even
-# mid-line after the tone; "ley lines converge here:" is not one. A safety heading is one that
-# says only "Lines", "Veils" or "Lines & veils" ("Veils of Ash" is prose).
-SAFETY_WORDS = r"(?:lines|veils)(?:\s*(?:&|and)\s*veils)?"
-SAFETY_LABEL = re.compile(r"\b%s\W*(?:\([^)]*\)\W*)?:" % SAFETY_WORDS, re.I)
-SAFETY_HEADING = re.compile(r"^#+\W*%s\W*$" % SAFETY_WORDS, re.I)
+FRONT_MATTER = re.compile(r"^---\n(.*?)\n---(?:\n|$)", re.S)
 LIST_ITEM = re.compile(r"(?:[-*+]|\d+\.)\s")
+# A player's lines & veils are their own words, not the GM's to police, so both checks skip
+# them (_drop_safety). A label is "Lines:", "**Veils:**" or "Lines & veils (their words):" at
+# the start of a line or list item, or after a sentence break (mid-line after the tone);
+# "Battle lines:" and "fault-lines:" are not. A safety heading says only "Lines", "Veils" or
+# "Lines & veils" ("Veils of Ash" is prose).
+SAFETY_WORDS = r"(?:lines|veils)(?:\s*(?:&|and)\s*veils)?"
+SAFETY_LABEL = re.compile(r"(?:^\s*(?:(?:[-*+]|\d+\.)\s+)?|[.!?;:–—]\s*)"
+                          r"(?P<label>[*_]*%s\W*(?:\([^)]*\)\W*)?:)" % SAFETY_WORDS, re.I)
+SAFETY_HEADING = re.compile(r"^#+\W*%s\W*$" % SAFETY_WORDS, re.I)
 
 
 def _read(p):
@@ -791,31 +795,33 @@ def _read(p):
         return f.read()
 
 
-def _body(text):
-    m = re.match(r"^---\n.*?\n---\n", text, re.S)
-    return text[m.end():] if m else text
+def _front_matter(text):
+    """(front-matter, body) of a markdown file; ("", text) when it has none."""
+    m = FRONT_MATTER.match(text)
+    return (m.group(1), text[m.end():]) if m else ("", text)
 
 
 def _content(d):
     """A campaign's own content, front-matter stripped: its top-level files, sheets and session
     logs. Not raw play, sealed .gm/ state, tables, or a forge's generate reservoir."""
+    d = glob.escape(d)
     paths = [os.path.join(d, "*.md"), os.path.join(d, "characters", "*.md"), os.path.join(d, "log", "*.md")]
-    return [_body(_read(p)) for pat in paths for p in sorted(glob.glob(pat))]
+    return [_front_matter(_read(p))[1] for pat in paths for p in sorted(glob.glob(pat))]
 
 
 def _declared_names(ex):
     """An example lists its proper names in its front-matter (`names: A, B`): guessing them
     from capitalization mistakes labels for names and misses names in labels."""
-    m = re.match(r"^---\n(.*?)\n---", _read(os.path.join(ex, "campaign.md")), re.S)
-    line = re.search(r"^names:[ \t]*(.*)$", m.group(1), re.M) if m else None
+    fm = _front_matter(_read(os.path.join(ex, "campaign.md")))[0]
+    line = re.search(r"^names:[ \t]*(.*)$", fm, re.M)
     return [n.strip() for n in line.group(1).split(",") if n.strip()] if line else []
 
 
 def _drop_safety(text):
-    """The text without the player's lines & veils: each label through the end of its
-    paragraph (lists run on with ";" and "."), any list nested deeper than the label or
-    hanging under a bare one, and everything under a safety heading up to the next heading."""
-    out, owner, bare, section = [], None, False, False
+    """The text without the player's lines & veils: each label through the end of its line
+    (lists run on with ";" and "."), the lines indented under it, the list under a bare label
+    that isn't itself a list item, and everything under a safety heading up to the next one."""
+    out, owner, bare, item, section = [], None, False, False, False
     for line in text.splitlines():
         s, indent = line.strip(), len(line) - len(line.lstrip())
         if s.startswith("#"):
@@ -826,13 +832,14 @@ def _drop_safety(text):
         if section:
             continue
         if owner is not None:
-            if s and (indent > owner or not LIST_ITEM.match(s) or bare):
-                continue               # the label's wrapped paragraph, or its list
+            if s and (indent > owner or (bare and not item and LIST_ITEM.match(s))):
+                continue
             owner = None
         m = SAFETY_LABEL.search(line)
         if m:
-            out.append(line[:m.start()])
-            owner, bare = indent, not line[m.end():].strip(" \t*_")
+            out.append(line[:m.start("label")])
+            owner, item = indent, bool(LIST_ITEM.match(s))
+            bare = not line[m.end():].strip(" \t*_")
         else:
             out.append(line)
     return "\n".join(out)
@@ -844,7 +851,7 @@ def _units(text):
     out = []
     for line in text.splitlines():
         s = line.strip()
-        opens = not s or re.match(r"#|[-*>]\s|\d+\.\s", s)
+        opens = not s or s.startswith(("#", ">")) or LIST_ITEM.match(s)
         if out and out[-1] and not out[-1].startswith("#") and not opens:
             out[-1] += " " + s
         else:
@@ -855,7 +862,7 @@ def _units(text):
 def _prose(texts):
     """The sentences of the text, split at sentence ends, semicolons and list items, with the
     player's lines & veils left out."""
-    segments = (s.strip(" \t*_#>-") for t in texts for u in _units(_drop_safety(t))
+    segments = (s.strip(" \t*_#>-+") for t in texts for u in _units(_drop_safety(t))
                 for s in re.split(r"[.!?;]+", u))
     return [s for s in segments if s]
 
@@ -866,9 +873,28 @@ def _sentences(texts):
             for w in [re.findall(r"[a-z0-9]+", s.lower())] if len(w) >= ECHO_MIN_WORDS]
 
 
-def _echoes(a, b):
-    blocks = difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks()
-    return sum(k.size for k in blocks if k.size >= 2) >= ECHO * min(len(a), len(b))
+def _echo_index(texts):
+    """One matcher per example sentence, which difflib indexes once (set_seq2), plus its words."""
+    index = []
+    for _, w in _sentences(texts):
+        sm = difflib.SequenceMatcher(None, autojunk=False)
+        sm.set_seq2(w)
+        index.append((sm, collections.Counter(w), len(w)))
+    return index
+
+
+def _echoes(words, index):
+    """True when the words copy an indexed sentence: runs of 2+ words, in order, cover ECHO of
+    the shorter of the two."""
+    bag = collections.Counter(words)
+    for sm, theirs, n in index:
+        need = ECHO * min(len(words), n)
+        if sum((bag & theirs).values()) < need:
+            continue               # too few shared words for any alignment to reach the bar
+        sm.set_seq1(words)
+        if sum(k.size for k in sm.get_matching_blocks() if k.size >= 2) >= need:
+            return True
+    return False
 
 
 def cmd_example_overlap(a):
@@ -889,14 +915,16 @@ def cmd_example_overlap(a):
         name = os.path.basename(ex)
         found += [f'gm: shares name "{n}" with bundled example {name}'
                   for n in _declared_names(ex)
-                  if n not in a.allow and re.search(r"\b%s\b" % re.escape(n), text)]
-        theirs = [w for _, w in _sentences(_content(ex))]
+                  if n not in a.allow
+                  and re.search(r"\b(?:%s|%s)\b" % (re.escape(n), re.escape(n.upper())), text)]
+        index = _echo_index(_content(ex))
         # Quote the campaign's own sentence only: printing the example's would re-anchor on it.
         found += [f'gm: "{s[:80]}" echoes prose in bundled example {name}'
-                  for s, w in sentences if any(_echoes(w, t) for t in theirs)]
+                  for s, w in sentences if _echoes(w, index)]
     if found:
         print("\n".join(found))
-        print("gm: rewrite what you invented; keep a name the player chose with --allow <name>")
+        print("gm: rewrite what you invented; keep a name the player chose or the dice rolled "
+              "with --allow <name>")
         sys.exit(1)
     names = ", ".join(os.path.basename(ex) for ex in examples) or "none"
     print(f"gm: no names or prose shared with the bundled examples (checked {len(mine)} files against: {names})")
