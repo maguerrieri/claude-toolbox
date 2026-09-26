@@ -174,6 +174,23 @@ def test_safety_lines_are_the_players_and_not_checked(campaign_path, tmp_path):
     assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 0
 
 
+def test_safety_labels_split_a_line_even_without_a_period(campaign_path, tmp_path):
+    # Tone and safety often share a line with no sentence end before the label; the
+    # player's lines & veils must still stay out of the comparison, on both sides.
+    ex = examples(str(tmp_path))
+    with open(os.path.join(ex, "brindle", "campaign.md")) as f:
+        text = f.read().replace("Light adventure with a sting in the tail. **Lines:**",
+                                "Light adventure — **Lines:**")
+    with open(os.path.join(ex, "brindle", "campaign.md"), "w") as f:
+        f.write(text)
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS)
+    with open(os.path.join(d, "campaign.md"), "a") as f:
+        f.write("Grim war — **Lines:** harm to animals and children, **Veils:** none at all here\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
 # --- scope ---
 
 def test_only_campaign_content_is_scanned(campaign_path, tmp_path):
