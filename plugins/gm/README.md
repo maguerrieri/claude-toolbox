@@ -18,7 +18,7 @@ If you play in a permission mode that asks before file writes, also allow the `g
 
 ## Play
 
-- `/gm:new-campaign` — pick a **system** and a **persona**, choose a saves folder, set up the world + a character; starts a git repo for the saves.
+- `/gm:new-campaign` — pick a **system** and a **persona**, choose a saves folder, then bring your own premise or say *surprise me* to have it rolled from the oracle; asks your lines & veils; sets up the world + a character; starts a git repo for the saves.
 - `/gm:play` — start or continue a session. It turns on **autosave**: after every turn, the plugin's Stop hook appends your prompt and the GM's narration to the campaign's `log/raw/` and checkpoints it — no `/gm:wrap` needed to keep the play record.
 - `/gm:wrap` — end a session (summarizes the raw log into the session log + recap, checkpoints the save).
 - `/gm:oracle` — a quick yes/no or inspiration pull.
@@ -58,7 +58,7 @@ roll table <campaign>/tables/rumors.md   # campaign table (hand-authored or forg
 - **Adapters** (`adapters/`) — a game's rules as data, composing via `extends:`.
 - **Personas** (`personas/`) — the GM's voice, orthogonal to the system.
 - **Dice** (`bin/roll`) + **campaign git** (`bin/campaign`) — the things an LLM can't fake: true randomness and durable, versioned state. `lib/gm_screen.py` is their shared seal/unseal for `.gm/`.
-- **Your saves** — git-versioned markdown in your own directory, never in the plugin. Ready-to-play example: `examples/embervale/`.
+- **Your saves** — git-versioned markdown in your own directory, never in the plugin. Ready-to-play example: `examples/embervale/` (a demo to play; new campaigns never copy from it, and `campaign example-overlap` checks they don't).
 - **Autosave** (`hooks/hooks.json`) — a session bound to a campaign (`campaign bind`, run by `/gm:play` and `/gm:new-campaign`) gets each turn's dialogue appended to `log/raw/<date>-<session>.md` and committed, so the play history lives in the campaign rather than in Claude Code's transcripts (deleted after 30 days by default). Text only — tool calls and their output never reach it, so the GM screen holds. Unbound sessions are untouched; hook failures go to the plugin's data dir (`autosave.log`), never to the turn.
 - **Forge** — bulk-ideate a diverse pool via `generate` into a rollable table; converge-and-seal a canonical secret behind the screen.
 - **The GM screen** — for systems that want one (`visibility: gm`, e.g. generic), hidden state lives in a `.gm/` dir that is sealed on disk (zlib + base64: noise to a glance, not encryption), so Claude Code's diff of a changed file shows nothing a solo player could read. Anything whose text is a secret (a sealed forge's table, a mystery's answer) is composed and sealed by the **`gm:screen` subagent** (`agents/screen.md`), never in the GM's own transcript; hidden clocks tick through `bin/campaign gm-clock`. An older campaign's plaintext `.gm/` is sealed by the plugin's hooks right after `/gm:play` binds it, out of the player's view. Player-facing systems (Ironsworn) keep everything in the open.
