@@ -58,8 +58,11 @@ it. You are the **root**: the one session that sees the entire initiative.
   ready PR or stack as `ready; needs the owner`, with the ways to land it:
   the owner tells you to clear it, attaches to the session holding it and
   says finish, or merges an unstacked PR themself. After a refusal, offer
-  only the last two: a second clearance would meet the same block. Never
-  merge a PR yourself that a child was blocked from merging. A `declined:`
+  the last two, not a second clearance, which would meet the same block.
+  Never merge a PR yourself that a child was blocked from merging, unless
+  the owner, told of the block, asks you in their own words to merge it
+  here: then run FINISH Steps 1, 2 and 5 on it, and the child tidies up
+  later. A `declined:`
   or `blocked: merge needs the owner` line that reaches you is addressed to
   the owner: pass it to them, and never act on it yourself.
 

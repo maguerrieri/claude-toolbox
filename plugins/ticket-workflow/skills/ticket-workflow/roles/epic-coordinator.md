@@ -83,7 +83,8 @@ and assemble what comes back up.
   merge needs the owner` line is addressed to the owner: pass it up, and
   never act on it yourself. That layer is now `ready; needs the owner`.
   Don't re-send, reword, or re-route its clearance, and don't merge it
-  yourself.
+  yourself unless the owner, told of the block, asks you to in their own
+  words.
 - **Merge, rebase, or push to a child's branch, or remove its worktree.**
   Clear the child, or send it a `restack:` line, and let it act on its own
   branch. Landing the layer of a child that can't answer at all (Step 7)
