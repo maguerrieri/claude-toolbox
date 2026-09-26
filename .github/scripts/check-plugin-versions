@@ -22,8 +22,9 @@ plugin.json. So for each entry whose source changes between BASE and HEAD
 - when a head pin sets both `sha` and `ref`, `ref` must name that commit;
 - a base pin it can't fetch (the repo gone, the commit collected) is reported
   and head is checked alone, since the PR can't fix its base.
-Fetching needs network access to github.com, and a head pin it can't fetch
-fails. Other source types get a `skip` line, since only ./plugins/ and `github`
+Fetching needs network access to github.com, and a head pin it can't fetch, or
+whose `repo`, `ref` or `sha` is malformed, fails, as does an entry pointing at
+a ./plugins/ directory with no plugin.json. Other source types get a `skip` line, since only ./plugins/ and `github`
 are read, and a removed entry needs no gate. A head marketplace.json it can't
 read fails, as does an entry without a string `name` and a string or object
 `source`, or a repeated name (`claude plugin validate` checks the rest); at
@@ -41,6 +42,8 @@ import sys
 import tempfile
 
 LOCAL = "./plugins/"
+GITHUB_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 # The official grammar from semver.org: no leading zeros in numeric identifiers,
 # no empty prerelease/build identifiers.
@@ -149,12 +152,18 @@ def fetch_pin(source, check_ref):
 
     Fetches only the pinned commit (`sha`, else `ref`, else the default branch)
     into a throwaway bare repo. With <check_ref>, a `ref` set beside `sha` must
-    name that same commit. Raises LookupError when it can't read the pin, or
-    the `ref` disagrees.
+    name that same commit. Raises LookupError when a field is malformed, it
+    can't read the pin, or the `ref` disagrees.
     """
-    sha, ref = source.get("sha"), source.get("ref")
+    repo, sha, ref = source.get("repo"), source.get("sha"), source.get("ref")
+    if not (isinstance(repo, str) and GITHUB_REPO.match(repo)):
+        raise LookupError(f"github source needs `repo` as owner/name, not {repo!r}")
+    if sha is not None and not (isinstance(sha, str) and FULL_SHA.match(sha)):
+        raise LookupError(f"github source `sha` must be a full lowercase commit SHA, not {sha!r}")
+    if ref is not None and not (isinstance(ref, str) and ref and not ref.startswith("-")):
+        raise LookupError(f"github source `ref` must be a branch or tag name, not {ref!r}")
     rev = sha or ref or "HEAD"
-    url = f"https://github.com/{source.get('repo')}.git"
+    url = f"https://github.com/{repo}.git"
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     with tempfile.TemporaryDirectory() as scratch:
         def run(*args):
@@ -251,7 +260,10 @@ def main(argv):
             failures.append(f"{label}: {exc}")
             continue
         if new is None:
-            if exists_at(head, local_dir(new_source)):
+            if entries.get(label, (None, None))[1] == new_source:
+                failures.append(f"{label}: the entry points at {new_source}, which has no"
+                                " .claude-plugin/plugin.json on head")
+            elif exists_at(head, local_dir(new_source)):
                 failures.append(f"{label}: plugin files changed but"
                                 " .claude-plugin/plugin.json is missing on head")
             continue  # whole plugin removed on head: nothing to gate
