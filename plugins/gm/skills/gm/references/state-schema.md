@@ -32,7 +32,9 @@ saves: ~/rpg/my-campaign # ABSOLUTE path to this campaign in your space
 ```
 `saves` is an **absolute** path in your own space. (The example campaigns bundled in the plugin use a repo-relative path only because they ship *inside* the plugin; real campaigns live in your directory or vault.)
 
-Body: the **premise** (a paragraph), the **truths** (established facts about this world), and **tone & safety** (genre, and the player's own lines & veils — asked at `/gm:new-campaign`, never defaulted).
+Body: `## Premise` (a paragraph), `## Truths` (a `- ` list of established facts about this world), and `## Tone & safety` (genre and tone, then the player's own **Lines:** and **Veils:** — asked at `/gm:new-campaign`, in their words, never defaulted).
+
+A bundled example also lists its proper names in its front-matter (`names: Embervale, Wren, …`), for `campaign example-overlap`; your own campaigns don't need it.
 
 ### `characters/<name>.md`
 One file per PC, in the shape the active adapter's `sheet-template.md` defines. The core never invents a stat that isn't on the sheet (Rule 0).
