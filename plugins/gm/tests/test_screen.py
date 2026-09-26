@@ -202,7 +202,7 @@ def test_gm_seal_from_consumes_the_draft(campaign_path, tmp_path):
 def test_gm_seal_from_reads_a_sealed_draft(campaign_path, tmp_path):
     d = new_campaign(campaign_path, tmp_path)
     draft = os.path.join(d, ".gm", "inbox", "t.md")
-    os.makedirs(os.path.dirname(draft))
+    os.makedirs(os.path.dirname(draft), exist_ok=True)
     with open(draft, "w") as f:
         f.write(gm_screen.seal("already sealed\n"))
     run(campaign_path, "gm-seal", d, "t", "--from", draft)
@@ -294,7 +294,7 @@ def test_the_sweep_seals_hidden_files_but_not_its_own_metadata(campaign_path, tm
     hidden = os.path.join(d, ".gm", ".hidden")
     open(hidden, "w").write("A hidden plaintext secret\n")
     stale = os.path.join(d, ".gm", "inbox", ".dotted.md")
-    os.makedirs(os.path.dirname(stale))
+    os.makedirs(os.path.dirname(stale), exist_ok=True)
     open(stale, "w").write("A dotted draft\n")
     age(stale, gm_screen.DRAFT_TTL + 60)
     ignore = open(os.path.join(d, ".gm", ".gitignore")).read()
@@ -324,7 +324,7 @@ def test_the_sweep_replaces_a_symlink_with_a_sealed_copy(campaign_path, roll_pat
 def test_a_checkpoint_never_commits_a_draft(campaign_path, tmp_path):
     d = new_campaign(campaign_path, tmp_path)
     draft = os.path.join(d, ".gm", "inbox", "the-well.md")
-    os.makedirs(os.path.dirname(draft))
+    os.makedirs(os.path.dirname(draft), exist_ok=True)
     with open(draft, "w") as f:
         f.write(SEALED_ANSWER + "\n")
     run(campaign_path, "gm-clock", d, "the-watchers", "--segments", "4")
@@ -346,7 +346,7 @@ def test_a_deferred_campaigns_host_repo_ignores_drafts_too(campaign_path, tmp_pa
     open(os.path.join(d, "campaign.md"), "w").write("x\n")
     run(campaign_path, "gm-clock", d, "the-watchers", "--segments", "4")
     draft = os.path.join(d, ".gm", "forge", "omens.md")
-    os.makedirs(os.path.dirname(draft))
+    os.makedirs(os.path.dirname(draft), exist_ok=True)
     open(draft, "w").write("## Reservoir\n- Draft entry\n")
     status = git(str(vault), "status", "--porcelain", "--untracked-files=all")
     assert "camp/.gm/state.json" in status and "camp/.gm/.gitignore" in status
@@ -376,12 +376,29 @@ def test_gm_init_readies_the_screen_before_any_draft(campaign_path, tmp_path):
     assert open(os.path.join(d, ".gm", ".gitignore")).read().splitlines() == rules
 
 
+def test_gm_init_refuses_a_symlinked_draft_dir(campaign_path, tmp_path):
+    """A symlinked .gm/inbox would route gm:screen's plaintext draft outside the screen:
+    gm-init stops the subagent before it drafts."""
+    d = new_campaign(campaign_path, tmp_path)
+    os.makedirs(os.path.join(d, ".gm"))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    os.symlink(str(elsewhere), os.path.join(d, ".gm", "inbox"))
+    p = run(campaign_path, "gm-init", d)
+    assert p.returncode != 0 and "symlink" in p.stderr
+    fresh = new_campaign(campaign_path, tmp_path / "fresh")
+    assert run(campaign_path, "gm-init", fresh).returncode == 0
+    for sub in ("forge", "inbox"):  # created as real directories
+        path = os.path.join(fresh, ".gm", sub)
+        assert os.path.isdir(path) and not os.path.islink(path)
+
+
 def test_sealed_harvest_refuses_a_table_outside_the_screen(campaign_path, forge_path, tmp_path):
     """A type like `../../tables/x` must not turn a sealed forge into a plaintext table."""
     d = new_campaign(campaign_path, tmp_path)
     run(campaign_path, "gm-init", d)
     draft = os.path.join(d, ".gm", "forge", "x.md")
-    os.makedirs(os.path.dirname(draft))
+    os.makedirs(os.path.dirname(draft), exist_ok=True)
     with open(draft, "w") as f:
         f.write(RESERVOIR)
     escaped = os.path.join(d, ".gm", "tables", "..", "..", "tables", "x.md")

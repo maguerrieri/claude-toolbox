@@ -264,9 +264,18 @@ def cmd_gm_reveal(a):
 
 def cmd_gm_init(a):
     # gm:screen runs this before its first draft, so a fresh campaign's .gitignore
-    # keeps the draft out of git (a host vault's too) from the moment it's written.
-    with gm_screen.locked(_gm_screen(a.dir)):
-        pass
+    # keeps the draft out of git (a host vault's too) from the moment it's written, and
+    # the draft dirs are real directories inside the screen: a symlinked one would route
+    # the plaintext draft somewhere else, so that stops the subagent before it drafts.
+    screen = _gm_screen(a.dir)
+    drafts = [os.path.join(screen, d) for d in gm_screen.DRAFT_DIRS]
+    linked = [p for p in [screen, *drafts] if os.path.islink(p)]
+    if linked:
+        sys.exit(f"campaign: refusing — {', '.join(linked)} is a symlink, so a draft could land "
+                 f"outside the GM screen; make it a real directory")
+    with gm_screen.locked(screen):
+        for p in drafts:
+            os.makedirs(p, exist_ok=True)
     print("gm: screen ready — drafts under .gm/forge/ and .gm/inbox/ stay out of git")
 
 
