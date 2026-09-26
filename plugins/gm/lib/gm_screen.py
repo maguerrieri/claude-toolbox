@@ -178,6 +178,32 @@ def locked(screen):
         yield
 
 
+def drop_draft_links(screen):
+    """Remove every symlink in the draft dirs; returns how many. A link is never a
+    draft: gm:screen's Write would follow it and leave the plaintext outside the screen.
+    Only the link goes; its target is left alone."""
+    dropped = 0
+    for d in DRAFT_DIRS:
+        top = os.path.join(screen, d)
+        if not os.path.isdir(top) or os.path.islink(top):
+            continue
+        for dirpath, _dirs, files in os.walk(top):
+            for name in files:
+                p = os.path.join(dirpath, name)
+                if os.path.islink(p):
+                    os.remove(p)
+                    dropped += 1
+    return dropped
+
+
+def refuse_link(path, what):
+    """Raise when a file a command would consume is a symlink: consuming it would read
+    the target and delete only the link, leaving the plaintext wherever it points."""
+    if os.path.islink(path):
+        raise ValueError(f"refusing to consume {what} {path}: it is a symlink, so its "
+                         f"plaintext would outlive the command; write the draft as a real file")
+
+
 def _is_draft(screen, path):
     rel = os.path.relpath(path, screen).split(os.sep)
     return len(rel) > 1 and rel[0] in DRAFT_DIRS
@@ -206,7 +232,8 @@ def sweep(campaign, now=None):
       Symlinked directories aren't followed, .gm itself included (`_maintainable`).
     - A draft (.gm/forge/, .gm/inbox/) is never sealed in place: a fresh one may still be
       being written by its gm:screen subagent, so it is left alone until it is stale,
-      then dropped (it was a crashed subagent's scratch).
+      then dropped (it was a crashed subagent's scratch). A symlink there is never a
+      draft and is dropped at once (`drop_draft_links`).
     Anything that isn't UTF-8 text (or a dangling link) is left as it is."""
     screen = os.path.join(campaign, SCREEN_DIR)
     if not _maintainable(screen):
@@ -220,7 +247,9 @@ def sweep(campaign, now=None):
                 if _is_metadata(screen, p):
                     continue
                 if _is_draft(screen, p):
-                    if now - os.lstat(p).st_mtime > DRAFT_TTL:
+                    # a link is never a draft (a Write would follow it out of the
+                    # screen): drop it now; a real draft only once it's stale
+                    if os.path.islink(p) or now - os.lstat(p).st_mtime > DRAFT_TTL:
                         os.remove(p)  # a link is removed, never its target
                         dropped += 1
                     continue
