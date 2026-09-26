@@ -10,22 +10,24 @@ branch's (the silent collision from #58), a bump rebased below the base branch,
 and an unparseable version. New plugins only need a valid version. Stdlib only,
 no dependencies.
 
-External entries get the same rule. A marketplace entry whose `source` is an
-object (provenance: a `github` source pinned to a release by `ref` and `sha`)
-has no files under ./plugins/ to diff; its version lives in the other repo's
+Marketplace entries get the same rule. An entry whose `source` is an object
+(provenance: a `github` source pinned to a release by `ref` and `sha`) has no
+files under ./plugins/ to diff; its version lives in the other repo's
 plugin.json. So for each entry whose source changes between BASE and HEAD
-(added, re-pinned, or moved into or out of ./plugins/), the check reads the
-version the entry installs at each side, from ./plugins/ here or by fetching
-the pinned commit, and compares them as above:
+(added, re-pinned, repointed to another directory, or moved into or out of
+./plugins/), the check reads the version the entry installs at each side, from
+./plugins/ here or by fetching the pinned commit, and compares them as above:
 - a re-pin that still installs the same commit (a `ref` label fixed, a `sha`
   added for the same commit) passes without a bump;
 - when a head pin sets both `sha` and `ref`, `ref` must name that commit;
 - a base pin it can't fetch (the repo gone, the commit collected) is reported
   and head is checked alone, since the PR can't fix its base.
 Fetching needs network access to github.com, and a head pin it can't fetch
-fails. Other source types get a `skip` line, since only `github` is fetched,
-and a removed entry needs no gate. An entry or a marketplace.json it can't
-parse is left to `claude plugin validate`.
+fails. Other source types get a `skip` line, since only ./plugins/ and `github`
+are read, and a removed entry needs no gate. A head marketplace.json it can't
+read fails, as does an entry without a string `name` and a string or object
+`source`, or a repeated name (`claude plugin validate` checks the rest); at
+BASE these are ignored, since the PR can't fix its base.
 
 Usage (from the repo root; CI passes the PR's base SHA and the merge commit):
   python3 .github/scripts/check-plugin-versions <base-ref> <head-ref>
@@ -107,20 +109,32 @@ def exists_at(ref, plugin):
 
 
 def marketplace_sources(ref):
-    """{name: source} for the marketplace entries at <ref>: a string or an object.
+    """({name: source}, problems) for the marketplace entries at <ref>.
 
-    Skips any entry it can't read, and returns {} for a missing or malformed
-    marketplace.json: validating those is `claude plugin validate`'s job.
+    A source is a string or an object. <problems> names whatever this check
+    can't read -- the file itself, or an entry without a string `name` and a
+    string or object `source`, or a repeated name -- and those are left out.
     """
+    text = show_at(ref, ".claude-plugin/marketplace.json")
+    if text is None:
+        return {}, ["marketplace.json is missing"]
     try:
-        entries = json.loads(show_at(ref, ".claude-plugin/marketplace.json") or "").get("plugins")
-    except (ValueError, AttributeError):
-        return {}
+        entries = json.loads(text).get("plugins")
+    except (ValueError, AttributeError) as exc:
+        return {}, [f"marketplace.json isn't a JSON object: {exc}"]
     if not isinstance(entries, list):
-        return {}
-    return {e["name"]: e["source"] for e in entries
-            if isinstance(e, dict) and isinstance(e.get("name"), str)
-            and isinstance(e.get("source"), (str, dict))}
+        return {}, ["marketplace.json has no `plugins` list"]
+    sources, problems = {}, []
+    for index, entry in enumerate(entries):
+        if not (isinstance(entry, dict) and isinstance(entry.get("name"), str)
+                and isinstance(entry.get("source"), (str, dict))):
+            problems.append(f"marketplace.json plugins[{index}] needs a string `name`"
+                            " and a string or object `source`")
+        elif entry["name"] in sources:
+            problems.append(f"marketplace.json lists {entry['name']!r} twice")
+        else:
+            sources[entry["name"]] = entry["source"]
+    return sources, problems
 
 
 def local_dir(source):
@@ -210,27 +224,28 @@ def main(argv):
         sys.exit(__doc__)
     base, head = argv[1], argv[2]
     changed = git("diff", "--name-only", base, head, "--", "plugins/").split()
-    old_sources, new_sources = marketplace_sources(base), marketplace_sources(head)
-    # What to gate, as {label: (base source, head source)}. Every changed
-    # directory under plugins/ reads its own plugin.json on both sides. An entry
-    # whose source changed with an object on either side is gated from wherever
-    # it pointed at base; a move into plugins/ takes the directory's label, so
-    # its base is the external pin even if no file here changed.
-    items = {d: (f"{LOCAL}{d}", f"{LOCAL}{d}")
-             for d in {f.split("/")[1] for f in changed if f.count("/") >= 2}}
-    for name, source in new_sources.items():
-        old_source = old_sources.get(name)
-        if old_source != source and (isinstance(source, dict) or isinstance(old_source, dict)):
-            items[local_dir(source) or name] = (old_source, source)
+    # Base problems are the base branch's to fix, not this PR's: read what parses.
+    (old_sources, _), (new_sources, problems) = marketplace_sources(base), marketplace_sources(head)
+    failures = [f"{problem} (see `claude plugin validate .`)" for problem in problems]
+    # What to gate, as (label, base source, head source). An entry whose source
+    # changed is gated, by its name, from wherever it pointed at base. Every
+    # changed directory under plugins/ reads its own plugin.json on both sides,
+    # unless its same-named entry now points at it: that entry's base (the old
+    # pin, or none for a new entry) is what installs had.
+    entries = {name: (old_sources.get(name), source) for name, source in new_sources.items()
+               if old_sources.get(name) != source}
+    dirs = {f.split("/")[1] for f in changed if f.count("/") >= 2}
+    items = sorted([(name, *pair) for name, pair in entries.items()]
+                   + [(d, f"{LOCAL}{d}", f"{LOCAL}{d}") for d in dirs
+                      if d not in entries or local_dir(entries[d][1]) != d],
+                   key=lambda item: item[0])
     removed = sorted(name for name, source in old_sources.items()
                      if isinstance(source, dict) and name not in new_sources)
-    failures = []
-    for label in sorted(items):
-        old_source, new_source = items[label]
+    for label, old_source, new_source in items:
         try:
             new_commit, new = pinned(head, new_source, check_ref=True)
         except Unchecked as exc:
-            print(f"skip {label}: only github sources are version-checked, not {exc}")
+            print(f"skip {label}: only ./plugins/ and github sources are version-checked, not {exc}")
             continue
         except LookupError as exc:
             failures.append(f"{label}: {exc}")
@@ -254,7 +269,7 @@ def main(argv):
         gate(label, old, new, failures, unread)
     for name in removed:
         print(f"ok   {name}: external entry removed")
-    if not items and not removed:
+    if not items and not removed and not problems:
         print("ok   no plugin touched")
     for failure in failures:
         print(f"FAIL {failure}")
