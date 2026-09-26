@@ -578,6 +578,42 @@ def test_session_start_seals_a_bound_campaigns_screen(campaign_path, tmp_path):
     assert "Legacy plaintext" not in p.stdout
 
 
+def post_bash(env, command, sid=SID):
+    """The PostToolUse hook exactly as hooks.json runs it (through sh, with its filter)."""
+    cmd = json.load(open(HOOKS_JSON))["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+    payload = {"session_id": sid, "hook_event_name": "PostToolUse", "tool_name": "Bash",
+               "tool_input": {"command": command}, "tool_response": {"stdout": ""}}
+    e = dict(env, CLAUDE_PLUGIN_ROOT=os.path.abspath(os.path.join(HERE, "..")))
+    return subprocess.run(["sh", "-c", cmd], input=json.dumps(payload),
+                          capture_output=True, text=True, env=e)
+
+
+def test_binding_seals_legacy_plaintext_before_the_first_gameplay_write(campaign_path, tmp_path):
+    """The first gm-clock on an older campaign would rewrite its plaintext state in view
+    of the diff; the hook right after `campaign bind` seals it first, out of view."""
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    plaintext_screen(d)
+    run(campaign_path, "bind", d, env=e)
+    p = post_bash(e, f'campaign bind "{d}"')
+    assert p.returncode == 0 and p.stdout == ""
+    assert "Legacy plaintext" not in screen_text(d)
+    assert "Legacy plaintext twist" in run(campaign_path, "gm-reveal", d, "twist", env=e).stdout
+
+
+def test_post_bash_ignores_everything_but_a_bind(campaign_path, tmp_path):
+    e = gm_env(tmp_path, GM_SESSION_ID=SID)
+    d = new_campaign(campaign_path, tmp_path, e)
+    run(campaign_path, "bind", d, env=e)
+    plaintext_screen(d)
+    for command in ("ls -la", "roll 1d20", f"campaign gm-list {d}", "echo rebind"):
+        assert post_bash(e, command).returncode == 0
+    assert "Legacy plaintext" in screen_text(d)  # untouched: not a bind
+    other = gm_env(tmp_path)
+    assert post_bash(other, f"campaign bind {d}", sid="another-session").returncode == 0
+    assert "Legacy plaintext" in screen_text(d)  # unbound session: strict no-op
+
+
 def test_a_failing_seal_never_costs_the_turn(campaign_path, tmp_path):
     e = gm_env(tmp_path, GM_SESSION_ID=SID)
     d = new_campaign(campaign_path, tmp_path, e)
@@ -709,7 +745,7 @@ def test_mark_wrapped_matches_a_tilde_path_to_the_binding(campaign_path, tmp_pat
 
 def test_hooks_json_registers_fail_safe_commands(campaign_path, tmp_path):
     hooks = json.load(open(HOOKS_JSON))["hooks"]
-    assert set(hooks) == {"SessionStart", "Stop", "SessionEnd"}
+    assert set(hooks) == {"SessionStart", "PostToolUse", "Stop", "SessionEnd"}
     plugin_root = os.path.abspath(os.path.join(HERE, ".."))
     e = gm_env(tmp_path, CLAUDE_PLUGIN_ROOT=plugin_root)
     for event, groups in hooks.items():

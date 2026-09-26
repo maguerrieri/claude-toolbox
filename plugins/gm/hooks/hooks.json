@@ -1,5 +1,5 @@
 {
-  "description": "gm autosave — export the session id so /gm:play and /gm:new-campaign can bind the session to its campaign, then after every turn append the player's prompt and the GM's narration to <campaign>/log/raw/ and checkpoint it. Unbound sessions are untouched; every command exits 0 so a hook can never block or fail a turn.",
+  "description": "gm autosave and GM screen — export the session id so /gm:play and /gm:new-campaign can bind the session to its campaign, then after every turn append the player's prompt and the GM's narration to <campaign>/log/raw/ and checkpoint it. Right after a bind, and on resume and every turn, seal any plaintext an older version left under the bound campaign's .gm/, outside any tool call's diff. Unbound sessions are untouched; every command exits 0 so a hook can never block or fail a turn.",
   "hooks": {
     "SessionStart": [
       {
@@ -8,6 +8,18 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-session-start 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "p=$(cat); case \"$p\" in *bind*) printf '%s' \"$p\" | python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-post-bash 2>/dev/null;; esac; true",
             "timeout": 10
           }
         ]

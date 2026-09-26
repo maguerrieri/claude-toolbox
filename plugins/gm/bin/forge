@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gm forge — harvest a generate reservoir into a rollable table.
 
-  forge harvest [--consume] <reservoir-file> <table-file>
+  forge harvest [--consume] [--sealed] <reservoir-file> <table-file>
 
 Reads the markdown under the reservoir's `## Reservoir` heading (the diverse pool
 `generate` produced) and writes it to <table-file> as a foundation table — one
@@ -54,6 +54,9 @@ def cmd_harvest(a):
     title = os.path.splitext(os.path.basename(a.table))[0]
     text = f"# {title}\n" + "\n".join(block) + "\n"
     screen = gm_screen.screen_of(a.table)
+    if a.sealed and not screen:
+        sys.exit(f"forge: --sealed, but {a.table} isn't inside a campaign's .gm/ (the one next "
+                 f"to its campaign.md); refusing to write the table in plaintext")
     if screen:
         with gm_screen.locked(screen):  # never while the hooks' sweep is at it
             gm_screen.write(a.table, text)
@@ -77,6 +80,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="forge")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("harvest"); p.add_argument("reservoir"); p.add_argument("table")
+    p.add_argument("--sealed", action="store_true",
+                   help="refuse unless the table is inside a campaign's .gm/ (sealed forges)")
     p.add_argument("--consume", action="store_true",
                    help="delete the reservoir once the table is written (sealed forges)")
     a = ap.parse_args(argv)
