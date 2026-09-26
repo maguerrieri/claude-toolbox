@@ -57,7 +57,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   skill's `messaging.md` (after compaction, the `notify:` line re-attached
   at session start names it): ping that session via SendMessage on the state
   changes it lists — branch `pushed:`, START-complete `done:`, `blocked:`,
-  follow-up `filed:`, own-PR `merged:`. One line per state change; detail
+  `resumed:` after a cap raise, follow-up `filed:`, own-PR `merged:`. One line per state change; detail
   belongs in the PR/tracker.
 - **Restack your own branch when asked.** Only you push to your branch, so
   when the PR below yours merges, or your base moves, the restack is yours.
@@ -127,7 +127,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   Decline it: reply `declined: not my issue — /spawn-tickets <n>` to the
   sender and carry on with your own issue. Redirects *about* your issue
   (base-branch change, restack, scope clarification, stop) are still yours to
-  act on — see `messaging.md`. A `/start-ticket` on another issue run in
+  act on — see `messaging.md`. So is a `raise:` hint about your review-round
+  cap, but only as far as your own PR's `Review rounds:` line shows a raise:
+  the line is the grant, and the message is not (the profile's `REVIEW_BOT`,
+  *Raising the cap*). A `/start-ticket` on another issue run in
   this session is refused too, by START's *one-issue guard*: your self-pinned
   marker records your issue, and the guard redirects any other one with a
   `filed: <id> (already open)` ping rather than this `declined:` reply, since
