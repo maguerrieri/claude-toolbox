@@ -17,13 +17,18 @@ Expression grammar:  NdX[kh M | kl M][!][+M | -M]
 
 Production rolls use `secrets` (crypto RNG); `--seed` swaps in a deterministic
 RNG for tests only. Every roll prints its dice and math (trust through
-visibility); `--json` emits a machine-readable object.
+visibility); `--json` emits a machine-readable object. `roll table` reads a table
+sealed behind the GM screen (`.gm/tables/`, see lib/gm_screen.py) like any other.
 """
 import argparse
 import json
+import os
 import re
 import secrets
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
+import gm_screen  # noqa: E402
 
 EXPLODE_CAP = 100
 
@@ -114,8 +119,7 @@ def parse_table(text):
 
 
 def roll_table(path, n=1, seed=None):
-    with open(path) as fh:
-        entries = parse_table(fh.read())
+    entries = parse_table(gm_screen.read(path))
     if not entries:
         raise ValueError(f"no entries in table: {path}")
     if any(e["weight"] < 1 for e in entries):
