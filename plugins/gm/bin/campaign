@@ -777,9 +777,10 @@ EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__f
 ECHO_MIN_WORDS = 6     # a shorter sentence is too generic to call a copy
 ECHO = 0.7             # share of the shorter sentence found, in runs of 2+ words, in the other
 # The player's lines & veils, from a "Lines:", "**Veils:**" or "Lines & veils (their words):"
-# label to the end of its sentence, even mid-line after the tone. They're the player's words,
-# not the GM's to police; "ley lines converge here:" or a "Veils of Ash" heading is not a label.
-SAFETY = re.compile(r"\b(?:lines|veils)(?:\s*(?:&|and)\s*veils)?\W*(?:\([^)]*\)\W*)?:[^.!?;\n]*", re.I)
+# label to the end of its line (a list of them runs on with ";" and "."), even mid-line after the
+# tone. They're the player's words, not the GM's to police; "ley lines converge here:" or a
+# "Veils of Ash" heading is not a label.
+SAFETY = re.compile(r"\b(?:lines|veils)(?:\s*(?:&|and)\s*veils)?\W*(?:\([^)]*\)\W*)?:.*", re.I)
 
 
 def _read(p):
