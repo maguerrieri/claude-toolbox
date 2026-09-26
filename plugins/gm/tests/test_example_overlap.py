@@ -80,6 +80,18 @@ def test_sentence_initial_common_words_are_not_names(campaign_path, tmp_path):
     assert p.returncode == 0, p.stdout
 
 
+def test_common_words_in_an_example_title_are_not_names(campaign_path, tmp_path):
+    ex = examples(str(tmp_path))
+    with open(os.path.join(ex, "brindle", "campaign.md")) as f:
+        text = f.read().replace("# Brindle\n", "# The Road to Brindle\n")
+    with open(os.path.join(ex, "brindle", "campaign.md"), "w") as f:
+        f.write(text)
+    d = str(tmp_path / "camp")
+    campaign(d, "The tide turns. Road tolls double.", ["The tide tables are a state secret."])
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
 def test_near_copy_truth_fails_without_printing_the_example(campaign_path, tmp_path):
     ex = examples(str(tmp_path))
     d = str(tmp_path / "camp")
