@@ -1,5 +1,5 @@
 ---
-description: Pin this session to a role charter (planner / epic-coordinator / implementer) or drop it with "none" — persists across resume and compaction, and (for planner) arms the edit drift-guard
+description: Pin this session to a role charter (planner / epic-coordinator / implementer) or drop it with "none" — persists across resume and compaction, and arms a drift guard for planner (edits prompt for approval) and implementer (issue-spawning launches are denied)
 argument-hint: <planner | epic-coordinator | implementer | none>
 ---
 Pin (or unpin) this session's role charter: **$ARGUMENTS**
@@ -7,7 +7,9 @@ Pin (or unpin) this session's role charter: **$ARGUMENTS**
 A role set here is durable: it's recorded in a per-session marker file that the
 plugin's hooks consume — the SessionStart hook re-injects the charter after
 `--resume`, `/clear`, and compaction, and the PreToolUse guard turns file edits
-into a permission prompt while the `planner` charter is pinned. This is the
+into a permission prompt while the `planner` charter is pinned, and denies a
+`claude --bg`/`-p` or `create_session` launch that leads with an issue-spawning
+command while `implementer` is. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
 are normally injected by spawn edges (`Role:` directives), not by hand.
 
@@ -58,5 +60,7 @@ roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
    prompt that no allow rule can pre-approve.
 
 6. Confirm to the user: role pinned, what it binds (`planner` also arms the
-   edit guard — edits prompt for approval until `/role none`), and that it
-   survives resume/compaction.
+   edit guard — edits prompt for approval until `/role none`; `implementer`
+   arms the spawn guard — issue-spawning entry points refuse and issue-spawn
+   launches are denied until `/role none`), and that it survives
+   resume/compaction.
