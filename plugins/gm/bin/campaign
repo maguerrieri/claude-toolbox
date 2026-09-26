@@ -777,6 +777,9 @@ EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__f
 ECHO_MIN_WORDS = 6     # a shorter sentence is too generic to call a copy
 ECHO = 0.7             # share of the shorter sentence found, in runs of 2+ words, in the other
 SAFETY = re.compile(r"^(lines|veils)\b", re.I)   # the player's own words, not the GM's to police
+# Sentence ends, plus the start of a "Lines:" / "Veils:" label, which can share a line with
+# the tone and no period.
+SPLIT = re.compile(r"[.!?;]+|(?=\b(?:lines|veils)\W*:)", re.I)
 
 
 def _read(p):
@@ -823,7 +826,7 @@ def _sentences(texts):
     list items — leaving out short ones and safety lines."""
     out = []
     for t in texts:
-        for s in (s for u in _units(t) for s in re.split(r"[.!?;]+", u)):
+        for s in (s for u in _units(t) for s in SPLIT.split(u)):
             s = s.strip(" \t*_#>-")
             words = re.findall(r"[a-z0-9]+", s.lower())
             if len(words) >= ECHO_MIN_WORDS and not SAFETY.match(s):
