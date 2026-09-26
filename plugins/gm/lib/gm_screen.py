@@ -190,7 +190,11 @@ def drop_draft_links(screen):
     dropped = 0
     for d in DRAFT_DIRS:
         top = os.path.join(screen, d)
-        if not os.path.isdir(top) or os.path.islink(top):
+        if os.path.islink(top):  # the draft dir itself: drop the link, never follow it
+            os.remove(top)
+            dropped += 1
+            continue
+        if not os.path.isdir(top):
             continue
         for dirpath, dirs, files in os.walk(top):  # never descends into a linked dir
             for name in dirs + files:
