@@ -44,8 +44,10 @@ points check its marker and refuse, and a hook denies a hand-rolled
 `claude --bg`/`-p` or `create_session` that leads with an issue-spawning command
 (its tests: `bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can
 it start a second issue: its self-pinned marker records its own issue on a
-second line, and START refuses any other. The marker's role is its first line
-only.
+second line, and START refuses any other. A self-pinned session also records
+its `Notify:` target on a `notify:` line, which SessionStart re-injects next to
+the charter so its pings survive compaction. The marker's role is its first
+line only.
 `/role none` unpins.
 
 ## Development workflow

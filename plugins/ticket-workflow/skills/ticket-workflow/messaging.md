@@ -4,8 +4,9 @@ A **wake-up channel** between related sessions — a spawned implementer pinging
 coordinator ("PR up", "blocked"), or a coordinator poking a child — carried by the
 harness's built-in session messaging: `SendMessage({to: <session name>, message:
 "…"})`, with `ListAgents` to look receivers up. Delivery is the harness's job:
-nothing to arm, nothing to keep alive across resume/compaction, and a send to an
-offline session is **queued and delivered when that session next wakes**
+nothing to arm, nothing to keep alive across resume/compaction (only the
+target's *name* needs keeping, and the role marker keeps it; see Addressing),
+and a send to an offline session is **queued and delivered when that session next wakes**
 (verified empirically) — write to it as at-least-once-on-next-wake, not
 guaranteed.
 
@@ -22,6 +23,21 @@ grounding rule is what makes any lost or delayed message harmless.
   direction, the spawner already named every child at spawn (`--name "<repo>
   <ID>: <desc>"`), so both directions are addressable by name — no paths, no
   keys.
+- **The target survives compaction.** The briefing that carried `Notify:` does
+  not: compaction drops it, and a session that forgets the name
+  stops pinging. So a session that self-pins a role (START Step 1, EPIC Step 1)
+  also writes the target into its role marker as a `notify: <session name>`
+  line (`scripts/record-notify.sh`), and the SessionStart hook re-injects it
+  next to the charter after resume or compaction. The latest write
+  replaces any earlier line, so a re-brief naming a new spawner wins. The
+  marker is the one place the name is kept; `/role none` deletes it, and the
+  `notify:` line goes with it. Any spawn name fits, em dash, apostrophe, and
+  ` [ref]` suffix included. The script and the hook share one check
+  (`scripts/notify-name.sh`), which refuses only control characters,
+  backticks, Unicode line breaks, surrounding whitespace (the script trims
+  it), and names over 200 bytes. That keeps the re-injected name one code
+  span on one line. A session with no role marker, such as a helper, keeps
+  the name in context only.
 - **Each edge's `Notify:` names that edge's own spawner.** When you spawn,
   put *your* name in the child's `Notify:`, never the `Notify:` you inherited:
   a grandchild (an implementer's helper, say) never addresses its grandparent.

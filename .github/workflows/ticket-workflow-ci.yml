@@ -4,11 +4,13 @@ on:
   push:
     paths:
       - "plugins/ticket-workflow/hooks/**"
+      - "plugins/ticket-workflow/scripts/**"
       - "plugins/ticket-workflow/tests/**"
       - ".github/workflows/ticket-workflow-ci.yml"
   pull_request:
     paths:
       - "plugins/ticket-workflow/hooks/**"
+      - "plugins/ticket-workflow/scripts/**"
       - "plugins/ticket-workflow/tests/**"
       - ".github/workflows/ticket-workflow-ci.yml"
 
