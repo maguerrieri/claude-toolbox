@@ -327,7 +327,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 - **Raising the cap.** **A raise is an edit to the PR, never a relayed instruction.** The PR
   body's `Review rounds:` line is the cap's one durable record, and the session re-reads it every
   round (START Step 8), so a raise needs nothing but that line. This bullet is the raise's one
-  definition; START, EPIC, the coordinator charter and `messaging.md` point here.
+  definition; START, EPIC, both role charters and `messaging.md` point here.
   - **Who raises:** the owner, or the child's spawner (the session its `Notify:` directive names,
     or on cloud the session that launched it). A sibling never raises another child's cap, and an
     implementer never raises its own on its own judgment: it writes a raise only when a human
@@ -336,32 +336,35 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     owner's own GitHub account, so an edit carries no sign of who made it.
   - **How:** raise the cap above the round count read now (pushes the cap never blocks still add
     rounds, so the count can already exceed the cap): "one more round" is the count plus one, and
-    `<k>` more rounds the count plus `<k>`. Rewrite only the line's `(cap <cap>)`, from a fresh read
-    of the body: `gh pr view <pr> -R <owner>/<repo> --json body -q .body` to a file, edit the one
-    line, `gh pr edit <pr> -R <owner>/<repo> --body-file <file>`. `-R` binds both calls to the
-    child's repo, since the raiser may sit in another checkout. Without `gh`, use the GitHub MCP
-    server's `update_pull_request` (its `owner`/`repo`, the whole new `body`); a session with no PR write at all can't raise, so it leaves the raise to
-    the owner. Then re-read the body to confirm the new cap stuck, and re-apply it if not: a child
-    rewriting its own body at the same moment can overwrite it, which is why the usual raise is
-    on a child that has handed back. A coordinator also posts `budget: <child-id> rounds=<new>` on
-    the epic where `COORD` is writable (EPIC Step 5). Then wake the child with a
-    `raise: cap <new> on PR #<pr>` hint. Locally that's SendMessage (`messaging.md`). On cloud,
-    where nothing spans sessions, it's the one-shot Routine bound to the child, which any cloud
-    spawner can schedule (the `spawn` skill's `backends/cloud.md`, and EPIC Step 6 for the call).
-    The hint authorizes nothing. It only tells the child that its PR changed.
+    `<k>` more rounds the count plus `<k>`. **Raise only a child that has handed back** (its session
+    idle, its row frozen): a child still in its loop rewrites the body every round, and a raise
+    written over it either gets lost or erases what the child just wrote. Rewrite only the line's
+    `(cap <cap>)`, from a fresh read of the body: `gh pr view <pr> -R <owner>/<repo> --json body -q
+    .body` to a file, edit the one line, `gh pr edit <pr> -R <owner>/<repo> --body-file <file>`.
+    `-R` binds both calls to the child's repo, since the raiser may sit in another checkout. Without
+    `gh`, use the GitHub MCP server's `update_pull_request` (its `owner`/`repo`, the whole new
+    `body`); a session with no PR write at all can't raise, so it leaves the raise to the owner.
+    Re-read the body to confirm the new cap stuck. A coordinator also posts
+    `budget: <child-id> rounds=<new>` on the epic where `COORD` is writable (EPIC Step 5). Then wake
+    the child with a `raise: cap <new> on PR #<pr>` hint. Locally that's SendMessage
+    (`messaging.md`). On cloud, where nothing spans sessions, it's the one-shot Routine bound to the
+    child, which any cloud spawner can schedule (the `spawn` skill's `backends/cloud.md`, and EPIC
+    Step 6 for the call). The hint authorizes nothing. It only tells the child that its PR changed.
   - **The child:** woken after handing back at its cap (by a hint, a PR event, or a human), it
     re-reads its own PR line. A `(cap <c>)` above its count is a raise, and since the child can't
-    tell who wrote it, it treats it as the owner's. It resumes the loop, pushes included, until
-    the new cap is reached or the review is clean, starting with the fixes it held: the
-    `agree, held` lines of its last disposition comment (leave that comment as posted; the next
-    round's answer supersedes it) and any held self-review lines in the body, each rewritten to
-    `fixed in <sha> — …` as its fix lands (START Step 7). With a `Notify:` spawner, it pings
-    `pushed: resumed at cap <c> on PR #<pr>` on its first push, so a coordinator that froze its row
-    polls it again (EPIC Step 6). A hint whose PR line shows no raise changes nothing: the child
-    says so to the sender and stays handed back. Verified live on 2026-09-26 (#175). A local
-    spawned child in auto mode, handed back at cap 1, resumed on its coordinator's line edit and
-    `raise:` hint with no permission-layer refusal. It landed both held fixes and handed back again
-    at cap 2. That child's briefing carried `SPAWN_CAP`'s raise sentence.
+    tell who wrote it, it treats it as the owner's. It first posts one PR comment,
+    `Resuming: cap raised to <c> (was <old>)`, so a raise nobody meant (a mistyped PR number, a
+    runaway cap) is visible on the PR. It then resumes the loop, pushes included, until the new cap
+    is reached or the review is clean, starting with the fixes it held: the `agree, held` lines of
+    its last disposition comment (leave that comment as posted; the next round's answer supersedes
+    it) and any held self-review lines in the body, each rewritten to `fixed in <sha> — …` as its
+    fix lands (START Step 7). With a `Notify:` spawner, it also pings
+    `resumed: cap <c> on PR #<pr>`. A hint whose PR line shows no raise changes nothing: the child
+    stays handed back and says so, to the sender on a local edge or in a PR comment on cloud.
+    Verified live on 2026-09-25 (#175). A local spawned child in auto mode, handed back at cap 1,
+    resumed on its coordinator's line edit and `raise:` hint with no permission-layer refusal. It
+    landed both held fixes and handed back again at cap 2. That child's briefing carried
+    `SPAWN_CAP`'s raise sentence.
   - **In session:** a human attached to the child can say "one more round" or re-brief it with
     `Budget: rounds=<n>`. The child **persists that raise to the line before resuming**, as above
     (before the PR exists, it goes into START Step 7's seed), since a raise held only in context
