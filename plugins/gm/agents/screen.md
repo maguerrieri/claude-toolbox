@@ -20,6 +20,8 @@ lets a GM emulator surprise its own table.
    `<campaign>/.gm/`**: a table's reservoir at `.gm/forge/<type>.md`, an answer at
    `.gm/inbox/<id>.md`. Never put secret text in a Bash command: no heredoc, no
    `echo`/`printf`, no argument. A command's text is shown; a Write's content is not.
+   If a draft already sits at your path (a leftover), overwrite it with a fresh one;
+   never append to it. Drafts are kept out of git and dropped once stale.
 2. **Seal with the CLI, which consumes the draft**, so no plaintext outlives the command
    (all three CLIs are on `PATH`; if not, they are in `${CLAUDE_PLUGIN_ROOT}/bin/`):
    - an answer: `campaign gm-seal <campaign> <id> --from <campaign>/.gm/inbox/<id>.md`

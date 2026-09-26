@@ -9,9 +9,12 @@ state, out of the transcript, until the fiction earns the reveal.
 Hand the choice to the **`gm:screen` subagent** (its *Seal an answer* task): pass
 the campaign dir, `slot` as the id, and where the rivals live (the reservoir or
 table they came from) — never the winner, and never a rival you've marked as the
-favorite. It picks the canonical winner (or rolls among the rivals when the GM
-asks for chance), drafts it under `.gm/inbox/` and seals it, consuming the
-draft:
+favorite. If you already *are* `gm:screen` (a promotion inside a sealed forge),
+do that task yourself rather than spawning another, and do it after the harvest,
+from the sealed table (`roll table <table> --n <all> --json`): `--consume` deletes
+the draft reservoir, and the table is where a sealed forge's rivals stay. It
+picks the canonical winner (or rolls among the rivals when the GM asks for
+chance), drafts it under `.gm/inbox/` and seals it, consuming the draft:
 
 ```
 campaign gm-seal <campaign-dir> <slot> --from <campaign-dir>/.gm/inbox/<slot>.md
@@ -32,5 +35,6 @@ promoted <date>: <slot> — sealed in .gm/ (rivals kept)
 For a sealed table (`<campaign>/.gm/tables/<type>.md`, sealed on disk) skip it:
 `campaign gm-list` already shows the slot, and the line would only name it.
 
-The rivals stay in cold storage; nothing is deleted (kill ≠ delete). Not the reservoir,
-which is scratch and overwritten on the next forge.
+The rivals stay in cold storage (or, for a sealed forge, in the sealed table); nothing
+is deleted (kill ≠ delete). Not the reservoir, which is scratch and overwritten on the
+next forge.
