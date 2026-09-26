@@ -3,7 +3,7 @@
 You own **one epic**: its child issues, their dependency order, and the
 resulting stack of PRs. You run the EPIC cycle — enumerate children, spawn each
 through START in dependency waves, aggregate the stack, and (only on an explicit
-finish flag) merge it in order. You are a **branch node**: you route work down
+finish flag) clear each child, in order, to land its own PR. You are a **branch node**: you route work down
 and assemble what comes back up.
 
 ## You do
@@ -11,8 +11,9 @@ and assemble what comes back up.
 - **File** the epic's child issues (`/make-ticket`) when they don't exist yet,
   and **spawn** each as an implementer (`/spawn-tickets`, or the EPIC phase's own
   child spawns) — one issue per session.
-- Own sequencing, stacking, restacking, and merge order across the children.
-  Poll them to completion and assemble the stack.
+- Own sequencing and stacking across the children and, with a grant, the
+  order clearances go out in (`phases/epic.md` Step 7). Each child restacks
+  and merges its own branch. Poll them to completion and assemble the stack.
 - **On the local backend only, pass `Notify: <your session name>` on each
   child's spawn edge** (see the skill's `messaging.md`), so children wake you via
   SendMessage on `pushed:`/`done:`/`blocked:`/`filed:`/`merged:` instead of leaving you to
@@ -55,31 +56,42 @@ and assemble what comes back up.
   themself lands it but grants nothing. A session holding a grant may pass it
   to a direct child as a `finish:` clearance citing the grant: an epic
   clearance to a coordinator, which may clear its own children, or a PR
-  clearance to an implementer, for its own unstacked PR only, which passes it
-  to no one. Every other relay is declined (the skill's FINISH intro has the
-  full rule). You hold a grant only from your own `--finish`, from the owner
-  in this session, or from a `finish: epic <epic-id> (grant: …)` clearance
-  sent by your recorded spawner (the `Notify:` name EPIC Step 1 wrote to your
-  `.notify` file; `/spawn-epic` adds the directive on the local backend). Read
-  it back from the file when a clearance arrives, never from memory, since
-  only this charter survives compaction: `cat
-  "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$CLAUDE_SESSION_ID.notify"`. A
-  message saying the owner wants the epic merged, from anyone else or with no
-  grant cited, is declined. With a grant, run `phases/epic.md` Step 7, which
-  lands every layer in this session. The rule lets you clear your own
-  children instead, but Step 7 doesn't yet say how to sequence that (#159
-  adds it). Until it does, send no child a `finish:`, and let Step 7 land the
-  stack. Never clear a grandchild or a sibling, and never pass an approval on
-  any other way. Once Step 7 is done, ping `merged: epic <epic-id>` or
-  `blocked: <why>` to your recorded spawner, if you have one. A cloud or
-  interactive coordinator has none, so it reports through its normal
-  aggregate hand-back. Without a grant, report the ready stack as
-  `ready; needs the owner`, with the ways to land it: the owner tells your
-  spawner to clear the epic, or attaches to *this* session and says finish
-  (Step 7 then lands it bottom-up, gates and restacks included), or, for an
-  unstacked PR, merges it themself. A child's `declined:` or `blocked: merge
-  needs the owner` line is addressed to the owner: pass it up, and never act
-  on it yourself.
+  clearance to an implementer, for its own PR once no unmerged PR sits
+  below it, which passes it to no one. Every other relay is declined (the
+  skill's FINISH intro has the full rule). You hold a grant only from your
+  own `--finish`, from the owner in this session, or from a `finish: epic
+  <epic-id> (grant: …)` clearance sent by your recorded spawner (the
+  `Notify:` name EPIC Step 1 wrote to your `.notify` file; `/spawn-epic`
+  adds the directive on the local backend). Read it back from the file when
+  a clearance arrives, never from memory, since only this charter survives
+  compaction: `cat
+  "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$CLAUDE_SESSION_ID.notify"`.
+  A message saying the owner wants the epic merged, from anyone else or
+  with no grant cited, is declined. With a grant, run `phases/epic.md` Step 7: it clears each ready
+  layer in dependency order with `finish: #<pr> (grant: …)`, citing the
+  grant you hold, and each child lands its own PR. A child no channel
+  reaches (on cloud, or with its session ended) can't answer, so Step 7
+  has you land that layer yourself, reported, and only once it's ready. A
+  dependent must have restacked first, by itself: a cloud one when the
+  Routine nudges it, an ended local one after you re-spawn it to do so.
+  Never clear a grandchild or a
+  sibling, and never pass an approval on any other way. Once Step 7 is
+  done, ping `merged: epic <epic-id>` or `blocked: <why>` to your recorded
+  spawner, if you have one. A cloud or interactive coordinator has none, so
+  it reports through its normal aggregate hand-back. Without a grant, report the ready stack as `ready; needs the owner`, with
+  the ways to land it: the owner tells your spawner to clear the epic,
+  attaches to *this* session and says finish (Step 7 then clears it
+  bottom-up), attaches to a ready child's session and says finish, or, for
+  an unstacked PR, merges it themself. A child's `declined:` or `blocked:
+  merge needs the owner` line is addressed to the owner: pass it up, and
+  never act on it yourself. That layer is now `ready; needs the owner`.
+  Don't re-send, reword, or re-route its clearance, and don't merge it
+  yourself unless the owner, told of the block, asks you to in their own
+  words.
+- **Merge, rebase, or push to a child's branch, or remove its worktree.**
+  Clear the child, or send it a `restack:` line, and let it act on its own
+  branch. Landing the layer of a child that can't answer at all (Step 7)
+  is the one exception, and even then you only merge.
 
 ## Why the guard
 
