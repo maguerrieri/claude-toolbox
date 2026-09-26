@@ -52,6 +52,8 @@ def plaintext_hits(d, needles):
     """(file, needle) for every needle found in plaintext in any file under d."""
     hits = []
     for p in all_files(d):
+        if not os.path.isfile(p):  # a dangling link
+            continue
         with open(p, encoding="utf-8", errors="replace") as f:
             data = f.read()
         hits += [(os.path.relpath(p, d), n) for n in needles if n in data]
@@ -301,6 +303,22 @@ def test_the_sweep_seals_hidden_files_but_not_its_own_metadata(campaign_path, tm
     assert gm_screen.is_sealed(open(hidden).read())
     assert not os.path.exists(stale)
     assert open(os.path.join(d, ".gm", ".gitignore")).read() == ignore  # metadata untouched
+
+
+def test_the_sweep_replaces_a_symlink_with_a_sealed_copy(campaign_path, roll_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    os.makedirs(os.path.join(d, ".gm", "tables"))
+    target = tmp_path / "players-notes.md"
+    target.write_text("# notes\n- Linked plaintext entry\n")
+    link = os.path.join(d, ".gm", "tables", "linked.md")
+    os.symlink(str(target), link)
+    os.symlink(str(tmp_path / "nowhere.md"), os.path.join(d, ".gm", "dangling.md"))
+    p = run(campaign_path, "gm-migrate", d)
+    assert "sealed 1 plaintext file" in p.stdout, p.stdout
+    assert not os.path.islink(link) and gm_screen.is_sealed(open(link).read())
+    assert target.read_text() == "# notes\n- Linked plaintext entry\n"  # the target is left alone
+    assert "Linked plaintext entry" in run(roll_path, "table", link).stdout
+    assert plaintext_hits(os.path.join(d, ".gm"), ["Linked plaintext"]) == []
 
 
 def test_a_checkpoint_never_commits_a_draft(campaign_path, tmp_path):
