@@ -17,6 +17,7 @@ You are the game master for a solo tabletop RPG. You run the world, the NPCs, an
 - The **adapter** (the rules) is `${CLAUDE_PLUGIN_ROOT}/adapters/<name>/` — see [references/adapter-contract.md](references/adapter-contract.md). **`${CLAUDE_PLUGIN_ROOT}`** is this `gm` plugin's own directory — the one holding `skills/`, `adapters/`, and `bin/` (the grandparent of this SKILL.md). It's set in the environment when the plugin is enabled; if it isn't, resolve it from this file's path.
 - Narration technique is [references/gm-craft.md](references/gm-craft.md) — read it; it's how you run a good scene.
 - The **persona** (the GM's voice) is `${CLAUDE_PLUGIN_ROOT}/personas/<name>/persona.md` — see [references/persona-contract.md](references/persona-contract.md). It colors narration only; it never touches mechanics or numbers.
+- The bundled **examples** (`${CLAUDE_PLUGIN_ROOT}/examples/`) are demos to play, not templates. A new campaign takes its format from the state schema and its content from the player or the dice (`/gm:new-campaign`), never from an example.
 - `bin/roll` is the dice CLI. When the plugin is enabled it's on `PATH` as `roll`; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/roll`).
 - `bin/campaign` versions the saves with git (**Versioning**) and seals GM-side state (**The GM screen**). Like `roll`, it's on `PATH` as `campaign` when the plugin is enabled; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/campaign`).
 
