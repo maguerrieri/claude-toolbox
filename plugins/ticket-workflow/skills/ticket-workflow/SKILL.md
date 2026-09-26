@@ -230,16 +230,17 @@ A marker that already holds this role is kept, so its other lines survive. A dif
 
 **Note your notifier (if directed).** If the briefing carries a `Notify: <session name>` directive (the cross-session wake-up channel spawn edges carry by default), read `messaging.md` now (read-on-demand, like a tracker/profile) and follow it: record the named spawner session and ping it via SendMessage at the events it lists (`pushed:`, `done:`, `blocked:`, `filed:`), confirming with the `ListAgents` ` [ref]` suffix if the bare name is rejected. Nothing to arm — delivery (including queued delivery to an offline spawner) is the harness's job. No directive → an edge that opted out (or a pre-messaging spawner); nothing to note.
 
-Then **record the target in the marker**, since the briefing that named it doesn't survive compaction or `/clear` either. After the self-pin above, put the name, exactly as the directive gives it, on the heredoc's middle line (the quoted heredoc keeps every character of it data), and SessionStart re-injects it next to the charter:
+Then **record the target in the marker**, since the briefing that named it doesn't survive compaction either. After the self-pin above, put the name, exactly as the directive gives it, on the heredoc's middle line (the quoted heredoc keeps every character of it data), and SessionStart re-injects it next to the charter:
 
 ```bash
+[ -n "${CLAUDE_TICKET_WORKFLOW_ROOT:-}" ] || echo 'record-notify: the plugin root is unset (the SessionStart hook did not run); nothing recorded' >&2
 [ -n "${CLAUDE_TICKET_WORKFLOW_ROOT:-}" ] &&
   bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<'NOTIFY_NAME_EOF'
 <session name>
 NOTIFY_NAME_EOF
 ```
 
-The script replaces any earlier `notify:` line and keeps the role and `issue:` lines (`messaging.md` has the details). When it records nothing, it says why and exits 1. That happens with no marker, or with the SessionStart hook's variables unset, and then the target stays in context only, as before. It also happens with a name the hook would refuse, which the Step 9 hand-back mentions. A START without `Notify:` leaves an existing line alone, since the session's spawner hasn't changed.
+The script replaces any earlier `notify:` line and keeps the role and `issue:` lines (`messaging.md` has the details). It finds the marker by the harness's own `CLAUDE_CODE_SESSION_ID` where that is set, else by the hook's `CLAUDE_SESSION_ID`. When nothing is recorded, the snippet or the script says why and exits 1. That happens with no marker, no session id, or the plugin root unset, and then the target stays in context only, as before. It also happens with a name the hook would refuse, which the Step 9 hand-back mentions. A START without `Notify:` leaves an existing line alone, since the session's spawner hasn't changed.
 
 ### Step 2 — Determine target repo + base branch
 

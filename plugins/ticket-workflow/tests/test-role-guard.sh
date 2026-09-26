@@ -241,7 +241,8 @@ record_notify="$here/../scripts/record-notify.sh"
 write_notify() { # write_notify <marker content | none> <session name>
 	rm -f "$roles_dir/$sid"
 	[ "$1" = none ] || printf '%s' "$1" >"$roles_dir/$sid"
-	printf '%s\n' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_SESSION_ID="$sid" bash "$record_notify" 2>/dev/null
+	printf '%s\n' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" CLAUDE_SESSION_ID= \
+		bash "$record_notify" 2>/dev/null
 	local status=$?
 	cat "$roles_dir/$sid" 2>/dev/null || echo none
 	echo "exit $status"
@@ -263,8 +264,21 @@ record $'implementer\nexit 1' "notify write: blank name rejected" "$(write_notif
 record $'implementer\nexit 1' "notify write: overlong name rejected" "$(write_notify $'implementer\n' "$(printf '%0201d' 0)")"
 record $'implementer\nexit 1' "notify write: over 200 bytes with an em dash" "$(write_notify $'implementer\n' "0$em_200")"
 record $'implementer\nnotify: '"$em_200"$'\nexit 0' "notify write: 200 bytes with an em dash" "$(write_notify $'implementer\n' "$em_200")"
-printf 'repo planning\n' | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_SESSION_ID= bash "$record_notify" 2>/dev/null
-record 1 "notify write: CLAUDE_SESSION_ID unset" "$?"
+
+# The session id: the harness's CLAUDE_CODE_SESSION_ID first, then the hook's
+# CLAUDE_SESSION_ID export (older CLIs). A child launched from the Bash tool can
+# inherit its parent's CLAUDE_SESSION_ID, so that must not win.
+id_write() { # id_write <CLAUDE_CODE_SESSION_ID> <CLAUDE_SESSION_ID>; prints the marker and the exit status
+	printf 'implementer\n' >"$roles_dir/$sid"
+	printf 'repo planning\n' | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$1" CLAUDE_SESSION_ID="$2" \
+		bash "$record_notify" 2>/dev/null
+	local status=$?
+	cat "$roles_dir/$sid"
+	echo "exit $status"
+}
+record $'implementer\nnotify: repo planning\nexit 0' "notify write: CLAUDE_SESSION_ID fallback" "$(id_write '' "$sid")"
+record $'implementer\nexit 1' "notify write: inherited CLAUDE_SESSION_ID loses to the harness's id" "$(id_write child-session "$sid")"
+record $'implementer\nexit 1' "notify write: no session id" "$(id_write '' '')"
 
 # The snippet START Step 1 documents, run as written: the name on the heredoc's
 # middle line, the plugin root from the SessionStart hook's variable.
@@ -281,8 +295,8 @@ run_snippet() { # run_snippet <marker content> <session name> [plugin root]; pri
 		[ "$line" = '<session name>' ] && line=$2
 		printf '%s\n' "$line"
 	done <<<"$snippet" >"$roles_dir/snippet.sh"
-	CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_SESSION_ID="$sid" CLAUDE_TICKET_WORKFLOW_ROOT="${3-$here/..}" \
-		bash "$roles_dir/snippet.sh" 2>/dev/null
+	CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" CLAUDE_SESSION_ID= \
+		CLAUDE_TICKET_WORKFLOW_ROOT="${3-$here/..}" bash "$roles_dir/snippet.sh" 2>"$roles_dir/snippet.err"
 	cat "$roles_dir/$sid"
 }
 record 1 "SKILL.md snippet found" "$(printf '%s\n' "$snippet" | grep -c 'record-notify.sh')"
@@ -290,6 +304,7 @@ record $'implementer\nissue: 52\nnotify: '"$tricky" "SKILL.md snippet: quotes an
 record absent "SKILL.md snippet: nothing in the name ran" "$([ -e "$roles_dir/pwned" ] && echo present || echo absent)"
 record $'implementer\nnotify: NOTIFY' "SKILL.md snippet: a name that was the old delimiter" "$(run_snippet $'implementer\n' NOTIFY)"
 record implementer "SKILL.md snippet: plugin root unset, nothing run" "$(run_snippet $'implementer\n' 'repo planning' '')"
+record 1 "SKILL.md snippet: plugin root unset, says why" "$(grep -c 'nothing recorded' "$roles_dir/snippet.err")"
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
