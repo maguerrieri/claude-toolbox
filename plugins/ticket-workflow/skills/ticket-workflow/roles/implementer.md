@@ -72,8 +72,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   You're a leaf: clear no one, helpers included. If the harness or a
   permission classifier blocks the merge, ping `blocked: merge needs the
   owner` with the decline reply's paths (below), and don't work around it.
-  With no `Notify:` directive (a cloud edge, an interactive run) no clearance
-  can reach you; only the owner's own request in this session can.
+  With no `Notify:` directive (a cloud edge, an interactive run), or more than
+  one, no clearance can reach you; only the owner's own request in this
+  session can.
 
 ## You do NOT
 
