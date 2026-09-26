@@ -42,9 +42,10 @@ in the GM's own session. The GM hands the whole pipeline to the **`gm:screen` su
 subagent:
 
 1. runs `campaign gm-init <campaign>` (so `.gm/.gitignore` keeps the draft out of git),
-   then drafts the reservoir at `<campaign>/.gm/forge/<type>.md` with the Write tool (following
-   `generate`'s method but writing the pool itself, since `generate`'s own convention
-   would put it at `docs/generation/`; or improvising the pool when `generate` is absent);
+   then drafts the reservoir at `<campaign>/.gm/forge/<type>.md` with the Write tool. It
+   runs `generate`'s method (lens-varied passes, blind to each other, judgment off)
+   itself, without invoking the `generate` skill, whose file convention would put a
+   reservoir at `docs/generation/`, so it doesn't need the `generate` plugin at all;
 2. runs `forge harvest --sealed --consume <campaign>/.gm/forge/<type>.md <campaign>/.gm/tables/<type>.md`,
    which writes the table sealed and deletes the draft (`--sealed` refuses a table path
    outside the screen rather than writing it in plaintext);
@@ -63,8 +64,8 @@ The forge is **soft-coupled** to `generate`. The gm plugin is fully usable witho
 - Improvise ~6–10 entries into a scratch reservoir (format: a `## Reservoir` heading, then
   one `- ` entry per line); run `forge harvest` as usual.
 - `roll table` works on the result.
-- A `--secret` forge improvises inside `gm:screen` like everything else about it (above):
-  never a hand-written pool in the GM's own session, heredoc or otherwise.
+- A `--secret` forge doesn't degrade: `gm:screen` runs `generate`'s method itself (above).
+  Never a hand-written pool in the GM's own session, heredoc or otherwise.
 
 Reforge with `generate` present when session pace allows; the table is simply overwritten.
 

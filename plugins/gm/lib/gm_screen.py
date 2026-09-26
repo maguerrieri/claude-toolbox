@@ -33,7 +33,6 @@ HEADER = MAGIC + " — behind the GM screen; read with campaign gm-reveal or rol
 SCREEN_DIR = ".gm"
 DRAFT_DIRS = ("forge", "inbox")  # the gm:screen subagent's plaintext drafts
 DRAFT_TTL = 3600  # seconds after which a draft is a crashed subagent's leftover
-LOCK = ".lock"
 WIDTH = 76
 
 
@@ -69,13 +68,29 @@ def read(path):
         raise ValueError(f"{path}: {e}") from None
 
 
+def _mode_for(path):
+    """The permissions a rewrite of `path` keeps: the file's own (its target's, for a
+    link), or the umask default for a new file. mkstemp's 0600 must not leak into a
+    shared vault or a synced folder."""
+    try:
+        return os.stat(path).st_mode & 0o7777
+    except OSError:
+        umask = os.umask(0)
+        os.umask(umask)
+        return 0o666 & ~umask
+
+
 def _write_atomic(path, data):
+    """Replace `path` with `data` in one step. A symlink at `path` is replaced itself,
+    not written through (upkeep's rule; `write` resolves links first)."""
     parent = os.path.dirname(os.path.abspath(path))
     os.makedirs(parent, exist_ok=True)
+    mode = _mode_for(path)
     fd, tmp = tempfile.mkstemp(dir=parent, prefix=".tmp-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(data)
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         try:
@@ -86,8 +101,9 @@ def _write_atomic(path, data):
 
 
 def write(path, text):
-    """Write `text` to `path` sealed, replacing the file in one step."""
-    _write_atomic(path, seal(text))
+    """Write `text` to `path` sealed, replacing the file in one step. An explicit write
+    goes wherever the player's filesystem points: a symlink is written through."""
+    _write_atomic(os.path.realpath(path), seal(text))
 
 
 def _screen_above(p):
@@ -112,9 +128,8 @@ def screen_of(path):
             or _screen_above(os.path.dirname(os.path.abspath(path))))
 
 
-IGNORE_HEADER = ("# gm: the gm:screen subagent's plaintext drafts and the screen's lock\n"
-                 "# never belong in history\n")
-IGNORED = ["/" + d + "/" for d in DRAFT_DIRS] + ["/" + LOCK]
+IGNORE_HEADER = "# gm: the gm:screen subagent's plaintext drafts never belong in history\n"
+IGNORED = ["/" + d + "/" for d in DRAFT_DIRS]
 
 
 def _maintainable(screen):
@@ -125,70 +140,60 @@ def _maintainable(screen):
     return os.path.isdir(screen) and not os.path.islink(screen)
 
 
-def _own_file(path):
-    """Upkeep never writes through a symlinked file: swap the link for a local regular
-    copy of the text it pointed to (empty if none), leaving its target alone. The sweep
-    applies the same rule to secrets, with a sealed copy."""
-    if not os.path.islink(path):
-        return
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = f.read()
-    except (OSError, UnicodeDecodeError):
-        data = ""
-    _write_atomic(path, data)  # os.replace swaps the link itself for the copy
-
-
-def ignore_drafts(screen):
-    """Make the screen's .gitignore keep drafts and the lock out of any commit: gm's own
-    checkpoints, and a deferred campaign's host repo (an Obsidian vault) alike. Rules
-    already in the file are kept; only the missing ones are added."""
+def _ignore_drafts(screen):
+    """Make the screen's .gitignore keep drafts out of any commit: gm's own checkpoints,
+    and a deferred campaign's host repo (an Obsidian vault) alike. Rules already there
+    are kept; the missing ones are added in one atomic write, which also swaps a
+    symlinked .gitignore for a local copy (upkeep never writes through a link). Call it
+    only under `locked`, which does."""
     if not _maintainable(screen):
         return
     p = os.path.join(screen, ".gitignore")
-    _own_file(p)
     try:
         with open(p, encoding="utf-8") as f:
             existing = f.read()
-    except FileNotFoundError:
+    except (OSError, UnicodeDecodeError):
         existing = ""
     have = {line.strip() for line in existing.splitlines()}
     missing = [rule for rule in IGNORED if rule not in have]
-    if not missing:
+    if not missing and not os.path.islink(p):
         return
     lead = "" if not existing or existing.endswith("\n") else "\n"
-    with open(p, "a", encoding="utf-8") as f:
-        f.write(lead + (IGNORE_HEADER if not existing else "") + "\n".join(missing) + "\n")
+    head = IGNORE_HEADER if not existing else ""
+    _write_atomic(p, existing + lead + head + "".join(rule + "\n" for rule in missing))
 
 
 @contextlib.contextmanager
 def locked(screen):
     """Hold the screen's lock: one writer at a time across the CLIs and the hooks' sweep,
-    so a sweep can't rewrite a file a CLI is changing or resurrect a consumed draft."""
+    so a sweep can't rewrite a file a CLI is changing or resurrect a consumed draft. The
+    lock is a flock on the .gm directory itself, so there's no lock file to manage; the
+    .gitignore upkeep happens inside it."""
     os.makedirs(screen, exist_ok=True)
-    ignore_drafts(screen)
     if fcntl is None:
+        _ignore_drafts(screen)
         yield
         return
-    lock = os.path.join(screen, LOCK)
-    if _maintainable(screen):
-        _own_file(lock)
-    with open(lock, "a") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
+    fd = os.open(screen, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        _ignore_drafts(screen)
         yield
+    finally:
+        os.close(fd)
 
 
 def drop_draft_links(screen):
-    """Remove every symlink in the draft dirs; returns how many. A link is never a
-    draft: gm:screen's Write would follow it and leave the plaintext outside the screen.
-    Only the link goes; its target is left alone."""
+    """Remove every symlink in the draft dirs, file or directory; returns how many. A
+    link is never a draft: gm:screen's Write would follow it and leave the plaintext
+    outside the screen. Only the link goes; its target is left alone. Call under `locked`."""
     dropped = 0
     for d in DRAFT_DIRS:
         top = os.path.join(screen, d)
         if not os.path.isdir(top) or os.path.islink(top):
             continue
-        for dirpath, _dirs, files in os.walk(top):
-            for name in files:
+        for dirpath, dirs, files in os.walk(top):  # never descends into a linked dir
+            for name in dirs + files:
                 p = os.path.join(dirpath, name)
                 if os.path.islink(p):
                     os.remove(p)
@@ -210,47 +215,46 @@ def _is_draft(screen, path):
 
 
 def _is_metadata(screen, path):
-    """The screen's own bookkeeping, never a secret: its .gitignore and lock, at the top.
-    (A `_write_atomic` temp needs no exemption: it is written sealed, and only under the
-    lock the sweep holds, so the sweep never sees one mid-write.)"""
-    return os.path.dirname(path) == screen and os.path.basename(path) in (".gitignore", LOCK)
+    """The screen's own bookkeeping, never a secret: its top-level .gitignore. (A
+    `_write_atomic` temp needs no exemption: every writer holds the lock the sweep
+    holds, so the sweep never sees one mid-write.)"""
+    return os.path.dirname(path) == screen and os.path.basename(path) == ".gitignore"
 
 
 def _starts_sealed(path):
     with open(path, "rb") as f:
-        return f.read(len(MAGIC.encode("ascii"))) == MAGIC.encode("ascii")
+        return is_sealed(f.read(len(MAGIC)).decode("ascii", "replace"))
 
 
 def sweep(campaign, now=None):
     """Make every entry under <campaign>/.gm/ a sealed regular file, except drafts.
 
-    Returns (sealed, dropped). The one rule: apart from the screen's own metadata
-    (`_is_metadata`, dotfile or not), what sits in .gm/ is sealed on disk.
+    Returns (sealed, dropped). The one rule: apart from the screen's own .gitignore, what
+    sits in .gm/ is sealed on disk.
     - Plaintext (a legacy file from before sealing, or any hidden file) is sealed in place.
     - A symlink is replaced by a sealed copy of the text it points to, so the screened
       path never reads as plaintext; the target itself, outside or not, is left alone.
       Symlinked directories aren't followed, .gm itself included (`_maintainable`).
     - A draft (.gm/forge/, .gm/inbox/) is never sealed in place: a fresh one may still be
       being written by its gm:screen subagent, so it is left alone until it is stale,
-      then dropped (it was a crashed subagent's scratch). A symlink there is never a
-      draft and is dropped at once (`drop_draft_links`).
+      then dropped (it was a crashed subagent's scratch). A symlink there, file or
+      directory, is never a draft and is dropped at once (`drop_draft_links`).
     Anything that isn't UTF-8 text (or a dangling link) is left as it is."""
     screen = os.path.join(campaign, SCREEN_DIR)
     if not _maintainable(screen):
         return 0, 0
     now = time.time() if now is None else now
-    sealed = dropped = 0
+    sealed = 0
     with locked(screen):
+        dropped = drop_draft_links(screen)
         for dirpath, _dirs, files in os.walk(screen):
             for name in files:
                 p = os.path.join(dirpath, name)
                 if _is_metadata(screen, p):
                     continue
                 if _is_draft(screen, p):
-                    # a link is never a draft (a Write would follow it out of the
-                    # screen): drop it now; a real draft only once it's stale
-                    if os.path.islink(p) or now - os.lstat(p).st_mtime > DRAFT_TTL:
-                        os.remove(p)  # a link is removed, never its target
+                    if now - os.lstat(p).st_mtime > DRAFT_TTL:
+                        os.remove(p)
                         dropped += 1
                     continue
                 link = os.path.islink(p)

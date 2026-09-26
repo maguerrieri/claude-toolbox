@@ -65,10 +65,10 @@ pool is drafted and harvested behind the screen, and the table lands sealed in
 entry it draws, so a roll *is* a reveal: roll it when the fiction earns one.
 
 **Degradation.** If the `generate` plugin is absent, an open `/gm:forge` improvises ~6–10
-entries directly; a sealed one still goes to `gm:screen`, which improvises them behind the
-screen (never improvise a sealed pool yourself: it would be in the transcript). Announce
-the reduced diversity. The table still works; reforge with `generate` present when pace
-allows.
+entries directly: announce the reduced diversity; the table still works; reforge with
+`generate` present when pace allows. A sealed forge doesn't depend on it: `gm:screen`
+runs generate's method itself, behind the screen. Never improvise a sealed pool
+yourself: it would be in the transcript.
 
 ## The GM screen
 
