@@ -11,7 +11,7 @@ and an unparseable version. New plugins only need a valid version. Stdlib only,
 no dependencies.
 
 External entries get the same rule. A marketplace entry whose `source` is an
-object (provenance: a `github` source pinned by `ref` to a release tag) has no
+object (provenance: a `github` source pinned to a release by `ref` and `sha`) has no
 files under ./plugins/ to diff; its version lives in the other repo's
 plugin.json. So for each such entry that is added or whose source changes
 between BASE and HEAD, the check fetches that plugin.json at the head pin, and
@@ -64,13 +64,17 @@ def git(*args):
 def manifest_version(text):
     """Version string from plugin.json text.
 
-    Malformed JSON or a missing `version` key comes back as a non-semver string so
-    the caller reports it as unparseable rather than skipping the plugin.
+    Malformed JSON, a top level that isn't an object, or a missing `version` key
+    comes back as a non-semver string so the caller reports it as unparseable
+    rather than skipping the plugin.
     """
     try:
-        return str(json.loads(text).get("version"))
+        manifest = json.loads(text)
     except ValueError as exc:
         return f"<malformed plugin.json: {exc}>"
+    if not isinstance(manifest, dict):
+        return "<malformed plugin.json: top level is not an object>"
+    return str(manifest.get("version"))
 
 
 def version_at(ref, plugin):
