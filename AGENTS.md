@@ -1,9 +1,9 @@
 # claude-toolbox
 
 Portable coding-agent conventions and Claude Code workflows, published as the
-**`maguerrieri-toolbox`** plugin marketplace. Each plugin lives in
-`plugins/<name>/` and is registered in `.claude-plugin/marketplace.json`, except
-an entry sourced from another repo (today only `provenance`; see Releasing).
+**`maguerrieri-toolbox`** plugin marketplace. Each plugin is registered in
+`.claude-plugin/marketplace.json` and lives in `plugins/<name>/`, except one sourced
+from another repo (today only `provenance`; see Releasing).
 
 ## Repository instructions
 
@@ -163,9 +163,10 @@ bumps its version and tags `v<version>`, then a PR here moves the entry's `ref` 
 together to the new tag and its commit. A pin moved to a commit whose version didn't rise
 never reaches installs: `claude plugin update` reports the plugin already at the latest
 version and keeps the old commit (verified on Claude Code 2.1.282). The `plugin versions`
-check gates this too. For each external `github` entry that is added or whose source
-changes, it fetches `plugin.json` at the base and head pins (the `sha`, else the `ref`)
-and applies the same rule, so moving `ref` without `sha` fails as an unchanged version.
-An entry that moves between `./plugins/` and another repo is gated across the move. Other
-source types get a `skip` line. `provenance` isn't a `defaults` dependency (neither
-is `gm`).
+check gates this too. For each entry whose source changes (added, re-pinned, or moved
+between `./plugins/` and another repo), it reads the version the entry installs on each
+side, fetching a `github` pin's `plugin.json` (the `sha`, else the `ref`), and applies the
+same rule. A head pin whose `ref` doesn't name its `sha` fails, so the two can't drift
+apart; a re-pin that still installs the same commit passes without a bump; a base pin it
+can't fetch is noted and head is checked alone; other source types get a `skip` line.
+`provenance` isn't a `defaults` dependency (neither is `gm`).
