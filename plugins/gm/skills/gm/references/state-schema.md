@@ -34,7 +34,7 @@ saves: ~/rpg/my-campaign # ABSOLUTE path to this campaign in your space
 
 Body: `## Premise` (a paragraph), `## Truths` (a `- ` list of established facts about this world), and `## Tone & safety` (genre and tone, then the player's own **Lines:** and **Veils:** — asked at `/gm:new-campaign`, in their words, never defaulted).
 
-A bundled example also lists its proper names in its front-matter (`names: Embervale, Wren, …`), for `campaign example-overlap`; your own campaigns don't need it.
+A bundled example also lists its proper names in its front-matter (`names: <place>, <person>, …`), for `campaign example-overlap`; your own campaigns don't need it.
 
 ### `characters/<name>.md`
 One file per PC, in the shape the active adapter's `sheet-template.md` defines. The core never invents a stat that isn't on the sheet (Rule 0).
