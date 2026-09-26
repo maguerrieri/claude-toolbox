@@ -42,7 +42,7 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 - **provenance** — researcher and verifier agents plus the orchestration skill
   for [provenance](https://github.com/maguerrieri/provenance), a cited-research
   pipeline whose citations a machine checks and a person reviews. It lives in
-  its own repo, and this marketplace lists it at a release tag. The skill
+  its own repo, and this marketplace pins it to a release. The skill
   drives the `provenance` CLI, which installs separately (see that repo's
   README).
 
