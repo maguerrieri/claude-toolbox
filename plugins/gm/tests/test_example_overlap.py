@@ -213,6 +213,50 @@ def test_a_safety_list_runs_to_the_end_of_its_line(campaign_path, tmp_path):
     assert p.returncode == 0, p.stdout
 
 
+def _safety(tmp_path, block):
+    """Run the check on a fresh campaign whose tone & safety section ends with `block`."""
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS)
+    with open(os.path.join(d, "campaign.md"), "a") as f:
+        f.write(block)
+    return ex, d
+
+
+def test_a_list_under_a_bare_label_is_the_players(campaign_path, tmp_path):
+    ex, d = _safety(tmp_path, "\n**Lines:**\n- harm to animals\n- anything like Osk's ending\n"
+                              "**Veils:**\n  * Pell\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
+def test_a_list_nested_under_a_label_is_the_players(campaign_path, tmp_path):
+    ex, d = _safety(tmp_path, "- **Lines & veils** (their words): see below\n"
+                              "    - **Lines:** none\n    - Osk's ending, off-screen\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
+def test_a_wrapped_label_paragraph_is_the_players(campaign_path, tmp_path):
+    ex, d = _safety(tmp_path, "**Lines:** harm to animals, and anything\nlike Osk's ending.\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
+def test_a_lines_and_veils_section_is_the_players(campaign_path, tmp_path):
+    ex, d = _safety(tmp_path, "\n### Lines & veils\n\nNothing like Osk's ending.\n\nNo Pell either.\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
+def test_sections_and_siblings_after_the_safety_lines_are_checked(campaign_path, tmp_path):
+    # A sibling bullet after a label, and a heading after a safety section, are prose again.
+    ex, d = _safety(tmp_path, "- **Lines:** none\n- **Tone:** haunted by Osk\n")
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+    ex, d = _safety(tmp_path / "b", "\n## Lines & veils\n\nNone.\n\n## Notes\n\nPell waits.\n")
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+
+
 def test_lines_in_ordinary_prose_is_not_a_label(campaign_path, tmp_path):
     ex = examples(str(tmp_path))
     d = str(tmp_path / "camp")

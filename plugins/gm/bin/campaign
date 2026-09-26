@@ -776,11 +776,14 @@ def cmd_mark_wrapped(a):
 EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "examples")
 ECHO_MIN_WORDS = 6     # a shorter sentence is too generic to call a copy
 ECHO = 0.7             # share of the shorter sentence found, in runs of 2+ words, in the other
-# The player's lines & veils, from a "Lines:", "**Veils:**" or "Lines & veils (their words):"
-# label to the end of its line (a list of them runs on with ";" and "."), even mid-line after the
-# tone. They're the player's words, not the GM's to police; "ley lines converge here:" or a
-# "Veils of Ash" heading is not a label.
-SAFETY = re.compile(r"\b(?:lines|veils)(?:\s*(?:&|and)\s*veils)?\W*(?:\([^)]*\)\W*)?:.*", re.I)
+# A player's lines & veils are their own words, not the GM's to police, so both checks skip
+# them (_drop_safety). A label is "Lines:", "**Veils:**" or "Lines & veils (their words):", even
+# mid-line after the tone; "ley lines converge here:" is not one. A safety heading is one that
+# says only "Lines", "Veils" or "Lines & veils" ("Veils of Ash" is prose).
+SAFETY_WORDS = r"(?:lines|veils)(?:\s*(?:&|and)\s*veils)?"
+SAFETY_LABEL = re.compile(r"\b%s\W*(?:\([^)]*\)\W*)?:" % SAFETY_WORDS, re.I)
+SAFETY_HEADING = re.compile(r"^#+\W*%s\W*$" % SAFETY_WORDS, re.I)
+LIST_ITEM = re.compile(r"(?:[-*+]|\d+\.)\s")
 
 
 def _read(p):
@@ -808,6 +811,33 @@ def _declared_names(ex):
     return [n.strip() for n in line.group(1).split(",") if n.strip()] if line else []
 
 
+def _drop_safety(text):
+    """The text without the player's lines & veils: each label through the end of its
+    paragraph (lists run on with ";" and "."), any list nested deeper than the label or
+    hanging under a bare one, and everything under a safety heading up to the next heading."""
+    out, owner, bare, section = [], None, False, False
+    for line in text.splitlines():
+        s, indent = line.strip(), len(line) - len(line.lstrip())
+        if s.startswith("#"):
+            section, owner = bool(SAFETY_HEADING.match(s)), None
+            if not section:
+                out.append(line)
+            continue
+        if section:
+            continue
+        if owner is not None:
+            if s and (indent > owner or not LIST_ITEM.match(s) or bare):
+                continue               # the label's wrapped paragraph, or its list
+            owner = None
+        m = SAFETY_LABEL.search(line)
+        if m:
+            out.append(line[:m.start()])
+            owner, bare = indent, not line[m.end():].strip(" \t*_")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def _units(text):
     """Lines, with hard-wrapped prose rejoined: a line continues the one above unless it opens
     a heading, list item or quote, or the line above is a heading or blank."""
@@ -824,9 +854,9 @@ def _units(text):
 
 def _prose(texts):
     """The sentences of the text, split at sentence ends, semicolons and list items, with the
-    player's lines & veils cut out."""
-    segments = (s.strip(" \t*_#>-") for t in texts for u in _units(t)
-                for s in re.split(r"[.!?;]+", SAFETY.sub(".", u)))
+    player's lines & veils left out."""
+    segments = (s.strip(" \t*_#>-") for t in texts for u in _units(_drop_safety(t))
+                for s in re.split(r"[.!?;]+", u))
     return [s for s in segments if s]
 
 
