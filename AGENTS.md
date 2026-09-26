@@ -166,8 +166,8 @@ version and keeps the old commit (verified on Claude Code 2.1.282). The `plugin 
 check gates this too. For each entry whose source changes (added, re-pinned, repointed to
 another directory, or moved between `./plugins/` and another repo), it reads the version
 the entry installs on each side, fetching a `github` pin's `plugin.json` (the `sha`, else
-the `ref`), and applies the same rule. A head pin whose `ref` doesn't name its `sha`
-fails, so the two can't drift apart; a re-pin that still installs the same commit passes
+the `ref`), and applies the same rule. A head pin whose tag `ref` doesn't point at its
+`sha` fails, so the two can't drift apart; a re-pin that still installs the same commit passes
 without a bump; a base pin it can't fetch is noted and head is checked alone; other source
 types get a `skip` line. A head `marketplace.json` the check can't read, or an entry
 without a name and source, fails too, since CI doesn't run `claude plugin validate`.
