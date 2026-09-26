@@ -29,8 +29,10 @@ fi
 # whatever settings.json says. A repo-declared hook already runs arbitrary
 # shell in cloud sessions, so this is defense in depth rather than a security
 # boundary: it keeps a settings-only change on a branch or PR from pulling in a
-# marketplace this hook was never meant to serve. Extend it here, in the
-# script, not in settings.
+# marketplace this hook was never meant to serve. It gates marketplaces, not
+# the repos their entries point at: a plugin an allowed marketplace sources
+# from another repo (provenance@maguerrieri-toolbox, from maguerrieri/provenance)
+# installs too. Extend it here, in the script, not in settings.
 allowed_source() {
   case "$1" in
     maguerrieri-toolbox) echo maguerrieri/claude-toolbox ;;

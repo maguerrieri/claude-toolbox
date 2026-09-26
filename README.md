@@ -9,9 +9,9 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
-  list pulls in every plugin below except `gm`. Install this one to get the
-  default set. New default plugins added to this repo should also be added to
-  its dependencies.
+  list pulls in every plugin below except `gm` and `provenance`. Install this
+  one to get the default set. New default plugins added to this repo should
+  also be added to its dependencies.
 - **conventions** — cross-repo development conventions: commit-message format
   and a portable repository-instruction policy built around canonical root
   `AGENTS.md` plus a pure `CLAUDE.md` import shim.
@@ -39,6 +39,12 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   `/gm:oracle`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`). Pluggable system
   adapters (generic / Ironsworn / Starforged), true dice, and git-versioned
   saves that autosave every turn's dialogue.
+- **provenance** — researcher and verifier agents plus the orchestration skill
+  for [provenance](https://github.com/maguerrieri/provenance), a cited-research
+  pipeline whose citations a machine checks and a person reviews. It lives in
+  its own repo, and this marketplace lists it at a release tag. The skill
+  drives the `provenance` CLI, which installs separately (see that repo's
+  README).
 
 ## Usage
 
@@ -75,7 +81,9 @@ hooks, so add this `SessionStart` hook to the same `settings.json`; in cloud
 sessions it reads the settings above and runs `claude plugin marketplace add`
 / `claude plugin install` for every enabled plugin from this marketplace or
 the official one (an allowlist inside the script, so a settings-only change
-can't point it at a new source), and locally it's a no-op:
+can't point it at a new marketplace; it still installs anything those
+marketplaces list, `provenance` from its own repo included), and locally it's
+a no-op:
 
 ```json
 "hooks": {
@@ -90,7 +98,8 @@ the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
-five default plugins (`gm` isn't a `defaults` dependency; install it separately).
+five default plugins (`gm` and `provenance` aren't `defaults` dependencies;
+install them separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these

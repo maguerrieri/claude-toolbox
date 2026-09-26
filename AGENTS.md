@@ -2,7 +2,8 @@
 
 Portable coding-agent conventions and Claude Code workflows, published as the
 **`maguerrieri-toolbox`** plugin marketplace. Each plugin lives in
-`plugins/<name>/` and is registered in `.claude-plugin/marketplace.json`.
+`plugins/<name>/` and is registered in `.claude-plugin/marketplace.json`, except
+an entry sourced from another repo (today only `provenance`; see Releasing).
 
 ## Repository instructions
 
@@ -93,7 +94,9 @@ verified on Claude Code 2.1.268:
   `claude-plugins-official`) are ever used: a repo hook already runs arbitrary
   shell in cloud sessions, so that's defense in depth rather than a boundary,
   but it means a settings-only change on a branch can't point the hook at a
-  new source.
+  new marketplace. The allowlist is per marketplace, so it admits whatever an
+  allowed marketplace lists, including a plugin that marketplace sources from
+  another repo (`provenance`, at the tag its entry pins).
   The settings file stays the single source of truth; the hook never changes
   when the plugin set does, and is a no-op locally. Other repos run the same
   file with one hook line (`curl -fsSL <raw URL on main> | bash`; see the
@@ -145,3 +148,17 @@ latest version." `marketplace.json` carries no version; each plugin's own `plugi
 is the source of truth. CI enforces this: the `plugin versions` check
 (`.github/workflows/plugin-versions.yml`) fails any PR whose touched plugin isn't at a
 strictly greater version than the PR's base branch (normally `main`).
+
+**External plugins.** A marketplace entry can source its plugin from another repo instead
+of `./plugins/`. Today that's `provenance`: a `github` source for `maguerrieri/provenance`
+pinned by `ref` to a release tag. Its version lives only in that repo's `plugin.json`.
+The entry deliberately carries no `version`, since `claude plugin validate` warns when an
+entry's version differs from its `plugin.json`. Installs are version-gated the same way,
+so the release step is: the other repo's release bumps its version and tags
+`v<version>`, then a PR here moves the entry's `ref` to the new tag. A `ref` moved to a
+tag whose version didn't rise never reaches installs: `claude plugin update` reports the
+plugin already at the latest version and keeps the old commit (verified on Claude Code
+2.1.282). The `plugin versions` check gates this too. For each external `github` entry
+that is added or whose source changes, it fetches `plugin.json` at the base and head pins
+and applies the same rule; other source types get a `skip` line. `provenance` isn't a
+`defaults` dependency (neither is `gm`).
