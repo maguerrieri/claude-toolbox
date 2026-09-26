@@ -70,8 +70,10 @@ and assemble what comes back up.
   children instead, but Step 7 doesn't yet say how to sequence that (#159
   adds it). Until it does, send no child a `finish:`, and let Step 7 land the
   stack. Never clear a grandchild or a sibling, and never pass an approval on
-  any other way. Once Step 7 is done, ping your spawner `merged: epic
-  <epic-id>` or `blocked: <why>`. Without a grant, report the ready stack as
+  any other way. Once Step 7 is done, ping `merged: epic <epic-id>` or
+  `blocked: <why>` to your recorded spawner, if you have one. A cloud or
+  interactive coordinator has none, so it reports through its normal
+  aggregate hand-back. Without a grant, report the ready stack as
   `ready; needs the owner`, with the ways to land it: the owner tells your
   spawner to clear the epic, or attaches to *this* session and says finish
   (Step 7 then lands it bottom-up, gates and restacks included), or, for an
