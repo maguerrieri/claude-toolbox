@@ -524,11 +524,15 @@ def test_session_start_never_fails(campaign_path, tmp_path):
 # ---- sealing the GM screen from the hooks (#171) --------------------------
 
 def plaintext_screen(d):
+    """A legacy plaintext state file, and a crashed subagent's draft from two hours ago."""
     os.makedirs(os.path.join(d, ".gm", "forge"), exist_ok=True)
     with open(os.path.join(d, ".gm", "state.json"), "w") as f:
         json.dump({"clocks": {}, "secrets": {"twist": "Legacy plaintext twist"}}, f)
-    with open(os.path.join(d, ".gm", "forge", "orphan.md"), "w") as f:
+    orphan = os.path.join(d, ".gm", "forge", "orphan.md")
+    with open(orphan, "w") as f:
         f.write("## Reservoir\n- An orphaned draft entry\n")
+    old = time.time() - 7200
+    os.utime(orphan, (old, old))
 
 
 def screen_text(d):
@@ -546,6 +550,7 @@ def test_stop_hook_seals_plaintext_left_behind_the_screen(campaign_path, tmp_pat
     play_fixture(campaign_path, e, tmp_path)
     text = screen_text(d)
     assert "Legacy plaintext" not in text and "orphaned draft" not in text
+    assert not os.path.exists(os.path.join(d, ".gm", "forge", "orphan.md"))  # dropped
     assert "Legacy plaintext twist" in run(campaign_path, "gm-reveal", d, "twist", env=e).stdout
     assert git(d, "status", "--porcelain") == ""  # the sealed files were checkpointed
 

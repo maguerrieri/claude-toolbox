@@ -8,8 +8,9 @@ Reads the markdown under the reservoir's `## Reservoir` heading (the diverse poo
 `- ` entry per candidate, block-rule continuations preserved. The reservoir is
 scratch; the table is the durable, rollable artifact.
 
-A table under a .gm/ dir is SEALED on disk (lib/gm_screen.py), so the Bash edit-diff
-view shows noise, not the entries; `roll table` reads it all the same. A sealed forge
+A table under a campaign's .gm/ (the one next to its campaign.md) is SEALED on disk
+(lib/gm_screen.py), so the Bash edit-diff view shows noise, not the entries; `roll
+table` reads it all the same. A sealed forge
 runs inside the gm:screen subagent with its reservoir drafted under .gm/forge/ and
 harvested with --consume, which deletes the reservoir once the table is written — no
 plaintext pool outlives the command.
@@ -45,23 +46,28 @@ def reservoir_block(text):
 
 
 def cmd_harvest(a):
+    if a.consume and os.path.realpath(a.reservoir) == os.path.realpath(a.table):
+        sys.exit("forge: --consume would delete the table it just wrote (reservoir and table are one file)")
     block = reservoir_block(gm_screen.read(a.reservoir))
     if not any(line.startswith("- ") for line in block):
         sys.exit(f"forge: no '## Reservoir' entries in {a.reservoir}")
     title = os.path.splitext(os.path.basename(a.table))[0]
     text = f"# {title}\n" + "\n".join(block) + "\n"
-    sealed = gm_screen.behind_screen(a.table)
-    if sealed:
-        gm_screen.write(a.table, text)
+    screen = gm_screen.screen_of(a.table)
+    if screen:
+        with gm_screen.locked(screen):  # never while the hooks' sweep is at it
+            gm_screen.write(a.table, text)
+            if a.consume:
+                os.remove(a.reservoir)
     else:
         os.makedirs(os.path.dirname(os.path.abspath(a.table)), exist_ok=True)
         with open(a.table, "w", encoding="utf-8") as f:
             f.write(text)
-    if a.consume:
-        os.remove(a.reservoir)
+        if a.consume:
+            os.remove(a.reservoir)
     n = sum(1 for line in block if line.startswith("- "))
-    print(f"forge: harvested {n} entries -> {a.table}{' (sealed)' if sealed else ''}")
-    if sealed and not a.consume and not gm_screen.behind_screen(a.reservoir):
+    print(f"forge: harvested {n} entries -> {a.table}{' (sealed)' if screen else ''}")
+    if screen and not a.consume and not gm_screen.screen_of(a.reservoir):
         print(f"forge: warning — the reservoir {a.reservoir} is outside the GM screen and "
               f"still holds the pool in plaintext; delete it (or harvest with --consume)",
               file=sys.stderr)
