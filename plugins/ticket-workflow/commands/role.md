@@ -19,9 +19,9 @@ session id that nothing links to the old one. With agent view off, `/fork`
 runs in-process under this session's pin, so there's nothing to re-pin. After
 `claude --teleport` the marker is still on the machine the session ran on (a
 teleport launch doesn't deliver SessionStart output either). Re-run
-`/role <role>` in the new or teleported session. An in-process subagent or
-teammate can't pin at all: it shares its parent's session, so the PreToolUse
-hook denies its marker write.
+`/role <role>` in the new or teleported session. An in-process subagent (or
+any other agent running inside the session) can't pin at all: it shares its
+parent's session, so the PreToolUse hook denies its marker write.
 
 Every snippet below opens by assigning the marker directory (the override
 exists for testing; the hooks honor the same variable) and this session's id:
