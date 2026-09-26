@@ -171,13 +171,18 @@ def _starts_sealed(path):
 
 
 def sweep(campaign, now=None):
-    """Seal every plaintext file under <campaign>/.gm/ in place, and delete stale drafts.
+    """Make every entry under <campaign>/.gm/ a sealed regular file, except drafts.
 
-    Returns (sealed, dropped). Leftover plaintext is a legacy file from before sealing;
-    a stale draft is one a crashed gm:screen subagent never consumed. A fresh draft is
-    left alone (its subagent may still be writing it), as are the screen's own metadata
-    (`_is_metadata`) and anything that isn't UTF-8 text. Other dotfiles get no pass: a
-    hidden file can hold a secret as well as any other."""
+    Returns (sealed, dropped). The one rule: apart from the screen's own metadata
+    (`_is_metadata`, dotfile or not), what sits in .gm/ is sealed on disk.
+    - Plaintext (a legacy file from before sealing, or any hidden file) is sealed in place.
+    - A symlink is replaced by a sealed copy of the text it points to, so the screened
+      path never reads as plaintext; the target itself, outside or not, is left alone.
+      Symlinked directories aren't followed.
+    - A draft (.gm/forge/, .gm/inbox/) is never sealed in place: a fresh one may still be
+      being written by its gm:screen subagent, so it is left alone until it is stale,
+      then dropped (it was a crashed subagent's scratch).
+    Anything that isn't UTF-8 text (or a dangling link) is left as it is."""
     screen = os.path.join(campaign, SCREEN_DIR)
     if not os.path.isdir(screen):
         return 0, 0
@@ -187,20 +192,21 @@ def sweep(campaign, now=None):
         for dirpath, _dirs, files in os.walk(screen):
             for name in files:
                 p = os.path.join(dirpath, name)
-                if _is_metadata(screen, p) or os.path.islink(p) or not os.path.isfile(p):
+                if _is_metadata(screen, p):
                     continue
                 if _is_draft(screen, p):
-                    if now - os.path.getmtime(p) > DRAFT_TTL:
-                        os.remove(p)
+                    if now - os.lstat(p).st_mtime > DRAFT_TTL:
+                        os.remove(p)  # a link is removed, never its target
                         dropped += 1
                     continue
-                if _starts_sealed(p):
+                link = os.path.islink(p)
+                if not os.path.isfile(p) or (not link and _starts_sealed(p)):
                     continue
                 try:
                     with open(p, encoding="utf-8") as f:
                         data = f.read()
                 except (OSError, UnicodeDecodeError):
                     continue
-                _write_atomic(p, seal(data))
+                _write_atomic(p, data if is_sealed(data) else seal(data))
                 sealed += 1
     return sealed, dropped
