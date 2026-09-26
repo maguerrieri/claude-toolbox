@@ -68,8 +68,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$CLAUDE_SESSION_ID.notify"`.
   If an unmerged PR sits below yours (your PR's base is still the head
   branch of an open PR; or you started as a dependent, on a parent's branch
-  or an EPIC integration branch, and your PR shows no `restacked:` comment
-  of yours newer than its last `restack:` request), or your PR holds
+  or an EPIC integration branch, and your PR has no `restack:` request
+  yet, or no `restacked:` comment of yours newer than the last one), or
+  your PR holds
   findings at the
   round cap (`<m>` above 0 on its `Review rounds:` line, or an `agree, held
   at the round cap` line), reply `blocked: <why>` and don't merge: a layer
