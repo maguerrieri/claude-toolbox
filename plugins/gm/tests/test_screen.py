@@ -300,6 +300,19 @@ def test_a_deferred_campaigns_host_repo_ignores_drafts_too(campaign_path, tmp_pa
     assert "forge" not in status and ".lock" not in status
 
 
+def test_an_existing_screen_gitignore_gains_the_missing_rules(campaign_path, tmp_path):
+    d = new_campaign(campaign_path, tmp_path)
+    os.makedirs(os.path.join(d, ".gm"))
+    ignore = os.path.join(d, ".gm", ".gitignore")
+    open(ignore, "w").write("*.bak\n/inbox/")  # the player's own rule, one of ours, no newline
+    run(campaign_path, "gm-clock", d, "c", "--segments", "4")
+    lines = open(ignore).read().splitlines()
+    assert lines[:2] == ["*.bak", "/inbox/"]
+    assert sorted(lines[2:]) == ["/.lock", "/forge/"]
+    run(campaign_path, "gm-clock", d, "c", "--advance", "1")
+    assert open(ignore).read().splitlines() == lines  # idempotent
+
+
 def test_gm_migrate_without_a_screen_is_a_no_op(campaign_path, tmp_path):
     d = new_campaign(campaign_path, tmp_path)
     p = run(campaign_path, "gm-migrate", d)
