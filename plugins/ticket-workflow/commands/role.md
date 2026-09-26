@@ -6,49 +6,65 @@ Pin (or unpin) this session's role charter: **$ARGUMENTS**
 
 A role set here is durable: it's recorded in a per-session marker file that the
 plugin's hooks consume — the SessionStart hook re-injects the charter after
-`--resume`, `/clear`, and compaction, and the PreToolUse guard turns file edits
+`--resume`, `/clear`, and compaction (but `/clear` and forks start a new
+session id the marker may not follow: the skill's Session roles, *Session
+identity*, and #160), and the PreToolUse guard turns file edits
 into a permission prompt while the `planner` charter is pinned, and denies a
 `claude --bg`/`-p` or `create_session` launch that leads with an issue-spawning
 command while `implementer` is. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
 are normally injected by spawn edges (`Role:` directives), not by hand.
+It is also how a **teleported** session gets its pin back: after
+`claude --teleport` the marker is still on the machine the session ran on,
+and a teleport launch doesn't deliver SessionStart output, so re-run
+`/role <role>` in the teleported session.
 
-In every snippet below, first assign the marker directory (the override exists
-for testing; the hooks honor the same variable):
+Every snippet below opens by assigning the marker directory (the override
+exists for testing; the hooks honor the same variable) and this session's id:
+the harness's `CLAUDE_CODE_SESSION_ID` (Claude Code 2.1.132+), else the
+`CLAUDE_SESSION_ID` this plugin's SessionStart hook exports on older CLIs (the
+skill's Session roles: *Session identity*). Keep those two lines in each Bash
+call — a shell variable doesn't carry over to the next one:
 
 ```bash
 roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 ```
 
 1. Take the first token of "$ARGUMENTS" as the role. Valid: `planner`,
    `epic-coordinator`, `implementer`, `none`. Anything else (or empty): report
-   the valid values — plus, when `$CLAUDE_SESSION_ID` is set and a marker file
-   exists, the current pin (`cat "$roles_dir/$CLAUDE_SESSION_ID"`: the role
-   on its first line, then any `issue:` lines an implementer recorded) — and
-   stop.
+   the valid values — plus, when a session id resolves and a marker file
+   exists, the current pin (`cat "$roles_dir/$sid"` after the two lines
+   above: the role on its first line, then any `issue:` lines an implementer
+   recorded) — and stop.
 
-2. If `$CLAUDE_SESSION_ID` is unset, this plugin's SessionStart hook didn't
-   run (plugin installed mid-session, or hooks disabled) — say so, note the
-   fix (restart the session so SessionStart fires), skip the marker write in
-   step 3/4, but still do step 5 so the charter at least governs the current
-   context.
+2. If no session id resolves (both variables unset), this is a Claude Code
+   older than 2.1.132 whose SessionStart hook didn't run (plugin installed
+   mid-session, or hooks disabled) — say so, note the fix (upgrade Claude Code, or restart the
+   session so SessionStart fires), skip the marker write in step 3/4, but
+   still do step 5 so the charter at least governs the current context.
 
 3. **`none` — unpin:**
 
    ```bash
-   rm -f "$roles_dir/$CLAUDE_SESSION_ID"
+   roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+   sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+   [ -n "$sid" ] && rm -f "$roles_dir/$sid"
    ```
 
    State that the role is dropped and no charter governs the session; stop.
 
-4. **Pin:** write the marker, keyed by session id (`$CLAUDE_SESSION_ID` is
-   exported by this plugin's SessionStart hook via `CLAUDE_ENV_FILE`), unless
+4. **Pin:** write the marker, keyed by session id (`$sid`, above), unless
    its first line already names this role:
 
    ```bash
-   mkdir -p "$roles_dir"
-   marker="$roles_dir/$CLAUDE_SESSION_ID"
-   [ "$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]')" = "<role>" ] || printf '%s\n' "<role>" >"$marker"
+   roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+   sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+   if [ -n "$sid" ]; then
+     mkdir -p "$roles_dir"
+     marker="$roles_dir/$sid"
+     [ "$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]')" = "<role>" ] || printf '%s\n' "<role>" >"$marker"
+   fi
    ```
 
    A hand pin writes the role line only. The `issue:` lines a spawned

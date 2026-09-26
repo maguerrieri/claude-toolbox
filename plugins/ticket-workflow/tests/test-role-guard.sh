@@ -12,8 +12,7 @@ guard="$here/../hooks/role-guard.sh"
 roles_dir=$(mktemp -d)
 trap 'rm -rf "$roles_dir"' EXIT
 sid=test-session
-pass=0
-fail=0
+. "$here/lib.sh"
 
 # The marker is written with this format; '%s' drops the trailing newline.
 marker_fmt='%s\n'
@@ -37,15 +36,6 @@ decide() {
 		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}')"
 }
 
-record() { # record <expected> <label> <got>
-	if [ "$3" = "$1" ]; then
-		pass=$((pass + 1))
-	else
-		fail=$((fail + 1))
-		printf 'FAIL: %s: expected %s, got %s\n' "$2" "$1" "$3"
-	fi
-}
-
 bash_case() { # bash_case <expected> <role> <label> <command>
 	record "$1" "$2 Bash: $3" "$(decide "$2" Bash command "$4")"
 }
@@ -67,6 +57,7 @@ bash_case deny implementer "line continuations" "$(printf '%s\n' 'claude \' '  -
 bash_case deny implementer "claude by path" '~/.local/bin/claude --bg "/start-ticket 7"'
 bash_case deny implementer "prompt assigned to a variable first" 'p="/start-ticket 7"; claude --bg --name x "$p"'
 bash_case deny implementer "env prefix and assignment" 'env FOO=1 BAR=2 claude --bg "/start-ticket 7"'
+bash_case deny implementer "spawn edge's env -u prefix" 'env -u CLAUDE_SESSION_ID claude --bg --name x "/start-ticket 7"'
 bash_case deny implementer "after then" 'if true; then claude --bg "/start-ticket 7"; fi'
 bash_case deny implementer "command substitution" 'out=$(claude --bg "/start-ticket 7")'
 bash_case deny implementer "backtick substitution" 'x=`claude --bg "/start-ticket 5"`'
@@ -105,6 +96,7 @@ bash_case deny implementer "stripped-identity launch" 'env -u CLAUDE_SESSION_ID 
 
 # Implementer: helpers and everything else pass.
 bash_case allow implementer "helper whose prompt leads with prose" "$helper"
+bash_case allow implementer "helper through the spawn edge's env -u prefix" 'env -u CLAUDE_SESSION_ID claude --bg --name "helper: flaky build" "Investigate the flaky build; report back only."'
 bash_case allow implementer "plain command" 'git status'
 bash_case allow implementer "claude agents" 'claude agents'
 bash_case allow implementer "claude with neither --bg nor -p" 'claude "/start-ticket 5"'
@@ -193,5 +185,4 @@ record epic-coordinator "session start: two-line coordinator marker" "$(injects 
 record implementer "session start: no trailing newline" "$(injects 'implementer')"
 record none "session start: unknown role" "$(injects $'bogus\n')"
 
-printf '%d passed, %d failed\n' "$pass" "$fail"
-[ "$fail" -eq 0 ]
+finish
