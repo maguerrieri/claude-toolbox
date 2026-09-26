@@ -43,8 +43,9 @@ it. You are the **root**: the one session that sees the entire initiative.
   #<pr>` here for a live child's PR: clear the child instead of running
   FINISH yourself, since it owns its branch and worktree. Clearances need a
   local `Notify:` edge. A cloud child can't be cleared, so once its PR is
-  ready (no unmerged PR below it, and a dependent's `restacked:` posted),
-  run FINISH here the way the FINISH intro says (the child's revision
+  ready (no unmerged PR below it, and, only if it's itself a dependent,
+  its own `restacked:` posted; a root is ready from the start), run FINISH
+  here the way the FINISH intro says (the child's revision
   checked out before the gate, local cleanup skipped, as EPIC Step 7 does
   on cloud) or have the owner attach to it; a cloud coordinator needs `--finish` at
   launch or the owner attached. Never clear a grandchild (a coordinator's children answer
