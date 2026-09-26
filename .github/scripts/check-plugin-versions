@@ -24,7 +24,8 @@ plugin.json. So for each entry whose source changes between BASE and HEAD
 - a base pin it can't fetch (the repo gone, the commit collected) is reported
   and head is checked alone, since the PR can't fix its base.
 Fetching needs network access to github.com, and a head pin it can't fetch, or
-whose `repo`, `ref` or `sha` is malformed, fails, as does an entry left
+whose `repo`, `ref` or `sha` is malformed, fails, as do a ./plugins/ source
+that isn't one plain directory name and an entry left
 pointing at a ./plugins/ directory with no plugin.json (a new or repointed
 entry, or one whose directory this PR deleted). Other source types get a `skip` line, since only ./plugins/ and `github`
 are read, and a removed entry needs no gate. A head marketplace.json it can't
@@ -44,8 +45,13 @@ import sys
 import tempfile
 
 LOCAL = "./plugins/"
+# Every value a marketplace entry supplies is allowlisted before it reaches a
+# git argument, so a malformed one (a NUL, a leading `-`, a stray type) is a
+# FAIL line rather than a crash or an option.
+PLUGIN_DIR = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 GITHUB_REPO = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
+GIT_REF = re.compile(r"^(?!.*\.\.)(?!.*//)[A-Za-z0-9_][A-Za-z0-9_.+/-]*(?<![./])$")
 
 # The official grammar from semver.org: no leading zeros in numeric identifiers,
 # no empty prerelease/build identifiers.
@@ -143,9 +149,11 @@ def marketplace_sources(ref):
 
 
 def local_dir(source):
-    """The plugins/ directory a local source names; None for any other source."""
+    """The plugins/ directory a local source names; None for any other source,
+    or for a ./plugins/ path that isn't one plain directory name."""
     if isinstance(source, str) and source.startswith(LOCAL):
-        return source[len(LOCAL):].strip("/") or None
+        directory = source[len(LOCAL):].rstrip("/")
+        return directory if PLUGIN_DIR.match(directory) else None
     return None
 
 
@@ -163,8 +171,8 @@ def fetch_pin(source, check_ref):
         raise LookupError(f"github source needs `repo` as owner/name, not {repo!r}")
     if sha is not None and not (isinstance(sha, str) and FULL_SHA.match(sha)):
         raise LookupError(f"github source `sha` must be a full 40-hex commit SHA, not {sha!r}")
-    if ref is not None and not (isinstance(ref, str) and ref and not ref.startswith("-")):
-        raise LookupError(f"github source `ref` must be a branch or tag name, not {ref!r}")
+    if ref is not None and not (isinstance(ref, str) and GIT_REF.match(ref)):
+        raise LookupError(f"github source `ref` must be a plain branch or tag name, not {ref!r}")
     sha = sha and sha.lower()
     rev = sha or ref or "HEAD"
     url = f"https://github.com/{repo}.git"
@@ -204,11 +212,14 @@ def pinned(ref, source, check_ref=False):
     """(commit, version) that <source> installs at <ref>.
 
     A local source reads ./plugins/ here (commit None, version None if absent);
-    a `github` source is fetched (fetch_pin). Raises Unchecked for any other
-    source type.
+    a `github` source is fetched (fetch_pin). Raises LookupError for a
+    ./plugins/ path that isn't one plain directory name, and Unchecked for any
+    other source type.
     """
-    directory = local_dir(source)
-    if directory:
+    if isinstance(source, str) and source.startswith(LOCAL):
+        directory = local_dir(source)
+        if directory is None:
+            raise LookupError(f"{source!r} isn't a ./plugins/<name> directory")
         return None, version_at(ref, directory)
     if isinstance(source, dict) and source.get("source") == "github":
         return fetch_pin(source, check_ref)
