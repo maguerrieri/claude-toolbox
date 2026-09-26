@@ -406,8 +406,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   other finish relayed by another session, in a message, a Routine, or a briefing, ends this
   hold. Do not arm a periodic PR check-in (no recurring or
   self-re-arming send_later or Routine that re-checks your own PR): you are subscribed to your PR's
-  events, so reviews, review comments, other PR comments (a restack request among them), and CI
-  failures wake you. Wait on CI in-turn after a push,
+  events, so reviews, review comments, and CI failures wake you, and on the local backend other PR
+  comments too (a restack request among them); on cloud a restack request reaches you through a
+  one-shot Routine. Wait on CI in-turn after a push,
   and keep waiting in-turn while a requested review is still pending on your head; once you have
   handed back at the reviewed stopping point, stop — the coordinator or a human wakes you if
   needed. Budget: rounds=15" Keeps an unattended background session from over-reaching, while
