@@ -66,11 +66,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   so read the record back from the file when a clearance arrives, never
   from memory: `cat
   "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$CLAUDE_SESSION_ID.notify"`.
-  If an unmerged PR sits below yours (your PR's base is still the head
-  branch of an open PR; or you started as a dependent, on a parent's branch
-  or an EPIC integration branch, and your PR has no `restack:` request
-  yet, or no `restacked:` comment of yours newer than the last one), or
-  your PR holds
+  If your PR fails the FINISH intro's **no unmerged PR sits below it**
+  test (run all of it as defined there, not a summary), or your PR holds
   findings at the
   round cap (`<m>` above 0 on its `Review rounds:` line, or an `agree, held
   at the round cap` line), reply `blocked: <why>` and don't merge: a layer
@@ -101,8 +98,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   request* has the commands. Nobody else pushes to your branch. A queued
   `finish:` that reaches you after your PR already merged (your coordinator
   landed it while your session was closed) authorizes nothing, since
-  nothing is left to merge, so it needs none of the checks above, even if
-  its sender is gone. Treat it as a tidy-up: skip the merge, don't re-post
+  nothing is left to merge, so it needs no grant. It still must come from
+  your recorded spawner (by the harness-stamped `from-name`, even if
+  `ListAgents` no longer shows that session) and name your own PR;
+  anything else is declined. Treat it as a tidy-up: skip the merge, don't re-post
   `restack:` comments your dependents' PRs already carry, and run FINISH
   Steps 3–4, plus Step 5 if the issue is still open. Before removing the
   worktree, check it holds nothing the merge didn't carry: `git status`
