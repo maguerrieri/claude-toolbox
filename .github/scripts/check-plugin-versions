@@ -24,8 +24,9 @@ plugin.json. So for each entry whose source changes between BASE and HEAD
 - a base pin it can't fetch (the repo gone, the commit collected) is reported
   and head is checked alone, since the PR can't fix its base.
 Fetching needs network access to github.com, and a head pin it can't fetch, or
-whose `repo`, `ref` or `sha` is malformed, fails, as does an entry pointing at
-a ./plugins/ directory with no plugin.json. Other source types get a `skip` line, since only ./plugins/ and `github`
+whose `repo`, `ref` or `sha` is malformed, fails, as does an entry left
+pointing at a ./plugins/ directory with no plugin.json (a new or repointed
+entry, or one whose directory this PR deleted). Other source types get a `skip` line, since only ./plugins/ and `github`
 are read, and a removed entry needs no gate. A head marketplace.json it can't
 read fails, as does an entry without a string `name` and a string or object
 `source`, or a repeated name (`claude plugin validate` checks the rest); at
@@ -272,13 +273,15 @@ def main(argv):
             failures.append(f"{label}: {exc}")
             continue
         if new is None:
-            if entries.get(label, (None, None))[1] == new_source:
-                failures.append(f"{label}: the entry points at {new_source}, which has no"
-                                " .claude-plugin/plugin.json on head")
+            referrers = sorted(name for name, source in new_sources.items()
+                               if local_dir(source) == local_dir(new_source))
+            if referrers:
+                failures.append(f"{label}: marketplace entry {', '.join(referrers)} points at"
+                                f" {new_source}, which has no .claude-plugin/plugin.json on head")
             elif exists_at(head, local_dir(new_source)):
                 failures.append(f"{label}: plugin files changed but"
                                 " .claude-plugin/plugin.json is missing on head")
-            continue  # whole plugin removed on head: nothing to gate
+            continue  # whole plugin and its entry removed on head: nothing to gate
         old_commit, old, unread = None, None, None
         if old_source is not None:
             try:
