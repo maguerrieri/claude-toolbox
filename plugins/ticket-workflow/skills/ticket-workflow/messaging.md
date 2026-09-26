@@ -63,9 +63,10 @@ receivers and greps treat the two channels uniformly:
 - **`raise: cap <n> on PR #<pr>`** (spawner → child, sent after editing the
   child's PR `Review rounds:` line, never instead of it): **the ping
   authorizes nothing** — the line is the raise, and the child acts only on
-  what it reads there (the profile's `REVIEW_BOT`, *Raising the cap*). The
-  child's answer, when it resumes, is a `pushed: resumed at cap <n> on PR
-  #<pr>` on its first push.
+  what it reads there (the profile's `REVIEW_BOT`, *Raising the cap*). On a
+  local edge, the child's answer when it resumes is a `pushed: resumed at cap
+  <n> on PR #<pr>` on its first push. A cloud child has no channel back (below),
+  so its spawner reads the resume off the PR.
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
   restack. Sibling names follow the spawn convention, and `ListAgents` resolves
