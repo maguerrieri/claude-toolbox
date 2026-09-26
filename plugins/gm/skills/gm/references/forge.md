@@ -41,16 +41,17 @@ in the GM's own session. The GM hands the whole pipeline to the **`gm:screen` su
 (`${CLAUDE_PLUGIN_ROOT}/agents/screen.md`), passing only the type, N and the frame. The
 subagent:
 
-1. drafts the reservoir at `<campaign>/.gm/forge/<type>.md` with the Write tool (running
-   `generate` into that file, or improvising the pool when `generate` is absent), never at
-   `docs/generation/`;
+1. drafts the reservoir at `<campaign>/.gm/forge/<type>.md` with the Write tool (following
+   `generate`'s method but writing the pool itself, since `generate`'s own convention
+   would put it at `docs/generation/`; or improvising the pool when `generate` is absent);
 2. runs `forge harvest --consume <campaign>/.gm/forge/<type>.md <campaign>/.gm/tables/<type>.md`,
    which writes the table sealed and deletes the draft;
 3. replies with the count only: `sealed <n> entries → .gm/tables/<type>.md`.
 
 Everything under `.gm/` is sealed on disk (zlib + base64), so a diff or a `cat` of the
 table shows noise; `roll table` reads it all the same. A draft a crashed subagent leaves
-behind gets sealed by the plugin's hooks.
+behind stays out of git (`.gm/.gitignore`), and the plugin's hooks delete it, unsealed and
+unrecoverable, once it is an hour stale: it was scratch.
 
 ## Soft-coupling / degradation
 
