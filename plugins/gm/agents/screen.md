@@ -19,8 +19,9 @@ lets a GM emulator surprise its own table.
 1. **Draft secret text only with the Write or Edit tool, and only under
    `<campaign>/.gm/`**: a table's reservoir at `.gm/forge/<type>.md`, an answer at
    `.gm/inbox/<id>.md`. Before your first draft, run `campaign gm-init <campaign>`: it
-   creates `.gm/` with the `.gitignore` that keeps drafts out of any commit (safe to
-   repeat). Never put secret text in a Bash command: no heredoc, no
+   creates `.gm/` with the `.gitignore` that keeps drafts out of any commit, and clears
+   any symlink from the draft dirs so your Write can't follow one out of the screen (safe
+   to repeat). Never put secret text in a Bash command: no heredoc, no
    `echo`/`printf`, no argument. A command's text is shown; a Write's content is not.
    If a draft already sits at your path (a leftover), overwrite it with a fresh one;
    never append to it. Drafts are kept out of git and dropped once stale.

@@ -283,7 +283,7 @@ def test_the_sweep_leaves_a_fresh_draft_and_drops_a_stale_one(campaign_path, tmp
             f.write("## Reservoir\n- Draft entry\n")
     age(stale, gm_screen.DRAFT_TTL + 60)
     p = run(campaign_path, "gm-migrate", d)
-    assert "dropped 1 stale draft" in p.stdout
+    assert "dropped 1 leftover draft" in p.stdout
     assert open(fresh).read() == "## Reservoir\n- Draft entry\n"  # untouched
     assert not os.path.exists(stale)
 
@@ -302,7 +302,7 @@ def test_the_sweep_seals_hidden_files_but_not_its_own_metadata(campaign_path, tm
     age(stale, gm_screen.DRAFT_TTL + 60)
     ignore = open(os.path.join(d, ".gm", ".gitignore")).read()
     p = run(campaign_path, "gm-migrate", d)
-    assert "sealed 2 plaintext files" in p.stdout and "dropped 1 stale draft" in p.stdout
+    assert "sealed 2 plaintext files" in p.stdout and "dropped 1 leftover draft" in p.stdout
     assert gm_screen.is_sealed(open(hidden).read())
     assert gm_screen.is_sealed(open(temp_named).read())  # no name earns a pass
     assert not os.path.exists(stale)
@@ -409,6 +409,34 @@ def test_upkeep_swaps_a_symlinked_gitignore_or_lock_for_a_local_copy(campaign_pa
     assert not os.path.islink(ignore) and not os.path.islink(os.path.join(d, ".gm", ".lock"))
     assert {"*.bak", "/forge/", "/inbox/", "/.lock"} <= set(open(ignore).read().splitlines())
     assert shared.read_text() == "*.bak\n" and not lock_target.exists()
+
+
+def test_a_symlink_is_never_a_draft(campaign_path, forge_path, tmp_path):
+    """A draft path that is a link would take gm:screen's Write, and then the plaintext,
+    outside the screen: gm-init and the sweep drop such links, and the consuming
+    commands refuse one."""
+    d = new_campaign(campaign_path, tmp_path)
+    run(campaign_path, "gm-init", d)
+    outside = tmp_path / "outside.md"
+    outside.write_text("## Reservoir\n- Outside plaintext\n")
+    inbox_link = os.path.join(d, ".gm", "inbox", "the-well.md")
+    forge_link = os.path.join(d, ".gm", "forge", "omens.md")
+    for link in (inbox_link, forge_link):
+        os.symlink(str(outside), link)
+    # the consuming commands refuse a link, consuming nothing
+    p = run(campaign_path, "gm-seal", d, "the-well", "--from", inbox_link)
+    assert p.returncode != 0 and "symlink" in p.stderr and os.path.islink(inbox_link)
+    p = run(forge_path, "harvest", "--sealed", "--consume", forge_link,
+            os.path.join(d, ".gm", "tables", "omens.md"))
+    assert p.returncode != 0 and "symlink" in p.stderr and os.path.islink(forge_link)
+    # gm-init (run before every draft) drops them; the target is left alone
+    assert run(campaign_path, "gm-init", d).returncode == 0
+    assert not os.path.lexists(inbox_link) and not os.path.lexists(forge_link)
+    assert outside.read_text() == "## Reservoir\n- Outside plaintext\n"
+    # and the sweep drops a fresh one at once, not after the stale window
+    os.symlink(str(outside), inbox_link)
+    assert "dropped 1 leftover draft" in run(campaign_path, "gm-migrate", d).stdout
+    assert not os.path.lexists(inbox_link)
 
 
 def test_gm_init_refuses_a_symlinked_draft_dir(campaign_path, tmp_path):
