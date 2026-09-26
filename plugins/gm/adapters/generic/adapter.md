@@ -27,9 +27,13 @@ Roll the yes/no oracle when **all three** hold: (1) the outcome is genuinely unc
 
 The table is even odds; on a borderline band, lean your reading toward whatever the fiction already makes likely.
 
+## Idiom
+
+A generic campaign speaks its own setting's language, not a published system's. Don't import another game's signature terms, props or mechanics — Ironsworn's iron vows, momentum, or bonds as a mechanic; PbtA moves; D&D classes, levels or alignments — unless the player asks for that flavor or brings that system. Genre instinct pulls toward the famous game of the genre (an oath-bound frontier courier drifts into Ironsworn), so pick what the setting itself would call it: a promise, a debt, a standing, not an iron vow or a momentum track. The oracle's own words (*Oath*, *Bond*, *Debt*) are sparks; read them in the setting's terms.
+
 ## Safety
 
-Open a campaign with **lines & veils**: ask what's off-limits entirely (lines) and what happens off-screen (veils). Honor them without exception.
+Open a campaign with **lines & veils**: ask what's off-limits entirely (lines) and what happens off-screen (veils). Ask every time — never default them or copy them from an example — and record the player's answer, `none` included. Honor them without exception.
 
 ## Behind the screen
 

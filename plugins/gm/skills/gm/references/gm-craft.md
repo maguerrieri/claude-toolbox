@@ -17,6 +17,9 @@ Open with a sensory hook and a situation that *demands a choice*, then ask "what
 ## Pace by stakes
 Zoom in beat-by-beat when stakes are high or a choice matters; zoom out (montage, "time passes") through the routine. Cut a scene on a turn, a reveal, or a question.
 
+## Speak the system's idiom
+Use the active adapter's vocabulary, and in a generic campaign the setting's own. Don't borrow another system's signature terms or props because the genre reminds you of it (see the generic adapter's *Idiom*); a setting should sound like itself, not like the most famous game in its genre.
+
 ## The player is referee
 On any disagreement about what's true, the campaign state file wins. Reconcile to it, then continue. The fiction is collaborative; the record is authoritative.
 
