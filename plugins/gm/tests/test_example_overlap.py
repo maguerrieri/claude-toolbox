@@ -78,6 +78,30 @@ def test_possessive_name_counts(campaign_path, tmp_path):
     assert '"Brindle"' in p.stdout
 
 
+def test_an_all_caps_name_counts(campaign_path, tmp_path):
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS, "# OSK\n\n- **Concept:** A diver.\n")
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+
+
+def test_a_saves_path_with_glob_characters_is_scanned(campaign_path, tmp_path):
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "vault [2026]" / "camp*")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS, "# Osk\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 1, p.stdout
+
+
+def test_plus_bullets_are_separate_sentences(campaign_path, tmp_path):
+    # Two "+" items mustn't be glued into one sentence that reads as a copy.
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS,
+             extra={"threads.md": "# Threads\n\n+ The salt road was paved\n+ by giants and no one\n"})
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 0
+
+
 def test_names_match_whole_words_case_sensitively(campaign_path, tmp_path):
     # "Oskar" isn't "Osk", and the lowercase saves path "brindle-2" isn't the town.
     ex = examples(str(tmp_path))
@@ -237,10 +261,33 @@ def test_a_list_nested_under_a_label_is_the_players(campaign_path, tmp_path):
     assert p.returncode == 0, p.stdout
 
 
-def test_a_wrapped_label_paragraph_is_the_players(campaign_path, tmp_path):
-    ex, d = _safety(tmp_path, "**Lines:** harm to animals, and anything\nlike Osk's ending.\n")
+def test_an_indented_continuation_of_a_label_is_the_players(campaign_path, tmp_path):
+    ex, d = _safety(tmp_path, "- **Lines:** harm to animals, and anything\n  like Osk's ending.\n")
     p = run(campaign_path, "example-overlap", d, "--examples", ex)
     assert p.returncode == 0, p.stdout
+
+
+def test_lines_after_a_safety_line_are_checked(campaign_path, tmp_path):
+    # Consecutive labelled lines, and prose straight after the safety line, are not its paragraph.
+    ex, d = _safety(tmp_path, "\n**Lines:** none\n**Veils:** none\n**Tone:** haunted by Osk.\n")
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+    ex, d = _safety(tmp_path / "b", "Grim. **Veils:** none\n"
+                                    "The old road was paved by giants and no one has repaired it since.\n")
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+
+
+def test_a_sibling_bullet_after_a_bare_label_bullet_is_checked(campaign_path, tmp_path):
+    ex, d = _safety(tmp_path, "\n- **Lines:**\n- **Tone:** haunted by Osk.\n")
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+
+
+def test_lines_or_veils_after_another_word_is_not_a_label(campaign_path, tmp_path):
+    # "Battle lines:" and "fault-lines:" are the setting's words, not the player's safety lines.
+    for i, truth in enumerate(["Battle lines: Osk holds the ford.", "The fault-lines: they run under Osk."]):
+        ex = examples(str(tmp_path / str(i)))
+        d = str(tmp_path / str(i) / "camp")
+        campaign(d, FRESH_PREMISE, [truth])
+        assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1, truth
 
 
 def test_a_lines_and_veils_section_is_the_players(campaign_path, tmp_path):
