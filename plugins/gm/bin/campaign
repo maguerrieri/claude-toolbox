@@ -776,7 +776,8 @@ def cmd_mark_wrapped(a):
 EXAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "examples")
 ECHO_MIN_WORDS = 6     # a shorter sentence is too generic to call a copy
 ECHO = 0.7             # share of the shorter sentence found, in runs of 2+ words, in the other
-SAFETY = re.compile(r"^(lines|veils)\b", re.I)   # the player's own words, not the GM's to police
+# A "Lines:" / "Veils:" / "Lines & veils (…):" label: the player's own words, not the GM's to police.
+SAFETY = re.compile(r"^(lines|veils)\b[^.:]*:", re.I)
 # Sentence ends, plus the start of a "Lines:" / "Veils:" label, which can share a line with
 # the tone and no period.
 SPLIT = re.compile(r"[.!?;]+|(?=\b(?:lines|veils)\W*:)", re.I)
@@ -821,17 +822,17 @@ def _units(text):
     return out
 
 
+def _prose(texts):
+    """The sentences of the text — split at sentence ends, semicolons, list items and
+    Lines/Veils labels — without the player's lines & veils."""
+    segments = (s.strip(" \t*_#>-") for t in texts for u in _units(t) for s in SPLIT.split(u))
+    return [s for s in segments if s and not SAFETY.match(s)]
+
+
 def _sentences(texts):
-    """(sentence, words) for each prose sentence — split at sentence ends, semicolons and
-    list items — leaving out short ones and safety lines."""
-    out = []
-    for t in texts:
-        for s in (s for u in _units(t) for s in SPLIT.split(u)):
-            s = s.strip(" \t*_#>-")
-            words = re.findall(r"[a-z0-9]+", s.lower())
-            if len(words) >= ECHO_MIN_WORDS and not SAFETY.match(s):
-                out.append((s, words))
-    return out
+    """(sentence, words) for each prose sentence long enough to call a copy."""
+    return [(s, w) for s in _prose(texts)
+            for w in [re.findall(r"[a-z0-9]+", s.lower())] if len(w) >= ECHO_MIN_WORDS]
 
 
 def _echoes(a, b):
@@ -851,7 +852,7 @@ def cmd_example_overlap(a):
                       if os.path.isfile(os.path.join(root, n, "campaign.md"))
                       and os.path.realpath(os.path.join(root, n)) != d)
     mine = _content(d)
-    text, sentences = "\n".join(mine), _sentences(mine)
+    text, sentences = "\n".join(_prose(mine)), _sentences(mine)
     found = []
     for ex in examples:
         name = os.path.basename(ex)

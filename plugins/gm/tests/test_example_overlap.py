@@ -174,6 +174,23 @@ def test_safety_lines_are_the_players_and_not_checked(campaign_path, tmp_path):
     assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 0
 
 
+def test_names_in_the_players_safety_lines_are_not_flagged(campaign_path, tmp_path):
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS)
+    with open(os.path.join(d, "campaign.md"), "a") as f:
+        f.write("Grim war — **Lines:** nothing like Osk's ending. **Veils:** Pell\n")
+    p = run(campaign_path, "example-overlap", d, "--examples", ex)
+    assert p.returncode == 0, p.stdout
+
+
+def test_prose_merely_starting_with_lines_or_veils_is_still_checked(campaign_path, tmp_path):
+    ex = examples(str(tmp_path))
+    d = str(tmp_path / "camp")
+    campaign(d, FRESH_PREMISE, FRESH_TRUTHS, extra={"locations.md": "# Places\n\n## Veils of Osk\n"})
+    assert run(campaign_path, "example-overlap", d, "--examples", ex).returncode == 1
+
+
 def test_safety_labels_split_a_line_even_without_a_period(campaign_path, tmp_path):
     # Tone and safety often share a line with no sentence end before the label; the
     # player's lines & veils must still stay out of the comparison, on both sides.
