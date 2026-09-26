@@ -71,7 +71,10 @@ and assemble what comes back up.
   layer in dependency order with `finish: #<pr> (grant: …)`, citing the
   grant you hold, and each child lands its own PR. A child no channel
   reaches (on cloud, or with its session ended) can't answer, so Step 7
-  has you land that layer yourself, reported. Never clear a grandchild or a
+  has you land that layer yourself, reported, and only once it's ready. A
+  dependent must have restacked first, by itself: a cloud one when the
+  Routine nudges it, an ended local one after you re-spawn it to do so.
+  Never clear a grandchild or a
   sibling, and never pass an approval on any other way. Once Step 7 is
   done, ping `merged: epic <epic-id>` or `blocked: <why>` to your recorded
   spawner, if you have one. A cloud or interactive coordinator has none, so
