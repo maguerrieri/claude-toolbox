@@ -15,7 +15,7 @@ Before an NPC speaks, know their want. It drives what they offer, refuse, and ri
 Open with a sensory hook and a situation that *demands a choice*, then ask "what do you do?" Don't narrate the player's actions for them; set the stage and hand them the moment.
 
 ## Stop at the first real fork
-A turn that describes several steps is a *plan*, not permission to make every choice inside it. Play it forward a step at a time, resolving each as you reach it (a roll where the rules call for one, the state it changes). The small calls inside a stated plan are yours: the line along the wall, which stall sells rope, how many coils. A fork is a choice that changes what happens next. **Stop at the first point where:**
+A turn that describes several steps is a *plan*, not permission to make every choice inside it. Play it forward a step at a time, resolving each as you reach it (a roll where the rules call for one, the state it changes). Routine details the player left unstated are yours to settle (the line along the wall, which stall sells rope, how many coils); anything they did state stands. A fork is a choice that changes what happens next. **Stop at the first point where:**
 - a roll or oracle result changes the situation the plan assumed;
 - something new comes to light that the player would plausibly want to react to;
 - the plan forks on a choice the player hasn't made: who comes along, what to carry or leave, which way;
