@@ -16,6 +16,7 @@
   campaign unbind [--session ID]
   campaign unwrapped <dir>                  # raw play not yet summarized by /gm:wrap
   campaign mark-wrapped <dir> <log-file>
+  campaign example-overlap <dir> [--examples DIR]  # names/truths shared with bundled examples
   campaign hook-session-start               # plugin hooks (payload on stdin)
   campaign hook-autosave
 
@@ -39,6 +40,7 @@ call to read ahead is a feature (dramatic irony), not a leak — so no encryptio
 import argparse
 import contextlib
 import datetime
+import difflib
 import hashlib
 import json
 import os
@@ -768,6 +770,103 @@ def cmd_mark_wrapped(a):
         print(f"gm: nothing to mark — no unwrapped play in log/raw/{note}")
 
 
+# -- /gm:new-campaign: a fresh campaign borrows nothing from the bundled examples --
+
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+EXAMPLES_DIR = os.path.join(PLUGIN_DIR, "examples")
+CAP_WORD = re.compile(r"\b[A-Z][A-Za-z]{2,}\b")
+MD_LEAD = " \t*_#>-[(\"'"          # markdown and quoting that may sit before a sentence's first word
+TRUTH_ECHO = 0.6                   # word-sequence similarity at which a truth reads as a copy
+
+
+def _campaign_files(d):
+    """The scaffolded content: every .md except the raw play log and the sealed .gm/ dir."""
+    out = []
+    for root, dirs, files in os.walk(d):
+        rel = os.path.relpath(root, d)
+        dirs[:] = [x for x in dirs
+                   if not x.startswith(".") and os.path.join(rel, x) != os.path.join("log", "raw")]
+        out += [os.path.join(root, f) for f in sorted(files) if f.endswith(".md")]
+    return out
+
+
+def _title(p):
+    with open(p, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("# "):
+                return line[2:].strip()
+    return ""
+
+
+def _format_words():
+    """Capitalized words any adapter's sheet template uses: labels ("Notes / Inventory"), not names."""
+    words = set()
+    for root, _, files in os.walk(os.path.join(PLUGIN_DIR, "adapters")):
+        if "sheet-template.md" in files:
+            with open(os.path.join(root, "sheet-template.md"), encoding="utf-8") as f:
+                words.update(CAP_WORD.findall(f.read()))
+    return words
+
+
+def _example_names(d):
+    """Proper names in an example: its campaign and character titles, plus every capitalized
+    word it uses mid-sentence and never in lowercase (so "The" or a sentence-initial "Three"
+    aren't names, and "Wren" in "friendly to Wren" is). Sheet-template labels are excluded."""
+    texts = [open(p, encoding="utf-8").read() for p in _campaign_files(d)]
+    lower = {w.lower() for t in texts for w in re.findall(r"\b[a-z][a-z]+\b", t)}
+    names = set()
+    for t in texts:
+        for m in CAP_WORD.finditer(t):
+            before = t[:m.start()].rsplit("\n", 1)[-1].rstrip(MD_LEAD)
+            if before and before[-1] not in ".!?:" and m.group().lower() not in lower:
+                names.add(m.group())
+    chars = os.path.join(d, "characters")
+    titled = [os.path.join(d, "campaign.md")] + [
+        os.path.join(chars, f) for f in (sorted(os.listdir(chars)) if os.path.isdir(chars) else [])
+        if f.endswith(".md")]
+    for p in titled:
+        names.update(CAP_WORD.findall(_title(p)))
+    return names - _format_words()
+
+
+def _truths(p):
+    with open(p, encoding="utf-8") as f:
+        m = re.search(r"^## Truths\n(.*?)(?=^## |\Z)", f.read(), re.S | re.M)
+    return [line[2:].strip() for line in (m.group(1).splitlines() if m else []) if line.startswith("- ")]
+
+
+def _words(s):
+    return re.findall(r"[a-z0-9]+", s.lower())
+
+
+def cmd_example_overlap(a):
+    d = os.path.realpath(os.path.expanduser(a.dir))
+    if not os.path.isfile(os.path.join(d, "campaign.md")):
+        sys.exit(f"campaign: no campaign.md in {a.dir}")
+    root = os.path.expanduser(a.examples) if a.examples else EXAMPLES_DIR
+    examples = sorted(os.path.join(root, n) for n in (os.listdir(root) if os.path.isdir(root) else [])
+                      if os.path.isfile(os.path.join(root, n, "campaign.md"))
+                      and os.path.realpath(os.path.join(root, n)) != d)
+    used = set()
+    for p in _campaign_files(d):
+        used.update(CAP_WORD.findall(open(p, encoding="utf-8").read()))
+    truths = _truths(os.path.join(d, "campaign.md"))
+    found = []
+    for ex in examples:
+        name = os.path.basename(ex)
+        found += [f'gm: shares name "{n}" with bundled example {name}'
+                  for n in sorted(used & _example_names(ex))]
+        theirs = [_words(t) for t in _truths(os.path.join(ex, "campaign.md"))]
+        for t in truths:
+            if any(difflib.SequenceMatcher(None, _words(t), w).ratio() >= TRUTH_ECHO for w in theirs):
+                # Name the campaign's own line only: printing the example's would re-anchor on it.
+                found.append(f'gm: truth "{t}" closely echoes a truth in bundled example {name}')
+    if found:
+        print("\n".join(found))
+        sys.exit(1)
+    print("gm: no names or truths shared with the bundled examples")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="campaign")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -785,6 +884,7 @@ def main(argv=None):
     p = sub.add_parser("unbind"); p.add_argument("--session")
     p = sub.add_parser("unwrapped"); p.add_argument("dir")
     p = sub.add_parser("mark-wrapped"); p.add_argument("dir"); p.add_argument("log")
+    p = sub.add_parser("example-overlap"); p.add_argument("dir"); p.add_argument("--examples")
     sub.add_parser("hook-session-start")
     sub.add_parser("hook-autosave")
     a = ap.parse_args(argv)
@@ -795,6 +895,7 @@ def main(argv=None):
          "gm-reveal": cmd_gm_reveal, "gm-list": cmd_gm_list,
          "bind": cmd_bind, "unbind": cmd_unbind,
          "unwrapped": cmd_unwrapped, "mark-wrapped": cmd_mark_wrapped,
+         "example-overlap": cmd_example_overlap,
          "hook-session-start": cmd_hook_session_start,
          "hook-autosave": cmd_hook_autosave}[a.cmd](a)
     except subprocess.CalledProcessError as e:
