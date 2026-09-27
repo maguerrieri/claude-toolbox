@@ -65,9 +65,9 @@ A base adapter may be marked `abstract: true` in its front-matter (not playable 
 `visibility:` declares where this system keeps **GM-mutable world-state** — progress/threat **clocks** and the **answers** behind open questions (a mystery's solution, an NPC's true agenda):
 
 - `player` (**default**) — in the open. The core writes clocks to `clocks.md` and the rest as normal. Player-facing systems like **Ironsworn** and **Starforged** use this: their clocks, momentum, and vows are *meant* to sit in front of the player — there is no screen.
-- `gm` — **behind the screen.** The core writes that state through the bundled `campaign gm-*` CLI into a `.gm/` sealed dir, **never the Write/Edit tools** — so in a solo session the write collapses to "Ran 1 shell command" in the transcript instead of rendering its content inline. It surfaces only when the fiction earns it (`campaign gm-reveal`). The **generic** "be my GM for any system" adapter uses this, because the point of a GM emulator is to be *surprised*.
+- `gm` — **behind the screen.** The core keeps that state in a `.gm/` dir that is sealed on disk, written only through the bundled CLIs (`campaign gm-*`, `forge harvest`), and any secret's text is composed inside the `gm:screen` subagent — **never the Write/Edit tools or a command's text** in the GM's own session, since the player reads every tool call there and the diff of every file a Bash command changes. It surfaces only when the fiction earns it (`campaign gm-reveal`). The **generic** "be my GM for any system" adapter uses this, because the point of a GM emulator is to be *surprised*.
 
-The screen guards against *involuntarily* spoiling a solo player; deliberately expanding a collapsed call to read ahead is a wanted feature (dramatic irony), so `.gm/` is **not** encrypted. See `gm-craft.md` (felt, not shown) and `state-schema.md` (`.gm/`).
+The screen guards against *involuntarily* spoiling a solo player; deliberately reading ahead (`campaign gm-reveal`) is a wanted feature (dramatic irony), so `.gm/` is sealed against a glance, **not** encrypted. See `gm-craft.md` (felt, not shown), `state-schema.md` (`.gm/`) and the skill's "The GM screen".
 
 ## The one hard rule
 
