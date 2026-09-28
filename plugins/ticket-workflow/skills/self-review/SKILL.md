@@ -48,7 +48,9 @@ Your final message is what the caller reads, so it must carry everything:
 - Then every finding **verbatim** as the review produced it, in its original order, with
   its anchor. Don't summarize, merge, drop, or re-rank them. The caller records a count
   and a disposition per finding, so a finding you omit is one nobody answers.
-- If there were none, say `No findings.` Say it only when the review said so: if
-  `code-review` came back with no findings text (it reported through a tool, or its result
-  was empty), say that instead and do the manual read above, so an unread result never
+- If there were none, say `No findings.`, but only when the review said so. Findings
+  `code-review` reported through a tool (a structured list rather than prose) are still its
+  findings: relay them verbatim. If it came back with nothing you can read at all, do the
+  manual read above and report that as the pass (`Pass: manual adversarial read`, with
+  `code-review returned no readable result` as the reason), so an unread result never
   records as a clean pass.
