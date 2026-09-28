@@ -6,6 +6,7 @@ description: >-
   that review on Opus in a forked subagent and returns the findings verbatim. Not for
   general "review my code" requests; use code-review for those.
 argument-hint: '<diff range, e.g. origin/main...HEAD>'
+user-invocable: false
 context: fork
 model: opus
 background: false
@@ -45,4 +46,7 @@ Your final message is what the caller reads, so it must carry everything:
 - Then every finding **verbatim** as the review produced it, in its original order, with
   its anchor. Don't summarize, merge, drop, or re-rank them. The caller records a count
   and a disposition per finding, so a finding you omit is one nobody answers.
-- If there were none, say `No findings.`
+- If there were none, say `No findings.` Say it only when the review said so: if
+  `code-review` came back with no findings text (it reported through a tool, or its result
+  was empty), say that instead and do the manual read above, so an unread result never
+  records as a clean pass.
