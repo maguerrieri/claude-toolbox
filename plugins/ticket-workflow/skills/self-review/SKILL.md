@@ -20,7 +20,8 @@ caller's conversation, only the diff range below and the repository in your work
 
 Diff range: $ARGUMENTS
 
-If the range above is empty, stop and report `No diff range given; nothing reviewed.` Never
+If the range above is empty, stop and return exactly two lines, `Pass: none` and
+`No diff range given; nothing reviewed.`, so the caller can't read it as a clean pass. Never
 fall back to a default range: with no target, `code-review` diffs against the branch's
 upstream, which on a pushed branch is the branch itself, and it would review nothing.
 
@@ -41,7 +42,8 @@ Don't edit, commit, or push anything, and don't post to GitHub. This pass only r
 
 Your final message is what the caller reads, so it must carry everything:
 
-- First line: `Pass: /code-review high` or `Pass: manual adversarial read`, whichever ran.
+- First line: `Pass: /code-review high` or `Pass: manual adversarial read`, whichever ran
+  (`Pass: none` only for the empty range above).
   If you fell back, say why on the next line.
 - Then every finding **verbatim** as the review produced it, in its original order, with
   its anchor. Don't summarize, merge, drop, or re-rank them. The caller records a count
