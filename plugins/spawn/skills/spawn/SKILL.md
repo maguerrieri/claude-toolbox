@@ -7,7 +7,7 @@ description: Use when asked to spawn, fan out, kick off, background, or parallel
 
 Fan out one or more **independent** background sessions for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
 
-**How** a session is launched depends on where you're running — local `claude --bg` jobs, or cloud sessions via MCP. That's the **backend** (step 3); everything else on this page is the same either way.
+**How** a session is launched depends on where you're running — local `claude --bg` jobs, or cloud sessions via MCP — and, from a local session, on whether the caller explicitly asked for the cloud (then `claude --cloud`). That's the **backend** (step 3); everything else on this page is the same either way.
 
 ## When to use
 
@@ -60,11 +60,11 @@ Where you're running decides how a session is launched. Check one env var:
 ```
 
 - **cloud** — you're a cloud session (Claude Code on the web, or another remote environment). Read `backends/cloud.md` now.
-- **local** — you're on a machine the user has a shell on. Read `backends/local.md` now.
+- **local** — you're on a machine the user has a shell on. Read `backends/local.md` now — unless the caller **explicitly asked for a cloud session** ("spawn this in the cloud"). Then read `backends/local-to-cloud.md` instead: it launches through `claude --cloud`, since `create_session` isn't connected locally, and it can set far fewer fields than `create_session` can.
 
-Read exactly one, and follow it for steps 4–5. Don't guess the mechanics from memory: the two differ in more than the command name (the cloud backend has no launch directory at all, and needs the repo passed explicitly).
+Read exactly one, and follow it for steps 4–5. Don't guess the mechanics from memory: the backends differ in more than the command name (the cloud backend has no launch directory at all and needs the repo passed explicitly; local → cloud takes its repo and starting branch from the launch checkout).
 
-The backend is about **where the spawner is**, not what the task is. A local session spawns local siblings even when the work targets a remote repo.
+The backend is about **where the spawner is**, not what the task is. A local session spawns local siblings even when the work targets a remote repo; only an explicit request for the cloud moves it to `backends/local-to-cloud.md`, and the default stays local. A cloud session always uses `backends/cloud.md`.
 
 ### 4 — Spawn in parallel
 
@@ -73,7 +73,7 @@ Launch one session per unit, **all in a single message** so they start concurren
 Whichever backend you're on:
 - `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
 - Pass the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote.
-- **Record the handle** the launch returns (a session handle locally, a `session_...` id on cloud) — it survives a rename and is how you inspect a stuck session later.
+- **Record the handle** the launch returns (a session handle for a `claude --bg` job, a `session_...` id for a cloud session) — it survives a rename and is how you inspect a stuck session later.
 
 ### 5 — Report and hand back
 
@@ -87,7 +87,7 @@ Then point at the inspect path **for your backend** — the local CLI commands a
 
 ## Spawn does NOT
 
-- Launch by the wrong mechanism for where it's running — select the backend (step 3) first. `claude --bg` from a cloud session produces sessions that die with the container and that the user can't see; `create_session` is not available locally.
+- Launch by the wrong mechanism for where it's running — select the backend (step 3) first. `claude --bg` from a cloud session produces sessions that die with the container and that the user can't see; `create_session` is not available locally, so a local session asked for the cloud uses `backends/local-to-cloud.md`.
 - Launch from inside a disposable worktree **on the local backend** — resolve the durable launch dir first, or attach/resume breaks when the worktree is later removed. (No launch dir exists on cloud.)
 - Babysit or poll the sessions — each runs on its own.
 - Block on completion — spawn, report, hand back.
