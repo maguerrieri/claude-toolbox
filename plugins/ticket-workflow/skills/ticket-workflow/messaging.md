@@ -89,4 +89,9 @@ the PR/tracker before acting.
   **no** `Notify:` directive, and its spawner polls — PR/tracker state, plus
   `get_session` for whether a child is still running. This is the degrade-to-poll
   case above, not a reduced-messaging one: there is nothing to arm and nothing
-  to ping.
+  to ping. The same goes for a **local spawner that launched cloud siblings**
+  (`backends/local-to-cloud.md`): a cloud session can't message a local one,
+  and the local spawner's `ListAgents` doesn't list it, so that edge carries
+  no `Notify:` either. It can only poll PR and tracker state (there's no
+  `get_session` locally), plus the one-way `claude -p --cloud <id>` poke that
+  backend file describes.
