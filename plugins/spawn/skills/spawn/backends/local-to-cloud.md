@@ -35,13 +35,15 @@ the session, prints its ID, and exits. Verified 2026-09-29 on macOS, three
 times, from this repo (the last one is the worked example below).
 
 - **macOS (BSD `script`):** `script -q /dev/null claude …`, with the command as
-  argv.
-- **Linux (util-linux `script`):** `script -qc '<command string>' /dev/null`. The
-  command is a single string run by a shell, so pass the prompt and name in
-  environment variables and reference them inside single quotes (below), not
-  by splicing them into the string. **Unverified**: no Linux host was available
-  when this path was written. Check the first Linux run against the output
-  below.
+  argv. It exits with the child's status: the probe that hit `--cloud requires
+  a description` returned `exit=1`.
+- **Linux (util-linux `script`):** `script -qec '<command string>' /dev/null`.
+  The command is a single string run by a shell, so pass the prompt and name
+  in environment variables and reference them inside single quotes (below),
+  not by splicing them into the string. `-e` makes `script` return the child's
+  exit status; without it, util-linux reports 0 whatever `claude` returned.
+  **Unverified**: no Linux host was available when this path was written.
+  Check the first Linux run against the output below.
 - **Detect which one you have:** `script --version` prints `script from
   util-linux …` on Linux and fails with `illegal option` on BSD.
 
@@ -137,7 +139,7 @@ so the Linux branch pins that to `/bin/sh` for POSIX quoting:
 ```bash
 ( cd "<launch_dir>" && p=$(cat "<out>/prompt-<n>.txt") && name=$(cat "<out>/name-<n>.txt") &&
   if script --version 2>/dev/null | grep -q util-linux; then
-    P="$p" N="$name" SHELL=/bin/sh perl -e 'alarm 180; exec @ARGV' script -qc 'claude --name "$N" --cloud "$P"' /dev/null
+    P="$p" N="$name" SHELL=/bin/sh perl -e 'alarm 180; exec @ARGV' script -qec 'claude --name "$N" --cloud "$P"' /dev/null
   else
     perl -e 'alarm 180; exec @ARGV' script -q /dev/null claude --name "$name" --cloud "$p"
   fi </dev/null >"<out>/launch-<n>.out" 2>&1; echo "exit=$?" )
@@ -218,7 +220,7 @@ the launch, and let a short `alarm` kill it before anything is selected:
 ```bash
 ( cd "<launch_dir>" &&
   if script --version 2>/dev/null | grep -q util-linux; then
-    SHELL=/bin/sh perl -e 'alarm 25; exec @ARGV' script -qc 'claude --teleport' /dev/null
+    SHELL=/bin/sh perl -e 'alarm 25; exec @ARGV' script -qec 'claude --teleport' /dev/null
   else
     perl -e 'alarm 25; exec @ARGV' script -q /dev/null claude --teleport
   fi </dev/null >"<out>/picker.out" 2>&1 )
