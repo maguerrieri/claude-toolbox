@@ -93,35 +93,40 @@ below use two placeholders you fill in **literally** in every call: `<out>`,
 the directory step 1 creates and prints, and `<launch_dir>`, the checkout
 chosen above.
 
-**1. Set up (one call).** Create `<out>`, then write each unit's prompt into it
-with a single-quoted heredoc, so the shell never touches `$`, backticks, or
-quotes in it (the hazard `backends/local.md` describes):
+**1. Set up (one call, then files).** Create `<out>`:
 
 ```bash
 mktemp -d "${CLAUDE_JOB_DIR:-${TMPDIR:-/tmp}}/spawn-cloud.XXXXXX"
 ```
 
-```bash
-cat >"<out>/prompt-<n>.txt" <<'PROMPT'
-…prompt text, verbatim…
-PROMPT
-```
+Then write each unit's prompt to `<out>/prompt-<n>.txt` and its session name
+(`<context> <desc>`) to `<out>/name-<n>.txt` **with your file-writing tool,
+not the shell**. Both can carry caller or issue text, and neither should pass
+through shell parsing: a `$(…)`, a backtick, or a quote in a name spliced into
+a command runs or breaks it. A heredoc is only a fallback, when no such tool
+exists. Give it a single-quoted delimiter you've checked doesn't occur as a
+line of the text (e.g. `PROMPT_<random hex>`), because a line equal to a fixed
+delimiter like `PROMPT` ends the heredoc early and the shell runs the rest.
 
 Start the prompt with a word, not `-`: the prompt is the value of `--cloud`,
 and a leading dash would be parsed as a flag.
 
 Then preflight `<launch_dir>`. For the current repo it's the main checkout
 (`git worktree list --porcelain | head -1 | sed 's/^worktree //'`); for
-another repo, a trusted checkout of that one. Stop if either warning prints,
+another repo, a trusted checkout of that one. Stop if any warning prints,
 rather than launch. The last line is the starting branch, to check against
 what the unit needs:
 
 ```bash
-git -C "<launch_dir>" fetch -q origin
+git -C "<launch_dir>" fetch -q --prune origin || echo "fetch failed: can't confirm origin has HEAD"
 [ -z "$(git -C "<launch_dir>" status --porcelain --untracked-files=no)" ] || echo "tracked changes: a bundle upload would carry them"
-[ -n "$(git -C "<launch_dir>" branch -r --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
+[ -n "$(git -C "<launch_dir>" branch -r --list 'origin/*' --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
 git -C "<launch_dir>" branch --show-current   # the session's starting point; is it the one you want?
 ```
+
+The `--prune` and the `origin/*` scope matter. Without them, a stale ref to a
+deleted branch, or the same commit on another remote, would pass the check
+while the clone can't reach the commit.
 
 **2. Launch (one call per unit, all in a single message).** Each call is
 bounded by `perl`'s `alarm`, so a trust dialog or a stalled provision can't
@@ -130,7 +135,7 @@ Linux distributions. util-linux `script -c` runs its string through `$SHELL`,
 so the Linux branch pins that to `/bin/sh` for POSIX quoting:
 
 ```bash
-( cd "<launch_dir>" && p=$(cat "<out>/prompt-<n>.txt") && name="<context> <desc>" &&
+( cd "<launch_dir>" && p=$(cat "<out>/prompt-<n>.txt") && name=$(cat "<out>/name-<n>.txt") &&
   if script --version 2>/dev/null | grep -q util-linux; then
     P="$p" N="$name" SHELL=/bin/sh perl -e 'alarm 180; exec @ARGV' script -qc 'claude --name "$N" --cloud "$P"' /dev/null
   else
@@ -260,14 +265,17 @@ as `backends/cloud.md` does for its children.
 ## Worked example
 
 The third probe, run on 2026-09-29 with the steps above copied verbatim
-under zsh, placeholders filled:
+under zsh, placeholders filled. It ran an earlier revision, which wrote the
+prompt with a `'PROMPT'` heredoc and set the name inline. Review then moved
+both into files and tightened the preflight's fetch and `origin/*` scope;
+the launch itself is unchanged.
 
-1. `mktemp -d …` printed `<out>` = `…/spawn-cloud.Z2n42H`. A heredoc wrote
-   `<out>/prompt-1.txt`, starting `Probe C for claude-toolbox issue #195, …`,
-   which asks for a worktree on an assigned branch and a push of it.
+1. `mktemp -d …` printed `<out>` = `…/spawn-cloud.Z2n42H`. `<out>/prompt-1.txt`
+   started `Probe C for claude-toolbox issue #195, …` and asked for a worktree
+   on an assigned branch and a push of it.
 2. `<launch_dir>` was a clean worktree of this repo on an unpushed branch at
    `origin/main`'s tip. The preflight printed only that branch name.
-3. The launch, with `name="claude-toolbox 195 probe C"`, printed `exit=0`.
+3. The launch, with the name `claude-toolbox 195 probe C`, printed `exit=0`.
    `<out>/launch-1.out` held:
    ```
    Created cloud session: claude-toolbox 195 probe C
