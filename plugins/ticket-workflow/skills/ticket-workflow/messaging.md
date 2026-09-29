@@ -15,6 +15,22 @@ replacement for it: the tracker's `COORD` markers, PR state, and issue comments
 remain the source of truth (EPIC Step 6 still grounds its poll in PRs). That
 grounding rule is what makes any lost or delayed message harmless.
 
+## Stopped sessions
+
+"Next wakes" matters for a local session that has **stopped** (a machine
+restart, `claude stop`): it doesn't wake on its own. A ping to it waits until
+someone resumes it (`claude --bg --resume <sessionId>`), so an implementer whose
+`Notify:` coordinator stopped gets no reaction to `pushed:` or `blocked:` until
+then. Don't wait on one: carry on with your own issue and let the resumed
+coordinator pick up where you are from the PR and tracker, which it re-derives
+state from anyway.
+
+`ListAgents` lists **live** sessions only. A stopped spawner or child is missing
+from it, so a name it can't resolve does not mean the session is gone. To find
+one, use `claude agents --json --all` (the `spawn` skill's `backends/local.md`,
+*Find and resume before you spawn*), which includes stopped and completed
+sessions; resuming it, not a fresh spawn, is the way back to it.
+
 ## Addressing
 
 - The **`Notify:` directive** on a spawn edge carries the spawner's **session
