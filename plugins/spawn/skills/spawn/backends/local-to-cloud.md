@@ -253,8 +253,21 @@ relaunching. Don't retry blind, since each successful launch is a new session.
 First make sure the timed-out `claude` is gone. The `alarm` signals `script`,
 and `claude` exits on the hangup that follows when the pty closes: no
 `claude` process survived either timeout observed here. But a survivor could
-still create the session after you've decided, so check `pgrep -fl 'claude
-.*--cloud'` and kill one before looking.
+still create the session after you've decided. Look for **this unit's**
+process only. Other units of the same fan-out may still be launching, and a
+broad `pgrep 'claude .*--cloud'` would match them too. So match its exact
+`--name … --cloud` argv as a fixed string, and kill only the PIDs it prints:
+
+```bash
+out='<out>'; ( S="claude --name $(cat "$out/name-<n>.txt") --cloud"; export S
+  ps -ax -o pid=,command= | awk 'index($0, ENVIRON["S"]) { print $1 }' )
+```
+
+`index` does a plain substring match, so regex characters in a name are
+harmless. The pattern reaches awk through the environment, so neither the
+awk nor the ps command line contains it. Tested 2026-09-29 against two
+stand-in launches, one named `toolbox #42: fix [x] (y)`: only that unit's
+PID printed.
 The `claude --teleport` picker lists the repo's sessions by title, and it also
 needs a TTY. Capture it with the same `script` dispatch as the launch, and let
 a short `alarm` kill it before anything is selected:
