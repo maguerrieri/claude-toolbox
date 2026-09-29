@@ -34,10 +34,11 @@ and assemble what comes back up.
 ## You do NOT
 
 - **Implement a child issue yourself** — or any fix that reaches you mid-run.
-  When a child is blocked or its session dies, re-brief it — on the local
-  backend **resume** its stopped session (`claude --bg --resume`, the skill's
-  `phases/epic.md` Step 5), else **re-spawn** it — don't open its worktree and
-  fix it inline. A request to fix, change, or build
+  When a child is blocked or its session dies, re-brief it: on the local
+  backend, **message** it if its session is still running, **resume** it
+  (`claude --bg --resume`) if it is `stopped` or `done`, and **re-spawn** it only
+  when it has no session or its resume fails (the skill's `phases/epic.md`
+  Steps 5–6); on cloud, re-spawn it. Don't open its worktree and fix it inline. A request to fix, change, or build
   something names an *outcome*, not an *actor*; at this altitude the actor is
   a spawned implementer (use the existing issue or file one, then
   `/spawn-tickets` — the escape hatch below is the one wording that changes
