@@ -53,14 +53,24 @@ adds the completed ones (without it, `done` sessions are left out). Each row has
 `name`, `status`, `sessionId`, `cwd` (the recorded launch dir), `kind`, and
 `startedAt`. **List once per run** and match every unit against that one
 listing, rather than re-listing per unit: the list grows with every session ever
-run. Match by name, exactly or by prefix when only part of the name is
+run, across every project on the machine.
+
+**Match on the launch dir as well as the name.** The listing is machine-wide,
+and a name alone can collide: two clones, or two repos with the same basename
+under different owners, produce the same `<repo> <ID>: …` names. Every unit is
+launched from the durable launch dir (above), so keep only rows whose `cwd` is
+exactly that dir (`claude agents --cwd` matches everything *under* a path, which
+is too loose). If you recorded a unit's handle at spawn, match that `sessionId`
+instead: it survives the user renaming the session, which a name match misses.
+Otherwise match by name, exactly or by prefix when only part of the name is
 deterministic; `$ps` takes several prefixes for one unit when its name has more
 than one spelling (a caller's ID with and without a `#`):
 
 ```bash
 agents=$(mktemp) && claude agents --json --all > "$agents"   # once; stop here if it fails
-jq --argjson ps '["<prefix>", "<alternate prefix>"]' \
-  '[.[] | select((.name // "") as $n | any($ps[]; . as $p | $n | startswith($p)))]
+jq --arg dir "$launch_dir" --argjson ps '["<prefix>", "<alternate prefix>"]' \
+  '[.[] | select(.cwd == $dir)
+        | select((.name // "") as $n | any($ps[]; . as $p | $n | startswith($p)))]
    | sort_by(.startedAt)' "$agents"
 ```
 
