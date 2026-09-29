@@ -31,8 +31,8 @@ To start a new cloud session, run from a TTY.
 (earlier builds said `--cloud requires an interactive terminal`). `-p` doesn't help:
 with `--print`, `--cloud` also only posts to an existing session. Running it
 under a pseudo-TTY works: `script` gives `claude` a terminal, `claude` creates
-the session, prints its ID, and exits. Verified 2026-09-29 on macOS, twice, from
-this repo.
+the session, prints its ID, and exits. Verified 2026-09-29 on macOS, three
+times, from this repo (the last one is the worked example below).
 
 - **macOS (BSD `script`):** `script -q /dev/null claude …`, with the command as
   argv.
@@ -64,8 +64,9 @@ works from any checkout of the repo. What does matter:
   trust?* dialog, and with stdin at `/dev/null` it waits there until killed.
   Observed 2026-09-29 from a fresh clone under a temp dir. Trust is
   inherited: a worktree under a trusted checkout's `.claude/worktrees/` did
-  not prompt. The repo's **main checkout** (the first entry of `git worktree
-  list`) is the natural choice.
+  not prompt. For the current repo, its **main checkout** (the first entry of
+  `git worktree list`) is the natural choice. For work in another repo, use a
+  trusted checkout of *that* repo. There's no field to point elsewhere.
 - **Its current branch is the session's starting point.** Per the docs, the VM
   clones the remote "at your current branch", so push first. When that branch
   isn't on GitHub, the CLI says so and starts from the checkout's commit
@@ -73,40 +74,75 @@ works from any checkout of the repo. What does matter:
   the cloud session starts from its own commit, which origin/main has
   (<sha>).` It is only a starting point. The session doesn't work *on* that
   branch (next bullet).
-- **The session names its own branch.** Both probes worked on a fresh
+- **The session names its own branch.** Every probe started on a fresh
   `claude/<slug>-<random>` branch (`claude/noop-probe-7dnwk4`,
-  `claude/probe-195-b-81ykxe`), whether the launch branch was on GitHub or not.
-  There is no flag to choose it. Both could still **push a second, differently
-  named branch**, despite the proxy's documented "push works only against the
-  session's current working branch". That is what lets a ticket child push its
-  assigned `Worktree:` branch (the ticket-workflow skill's SPAWN Step 3).
+  `claude/probe-195-b-81ykxe`, `claude/probe-c-issue-195-qi1qjh`), whether the
+  launch branch was on GitHub or not. There is no flag to choose it. The
+  sessions could still **push a second, differently named branch**, despite
+  the proxy's documented "push works only against the session's current
+  working branch". The third probe did this the way ticket-workflow START Step
+  3 path (a) does: `git worktree add .claude/worktrees/<b> -b <b> origin/main`,
+  `EnterWorktree` into it (the tool exists in the cloud session), commit, then
+  `git push -u origin <b>`. That is what lets a ticket child push its assigned
+  `Worktree:` branch (the ticket-workflow skill's SPAWN Step 3).
 
 ## Launch
 
-Write the prompt to a file with a single-quoted heredoc, so the shell never
-touches `$`, backticks, or quotes in it (the hazard `backends/local.md`
-describes). Then launch one unit per Bash call, all in a single message.
-Each call is bounded by `perl`'s `alarm`, so a trust dialog or a stalled
-provision can't hang the spawner. `alarm` survives `exec`, and perl ships with
-macOS and most Linux distributions.
+Shell variables don't survive from one Bash call to the next, so the steps
+below use two placeholders you fill in **literally** in every call: `<out>`,
+the directory step 1 creates and prints, and `<launch_dir>`, the checkout
+chosen above.
+
+**1. Set up (one call).** Create `<out>`, then write each unit's prompt into it
+with a single-quoted heredoc, so the shell never touches `$`, backticks, or
+quotes in it (the hazard `backends/local.md` describes):
 
 ```bash
-out_dir=${CLAUDE_JOB_DIR:+$CLAUDE_JOB_DIR/tmp}; out_dir=${out_dir:-$(mktemp -d)}
-cat >"$out_dir/prompt-<n>.txt" <<'PROMPT'
-…prompt text, verbatim…
-PROMPT
-launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //'); launch_dir=${launch_dir:-$PWD}
-( cd "$launch_dir" && p=$(cat "$out_dir/prompt-<n>.txt") && name="<context> <desc>" &&
-  if script --version 2>/dev/null | grep -q util-linux; then
-    P="$p" N="$name" perl -e 'alarm 180; exec @ARGV' script -qc 'claude --name "$N" --cloud "$P"' /dev/null
-  else
-    perl -e 'alarm 180; exec @ARGV' script -q /dev/null claude --name "$name" --cloud "$p"
-  fi </dev/null >"$out_dir/launch-<n>.out" 2>&1 )
+mktemp -d "${CLAUDE_JOB_DIR:-${TMPDIR:-/tmp}}/spawn-cloud.XXXXXX"
 ```
 
-- **`--cloud` takes the description as its own value**, so every other flag goes
-  *before* it. `claude --cloud --name "<x>" "<prompt>"` fails with `Error: --cloud
-  requires a description.`
+```bash
+cat >"<out>/prompt-<n>.txt" <<'PROMPT'
+…prompt text, verbatim…
+PROMPT
+```
+
+Start the prompt with a word, not `-`: the prompt is the value of `--cloud`,
+and a leading dash would be parsed as a flag.
+
+Then preflight `<launch_dir>`. For the current repo it's the main checkout
+(`git worktree list --porcelain | head -1 | sed 's/^worktree //'`); for
+another repo, a trusted checkout of that one. Stop if either warning prints,
+rather than launch. The last line is the starting branch, to check against
+what the unit needs:
+
+```bash
+git -C "<launch_dir>" fetch -q origin
+[ -z "$(git -C "<launch_dir>" status --porcelain --untracked-files=no)" ] || echo "tracked changes: a bundle upload would carry them"
+[ -n "$(git -C "<launch_dir>" branch -r --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
+git -C "<launch_dir>" branch --show-current   # the session's starting point; is it the one you want?
+```
+
+**2. Launch (one call per unit, all in a single message).** Each call is
+bounded by `perl`'s `alarm`, so a trust dialog or a stalled provision can't
+hang the spawner. `alarm` survives `exec`, and perl ships with macOS and most
+Linux distributions. util-linux `script -c` runs its string through `$SHELL`,
+so the Linux branch pins that to `/bin/sh` for POSIX quoting:
+
+```bash
+( cd "<launch_dir>" && p=$(cat "<out>/prompt-<n>.txt") && name="<context> <desc>" &&
+  if script --version 2>/dev/null | grep -q util-linux; then
+    P="$p" N="$name" SHELL=/bin/sh perl -e 'alarm 180; exec @ARGV' script -qc 'claude --name "$N" --cloud "$P"' /dev/null
+  else
+    perl -e 'alarm 180; exec @ARGV' script -q /dev/null claude --name "$name" --cloud "$p"
+  fi </dev/null >"<out>/launch-<n>.out" 2>&1; echo "exit=$?" )
+```
+
+- **`--cloud` consumes the next argument as its value**, so the description
+  goes right after it. `claude --cloud --name "<x>" "<prompt>"` hands `--cloud`
+  no description and fails with `Error: --cloud requires a description.` Other
+  flags can go before it, as here, or after its value, as in the follow-up
+  command under *Report*.
 - **`--name` sets the session's title** (verified: `Created cloud session:
   <name>`, and the same title in the `claude --teleport` picker), so the
   `<context> <desc>` convention holds.
@@ -149,7 +185,7 @@ Resume with: claude --teleport session_01…
 ```
 
 ```bash
-f="$out_dir/launch-<n>.out"
+f="<out>/launch-<n>.out"
 url=$(grep -Eo 'https://claude\.ai/code/session_[A-Za-z0-9]+' "$f" | head -1); id=${url##*/}
 [ -n "$id" ] && echo "launched $id" ||
   perl -pe 's/\e\[\d*[CG]/ /g; s/\e\[[0-9;?<>=]*[ -\/]*[@-~]//g; s/\e\][^\a\e]*(\a|\e\\)//g; s/\e[()][A-Za-z0-9]//g; s/\e[78=>]//g; s/\r/\n/g' "$f" |
@@ -160,11 +196,22 @@ The URL survives the escape sequences, so the grep needs no cleanup. The perl
 filter makes the rest readable; the TUI draws spaces as cursor moves
 (`\e[<n>G`), which is why it turns those into spaces rather than deleting them.
 
-No URL means no session. The readable tail says why: the TTY refusal, a trust
-dialog (the `alarm` killed it; exit 142), `requires a description` (flag
-order), a policy or auth error from the platform docs' table, or the `is not
-on GitHub` notice with no commit to fall back on. Fix it and relaunch that
-unit. Don't retry blind, since each successful launch is a new session.
+With a nonzero exit and no URL, there's no session, and the readable tail
+says why: the TTY refusal, `requires a description` (the prompt isn't right
+after `--cloud`), a policy or auth error from the platform docs' table, or
+the `is not on GitHub` notice with no commit to fall back on. Fix it and
+relaunch that unit. Don't retry blind, since each successful launch is a new
+session.
+
+**`exit=142` is the ambiguous case**: the `alarm` fired. That is usually a
+trust dialog (the tail shows it) or a stalled provision. But the platform may
+have created the session before the CLI printed its URL, so look before
+relaunching. The `claude --teleport` picker lists the repo's sessions by
+title, and it also needs a TTY. Capture it the same way, then kill it: run
+`perl -e 'alarm 25; exec @ARGV' script -q /dev/null claude --teleport
+</dev/null >"<out>/picker.out" 2>&1` from `<launch_dir>`, and read the file
+through the perl filter above. This was verified to list both probe sessions
+by title without selecting one. You can also check claude.ai/code.
 
 Record the `session_…` id per unit. It is the durable handle.
 
@@ -200,7 +247,7 @@ Point at: the `View:` URL (the session's page on claude.ai/code); `claude
 repo, once its branch is pushed); and, for a one-way follow-up or redirect,
 
 ```bash
-claude -p --cloud <id> --output-format json <"$out_dir/followup.txt"
+claude -p --cloud <id> --output-format json <"<out>/followup.txt"
 ```
 
 That posts the message and exits with `{ok, session_id, url}`. It needs no
@@ -209,6 +256,30 @@ Verified 2026-09-29: the probe session received and acted on a follow-up
 sent this way. `get_session` / `list_sessions` aren't available locally, so
 a caller polling for completion reads the PR, tracker, or branch on origin,
 as `backends/cloud.md` does for its children.
+
+## Worked example
+
+The third probe, run on 2026-09-29 with the steps above copied verbatim
+under zsh, placeholders filled:
+
+1. `mktemp -d …` printed `<out>` = `…/spawn-cloud.Z2n42H`. A heredoc wrote
+   `<out>/prompt-1.txt`, starting `Probe C for claude-toolbox issue #195, …`,
+   which asks for a worktree on an assigned branch and a push of it.
+2. `<launch_dir>` was a clean worktree of this repo on an unpushed branch at
+   `origin/main`'s tip. The preflight printed only that branch name.
+3. The launch, with `name="claude-toolbox 195 probe C"`, printed `exit=0`.
+   `<out>/launch-1.out` held:
+   ```
+   Created cloud session: claude-toolbox 195 probe C
+   View: https://claude.ai/code/session_018onHVVrLtgfqAb1m3gnWfb?from=cli&m=0
+   Resume with: claude --teleport session_018onHVVrLtgfqAb1m3gnWfb
+   ```
+4. The parse printed `launched session_018onHVVrLtgfqAb1m3gnWfb`. The report
+   row was `claude-toolbox 195 probe C` | `session_018onHVVrLtgfqAb1m3gnWfb` |
+   probe. The session's pushed commit (`probe-195-c: enterworktree=used;
+   cwd=/home/user/claude-toolbox/.claude/worktrees/probe-195-c;
+   starting-branch=claude/probe-c-issue-195-qi1qjh`) came back as the only
+   record, read with `gh api …/commits?sha=probe-195-c`.
 
 ## Trust boundary
 
