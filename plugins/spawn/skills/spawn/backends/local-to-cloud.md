@@ -212,11 +212,21 @@ session.
 trust dialog (the tail shows it) or a stalled provision. But the platform may
 have created the session before the CLI printed its URL, so look before
 relaunching. The `claude --teleport` picker lists the repo's sessions by
-title, and it also needs a TTY. Capture it the same way, then kill it: run
-`perl -e 'alarm 25; exec @ARGV' script -q /dev/null claude --teleport
-</dev/null >"<out>/picker.out" 2>&1` from `<launch_dir>`, and read the file
-through the perl filter above. This was verified to list both probe sessions
-by title without selecting one. You can also check claude.ai/code.
+title, and it also needs a TTY. Capture it with the same `script` dispatch as
+the launch, and let a short `alarm` kill it before anything is selected:
+
+```bash
+( cd "<launch_dir>" &&
+  if script --version 2>/dev/null | grep -q util-linux; then
+    SHELL=/bin/sh perl -e 'alarm 25; exec @ARGV' script -qc 'claude --teleport' /dev/null
+  else
+    perl -e 'alarm 25; exec @ARGV' script -q /dev/null claude --teleport
+  fi </dev/null >"<out>/picker.out" 2>&1 )
+```
+
+Read `<out>/picker.out` through the perl filter above. On macOS this listed
+both probe sessions by title without selecting one; the util-linux branch is
+unverified, like the launch's. You can also check claude.ai/code.
 
 Record the `session_…` id per unit. It is the durable handle.
 
