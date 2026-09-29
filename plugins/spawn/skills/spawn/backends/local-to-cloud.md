@@ -116,19 +116,29 @@ and a leading dash would be parsed as a flag.
 Then preflight `<launch_dir>`. For the current repo it's the main checkout
 (`git worktree list --porcelain | head -1 | sed 's/^worktree //'`); for
 another repo, a trusted checkout of that one. Stop if any warning prints,
-rather than launch. The last line is the starting branch, to check against
+rather than launch. The last line names the starting branch, to check against
 what the unit needs:
 
 ```bash
 git -C "<launch_dir>" fetch -q --prune origin || echo "fetch failed: can't confirm origin has HEAD"
 [ -z "$(git -C "<launch_dir>" status --porcelain --untracked-files=no)" ] || echo "tracked changes: a bundle upload would carry them"
-[ -n "$(git -C "<launch_dir>" branch -r --list 'origin/*' --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
-git -C "<launch_dir>" branch --show-current   # the session's starting point; is it the one you want?
+b=$(git -C "<launch_dir>" branch --show-current)
+if [ -n "$b" ] && git -C "<launch_dir>" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null; then
+  [ "$(git -C "<launch_dir>" rev-parse HEAD)" = "$(git -C "<launch_dir>" rev-parse "refs/remotes/origin/$b")" ] || echo "HEAD differs from origin/$b: the session would start from origin's tip; push or pull first"
+else
+  [ -n "$(git -C "<launch_dir>" branch -r --list 'origin/*' --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
+fi
+echo "starting branch: ${b:-detached HEAD}"   # the session's starting point; is it the one you want?
 ```
 
-The `--prune` and the `origin/*` scope matter. Without them, a stale ref to a
-deleted branch, or the same commit on another remote, would pass the check
-while the clone can't reach the commit.
+The two cases match the two ways the CLI picks a start. When the branch is on
+GitHub, the clone takes **origin's tip**, so HEAD must equal it; a local branch
+ahead of or behind origin would hand the child a different revision than the
+one checked. When it isn't, the CLI falls back to HEAD's commit, so origin
+only has to contain it. The `--prune` and the `origin/*` scope keep a stale
+ref to a deleted branch, or the commit on another remote, from passing a
+check the clone can't honor. Both cases were checked on 2026-09-29: an in-sync
+branch passes, and a branch whose origin ref points elsewhere warns.
 
 **2. Launch (one call per unit, all in a single message).** Each call is
 bounded by `perl`'s `alarm`, so a trust dialog or a stalled provision can't
