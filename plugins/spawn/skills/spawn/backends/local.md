@@ -92,6 +92,10 @@ work), act only on `stopped` / `done` rows and ignore running ones. Then
 - **Only `stopped` / `done` matches**: resume one (below), the newest
   (`startedAt`, last after the sort) when there are several, and name the
   others in the report.
+- **Several units with one name** ("spawn 3 agents to each do X", retried):
+  a row answers at most one unit. Pair units with matching rows one-to-one,
+  newest first, applying the rules above per pair, and launch fresh only for
+  the units left over.
 - **A status you can't place** (anything else, e.g. a failure state): you can't
   tell whether it is running, so do nothing for that unit and report the row.
 - **No match**: launch fresh (next section).
