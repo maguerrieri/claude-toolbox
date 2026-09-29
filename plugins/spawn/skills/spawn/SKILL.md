@@ -71,6 +71,7 @@ The backend is about **where the spawner is**, not what the task is. A local ses
 Launch one session per unit, **all in a single message** so they start concurrently. The launch mechanic is the one in the backend file you read in step 3.
 
 Whichever backend you're on:
+- **Local: resume before you spawn.** When a unit may already have a session (a re-spawn after a restart or a `claude stop`, a retried fan-out), look it up with `claude agents --json --all` and resume a stopped one with `claude --bg --resume` instead of launching fresh — `backends/local.md`'s *Find and resume before you spawn*. `ListAgents` lists live sessions only, and bare `claude agents` fails without a TTY, so neither can tell you a session is gone.
 - `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
 - Pass the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote.
 - **Record the handle** the launch returns (a session handle locally, a `session_...` id on cloud) — it survives a rename and is how you inspect a stuck session later.
