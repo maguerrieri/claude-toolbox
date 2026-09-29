@@ -91,9 +91,11 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
   id=5f0c2a9e-3b1d-4c7a-9e21-6d8f0b4a7c13
   t=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -name "$id.jsonl")
   if [ -z "$t" ] || [ "$(printf '%s\n' "$t" | wc -l)" -ne 1 ] \
-     || ! prompt=$(jq -rn 'first(inputs | select(.type == "user")) | .message.content
-                           | if type == "array" then map(.text? // "") | join("\n") else . end' "$t"); then
-    echo "unknown: report the row, launch nothing"   # no transcript, several, or unparseable
+     || ! prompt=$(jq -ern 'first(inputs | select(.type == "user")) | .message.content
+                            | if type == "array" then map(.text? // "") | join("\n")
+                              elif type == "string" then . else error("unsupported content") end' "$t") \
+     || [ -z "$prompt" ]; then
+    echo "unknown: report the row, launch nothing"   # no transcript, several, unparseable, or no launch prompt
   elif printf '%s\n' "$prompt" | grep -qE '(^|[[:space:]])Worktree: epic-238-263([[:space:]]|$)'; then
     # the launch prompt names the assigned branch: this epic's child
     ( cd /home/me/toolbox && claude --bg --resume "$id" "Resumed after a machine restart. While you were down: #262 merged and main moved. Re-read your PR and branch state, then continue the START cycle for #263 where you left off." )
