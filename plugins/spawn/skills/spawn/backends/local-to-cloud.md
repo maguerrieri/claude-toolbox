@@ -118,7 +118,12 @@ mktemp -d "${CLAUDE_JOB_DIR:-${TMPDIR:-/tmp}}/spawn-cloud.XXXXXX"
 
 Then write each unit's prompt to `<out>/prompt-<n>.txt` and its session name
 (`<context> <desc>`) to `<out>/name-<n>.txt` **with your file-writing tool,
-not the shell**. Both can carry caller or issue text, and neither should pass
+not the shell**. **Make every name unique.** Timeout recovery (under *Parse
+the result*) finds a unit by its name, both in the local process list and in
+the session picker. So when two units of a fan-out share a `<desc>` ("N
+agents to each do X"), suffix an ordinal (`toolbox fix CI 1`,
+`toolbox fix CI 2`). A name must also differ from any other `--cloud` launch
+running on this machine. Both can carry caller or issue text, and neither should pass
 through shell parsing: a `$(…)`, a backtick, or a quote in a name spliced into
 a command runs or breaks it. A heredoc is only a fallback, when no such tool
 exists. Give it a single-quoted delimiter you've checked doesn't occur as a
@@ -255,8 +260,9 @@ and `claude` exits on the hangup that follows when the pty closes: no
 `claude` process survived either timeout observed here. But a survivor could
 still create the session after you've decided. Look for **this unit's**
 process only. Other units of the same fan-out may still be launching, and a
-broad `pgrep 'claude .*--cloud'` would match them too. So match its exact
-`--name … --cloud` argv as a fixed string, and kill only the PIDs it prints:
+broad `pgrep 'claude .*--cloud'` would match them too. The unit's name is
+unique (step 1), so its exact `--name <name> --cloud` argv identifies it.
+Match that as a fixed string, and kill only the PIDs it prints:
 
 ```bash
 out='<out>'; ( S="claude --name $(cat "$out/name-<n>.txt") --cloud"; export S
