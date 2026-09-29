@@ -321,6 +321,11 @@ Record the `session_…` id per unit. It is the durable handle.
   cloud siblings or re-wake itself. That rules it out as an epic
   orchestrator, and out of any task that `/spawn`s in the cloud. Leaf work
   (one ticket, one investigation) is what this path carries.
+- **Pass the task, not the spawn request.** The "verbatim" in step 4 means
+  the task and its bounds, not the caller's routing words. For "spawn X in the
+  cloud, read-only", the prompt is "X, read-only". A child handed "spawn X in
+  the cloud" would route it back through `spawn`, find no `create_session`,
+  and refuse instead of doing X.
 - **No `Notify:` directive.** A cloud session can't message a local one. The
   probes' sessions weren't in this session's `ListAgents` either. The child's
   PR, tracker, and branch are the record you read back.
