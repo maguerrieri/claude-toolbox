@@ -71,7 +71,7 @@ The backend is about **where the spawner is**, not what the task is. A local ses
 Launch one session per unit, **all in a single message** so they start concurrently. The launch mechanic is the one in the backend file you read in step 3.
 
 Whichever backend you're on:
-- `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
+- `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>` (local → cloud can't set a name; the platform picks the title, and its backend file says what to report).
 - Pass the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote.
 - **Record the handle** the launch returns (a session handle for a `claude --bg` job, a `session_...` id for a cloud session) — it survives a rename and is how you inspect a stuck session later.
 
@@ -83,7 +83,7 @@ Print a table, then stop — **don't block on the sessions**:
 |---|---|
 | `misc investigate flaky CI` | <one-line summary> |
 
-Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the cloud one adds an ID column).
+Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the two cloud ones add an ID column).
 
 ## Spawn does NOT
 
