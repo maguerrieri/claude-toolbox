@@ -7,7 +7,7 @@ description: Use when asked to spawn, fan out, kick off, background, or parallel
 
 Fan out one or more **independent** background sessions for arbitrary work, name them so they're recognizable, report a table, and hand back **without blocking**. The mechanic is ticket-agnostic — it knows nothing about issues, trackers, or profiles. (`/spawn-tickets` is a specialization that builds `/start-ticket` prompts and then uses this mechanic.)
 
-**How** a session is launched depends on where you're running — local `claude --bg` jobs, or cloud sessions via MCP. That's the **backend** (step 3); everything else on this page is the same either way.
+**How** a session is launched depends on where you're running — local `claude --bg` jobs, or cloud sessions via MCP — and, from a local session, on whether the caller asked for cloud sessions (`claude --cloud`). That's the **backend** (step 3); everything else on this page is the same either way.
 
 ## When to use
 
@@ -60,11 +60,12 @@ Where you're running decides how a session is launched. Check one env var:
 ```
 
 - **cloud** — you're a cloud session (Claude Code on the web, or another remote environment). Read `backends/cloud.md` now.
+- **local, and the caller explicitly asked for cloud sessions** ("spawn it in the cloud", "as a cloud session", "on the web") — you're on the user's machine, but the siblings should run on claude.ai/code. Read `backends/local-to-cloud.md` now.
 - **local** — you're on a machine the user has a shell on. Read `backends/local.md` now.
 
-Read exactly one, and follow it for steps 4–5. Don't guess the mechanics from memory: the two differ in more than the command name (the cloud backend has no launch directory at all, and needs the repo passed explicitly).
+Read exactly one, and follow it for steps 4–5. Don't guess the mechanics from memory: the three differ in more than the command name (the cloud backend has no launch directory at all and needs the repo passed explicitly; the local → cloud one runs `claude --cloud` under a pseudo-TTY and takes the repo from its launch checkout).
 
-The backend is about **where the spawner is**, not what the task is. A local session spawns local siblings even when the work targets a remote repo.
+The backend follows **where the spawner is**, not what the task is: a local session spawns local siblings even when the work targets a remote repo. The one exception is an explicit request for cloud sessions, and only a request from the caller counts. Don't infer it from the task, and don't switch to it because a local launch failed. From a cloud session, "in the cloud" is already the `cloud` row.
 
 ### 4 — Spawn in parallel
 
@@ -83,11 +84,11 @@ Print a table, then stop — **don't block on the sessions**:
 |---|---|
 | `misc investigate flaky CI` | <one-line summary> |
 
-Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the cloud one adds an ID column).
+Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and both cloud ones add an ID column).
 
 ## Spawn does NOT
 
-- Launch by the wrong mechanism for where it's running — select the backend (step 3) first. `claude --bg` from a cloud session produces sessions that die with the container and that the user can't see; `create_session` is not available locally.
+- Launch by the wrong mechanism for where it's running — select the backend (step 3) first. `claude --bg` from a cloud session produces sessions that die with the container and that the user can't see; `create_session` is not available locally, so a local caller's cloud request goes through `backends/local-to-cloud.md`.
 - Launch from inside a disposable worktree **on the local backend** — resolve the durable launch dir first, or attach/resume breaks when the worktree is later removed. (No launch dir exists on cloud.)
 - Babysit or poll the sessions — each runs on its own.
 - Block on completion — spawn, report, hand back.
