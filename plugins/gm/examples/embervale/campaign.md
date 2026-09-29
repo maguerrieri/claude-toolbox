@@ -2,7 +2,6 @@
 adapter: generic
 persona: house
 saves: examples/embervale
-names: Embervale, Ashwood, Wren, Tam, Mas
 ---
 
 # Embervale
