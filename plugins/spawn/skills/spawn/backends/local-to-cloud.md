@@ -90,10 +90,13 @@ works from any checkout of the repo. What does matter:
 
 ## Launch
 
-Shell variables don't survive from one Bash call to the next, so the steps
-below use two placeholders you fill in **literally** in every call: `<out>`,
-the directory step 1 creates and prints, and `<launch_dir>`, the checkout
-chosen above.
+Shell variables don't survive from one Bash call to the next, so every call
+below starts by setting the two paths it needs: `<out>`, the directory step 1
+creates and prints, and `<launch_dir>`, the checkout chosen above. Write each
+as a **single-quoted literal**, `out='/path/…'` (a `'` inside a path becomes
+`'\''`), and let the rest of the call use `"$out"` and `"$launch_dir"`. A path
+spliced raw into double-quoted shell text would expand any `$(…)`, backtick,
+or `"` in it, the same hazard the prompt and name files avoid.
 
 **1. Set up (one call, then files).** Create `<out>`:
 
@@ -120,13 +123,14 @@ rather than launch. The last line names the starting branch, to check against
 what the unit needs:
 
 ```bash
-git -C "<launch_dir>" fetch -q --prune origin || echo "fetch failed: can't confirm origin has HEAD"
-[ -z "$(git -C "<launch_dir>" status --porcelain --untracked-files=no)" ] || echo "tracked changes: a bundle upload would carry them"
-b=$(git -C "<launch_dir>" branch --show-current)
-if [ -n "$b" ] && git -C "<launch_dir>" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null; then
-  [ "$(git -C "<launch_dir>" rev-parse HEAD)" = "$(git -C "<launch_dir>" rev-parse "refs/remotes/origin/$b")" ] || echo "HEAD differs from origin/$b: the session would start from origin's tip; push or pull first"
+launch_dir='<launch_dir>'
+git -C "$launch_dir" fetch -q --prune origin || echo "fetch failed: can't confirm origin has HEAD"
+[ -z "$(git -C "$launch_dir" status --porcelain --untracked-files=no)" ] || echo "tracked changes: a bundle upload would carry them"
+b=$(git -C "$launch_dir" branch --show-current)
+if [ -n "$b" ] && git -C "$launch_dir" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null; then
+  [ "$(git -C "$launch_dir" rev-parse HEAD)" = "$(git -C "$launch_dir" rev-parse "refs/remotes/origin/$b")" ] || echo "HEAD differs from origin/$b: the session would start from origin's tip; push or pull first"
 else
-  [ -n "$(git -C "<launch_dir>" branch -r --list 'origin/*' --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
+  [ -n "$(git -C "$launch_dir" branch -r --list 'origin/*' --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
 fi
 echo "starting branch: ${b:-detached HEAD}"   # the session's starting point; is it the one you want?
 ```
@@ -147,12 +151,13 @@ Linux distributions. util-linux `script -c` runs its string through `$SHELL`,
 so the Linux branch pins that to `/bin/sh` for POSIX quoting:
 
 ```bash
-( cd "<launch_dir>" && p=$(cat "<out>/prompt-<n>.txt") && name=$(cat "<out>/name-<n>.txt") &&
+out='<out>'; launch_dir='<launch_dir>'
+( cd "$launch_dir" && p=$(cat "$out/prompt-<n>.txt") && name=$(cat "$out/name-<n>.txt") &&
   if script --version 2>/dev/null | grep -q util-linux; then
     P="$p" N="$name" SHELL=/bin/sh perl -e 'alarm 180; exec @ARGV' script -qec 'claude --name "$N" --cloud "$P"' /dev/null
   else
     perl -e 'alarm 180; exec @ARGV' script -q /dev/null claude --name "$name" --cloud "$p"
-  fi </dev/null >"<out>/launch-<n>.out" 2>&1; echo "exit=$?" )
+  fi </dev/null >"$out/launch-<n>.out" 2>&1; echo "exit=$?" )
 ```
 
 - **`--cloud` consumes the next argument as its value**, so the description
@@ -202,11 +207,11 @@ Resume with: claude --teleport session_01…
 ```
 
 ```bash
-f="<out>/launch-<n>.out"
+out='<out>'; f="$out/launch-<n>.out"
 url=$(grep -Eo 'View: https://claude\.ai/code/session_[A-Za-z0-9]+' "$f" | tail -1); id=${url##*/}
 [ -n "$id" ] && echo "launched $id" ||
   perl -pe 's/\e\[\d*[CG]/ /g; s/\e\[[0-9;?<>=]*[ -\/]*[@-~]//g; s/\e\][^\a\e]*(\a|\e\\)//g; s/\e[()][A-Za-z0-9]//g; s/\e[78=>]//g; s/\r/\n/g' "$f" |
-  grep -v '^\s*$' | tail -20
+  grep -v '^[[:space:]]*$' | tail -20
 ```
 
 The `View:` line survives the escape sequences intact (checked on all three
@@ -238,12 +243,13 @@ needs a TTY. Capture it with the same `script` dispatch as the launch, and let
 a short `alarm` kill it before anything is selected:
 
 ```bash
-( cd "<launch_dir>" &&
+out='<out>'; launch_dir='<launch_dir>'
+( cd "$launch_dir" &&
   if script --version 2>/dev/null | grep -q util-linux; then
     SHELL=/bin/sh perl -e 'alarm 25; exec @ARGV' script -qec 'claude --teleport' /dev/null
   else
     perl -e 'alarm 25; exec @ARGV' script -q /dev/null claude --teleport
-  fi </dev/null >"<out>/picker.out" 2>&1 )
+  fi </dev/null >"$out/picker.out" 2>&1 )
 ```
 
 Read `<out>/picker.out` through the perl filter above. On macOS this listed
@@ -284,7 +290,7 @@ Point at: the `View:` URL (the session's page on claude.ai/code); `claude
 repo, once its branch is pushed); and, for a one-way follow-up or redirect,
 
 ```bash
-claude -p --cloud <id> --output-format json <"<out>/followup.txt"
+out='<out>'; claude -p --cloud <id> --output-format json <"$out/followup.txt"
 ```
 
 That posts the message and exits with `{ok, session_id, url}`. It needs no
