@@ -203,19 +203,25 @@ The URL survives the escape sequences, so the grep needs no cleanup. The perl
 filter makes the rest readable; the TUI draws spaces as cursor moves
 (`\e[<n>G`), which is why it turns those into spaces rather than deleting them.
 
-With a nonzero exit and no URL, there's no session, and the readable tail
-says why: the TTY refusal, `requires a description` (the prompt isn't right
-after `--cloud`), a policy or auth error from the platform docs' table, or
-the `is not on GitHub` notice with no commit to fall back on. Fix it and
-relaunch that unit. Don't retry blind, since each successful launch is a new
-session.
+With no URL, classify by the **readable tail, not the exit status**. The
+status isn't a reliable signal: a fired `alarm` shows up as `exit=142` under
+BSD `script`, but util-linux can report something else (134 was reported for
+this wrapper). Only these tails mean the CLI stopped before creating
+anything. Fix the cause and relaunch that unit:
 
-**`exit=142` is the ambiguous case**: the `alarm` fired. That is usually a
-trust dialog (the tail shows it) or a stalled provision. But the platform may
-have created the session before the CLI printed its URL, so look before
-relaunching. The `claude --teleport` picker lists the repo's sessions by
-title, and it also needs a TTY. Capture it with the same `script` dispatch as
-the launch, and let a short `alarm` kill it before anything is selected:
+- the TTY refusal;
+- `requires a description` (the prompt isn't right after `--cloud`);
+- a policy or auth error from the platform docs' table;
+- the `is not on GitHub` notice with no commit to fall back on;
+- the trust dialog (launch from a trusted checkout instead).
+
+**Any other no-URL result is ambiguous.** That covers a stalled provision
+killed by the `alarm`, a signal, or a tail you don't recognize. The platform
+may have created the session before the CLI printed its URL, so look before
+relaunching. Don't retry blind, since each successful launch is a new session.
+The `claude --teleport` picker lists the repo's sessions by title, and it also
+needs a TTY. Capture it with the same `script` dispatch as the launch, and let
+a short `alarm` kill it before anything is selected:
 
 ```bash
 ( cd "<launch_dir>" &&
