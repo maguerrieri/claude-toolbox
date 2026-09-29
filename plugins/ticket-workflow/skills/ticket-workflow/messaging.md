@@ -89,4 +89,6 @@ the PR/tracker before acting.
   **no** `Notify:` directive, and its spawner polls — PR/tracker state, plus
   `get_session` for whether a child is still running. This is the degrade-to-poll
   case above, not a reduced-messaging one: there is nothing to arm and nothing
-  to ping.
+  to ping. The same holds when a **local** spawner launches a cloud child through
+  `claude --cloud` (`backends/local-to-cloud.md`): no `Notify:`, and the spawner
+  polls the PR/tracker, since it has no `get_session` either.
