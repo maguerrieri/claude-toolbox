@@ -66,6 +66,9 @@ Otherwise match by name, exactly or by prefix when only part of the name is
 deterministic; `$ps` takes several prefixes for one unit when its name has more
 than one spelling (a caller's ID with and without a `#`):
 
+`$launch_dir` is the durable launch dir from the section above: **resolve it
+before the lookup**, since an empty value matches no row and reads as "none".
+
 ```bash
 agents=$(mktemp) && claude agents --json --all > "$agents"   # once; stop here if it fails
 jq --arg dir "$launch_dir" --argjson ps '["<prefix>", "<alternate prefix>"]' \
@@ -79,12 +82,19 @@ can't also match `#263`. If the listing itself fails (non-zero exit, output that
 isn't JSON), **you don't know**, so don't spawn fresh on it: report the error
 and let the caller decide.
 
-**Drop your own row** (`sessionId` equal to `$CLAUDE_SESSION_ID`). When that
-variable is unset and your own name could match the prefix (a coordinator
-looking for an earlier coordinator of the same work), presume one running
-match is you and drop it; if more than one running row matches, one of them is
-another live session you can't tell apart from yourself, so stop and report
-them rather than carry on. Then **decide by `status`**:
+**Drop your own row**: the one whose `sessionId` is `$CLAUDE_SESSION_ID`, or,
+when that variable is unset, the one whose `pid` is an ancestor of your shell
+(a Bash tool call runs under its session's process):
+
+```bash
+ancestors=" "; p=$$; while [ "${p:-1}" -gt 1 ]; do ancestors="$ancestors$p "; p=$(ps -o ppid= -p "$p" | tr -d ' '); done
+# drop a row when case "$ancestors" in *" <row pid> "*) matches
+```
+
+If neither identifies your row and your own name could match the prefix (a
+coordinator looking for an earlier coordinator of the same work), you can't
+tell yourself from a live duplicate: stop and report the running matches rather
+than carry on. Then **decide by `status`**:
 
 - **A match that is running** (`busy`, `blocked`, or another status saying it is
   working or waiting on input): the unit already has a live session. Resume
