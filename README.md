@@ -16,8 +16,9 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   and a portable repository-instruction policy built around canonical root
   `AGENTS.md` plus a pure `CLAUDE.md` import shim.
 - **spawn** — generic background-session fan-out: the `spawn` skill plus the
-  `/spawn` command, for firing off one or more independent `claude --bg`
-  sessions and handing back without blocking.
+  `/spawn` command, for firing off one or more independent background sessions
+  (local `claude --bg` jobs, or cloud sessions on claude.ai/code, from a cloud
+  session or, when asked, from a local one) and handing back without blocking.
 - **generate** — diverse bulk ideation: the `generate` skill plus the
   `/generate` command. Runs a judgment-OFF morphological-analysis loop (frame →
   diversity-prompted parallel passes → axis-tag → cluster) that fights LLM
