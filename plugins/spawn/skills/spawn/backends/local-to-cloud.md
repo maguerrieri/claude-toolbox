@@ -118,12 +118,16 @@ mktemp -d "${CLAUDE_JOB_DIR:-${TMPDIR:-/tmp}}/spawn-cloud.XXXXXX"
 
 Then write each unit's prompt to `<out>/prompt-<n>.txt` and its session name
 (`<context> <desc>`) to `<out>/name-<n>.txt` **with your file-writing tool,
-not the shell**. **Make every name unique.** Timeout recovery (under *Parse
-the result*) finds a unit by its name, both in the local process list and in
-the session picker. So when two units of a fan-out share a `<desc>` ("N
-agents to each do X"), suffix an ordinal (`toolbox fix CI 1`,
-`toolbox fix CI 2`). A name must also differ from any other `--cloud` launch
-running on this machine. Both can carry caller or issue text, and neither should pass
+not the shell**. **Make every name unique, including against past
+sessions.** Timeout recovery (under *Parse the result*) finds a unit by its
+name, both in the local process list and in the `claude --teleport` picker,
+and the picker also lists the repo's *earlier* sessions. So end each name
+with this fan-out's nonce: the six random characters `mktemp` put after
+`spawn-cloud.` in `<out>`. When two units share a `<desc>` ("N agents to each
+do X"), add an ordinal before it. For example, `toolbox fix CI 1 [Z2n42H]`
+and `toolbox fix CI 2 [Z2n42H]`. The readable prefix is unchanged, so a
+search on it (like the ticket layer's `<repo> <ID>:`) still finds the
+session. Both can carry caller or issue text, and neither should pass
 through shell parsing: a `$(…)`, a backtick, or a quote in a name spliced into
 a command runs or breaks it. A heredoc is only a fallback, when no such tool
 exists. Give it a single-quoted delimiter you've checked doesn't occur as a
@@ -261,7 +265,8 @@ and `claude` exits on the hangup that follows when the pty closes: no
 still create the session after you've decided. Look for **this unit's**
 process only. Other units of the same fan-out may still be launching, and a
 broad `pgrep 'claude .*--cloud'` would match them too. The unit's name is
-unique (step 1), so its exact `--name <name> --cloud` argv identifies it.
+unique and carries the fan-out's nonce (step 1), so its exact `--name <name>
+--cloud` argv identifies it.
 Match that as a fixed string, and kill only the PIDs it prints:
 
 ```bash
@@ -288,9 +293,13 @@ out='<out>'; launch_dir='<launch_dir>'
   fi </dev/null >"$out/picker.out" 2>&1 )
 ```
 
-Read `<out>/picker.out` through the perl filter above. On macOS this listed
-both probe sessions by title without selecting one; the util-linux branch is
-unverified, like the launch's. You can also check claude.ai/code.
+Read `<out>/picker.out` through the perl filter above, and look for the
+unit's **full** name, nonce included. A match means the launch did create the
+session, so record it and don't relaunch. No match means it didn't. The same
+title without this nonce is an earlier session, not this launch. On macOS the
+picker listed both probe sessions by title without selecting one; the
+util-linux branch is unverified, like the launch's. You can also check
+claude.ai/code.
 
 Record the `session_…` id per unit. It is the durable handle.
 
