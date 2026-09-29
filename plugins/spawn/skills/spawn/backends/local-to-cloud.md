@@ -32,33 +32,44 @@ files included.) So:
 
 - Launch from the **main checkout** of the repo the work targets, the first entry
   of `git worktree list` (the same line as `backends/local.md`). Never launch from
-  a feature-branch worktree.
-- That checkout must be **on the repo's default branch**. If it isn't, stop and
-  tell the user; don't switch their checkout for them. The session would start
-  from that other branch, and a branch's project settings can redirect the
-  environment (*Trust*).
+  a feature-branch worktree. A caller that knows the target repo (ticket work:
+  the repo `REPO_SELECT` chose) sets `want_repo` in the block below, and the launch
+  stops if the checkout's `origin` is another repo.
+- That checkout must be **on the repo's default branch**, as the remote reports
+  it. If it isn't, stop and tell the user; don't switch their checkout for them.
+  The session would start from that other branch, and a branch's project settings
+  can redirect the environment (*Trust*).
 
 ## Launch
 
 One Bash call per unit, **all in a single message**: each `claude --cloud` creates
-its own independent session. Feed the prompt through a single-quoted heredoc into
-an exported variable, as `backends/local.md` does, so `$`, backticks, and quotes
-reach the session verbatim:
+its own independent session. **Run this block and the Parse block below in the
+same Bash call**, because shell variables don't survive from one call to the
+next. Feed the prompt through a single-quoted heredoc into an exported variable,
+as `backends/local.md` does, so `$`, backticks, and quotes reach the session
+verbatim:
 
 ```bash
 read -r -d '' SPAWN_CLOUD_PROMPT <<'PROMPT'
 …prompt text, verbatim…
 PROMPT
 export SPAWN_CLOUD_PROMPT
+want_repo=''   # <owner>/<repo> the work targets, when the caller knows it; empty skips the check
 launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //'); launch_dir=${launch_dir:-$PWD}
-default=$(git -C "$launch_dir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@'); default=${default:-main}
+origin_repo=$(git -C "$launch_dir" remote get-url origin 2>/dev/null | sed -E 's#/+$##; s#\.git$##; s#.*[:/]([^/:]+/[^/:]+)$#\1#' | tr 'A-Z' 'a-z')
+default=$(git -C "$launch_dir" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ {sub("refs/heads/", "", $2); print $2}')
 current=$(git -C "$launch_dir" branch --show-current)
-if [ "$current" != "$default" ]; then
-  echo "STOP: $launch_dir is on '$current', not $default"
+out_file=$(mktemp "${TMPDIR:-/tmp}/spawn-cloud.XXXXXX")
+to=$(command -v timeout || command -v gtimeout)   # none on stock macOS; the Bash tool's timeout is the backstop
+bounded() { if [ -n "$to" ]; then "$to" 120 "$@"; else "$@"; fi; }
+if [ -n "$want_repo" ] && [ "$origin_repo" != "$(printf '%s' "$want_repo" | tr 'A-Z' 'a-z')" ]; then
+  echo "STOP: $launch_dir is a checkout of '$origin_repo', not $want_repo"
+elif [ -z "$default" ] || [ "$current" != "$default" ]; then
+  echo "STOP: $launch_dir is on '$current'; origin's default branch is '${default:-unknown}'"
 elif script --version 2>&1 | grep -q util-linux; then   # GNU script (Linux)
-  out=$(cd "$launch_dir" && script -qec 'claude --cloud "$SPAWN_CLOUD_PROMPT"' /dev/null </dev/null 2>&1)
+  (cd "$launch_dir" && bounded script -qec 'claude --cloud "$SPAWN_CLOUD_PROMPT"' /dev/null </dev/null >"$out_file" 2>&1)
 else                                                    # BSD script (macOS)
-  out=$(cd "$launch_dir" && script -q /dev/null claude --cloud "$SPAWN_CLOUD_PROMPT" </dev/null 2>&1)
+  (cd "$launch_dir" && bounded script -q /dev/null claude --cloud "$SPAWN_CLOUD_PROMPT" </dev/null >"$out_file" 2>&1)
 fi
 ```
 
@@ -69,16 +80,21 @@ fi
   expands `$SPAWN_CLOUD_PROMPT` once, as a single argument, and nothing in the
   prompt is parsed as shell. BSD `script` has no `--version`, so the check falls
   through to it.
-- **`STOP` means nothing was launched.** Tell the user which branch the checkout
-  is on. When `refs/remotes/origin/HEAD` isn't set, the check assumes `main`; set
-  it with `git remote set-head origin --auto` if the default branch is another.
+- **`STOP` means nothing was launched.** Tell the user what the check found. The
+  default branch comes from `git ls-remote --symref`, which asks the remote and
+  changes nothing locally; if it can't reach the remote, the launch stops rather
+  than guess `main`.
 - **stdin from `/dev/null`.** There is nothing to type into the TUI, and the
-  command must not wait on the spawner's input.
+  command must not wait on the spawner's input. Both forms were checked with it:
+  the BSD form is the owner's verified command (#194's launch), and GNU `script`
+  (util-linux 2.39) kept the TUI running with stdin at end of file rather than
+  exiting.
 - **It returns on its own** once the session is created. A CLI that has never been
   run interactively on the machine stops at its first-run theme picker instead
-  (observed 2026-09-29 in a fresh container) and the command hangs until the Bash
-  tool's timeout kills it. Parse the output anyway (below). If no session was
-  created, have the user run `claude` once in a real terminal, then relaunch.
+  (observed 2026-09-29 in a fresh container), and the command then runs until
+  `timeout` (120 seconds) or the Bash tool's own timeout ends it. The output file
+  keeps whatever was printed either way. If no session was created, have the user
+  run `claude` once in a real terminal, then relaunch.
 
 ## Parse the output
 
@@ -89,21 +105,24 @@ spaces, strip the other escapes, and key on the session URL, which is one unbrok
 token:
 
 ```bash
-clean=$(printf '%s\n' "$out" | perl -pe 's/\e\[[0-9;]*[CG]/ /g; s/\e\][^\a\e]*(?:\a|\e\\)//g; s/\e\[[0-?]*[ -\/]*[@-~]//g; s/\e[()][0-9A-Za-z]//g; s/\e[^\[\]]//g; tr/\r//d')
+clean=$(perl -pe 's/\e\[[0-9;]*[CG]/ /g; s/\e\][^\a\e]*(?:\a|\e\\)//g; s/\e\[[0-?]*[ -\/]*[@-~]//g; s/\e[()][0-9A-Za-z]//g; s/\e[^\[\]]//g; tr/\r//d' "$out_file")
 url=$(printf '%s\n' "$clean" | grep -oE 'https://claude\.ai/code/(session|cse)_[A-Za-z0-9]+' | head -1)
 sid=${url##*/}
-title=$(printf '%s\n' "$clean" | sed -nE 's/.*Created +cloud +session: *//p' | sed 's/ *$//' | head -1)
+title=$(printf '%s\n' "$clean" | sed -nE 's/.*Created +cloud +session: *//p' | sed -E 's/ +(View:|Resume with:).*//; s/ *$//' | head -1)
+printf 'sid=%s\nurl=%s\ntitle=%s\nraw output: %s\n' "$sid" "$url" "$title" "$out_file"
 ```
 
 On success the CLI prints `Created cloud session: <title>`, `View:
 https://claude.ai/code/session_…` (possibly with a `?from=cli…` query, which the
 match leaves out), and `Resume with: claude --teleport session_…`. `$sid` is the
-durable handle: record it per unit.
+durable handle: record it per unit. The title is cut at a `View:` or `Resume with:`
+that a redraw put on the same line.
 
 **An empty `$sid` doesn't mean no session was made.** The command may have hung
 after creating one, or the output format may have changed. Show the user the tail
-of `$clean` and check claude.ai/code before relaunching, since a blind retry can
-create a duplicate.
+of `$clean` (the raw output stays in `$out_file`, so a later call can re-read it)
+and check claude.ai/code before relaunching, since a blind retry can create a
+duplicate.
 
 ## What this path can't set
 
@@ -131,8 +150,13 @@ What follows from the table:
   without explicit permission. So name the branch in the prompt in the form the
   caller's layer reads (ticket work: a `Worktree: <branch>` line), plus one prose
   sentence that grants it: `Push your work to branch <branch> rather than the branch
-  your environment designates; this is explicit permission to use it.` Confirm the
-  branch from the PR's head, or with `git ls-remote --heads origin <branch>`.
+  your environment designates; this is explicit permission to use it.` That the
+  cloud's git proxy then accepts a push to `<branch>` is **not verified**: a
+  `create_session` child pushes its `outcome_branch`, which is its designated
+  branch. So don't let a branch that never appears stall you. Look for the child's
+  work by what it closes as well (ticket work: the tracker's `DEPENDENCY_PR` query
+  for the issue), and if its PR's head is a `claude/…` branch, report that instead
+  of waiting on `<branch>`.
 - **The title isn't yours.** It won't follow the `<context> <desc>` convention, so
   report what the platform chose.
 - **The sidebar may file it under "Other".** A `create_session` child without
@@ -152,8 +176,11 @@ What follows from the table:
   told no command of that name existed (the plugin exposed only the namespaced
   `/ticket-workflow:start-ticket`), and its prompt went through as plain text. So
   open with a sentence, and mention a command only mid-prompt, where it's text an
-  installed skill can still match. When the target repo carries the skill, name its
-  file by its path in the checkout (the `backends/cloud.md` form).
+  installed skill can still match. When the target repo carries the skill, also
+  name its file by its path in the checkout, as the fallback if the skill isn't
+  installed (the `backends/cloud.md` form). When it doesn't, the child has nothing
+  to load the skill from, so tell the user the launch depends on the cloud
+  environment having the plugin.
 - **No `Notify:` directive.** SendMessage doesn't span local and cloud sessions, so
   the child can't ping you. Poll the durable record (for ticket work, the PR and
   the tracker) instead.
