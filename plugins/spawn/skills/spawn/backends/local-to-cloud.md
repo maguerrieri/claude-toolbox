@@ -26,9 +26,12 @@ title, URL, and teleport command, then exited.
 
 The cloud VM clones **the launch directory's GitHub remote at its current branch**,
 as pushed. It doesn't copy the local checkout, so unpushed commits never reach it.
-(From a repo with no remote, or one the Claude GitHub App isn't installed on, the
-CLI uploads a bundle of the local repo instead, uncommitted changes to tracked
-files included.) So:
+This backend **requires a reachable GitHub `origin`**: the launch block reads the
+default branch from it and stops without one. The CLI's other path, uploading a
+bundle of the local repo from a repo with no remote, is deliberately not used.
+The CLI also takes that bundle path when the Claude GitHub App isn't installed on
+the repo, even with an `origin`, and the bundle carries uncommitted changes to
+tracked files, so launch from a clean checkout. So:
 
 - Launch from the **main checkout** of the repo the work targets, the first entry
   of `git worktree list` (the same line as `backends/local.md`). Never launch from
@@ -45,15 +48,18 @@ files included.) So:
 One Bash call per unit, **all in a single message**: each `claude --cloud` creates
 its own independent session. **Run this block and the Parse block below in the
 same Bash call**, because shell variables don't survive from one call to the
-next. Feed the prompt through a single-quoted heredoc into an exported variable,
-as `backends/local.md` does, so `$`, backticks, and quotes reach the session
-verbatim:
+next.
+
+**Write the prompt to a file with your file-writing tool** (Write, in Claude
+Code), never through the shell, in a scratch directory outside the checkout. The
+prompt then never becomes shell source, so nothing in it can run locally: not
+`$`, backticks, or quotes, and not a line that happens to match a heredoc
+delimiter, which would end a heredoc early and run the rest of the prompt as
+commands. The block reads the file into an exported variable:
 
 ```bash
-read -r -d '' SPAWN_CLOUD_PROMPT <<'PROMPT'
-…prompt text, verbatim…
-PROMPT
-export SPAWN_CLOUD_PROMPT
+prompt_file='<the file you wrote the prompt to>'
+SPAWN_CLOUD_PROMPT=$(cat "$prompt_file"); export SPAWN_CLOUD_PROMPT
 want_repo=''   # <owner>/<repo> the work targets, when the caller knows it; empty skips the check
 launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //'); launch_dir=${launch_dir:-$PWD}
 origin_repo=$(git -C "$launch_dir" remote get-url origin 2>/dev/null | sed -E 's#/+$##; s#\.git$##; s#.*[:/]([^/:]+/[^/:]+)$#\1#' | tr 'A-Z' 'a-z')
