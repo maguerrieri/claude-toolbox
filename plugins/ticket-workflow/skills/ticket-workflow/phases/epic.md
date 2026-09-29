@@ -88,13 +88,18 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
      | sort_by(.startedAt)' "$agents"
   # → [{"name": "toolbox #263: add retry backoff", "status": "stopped",
   #     "sessionId": "5f0c2a9e-3b1d-4c7a-9e21-6d8f0b4a7c13", "cwd": "/home/me/toolbox", …}]
-  t=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -name 5f0c2a9e-3b1d-4c7a-9e21-6d8f0b4a7c13.jsonl)
-  [ -n "$t" ] && [ "$(printf '%s\n' "$t" | wc -l)" -eq 1 ] || echo "unknown: report it, launch nothing"
-  jq -rn 'first(inputs | select(.type == "user")) | .message.content
-          | if type == "array" then map(.text? // "") | join("\n") else . end' "$t" \
-    | grep -qE '(^|[[:space:]])Worktree: epic-238-263([[:space:]]|$)' \
-    && echo "this epic's child"   # launch prompt names the assigned branch; else another session's work
-  ( cd /home/me/toolbox && claude --bg --resume 5f0c2a9e-3b1d-4c7a-9e21-6d8f0b4a7c13 "Resumed after a machine restart. While you were down: #262 merged and main moved. Re-read your PR and branch state, then continue the START cycle for #263 where you left off." )
+  id=5f0c2a9e-3b1d-4c7a-9e21-6d8f0b4a7c13
+  t=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -name "$id.jsonl")
+  if [ -z "$t" ] || [ "$(printf '%s\n' "$t" | wc -l)" -ne 1 ] \
+     || ! prompt=$(jq -rn 'first(inputs | select(.type == "user")) | .message.content
+                           | if type == "array" then map(.text? // "") | join("\n") else . end' "$t"); then
+    echo "unknown: report the row, launch nothing"   # no transcript, several, or unparseable
+  elif printf '%s\n' "$prompt" | grep -qE '(^|[[:space:]])Worktree: epic-238-263([[:space:]]|$)'; then
+    # the launch prompt names the assigned branch: this epic's child
+    ( cd /home/me/toolbox && claude --bg --resume "$id" "Resumed after a machine restart. While you were down: #262 merged and main moved. Re-read your PR and branch state, then continue the START cycle for #263 where you left off." )
+  else
+    echo "another session's work: leave it alone, name it in the table"
+  fi
   ```
 
   The resumed child keeps its name and its briefing (cap, `Role:`, `Budget:`), since those are already in its context; put only what changed in the re-brief (a raised `Budget: rounds=<n>`, a new base after a restack). Its `Notify:` still names the coordinator that spawned it, so when that isn't you (a fresh coordinator took over), add `Notify: <your session name>` to the re-brief, or its pings go to a stopped session. Quote a re-brief carrying `$` or backticks through a heredoc, as for a launch.
