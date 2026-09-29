@@ -80,10 +80,11 @@ isn't JSON), **you don't know**, so don't spawn fresh on it: report the error
 and let the caller decide.
 
 **Drop your own row** (`sessionId` equal to `$CLAUDE_SESSION_ID`). When that
-variable is unset you can't tell which row is you, so if your own name could
-match the prefix (a coordinator looking for an earlier coordinator of the same
-work), act only on `stopped` / `done` rows and ignore running ones. Then
-**decide by `status`**:
+variable is unset and your own name could match the prefix (a coordinator
+looking for an earlier coordinator of the same work), presume one running
+match is you and drop it; if more than one running row matches, one of them is
+another live session you can't tell apart from yourself, so stop and report
+them rather than carry on. Then **decide by `status`**:
 
 - **A match that is running** (`busy`, `blocked`, or another status saying it is
   working or waiting on input): the unit already has a live session. Resume
