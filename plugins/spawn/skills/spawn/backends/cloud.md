@@ -8,7 +8,11 @@ each in its own container, and the user opens them on claude.ai/code.
 Address those by **tool name**, not by server: they're the stable part. The server
 carrying them varies by harness configuration (in Claude Code on the web it's
 `Claude_Code_Remote`). If the tool names aren't in your tool list, search for them
-before concluding they're unavailable.
+before concluding they're unavailable. A session started from a terminal with
+`claude --cloud` doesn't have them at all: a probe on 2026-09-29 found none of
+`create_session`, `list_sessions`, `get_session` or `send_later`, even through
+ToolSearch (`backends/local-to-cloud.md`). Such a session can't spawn cloud
+siblings, so say so rather than fall back to `claude --bg`.
 
 **Do not use `claude --bg` here**, even though the CLI is installed in the
 container. A bg job would be a child process of a container that gets reclaimed

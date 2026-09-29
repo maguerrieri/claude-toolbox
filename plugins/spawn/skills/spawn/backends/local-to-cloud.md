@@ -31,8 +31,10 @@ To start a new cloud session, run from a TTY.
 (earlier builds said `--cloud requires an interactive terminal`). `-p` doesn't help:
 with `--print`, `--cloud` also only posts to an existing session. Running it
 under a pseudo-TTY works: `script` gives `claude` a terminal, `claude` creates
-the session, prints its ID, and exits. Verified 2026-09-29 on macOS, three
-times, from this repo (the last one is the worked example below).
+the session, prints its ID, and exits. Verified 2026-09-29 on macOS, four
+times, from this repo. The third is the worked example below. The fourth
+reran the final revision of these steps, launching from a throwaway
+worktree.
 
 - **macOS (BSD `script`):** `script -q /dev/null claude …`, with the command as
   argv. It exits with the child's status: the probe that hit `--cloud requires
@@ -69,6 +71,15 @@ works from any checkout of the repo. What does matter:
   not prompt. For the current repo, its **main checkout** (the first entry of
   `git worktree list`) is the natural choice. For work in another repo, use a
   trusted checkout of *that* repo. There's no field to point elsewhere.
+- **A throwaway worktree when the main checkout won't do.** If the preflight
+  (below) finds the main checkout dirty, behind origin, or on the wrong
+  branch, don't pull, stash, or switch branches in it; that checkout is the
+  user's. Cut a launch worktree under its `.claude/worktrees/` instead, which
+  inherits its trust: `git worktree add <main>/.claude/worktrees/launch-<nonce>
+  -b launch-<nonce> origin/<base>`. That is an unpushed branch at a commit
+  origin has, the combination the worked example launched from. Remove it
+  (`git worktree remove`, `git branch -D`) once the launch has printed its
+  URL. The session never needs the directory again.
 - **Its current branch is the session's starting point.** Per the docs, the VM
   clones the remote "at your current branch", so push first. When that branch
   isn't on GitHub, the CLI says so and starts from the checkout's commit
@@ -78,7 +89,8 @@ works from any checkout of the repo. What does matter:
   branch (next bullet).
 - **The session names its own branch.** Every probe started on a fresh
   `claude/<slug>-<random>` branch (`claude/noop-probe-7dnwk4`,
-  `claude/probe-195-b-81ykxe`, `claude/probe-c-issue-195-qi1qjh`), whether the
+  `claude/probe-195-b-81ykxe`, `claude/probe-c-issue-195-qi1qjh`,
+  `claude/toolbox-195-probe-d-51rbh1`), whether the
   launch branch was on GitHub or not. There is no flag to choose it. The
   sessions could still **push a second, differently named branch**, despite
   the proxy's documented "push works only against the session's current
@@ -128,7 +140,7 @@ git -C "$launch_dir" fetch -q --prune origin || echo "fetch failed: can't confir
 [ -z "$(git -C "$launch_dir" status --porcelain --untracked-files=no)" ] || echo "tracked changes: a bundle upload would carry them"
 b=$(git -C "$launch_dir" branch --show-current)
 if [ -n "$b" ] && git -C "$launch_dir" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null; then
-  [ "$(git -C "$launch_dir" rev-parse HEAD)" = "$(git -C "$launch_dir" rev-parse "refs/remotes/origin/$b")" ] || echo "HEAD differs from origin/$b: the session would start from origin's tip; push or pull first"
+  [ "$(git -C "$launch_dir" rev-parse HEAD)" = "$(git -C "$launch_dir" rev-parse "refs/remotes/origin/$b")" ] || echo "HEAD differs from origin/${b}: the session would start from origin's tip; push it, or launch from a throwaway worktree"
 else
   [ -n "$(git -C "$launch_dir" branch -r --list 'origin/*' --contains HEAD)" ] || echo "HEAD isn't on origin: push it first"
 fi
@@ -208,10 +220,10 @@ Resume with: claude --teleport session_01…
 
 ```bash
 out='<out>'; f="$out/launch-<n>.out"
-url=$(grep -Eo 'View: https://claude\.ai/code/session_[A-Za-z0-9]+' "$f" | tail -1); id=${url##*/}
+url=$(grep -aEo 'View: https://claude\.ai/code/(session|cse)_[A-Za-z0-9]+' "$f" | tail -1); id=${url##*/}
 [ -n "$id" ] && echo "launched $id" ||
   perl -pe 's/\e\[\d*[CG]/ /g; s/\e\[[0-9;?<>=]*[ -\/]*[@-~]//g; s/\e\][^\a\e]*(\a|\e\\)//g; s/\e[()][A-Za-z0-9]//g; s/\e[78=>]//g; s/\r/\n/g' "$f" |
-  grep -v '^[[:space:]]*$' | tail -20
+  grep -av '^[[:space:]]*$' | tail -20
 ```
 
 The `View:` line survives the escape sequences intact (checked on all three
@@ -238,6 +250,11 @@ anything. Fix the cause and relaunch that unit:
 killed by the `alarm`, a signal, or a tail you don't recognize. The platform
 may have created the session before the CLI printed its URL, so look before
 relaunching. Don't retry blind, since each successful launch is a new session.
+First make sure the timed-out `claude` is gone. The `alarm` signals `script`,
+and `claude` exits on the hangup that follows when the pty closes: no
+`claude` process survived either timeout observed here. But a survivor could
+still create the session after you've decided, so check `pgrep -fl 'claude
+.*--cloud'` and kill one before looking.
 The `claude --teleport` picker lists the repo's sessions by title, and it also
 needs a TTY. Capture it with the same `script` dispatch as the launch, and let
 a short `alarm` kill it before anything is selected:
@@ -269,6 +286,13 @@ Record the `session_…` id per unit. It is the durable handle.
   here. So lead with prose that names the skill (and its file, when the target
   checkout carries it), and put the rest of the briefing after it. A slash
   command mid-prompt is only text.
+- **Don't brief it to fan out.** A session started this way has none of the
+  session-management tools. Probe D (`session_01T7PVazzGELNx7GSpgH433h`,
+  2026-09-29) looked for `create_session`, `list_sessions`, `get_session` and
+  `send_later`, through ToolSearch too, and found none. So it can't spawn
+  cloud siblings or re-wake itself. That rules it out as an epic
+  orchestrator, and out of any task that `/spawn`s in the cloud. Leaf work
+  (one ticket, one investigation) is what this path carries.
 - **No `Notify:` directive.** A cloud session can't message a local one. The
   probes' sessions weren't in this session's `ListAgents` either. The child's
   PR, tracker, and branch are the record you read back.
@@ -305,8 +329,10 @@ as `backends/cloud.md` does for its children.
 The third probe, run on 2026-09-29 with the steps above copied verbatim
 under zsh, placeholders filled. It ran an earlier revision, which wrote the
 prompt with a `'PROMPT'` heredoc and set the name inline. Review then moved
-both into files and tightened the preflight's fetch and `origin/*` scope;
-the launch itself is unchanged.
+both into files and tightened the preflight. The fourth probe (probe D) ran
+the final snippets, extracted straight from this file with only the
+placeholders filled and the SSH `fetch` line dropped. It launched from a
+throwaway worktree and printed `launched session_01T7PVazzGELNx7GSpgH433h`.
 
 1. `mktemp -d …` printed `<out>` = `…/spawn-cloud.Z2n42H`. `<out>/prompt-1.txt`
    started `Probe C for claude-toolbox issue #195, …` and asked for a worktree
