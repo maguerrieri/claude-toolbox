@@ -14,7 +14,6 @@ Use the `gm` skill to start a new campaign. The campaign is the **player's**: it
 8. **Check it borrows nothing.** If a bundled example is in your context (say, the player demoed it), reuse none of its names or sentences: rename or rewrite anything you wrote that echoes it. Resemblance the player asked for is fine, and the player's own words are never rewritten.
 9. **Version the saves:** run `campaign init <saves-dir> --author "<persona author>" --email "<persona email>"` (`${CLAUDE_PLUGIN_ROOT}/bin/campaign`) to start a dedicated git repo for the campaign — it defers automatically if the dir is already inside a repo (e.g. an Obsidian vault). Resolve author/email from the `chronicle_identity` of the campaign's persona (`house`, unless the player asked for another).
 10. **Turn on autosave:** `campaign bind <saves-dir>`, so from here on every turn's dialogue is logged to `log/raw/` and checkpointed by the plugin's Stop hook.
-11. If the adapter is `visibility: gm` (e.g. `generic`), tell the player once that hidden state is sealed behind the screen, and that they can also turn off Claude Code's diff of files a Bash command changes for game sessions: `"bashEditDiffEnabled": false` in their user settings, or `claude --settings '{"bashEditDiffEnabled": false}'` (the plugin can't set it; see the README).
-12. Offer to begin play with `/gm:play`.
+11. Offer to begin play with `/gm:play`.
 
 $ARGUMENTS may name the setting or the saves path.
