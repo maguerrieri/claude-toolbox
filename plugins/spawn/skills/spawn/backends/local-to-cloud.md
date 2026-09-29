@@ -193,13 +193,17 @@ Resume with: claude --teleport session_01…
 
 ```bash
 f="<out>/launch-<n>.out"
-url=$(grep -Eo 'https://claude\.ai/code/session_[A-Za-z0-9]+' "$f" | head -1); id=${url##*/}
+url=$(grep -Eo 'View: https://claude\.ai/code/session_[A-Za-z0-9]+' "$f" | tail -1); id=${url##*/}
 [ -n "$id" ] && echo "launched $id" ||
   perl -pe 's/\e\[\d*[CG]/ /g; s/\e\[[0-9;?<>=]*[ -\/]*[@-~]//g; s/\e\][^\a\e]*(\a|\e\\)//g; s/\e[()][A-Za-z0-9]//g; s/\e[78=>]//g; s/\r/\n/g' "$f" |
   grep -v '^\s*$' | tail -20
 ```
 
-The URL survives the escape sequences, so the grep needs no cleanup. The perl
+The `View:` line survives the escape sequences intact (checked on all three
+probe outputs), so the grep needs no cleanup. It anchors on `View: ` and takes
+the **last** match because the `Created cloud session: <title>` line comes
+first, and a title built from caller or issue text could itself contain a
+session URL. The perl
 filter makes the rest readable; the TUI draws spaces as cursor moves
 (`\e[<n>G`), which is why it turns those into spaces rather than deleting them.
 
