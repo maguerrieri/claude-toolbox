@@ -1,0 +1,20 @@
+# The only dependency the ci-gate evaluator needs, pinned by version *and* by
+# artifact hash (spec 1d). The `evaluate` job holds a repository token and
+# reads private repository data, so it must never install whatever PyPI serves
+# at the moment it runs: pip is called with --require-hashes --no-deps
+# --only-binary=:all:, so a release published after this pin -- or a
+# substituted artifact -- cannot be installed. The job uses the runner's own
+# PyYAML when it has one and only falls back to this file otherwise.
+#
+# One wheel per CPython version the GitHub-hosted x86_64 runner images ship.
+# PyYAML builds a C extension, so its wheels are version-specific: a runner
+# Python with no wheel here fails the install loudly (a clear pip error, a red
+# gate) rather than silently building an unhashed sdist. Bump the version and
+# refresh the hashes from https://pypi.org/pypi/PyYAML/<version>/json.
+pyyaml==6.0.2 \
+    --hash=sha256:9056c1ecd25795207ad294bcf39f2db3d845767be0ea6e6a34d856f006006083 \
+    --hash=sha256:3b1fdb9dc17f5a7677423d508ab4f243a726dea51fa5e70992e59a7411c89d19 \
+    --hash=sha256:ec031d5d2feb36d1d1a24380e4db6d43695f3748343d99434e6f5f9156aaa2ed \
+    --hash=sha256:3ad2a3decf9aaba3d29c8f537ac4b243e36bef957511b4766cb0057d32b0be85 \
+    --hash=sha256:80bab7bfc629882493af4aa31a4cfa43a4c57c83813253626916b8c7ada83476 \
+    --hash=sha256:70b189594dbe54f75ab3a1acec5f1e3faa7e8cf2f1e08d9b561cb41b845f69d5
