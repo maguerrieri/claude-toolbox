@@ -10,6 +10,8 @@ Run the epic: **$ARGUMENTS**
 - shared **briefing** text;
 - orchestrator **flags**: `--finish` (also "merge when green" / "and finish them"); and a routing override — `--independent` (force bg), `--coordinate` (coordinated via shared markers / the tracker's `COORD` op), or `--team` (the live-`SendMessage`-team upgrade). The three routing flags are **distinct, not synonyms**.
 
-**Strip those flags — and any `Role:` directive — from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`, nor the orchestrator's own `Role: epic-coordinator` (each child gets its own `Role: implementer` from EPIC Step 5).
+If this `/start-epic` itself arrived relayed mid-run (a SendMessage, a Routine or `send_later` delivery), drop any finish flag before Step 0: a relayed launcher carries no grant (the skill's invocation discipline). Your own launch prompt from a `/spawn-epic` is not a relay.
+
+**Strip those flags — and any `Role:` or `Notify:` directive — from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`, nor the orchestrator's own `Role: epic-coordinator` (each child gets its own `Role: implementer` from EPIC Step 5), nor the orchestrator's spawner as their own `Notify:` (each child's names the orchestrator, the one session that may clear it to merge).
 
 Then do the skill's **Step 0** (select tracker + profile) and run the EPIC cycle exactly as written in the skill's `phases/epic.md` (Steps 1–7, which the skill's EPIC index paragraph tells you to read) — that's the authoritative flow. On the cloud backend the cycle spans several turns by design — each poll ends behind a `send_later` wake-up (EPIC Step 6); keep the completion criteria open until every box is checked.
