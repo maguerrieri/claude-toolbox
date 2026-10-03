@@ -252,4 +252,13 @@ record 1 "doc: plugin root unset says why" "$(grep -c 'CLAUDE_TICKET_WORKFLOW_RO
 record "implementer| failed" "doc: plugin root unset, the notify record writes nothing" \
 	"$(nonzero "$(run_doc $'implementer\n' "$notify_doc" '')")"
 
+# A stale root (an older plugin version, kept side by side in the cache,
+# without the script) fails the same way, naming the missing file.
+mkdir -p "$tmp/old-version/scripts"
+record "none failed" "doc: stale plugin root, the self-pin writes nothing" \
+	"$(nonzero "$(run_doc none "$self_pin" "$tmp/old-version")")"
+record 1 "doc: stale plugin root says why" "$(grep -c 'role-marker.sh: No such file' "$tmp/err")"
+record "implementer|issue: 52| failed" "doc: stale plugin root, the read fails rather than printing nothing" \
+	"$(nonzero "$(run_doc $'implementer\nissue: 52\n' "$show_doc" "$tmp/old-version")")"
+
 finish
