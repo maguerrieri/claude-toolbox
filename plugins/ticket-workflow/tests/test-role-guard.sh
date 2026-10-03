@@ -264,6 +264,8 @@ deny_case "pin with an assignment prefix" planner "X=1 \"$R\" pin implementer"
 deny_case "pin through env" planner "env X=1 bash \"$R\" pin implementer"
 deny_case "pin with a shell option" planner "bash -e \"$R\" pin implementer"
 deny_case "pin with a shell option that takes an operand" planner "bash -o pipefail \"$R\" pin implementer"
+deny_case "unpin through bash --init-file" planner "bash --init-file /dev/null \"$R\" unpin"
+deny_case "unpin through bash --rcfile and -o" planner "bash --rcfile /dev/null -o pipefail \"$R\" unpin"
 deny_case "unpin through env -u" planner "env -u CLAUDE_SESSION_ID \"$R\" unpin"
 deny_case "unpin through env -i -u and bash" planner "env -i -u X PATH=\"\$PATH\" CLAUDE_SESSION_ROLES_DIR=\"\$CLAUDE_SESSION_ROLES_DIR\" CLAUDE_CODE_SESSION_ID=\"\$CLAUDE_CODE_SESSION_ID\" bash \"$R\" unpin"
 # GNU env's long option; macOS's BSD env lacks it, so there only the decision
@@ -294,7 +296,9 @@ record "allow planner|" "subagent show, partly quoted path" "$(as_agent planner 
 # Mentions of the script pass.
 record "allow planner|" "subagent commit naming a run" "$(as_agent planner a1 'git -C /nonexistent commit -m "Run bash scripts/role-marker.sh pin planner" 2>/dev/null; true')"
 record "allow planner|" "subagent commit through a heredoc" "$(as_agent planner a1 "$(printf '%s\n' "git -C /nonexistent commit -F - <<'EOF' 2>/dev/null; true" 'bash scripts/role-marker.sh unpin' 'EOF')")"
+record "allow planner|" "subagent commit through a hyphenated heredoc delimiter" "$(as_agent planner a1 "$(printf '%s\n' "git -C /nonexistent commit -F - <<'END-MSG' 2>/dev/null; true" 'bash scripts/role-marker.sh unpin' 'END-MSG')")"
 record "allow planner|" "subagent grep of the script" "$(as_agent planner a1 "grep -c pin \"$R\"")"
+record "allow planner|" "subagent bash running another script that takes the path" "$(as_agent planner a1 "bash -c 'true' \"$R\" unpin")"
 record "allow planner|" "subagent git add of the script" "$(as_agent planner a1 'git -C /nonexistent add scripts/role-marker.sh tests/x.sh 2>/dev/null; true')"
 record "allow planner|" "subagent echo of a run" "$(as_agent planner a1 'echo "then run bash scripts/role-marker.sh pin planner" >/dev/null')"
 record "allow planner|" "subagent find naming the script" "$(as_agent planner a1 'find /nonexistent -name role-marker.sh -print 2>/dev/null; true')"
