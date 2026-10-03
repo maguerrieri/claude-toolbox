@@ -51,13 +51,16 @@ def path_vars:
     (match("(?<![\\w$])for[ \\t]+(?<n>[A-Za-z_]\\w*)[ \\t]+in[ \\t][^;\\n]*role-marker\\.sh"; "g") | .captures[0].string) ]
   | unique;
 
-# Each use of such a name ("$S", "${S}", $S, ${S}) is spelled as the path. A
-# name is word characters only, so it is safe inside the pattern.
+# Each use of such a name ("$S", $S, and any braced expansion of it: ${S},
+# "${S:-}", ${S%x}) is spelled as the path. The braced form needs `}` or an
+# expansion operator right after the name, so ${SX} isn't read as S. A name is
+# word characters only, so it is safe inside the pattern.
 def expand_path_vars:
   . as $cmd
   | reduce ($cmd | path_vars[]) as $n ($cmd;
-      gsub("\"\\$(?:" + $n + "|\\{" + $n + "\\})\""; " role-marker.sh")
-      | gsub("\\$(?:" + $n + "(?!\\w)|\\{" + $n + "\\})"; "role-marker.sh"));
+      ("(?:" + $n + "(?!\\w)|\\{" + $n + "(?:[:\\-=?+#%/^,@\\[][^}]*)?\\})") as $use
+      | gsub("\"\\$" + $use + "\""; " role-marker.sh")
+      | gsub("\\$" + $use; "role-marker.sh"));
 
 # A shell word naming the script, however it's quoted ("$R/x/role-marker.sh",
 # "$R"/x/role-marker.sh, '/x/role-marker.sh'), becomes one bare word. Then a
