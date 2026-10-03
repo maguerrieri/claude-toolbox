@@ -23,37 +23,40 @@ teleport launch doesn't deliver SessionStart output either). Re-run
 any other agent running inside the session) can't pin at all: it shares its
 parent's session, so the PreToolUse hook denies its marker write.
 
-Every snippet below opens by assigning the marker directory (the override
-exists for testing; the hooks honor the same variable) and this session's id:
-the harness's `CLAUDE_CODE_SESSION_ID` (Claude Code 2.1.132+), else the
-`CLAUDE_SESSION_ID` this plugin's SessionStart hook exports on older CLIs (the
-skill's Session roles: *Session identity*). Keep those two lines in each Bash
-call — a shell variable doesn't carry over to the next one:
-
-```bash
-roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
-```
+Every marker read and write goes through the plugin's `scripts/role-marker.sh`
+(the skill's Session roles), which finds this session's id itself: the
+harness's `CLAUDE_CODE_SESSION_ID` (Claude Code 2.1.132+), else the
+`CLAUDE_SESSION_ID` this plugin's SessionStart hook exports on older CLIs. The
+commands below run it from `$CLAUDE_TICKET_WORKFLOW_ROOT`, which the same hook
+sets. If that variable is empty, a command stops with `parameter not set`:
+find the script with the Glob tool instead
+(`**/ticket-workflow/scripts/role-marker.sh` under your Claude config's
+`plugins/` directory, taking the highest version if several match) and run
+the same command with that path in place of
+`${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh`.
 
 1. Take the first token of "$ARGUMENTS" as the role. Valid: `planner`,
    `epic-coordinator`, `implementer`, `none`. Anything else (or empty): report
-   the valid values — plus, when a session id resolves and a marker file
-   exists, the current pin (`cat "$roles_dir/$sid"` after the two lines
-   above: the role on its first line, then any `issue:` lines an implementer
-   recorded and a `notify:` line naming its `Notify:` target) — and stop.
+   the valid values, plus the current pin when there is one, and stop. The
+   pin is what this prints: the role on its first line, then any `issue:`
+   lines an implementer recorded and a `notify:` line naming its `Notify:`
+   target (nothing, and a note on stderr, when the session has no marker):
 
-2. If no session id resolves (both variables unset), this is a Claude Code
-   older than 2.1.132 whose SessionStart hook didn't run (plugin installed
-   mid-session, or hooks disabled) — say so, note the fix (upgrade Claude Code, or restart the
-   session so SessionStart fires), skip the marker write in step 3/4, but
-   still do step 5 so the charter at least governs the current context.
+   ```bash
+   bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" show
+   ```
+
+2. If the script reports no session id (both variables unset), this is a
+   Claude Code older than 2.1.132 whose SessionStart hook didn't run (plugin
+   installed mid-session, or hooks disabled) — say so, note the fix (upgrade
+   Claude Code, or restart the session so SessionStart fires), and note that
+   the marker was not written in step 3/4, but still do step 5 so the charter
+   at least governs the current context.
 
 3. **`none` — unpin:**
 
    ```bash
-   roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-   sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
-   [ -n "$sid" ] && rm -f "$roles_dir/$sid"
+   bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" unpin
    ```
 
    This deletes the whole marker, so any `issue:` lines and the `notify:`
@@ -61,17 +64,10 @@ sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
    `Notify:` target re-injected. State that the role is dropped and no charter
    governs the session; stop.
 
-4. **Pin:** write the marker, keyed by session id (`$sid`, above), unless
-   its first line already names this role:
+4. **Pin:** write the marker, unless its first line already names this role:
 
    ```bash
-   roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-   sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
-   if [ -n "$sid" ]; then
-     mkdir -p "$roles_dir"
-     marker="$roles_dir/$sid"
-     [ "$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]')" = "<role>" ] || printf '%s\n' "<role>" >"$marker"
-   fi
+   bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" pin <role>
    ```
 
    A hand pin writes the role line only. The `issue:` and `notify:` lines a
@@ -88,12 +84,13 @@ sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
    **adopt it as governing for this session**, exactly as START Step 1 does
    for a spawned `Role:` directive. Read it **whole with the Read tool** at the
    absolute path the variable expands to (`echo "$CLAUDE_TICKET_WORKFLOW_ROOT"`
-   for the value). If the variable is empty (step 2's case), find the file
-   with the Glob tool (`**/ticket-workflow/skills/ticket-workflow/roles/<role>.md`
-   under your Claude config's `plugins/` directory) and Read that path. Never
-   `cat`, `sed`, `grep`, or `find` your way through the plugin cache instead:
-   it's a protected path, and Bash commands there can stop on a permission
-   prompt that no allow rule can pre-approve.
+   for the value). If the variable is empty, find the file with the Glob tool
+   (`**/ticket-workflow/skills/ticket-workflow/roles/<role>.md` under your
+   Claude config's `plugins/` directory), from the same version directory as
+   the script above, and Read that path. Never `cat`, `sed`, `grep`, or `find`
+   your way through the plugin cache instead: it's a protected path, and Bash
+   commands that read it can stop on a permission prompt that no allow rule
+   can pre-approve.
 
 6. Confirm to the user: role pinned, what it binds (`planner` also arms the
    edit guard — edits prompt for approval until `/role none`; `implementer`
