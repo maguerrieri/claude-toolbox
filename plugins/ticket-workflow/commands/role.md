@@ -28,11 +28,12 @@ Every marker read and write goes through the plugin's `scripts/role-marker.sh`
 harness's `CLAUDE_CODE_SESSION_ID` (Claude Code 2.1.132+), else the
 `CLAUDE_SESSION_ID` this plugin's SessionStart hook exports on older CLIs. The
 commands below run it from `$CLAUDE_TICKET_WORKFLOW_ROOT`, which the same hook
-sets. If that variable is empty, a command stops with `parameter not set`;
+sets. If that variable is empty, a command stops with `parameter not set`
+(bash says `parameter null or not set`);
 if it names an older plugin version without the script (the cache keeps
 versions side by side, so a mid-session update can leave it stale), it fails
 with `No such file`. Either way, find the script with the Glob tool instead
-(`**/ticket-workflow/scripts/role-marker.sh` under your Claude config's
+(`cache/*/ticket-workflow/*/scripts/role-marker.sh` under your Claude config's
 `plugins/` directory, taking the highest version if several match) and run
 the same command with that path in place of
 `${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh`.
@@ -88,7 +89,7 @@ the same command with that path in place of
    absolute path the variable expands to (`echo "$CLAUDE_TICKET_WORKFLOW_ROOT"`
    for the value). If the variable is empty or stale (the script wasn't
    under it, above), find the file with the Glob tool
-   (`**/ticket-workflow/skills/ticket-workflow/roles/<role>.md` under your
+   (`cache/*/ticket-workflow/*/skills/ticket-workflow/roles/<role>.md` under your
    Claude config's `plugins/` directory), from the same version directory as
    the script above, and Read that path. Never `cat`, `sed`, `grep`, or `find`
    your way through the plugin cache instead: it's a protected path, and Bash
