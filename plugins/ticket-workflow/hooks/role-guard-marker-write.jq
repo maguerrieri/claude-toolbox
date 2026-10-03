@@ -46,7 +46,7 @@ def strip_heredocs: gsub("<<-?[ \\t]*['\"]?(?<w>[\\w.-]+)['\"]?(?<rest>[^\\n]*)\
 # word ("un"pin, un'p'in), and an unquoted backslash escape loses its
 # backslash (un\pin), as the shell reads them.
 def normalize:
-  gsub("(?<![^\\s;&|(`{])(?:\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*'|[^\\s\"';&|()<>])*?(?:\"[^\"\\\\]*role-marker\\.sh\"|'[^']*role-marker\\.sh'|role-marker\\.sh)(?![\\w.-])"; "ROLE_MARKER_SH")
+  gsub("(?<![^\\s;&|()`{])(?:\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*'|[^\\s\"';&|()<>])*?(?:\"[^\"\\\\]*role-marker\\.sh\"|'[^']*role-marker\\.sh'|role-marker\\.sh)(?![\\w.-])"; "ROLE_MARKER_SH")
   | gsub("\"(?<w>[A-Za-z-]+)\"|'(?<v>[A-Za-z-]+)'"; "\(.w // .v)")
   | gsub("\"(?:[^\"\\\\]|\\\\.)*\""; "\"\"")
   | gsub("'[^']*'"; "''")
