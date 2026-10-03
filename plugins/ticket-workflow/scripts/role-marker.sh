@@ -157,14 +157,14 @@ pin)
 	if [ -f "$marker" ]; then
 		current=$(cat "$marker") || fail 'the marker could not be read'
 	fi
-	# The role as marker_role reads it: the first line, whitespace stripped.
-	current_role=${current%%$'\n'*}
-	current_role=${current_role//[[:space:]]/}
 	content=$role
-	[ "$current_role" = "$role" ] && content=$current
-	# Case-insensitive, as the one-issue guard compares Jira keys.
+	[ "$(marker_role_of "$current")" = "$role" ] && content=$current
+	# Case-insensitive, as the one-issue guard compares Jira keys. The new line
+	# goes before any notify: line, keeping the layout the header gives.
 	if [ -n "$issue" ] && ! printf '%s\n' "$content" | grep -qixF "issue: $issue"; then
-		content="$content"$'\n'"issue: $issue"
+		notify_lines=$(printf '%s\n' "$content" | grep '^notify: ')
+		content="$(printf '%s\n' "$content" | grep -v '^notify: ')"$'\n'"issue: $issue"
+		[ -z "$notify_lines" ] || content="$content"$'\n'"$notify_lines"
 	fi
 	# An unchanged marker is left alone.
 	[ "$content" = "$current" ] || write_marker "$content"
