@@ -3,26 +3,30 @@
 # agent_id and names role-marker.sh.
 #
 # scripts/role-marker.sh makes every marker write the docs describe, and finds
-# the session id and the roles directory itself. So a write is a run of it with
-# any subcommand but `show`: pin, unpin, notify, or one the text doesn't show
-# (a variable, a quoted expansion). `show` passes, so a subagent still reads
-# its parent's role, and so does a run with no subcommand, which writes
-# nothing. A run is the script as a command word (at the start, after a
-# separator, or after a reserved word that a command follows, such as if,
-# while or then, and after any VAR=value assignments), or as the argument of
-# bash, sh, zsh, exec, env, source or `.`,
-# after their options, operands included (bash -o pipefail, bash --init-file
-# FILE, exec -a NAME, env -u NAME), its path quoted or not. A mention passes: in a
-# quoted string (a commit message), in a heredoc body, or as another command's
-# argument (a grep, a git add).
+# the session id and the roles directory itself. So a write is the script's
+# path followed by a writing subcommand: pin, unpin or notify, or one the text
+# doesn't show (a variable, a substitution, a quoted expansion). `show` passes,
+# so a subagent still reads its parent's role, and so does any other literal
+# word (the script refuses it and writes nothing) or none.
+#
+# Where the path sits in the command doesn't matter: a command word, an `if`
+# condition, a `case` branch, an argument to bash, env, nohup, sudo or any
+# other wrapper all count the same. Trying to tell a command position from an
+# argument position kept missing ways to reach one, so the rule doesn't try.
+# What passes is a path inside a quoted string (a commit message, an echo) or
+# a heredoc body, and a path whose next word isn't a writing subcommand
+# (git add …/role-marker.sh tests/x, grep pin …/role-marker.sh).
 #
 # A heuristic over the command text, not a shell parser, like
-# role-guard-launch.jq. A run nested in another shell's string (bash -c '…'),
-# behind another wrapper (nohup, xargs, timeout), or through a copy or symlink
-# of the script under another name passes it. So does a write that doesn't use
-# the script at all: the docs show none, so a subagent would have to improvise
-# one (#203 accepted that risk rather than keep guessing at writes from
-# command text, which denied harmless commands).
+# role-guard-launch.jq. A run inside another shell's quoted string
+# (bash -c '…'), one whose subcommand arrives on stdin (… | xargs …), and one
+# through a copy or symlink of the script under another name pass it. So does
+# a write that doesn't use the script at all: the docs show none, so a
+# subagent would have to improvise one (#203 accepted that risk rather than
+# keep guessing at writes from command text, which denied harmless commands).
+# The other way, a path and a writing subcommand that are only data to
+# another command (bash -c 'cmd' …/role-marker.sh unpin, where the path is
+# just $0) is denied.
 
 # A heredoc body, from the line after `<<WORD` to the line holding WORD. The
 # delimiter may hold - and . (<<'END-MSG').
@@ -42,40 +46,11 @@ def normalize:
   | gsub("\\\\\\n"; " ")
   | gsub("[0-9]*[<>]{1,3}&?[ \\t]*[^\\s;&|()<>]+"; " ");
 
-# The commands that can run the script as an argument, each followed by its
-# options and env's VAR=value assignments. Any option may take one operand
-# (bash -o pipefail, bash --init-file FILE, exec -a NAME, env -u NAME), with no
-# list of which ones do: an operand is the next word unless that word is an
-# option itself or the script. That keeps an unlisted option's operand from
-# hiding the script, and since a word starting with - or + is never an
-# operand, the match can't backtrack exponentially over a long option run.
-def option_re:
-  "(?:[-+][^\\s;&|()<>]*(?:\\s+(?![-+])(?!ROLE_MARKER_SH(?![\\w.-]))[^\\s;&|()<>]+)?|[A-Za-z_]\\w*=[^\\s;&|()<>]*)";
-
-# A shell given -c runs its command string, and a word after that string is
-# only $0 or a positional parameter, so -c ends a shell's options without a
-# match. (exec -c only clears the environment, so exec keeps it.)
-def launcher_re:
-  "(?:bash|sh|zsh)\\s+(?:(?!-c(?![^\\s;&|()<>]))" + option_re + "\\s+)*"
-  + "|(?:exec|env)\\s+(?:" + option_re + "\\s+)*"
-  + "|(?:source|\\.)\\s+";
-
-# Where a command word can start: the start of the text, a separator
-# (; & | && || newline, a subshell's or substitution's opening, a group's `{`),
-# or a reserved word a command follows (if elif then else while until do time !).
-def command_start_re:
-  "(?:\\A|[;&|(\\n`{!]|(?<![\\w.-])(?:if|elif|then|else|while|until|do|time)(?=\\s))";
-
-def run_re:
-  "(?:"
-  + "(?:\\A|[\\s;&|(`])(?:" + launcher_re + ")"
-  + "|" + command_start_re + "\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*"
-  + ")"
-  + "ROLE_MARKER_SH(?![\\w.-])"
-  + "(?:[ \\t]+(?<sub>[^\\s;&|()<>]+))?";
+# The path, then a writing subcommand: pin, unpin, notify, or a word the text
+# doesn't show (starting with $ or a backtick, or an emptied quoted string).
+def write_re:
+  "ROLE_MARKER_SH(?![\\w.-])[ \\t]+(?:(?:pin|unpin|notify)(?![\\w.-])|[$`]|\"\"|'')";
 
 (.agent_id // "") != ""
 and .tool_name == "Bash"
-and ((.tool_input.command // "") | strip_heredocs | normalize
-  | [match(run_re; "g") | .captures[] | select(.name == "sub") | .string]
-  | any(.[]; . != null and . != "show"))
+and ((.tool_input.command // "") | strip_heredocs | normalize | test(write_re))
