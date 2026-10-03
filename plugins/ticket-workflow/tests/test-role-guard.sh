@@ -266,7 +266,13 @@ deny_case "unpin behind nohup" planner "nohup \"$R\" unpin >/dev/null"
 deny_case "unpin behind time -p" planner "time -p \"$R\" unpin"
 deny_case "unpin behind command" planner "command \"$R\" unpin"
 deny_case "pin through /bin/bash" planner "/bin/bash \"$R\" pin implementer"
-deny_case "unpin through /bin/sh" planner "/bin/sh \"$R\" unpin"
+# The script needs bash. Where /bin/sh is another shell (dash on Ubuntu) it
+# can't run it, so there only the decision is checked.
+if /bin/sh -c '[ -n "${BASH_VERSION:-}" ]'; then
+	deny_case "unpin through /bin/sh" planner "/bin/sh \"$R\" unpin"
+else
+	record "deny planner|" "subagent unpin through /bin/sh" "$(as_agent planner a1 "/bin/sh \"$R\" unpin")"
+fi
 deny_case "pin, subcommand from a substitution" planner "bash \"$R\" \$(echo pin) implementer"
 deny_case "pin, subcommand from backticks" planner "bash \"$R\" \`echo pin\` implementer"
 deny_case "pin with an assignment prefix" planner "X=1 \"$R\" pin implementer"
