@@ -113,7 +113,7 @@ scan_blocks() { # scan_blocks <file> ...
 	# heredoc can't sit inside the single-quoted program, so it comes in here.
 	awk -v prefix="$run_prefix" \
 		-v commands="^(show|unpin|pin <role>|pin <role> --issue <id>|notify <<'NOTIFY_NAME_EOF')[ \t]*(;|&&|[|][|]|\$)" '
-		function check_line(text, at,   segs, k, i, cmd, rest, p) {
+		function check_line(text, at,   segs, k, i, cmd, rest, p, off, line) {
 			k = split(text, segs, /;|&&|\|\||\||\(|\)|`/)
 			for (i = 1; i <= k; i++) {
 				cmd = " " segs[i] " "
@@ -135,9 +135,9 @@ scan_blocks() { # scan_blocks <file> ...
 			off = index(prefix, "role-marker.sh") - 1
 			line = text
 			while ((i = index(line, "role-marker.sh"))) {
-				start = i - off
-				rest = substr(line, start + length(prefix))
-				if (start >= 1 && substr(line, start, length(prefix)) == prefix &&
+				p = i - off
+				rest = substr(line, p + length(prefix))
+				if (p >= 1 && substr(line, p, length(prefix)) == prefix &&
 					rest ~ commands) marker_runs++
 				else printf "%s:%d: role-marker.sh not run as documented\n", file, at
 				line = substr(line, i + length("role-marker.sh"))
@@ -192,6 +192,9 @@ record 1 "scan: pin with an undocumented option" "$(scan_fixture "${run_prefix}p
 record 1 "scan: notify without its heredoc" "$(scan_fixture "${run_prefix}notify extra")"
 printf '```bash\n%s\n' "${run_prefix}show" >"$fixture"
 record 1 "scan: an unterminated block" "$(scan_blocks "$fixture" | grep -vc '^launches=\|^marker_runs=')"
+printf 'text\n\n```bash\n%s\n' "${run_prefix}show" >"$fixture"
+record 1 "scan: an unterminated block is reported at its opening fence" \
+	"$(scan_blocks "$fixture" | grep -c "fixture.md:3: unterminated code block")"
 
 docs=()
 while IFS= read -r f; do docs+=("$f"); done < <(find "$plugin" "$spawn_plugin" -name '*.md' | sort)
