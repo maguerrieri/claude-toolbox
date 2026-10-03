@@ -28,8 +28,10 @@ Every marker read and write goes through the plugin's `scripts/role-marker.sh`
 harness's `CLAUDE_CODE_SESSION_ID` (Claude Code 2.1.132+), else the
 `CLAUDE_SESSION_ID` this plugin's SessionStart hook exports on older CLIs. The
 commands below run it from `$CLAUDE_TICKET_WORKFLOW_ROOT`, which the same hook
-sets. If that variable is empty, a command stops with `parameter not set`:
-find the script with the Glob tool instead
+sets. If that variable is empty, a command stops with `parameter not set`;
+if it names an older plugin version without the script (the cache keeps
+versions side by side, so a mid-session update can leave it stale), it fails
+with `No such file`. Either way, find the script with the Glob tool instead
 (`**/ticket-workflow/scripts/role-marker.sh` under your Claude config's
 `plugins/` directory, taking the highest version if several match) and run
 the same command with that path in place of
@@ -84,7 +86,8 @@ the same command with that path in place of
    **adopt it as governing for this session**, exactly as START Step 1 does
    for a spawned `Role:` directive. Read it **whole with the Read tool** at the
    absolute path the variable expands to (`echo "$CLAUDE_TICKET_WORKFLOW_ROOT"`
-   for the value). If the variable is empty, find the file with the Glob tool
+   for the value). If the variable is empty or stale (the script wasn't
+   under it, above), find the file with the Glob tool
    (`**/ticket-workflow/skills/ticket-workflow/roles/<role>.md` under your
    Claude config's `plugins/` directory), from the same version directory as
    the script above, and Read that path. Never `cat`, `sed`, `grep`, or `find`
