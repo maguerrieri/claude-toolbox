@@ -176,7 +176,7 @@ out=$(printf '%s' '{"session_id":"s","tool_name":"Bash","tool_input":{"command":
 	CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$guard")
 record allow "no roles directory" "${out:-allow}"
 
-# An in-process subagent shares this session's id, so a call of its that would
+# An in-process subagent shares this session's id, so a call that would
 # write the marker is denied, pinned or not, while its reads pass. Every write
 # the docs show runs scripts/role-marker.sh, so the rule is a run of it with any
 # subcommand but show. These cases run each command the guard allows, with the
@@ -260,6 +260,15 @@ deny_case "unpin under time" planner "time \"$R\" unpin"
 deny_case "unpin negated" planner "! \"$R\" unpin"
 deny_case "unpin negated as an if condition" planner "if ! \"$R\" unpin; then :; fi"
 deny_case "unpin in a group" planner "{ \"$R\" unpin; }"
+deny_case "unpin in a case branch" planner "case x in x) \"$R\" unpin;; esac"
+deny_case "unpin after an assignment from a substitution" planner "x=\$(true) \"$R\" unpin"
+deny_case "unpin behind nohup" planner "nohup \"$R\" unpin >/dev/null"
+deny_case "unpin behind time -p" planner "time -p \"$R\" unpin"
+deny_case "unpin behind command" planner "command \"$R\" unpin"
+deny_case "pin through /bin/bash" planner "/bin/bash \"$R\" pin implementer"
+deny_case "unpin through /bin/sh" planner "/bin/sh \"$R\" unpin"
+deny_case "pin, subcommand from a substitution" planner "bash \"$R\" \$(echo pin) implementer"
+deny_case "pin, subcommand from backticks" planner "bash \"$R\" \`echo pin\` implementer"
 deny_case "pin with an assignment prefix" planner "X=1 \"$R\" pin implementer"
 deny_case "pin through env" planner "env X=1 bash \"$R\" pin implementer"
 deny_case "pin with a shell option" planner "bash -e \"$R\" pin implementer"
@@ -298,7 +307,8 @@ record "allow planner|" "subagent commit naming a run" "$(as_agent planner a1 'g
 record "allow planner|" "subagent commit through a heredoc" "$(as_agent planner a1 "$(printf '%s\n' "git -C /nonexistent commit -F - <<'EOF' 2>/dev/null; true" 'bash scripts/role-marker.sh unpin' 'EOF')")"
 record "allow planner|" "subagent commit through a hyphenated heredoc delimiter" "$(as_agent planner a1 "$(printf '%s\n' "git -C /nonexistent commit -F - <<'END-MSG' 2>/dev/null; true" 'bash scripts/role-marker.sh unpin' 'END-MSG')")"
 record "allow planner|" "subagent grep of the script" "$(as_agent planner a1 "grep -c pin \"$R\"")"
-record "allow planner|" "subagent bash running another script that takes the path" "$(as_agent planner a1 "bash -c 'true' \"$R\" unpin")"
+record "deny planner|" "subagent path and unpin as bash -c's data (accepted false deny)" "$(as_agent planner a1 "bash -c 'true' \"$R\" unpin")"
+record "allow planner|" "subagent git diff of the script beside notify-name.sh" "$(as_agent planner a1 'git -C /nonexistent diff scripts/role-marker.sh scripts/notify-name.sh 2>/dev/null; true')"
 record "allow planner|" "subagent git add of the script" "$(as_agent planner a1 'git -C /nonexistent add scripts/role-marker.sh tests/x.sh 2>/dev/null; true')"
 record "allow planner|" "subagent echo of a run" "$(as_agent planner a1 'echo "then run bash scripts/role-marker.sh pin planner" >/dev/null')"
 record "allow planner|" "subagent find naming the script" "$(as_agent planner a1 'find /nonexistent -name role-marker.sh -print 2>/dev/null; true')"

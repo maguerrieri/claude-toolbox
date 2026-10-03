@@ -142,9 +142,15 @@ The subagent guard changed with it. It used to infer a marker write from
 command text (a session-id variable, the roles directory, and a write, all in
 one command), which missed a path carried over from an earlier command and
 falsely denied harmless commands such as a grep redirected to a file. Now a
-subagent's Bash call is denied when it runs `role-marker.sh` with any
-subcommand but `show`, as a command word or as the argument of bash, sh, zsh,
-exec, env, source or `.`; the file-edit check on the roles directory stays.
+subagent's Bash call is denied when it names `role-marker.sh` followed by a
+writing subcommand (`pin`, `unpin`, `notify`, or one the text doesn't show,
+such as a variable), anywhere outside quotes and heredocs; `show` passes, and
+the file-edit check on the roles directory stays. A first version also
+required the script to be in a command position (a command word, or the
+argument of bash, env and the like), and review kept finding positions it
+missed (an `if` condition, a `case` branch, an option's operand before the
+script), so the position test was dropped. Its cost is a false deny when the
+path and a subcommand are only data to another command.
 The docs show no hand-written marker write, so a subagent would have to
 improvise one to get past the guard: that leftover risk was accepted.
 
