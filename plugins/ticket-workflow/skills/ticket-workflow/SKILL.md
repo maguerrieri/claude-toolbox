@@ -232,7 +232,7 @@ bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" notify <<'NOTIFY_
 NOTIFY_NAME_EOF
 ```
 
-The script replaces any earlier `notify:` line and keeps the role and `issue:` lines (`messaging.md` has the details). When nothing is recorded, the command says why and exits non-zero. That happens with no marker, no session id, or the plugin root unset or stale, and then the target stays in context only, as before. It also happens with a name the hook would refuse, which the Step 9 hand-back mentions. A START without `Notify:` leaves an existing line alone, since the session's spawner hasn't changed.
+The script replaces any earlier `notify:` line and keeps the role and `issue:` lines (`messaging.md` has the details). When nothing is recorded, the command says why and exits non-zero. That happens with no marker, no session id, or the plugin root unset or stale, and then the target stays in context only, as before. It also happens with a name the hook would refuse, which the Step 9 hand-back mentions. A START without `Notify:` leaves an existing line alone, since the session's spawner hasn't changed, unless its self-pin above just replaced a marker that held another role, which drops the line with the rest.
 
 ### Step 2 — Determine target repo + base branch
 
@@ -342,7 +342,7 @@ If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you 
 
 ### Step 9 — Hand back
 
-Report: PR URL, a 1–2 sentence summary, which self-review ran for each of the two passes (`/code-review high` or the manual read) and any self-review finding held at the cap, whether the review bot had non-trivial comments and how they were handled — the round count, and if the cap was hit, the `Review rounds:` line and that one more round is theirs to grant — and that `/finish-ticket <id>` is the next step after the user's review.
+Report: PR URL, a 1–2 sentence summary, which self-review ran for each of the two passes (`/code-review high` or the manual read) and any self-review finding held at the cap, whether the review bot had non-trivial comments and how they were handled — the round count, and if the cap was hit, the `Review rounds:` line and that one more round is theirs to grant — anything Step 1 couldn't record or accept (a skipped or failed self-pin or notify record and why, a malformed `Budget:` or issue ID, a refused `Notify:` name), and that `/finish-ticket <id>` is the next step after the user's review.
 
 ---
 
