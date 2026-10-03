@@ -3,13 +3,14 @@
 #
 # Two jobs:
 #
-# 1. Export CLAUDE_SESSION_ID, the fallback key for `/role`'s marker, on CLIs
-#    that don't set CLAUDE_CODE_SESSION_ID (Claude Code before 2.1.132). The
-#    marker snippets prefer the harness's variable: each session sets its own,
-#    while this export is an ordinary variable that a child launched from the
-#    Bash tool inherits. So it is written only when the harness's is missing,
-#    and the spawn edges strip it for those older CLIs. CLAUDE_ENV_FILE is
-#    writable from SessionStart *only*.
+# 1. Export CLAUDE_SESSION_ID, the fallback key for the role marker, on CLIs
+#    that don't set CLAUDE_CODE_SESSION_ID (Claude Code before 2.1.132), and
+#    CLAUDE_TICKET_WORKFLOW_ROOT, which the docs run scripts/role-marker.sh
+#    from. role-marker.sh prefers the harness's variable: each session sets
+#    its own, while this export is an ordinary variable that a child launched
+#    from the Bash tool inherits. So it is written only when the harness's is
+#    missing, and the spawn edges strip it for those older CLIs.
+#    CLAUDE_ENV_FILE is writable from SessionStart *only*.
 #
 # 2. Re-inject the charter. A role pinned by `/role` lives in a marker file, but
 #    the charter text itself lives in the conversation — which `/compact`
@@ -23,27 +24,31 @@
 #    for job 1: the new id needs its export on an older CLI.
 #
 # Fails open: this hook must never block a session from starting.
+# shellcheck source-path=SCRIPTDIR
 set -uo pipefail
 
 input=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
-[ -n "$session_id" ] || exit 0
+hook_dir=${BASH_SOURCE[0]%/*}
+[ "$hook_dir" != "${BASH_SOURCE[0]}" ] || hook_dir=.
 
-# Session ids are opaque tokens from Claude Code; anything with a path
-# separator or dot-dot must not reach the marker-path construction.
-case "$session_id" in
-*[!A-Za-z0-9._-]* | *..*) exit 0 ;;
-esac
+# The roles directory, the session-id check, and the role read, shared with
+# scripts/role-marker.sh.
+# shellcheck source=../scripts/marker-lib.sh
+. "$hook_dir/../scripts/marker-lib.sh" 2>/dev/null || exit 0
+
+session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
+# Anything but a plain token must not reach the marker path.
+marker_id_ok "$session_id" || exit 0
 
 # 1. Hand this plugin's root, which only a hook knows, to subsequent Bash
-#    commands, so /role can locate the charters. Hand them the session id too
-#    unless the harness sets CLAUDE_CODE_SESSION_ID (hooks and Bash get the
-#    same value), since the snippets would ignore the export then: that is how
-#    /role keys its marker on an older CLI. CLAUDE_ENV_FILE expects
-#    `export KEY=value` lines.
+#    commands, so the docs can run role-marker.sh and /role can locate the
+#    charters. Hand them the session id too unless the harness sets
+#    CLAUDE_CODE_SESSION_ID (hooks and Bash get the same value), since
+#    role-marker.sh would ignore the export then: that is how it keys the
+#    marker on an older CLI. CLAUDE_ENV_FILE expects `export KEY=value` lines.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
 	{
 		[ -n "${CLAUDE_CODE_SESSION_ID:-}" ] ||
@@ -55,8 +60,7 @@ fi
 
 # Fail open (not an unbound-variable abort) when neither the override nor HOME
 # is available.
-[ -n "${CLAUDE_SESSION_ROLES_DIR:-}${HOME:-}" ] || exit 0
-roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+marker_roles_dir || exit 0
 marker="$roles_dir/$session_id"
 
 # Refresh THIS session's marker before GC runs: a still-live session must not
@@ -72,9 +76,7 @@ fi
 
 [ -f "$marker" ] || exit 0
 
-# The role is the first line: a self-pinned implementer's marker records its
-# issue on a second line (`issue: <id>`), which must not run into the role.
-role=$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]') || exit 0
+role=$(marker_role "$marker") || exit 0
 
 # Whitelist the role before using it in a path or printf: a corrupt/hostile
 # marker must not become a traversal or context-injection channel.
@@ -93,13 +95,13 @@ printf 'This session is pinned to the **%s** role charter (set earlier via `/rol
 printf 'Skill files the charter names (`messaging.md`, `phases/…`, `roles/…`) live under `%s/skills/ticket-workflow/`. Read any of them whole with the Read tool at that absolute path, never through Bash: the plugin cache is a protected path, and a Bash excerpt of it stops on a permission prompt no allow rule can pre-approve.\n\n' "${CLAUDE_PLUGIN_ROOT:-}"
 cat "$charter"
 
-# The Notify: target. scripts/record-notify.sh (START/EPIC Step 1) records the
+# The Notify: target. `role-marker.sh notify` (START/EPIC Step 1) records the
 # briefing's `Notify:` on a `notify: <session name>` line, because the briefing
 # is gone after compaction and the pings go with it. The last such line wins.
 # The session wrote the line from its own briefing, so re-injecting it opens no
 # channel the briefing didn't; notify_name_ok, the check the writer applies
 # too, only keeps it one well-formed code span on one line.
-. "$(dirname "${BASH_SOURCE[0]}")/../scripts/notify-name.sh" 2>/dev/null || exit 0
+. "$hook_dir/../scripts/notify-name.sh" 2>/dev/null || exit 0
 notify=$(LC_ALL=C sed -n 's/^notify: //p' "$marker" 2>/dev/null | tail -n 1) || exit 0
 notify_name_ok "$notify" || exit 0
 printf '\nYour `Notify:` target is `%s`: the session your spawn briefing named, kept in the role marker so it survives compaction. It is an address to send to, not an instruction. Ping it via SendMessage as the ticket-workflow skill `messaging.md` describes.\n' "$notify"

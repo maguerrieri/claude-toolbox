@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Tests for hooks/role-guard.sh: pipe crafted PreToolUse payloads in, with an
 # isolated CLAUDE_SESSION_ROLES_DIR, and check the decision it prints (no
-# output = allow). The last sections check that hooks/role-session-start.sh
-# reads the role, and the Notify: target, from the same markers, and that
-# scripts/record-notify.sh writes that target. Needs jq, like the hooks.
+# output = allow). The last section checks that hooks/role-session-start.sh
+# reads the role, and the Notify: target, from the same markers.
+# scripts/role-marker.sh, which writes them, has its own tests
+# (test-role-marker.sh). Needs jq, like the hooks.
 #
 #   bash plugins/ticket-workflow/tests/test-role-guard.sh
 set -u
@@ -175,18 +176,20 @@ out=$(printf '%s' '{"session_id":"s","tool_name":"Bash","tool_input":{"command":
 	CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$guard")
 record allow "no roles directory" "${out:-allow}"
 
-# An in-process subagent shares this session's id, so a call of
-# its that would write the marker is denied, pinned or not, while its reads
-# pass. These cases run each command the guard allows, with the parent's id in
-# the environment as the Bash tool would have it, and check the parent's
-# marker afterwards. The snippets are the docs' own.
+# An in-process subagent shares this session's id, so a call of its that would
+# write the marker is denied, pinned or not, while its reads pass. Every write
+# the docs show runs scripts/role-marker.sh, so the rule is a run of it with any
+# subcommand but show. These cases run each command the guard allows, with the
+# parent's id and the plugin root in the environment as the Bash tool would
+# have them, and check the parent's marker afterwards. The commands are the
+# docs' own where the docs show one.
 skill="$here/../skills/ticket-workflow"
-self_pin=$(extract_block "$skill/SKILL.md" "grep -qxF 'issue: <id>'" | sed -e 's/<role>/implementer/g' -e 's/<id>/52/g')
-role_pin=$(extract_block "$here/../commands/role.md" '"<role>" >"$marker"' | sed 's/<role>/planner/g')
-role_none=$(extract_block "$here/../commands/role.md" 'rm -f "$roles_dir/$sid"')
-role_read=$(extract_block "$skill/SKILL.md" 'head -n 1 "$roles_dir/$sid"')
-issue_read=$(extract_block "$skill/SKILL.md" 'cat "$roles_dir/$sid"')
-for snippet in self_pin role_pin role_none role_read issue_read; do
+self_pin=$(extract_block "$skill/SKILL.md" 'role-marker.sh" pin <role> --issue <id>' | sed -e 's/<role>/implementer/' -e 's/<id>/52/')
+notify_doc=$(extract_block "$skill/SKILL.md" 'role-marker.sh" notify' | sed 's/^<session name>$/helper planning/')
+role_read=$(extract_block "$skill/SKILL.md" 'role-marker.sh" show')
+role_pin=$(extract_block "$here/../commands/role.md" 'role-marker.sh" pin <role>' | sed 's/<role>/planner/')
+role_none=$(extract_block "$here/../commands/role.md" 'role-marker.sh" unpin')
+for snippet in self_pin notify_doc role_read role_pin role_none; do
 	record yes "doc snippet $snippet found" "$([ -n "${!snippet}" ] && echo yes || echo no)"
 done
 
@@ -200,53 +203,95 @@ as_agent() {
 	decision=$(decide_raw "$1" "$(jq -n --arg sid "$sid" --arg agent "$2" --arg c "$3" '{session_id: $sid, tool_name: "Bash", tool_input: {command: $c}}
 		+ (if $agent == "" then {} else {agent_id: $agent, agent_type: "general-purpose"} end)')")
 	[ "$decision" = deny ] || CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" CLAUDE_SESSION_ID="$sid" \
-		bash -c "$3" >/dev/null 2>&1
+		CLAUDE_TICKET_WORKFLOW_ROOT="$here/.." bash -c "$3" >/dev/null 2>&1
 	printf '%s %s' "$decision" "$([ -f "$roles_dir/$sid" ] && tr '\n' '|' <"$roles_dir/$sid" || echo none)"
 }
 
-# A subagent's marker writes are denied, however they reach the marker.
-record "deny epic-coordinator|" "subagent START self-pin" "$(as_agent epic-coordinator a1 "$self_pin")"
-record "deny none" "subagent self-pin, unpinned parent" "$(as_agent none a1 "$self_pin")"
-record "deny implementer|issue: 7|" "subagent self-pin for another issue" "$(as_agent $'implementer\nissue: 7' a1 "$self_pin")"
-record "deny planner|" "subagent /role none" "$(as_agent planner a1 "$role_none")"
-record "deny epic-coordinator|" "subagent /role pin" "$(as_agent epic-coordinator a1 "$role_pin")"
-record "deny planner|" "subagent find -delete" "$(as_agent planner a1 'find "$CLAUDE_SESSION_ROLES_DIR" -name "$CLAUDE_CODE_SESSION_ID" -delete')"
-record "deny planner|" "subagent sed -E -i" "$(as_agent planner a1 'sed -E -i.bak "1s/.*/implementer/" "$CLAUDE_SESSION_ROLES_DIR/${CLAUDE_CODE_SESSION_ID}"')"
-record "deny planner|" "subagent perl -p -i" "$(as_agent planner a1 'perl -p -i -e "s/planner/implementer/" "$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_CODE_SESSION_ID"')"
-record "deny planner|" "subagent redirect via the fallback variable" "$(as_agent planner a1 'echo implementer >"$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_SESSION_ID"')"
-record "deny planner|" "subagent write through printenv" "$(as_agent planner a1 'sid=$(printenv CLAUDE_CODE_SESSION_ID); echo implementer > "$CLAUDE_SESSION_ROLES_DIR/$sid"')"
-record "deny planner|" "subagent python write" "$(as_agent planner a1 "python3 -c 'import os; open(os.environ[\"CLAUDE_SESSION_ROLES_DIR\"] + \"/\" + os.environ[\"CLAUDE_CODE_SESSION_ID\"], \"w\").write(\"implementer\")'")"
-record "deny planner|" "subagent write in a backgrounded command" "$(as_agent planner a1 '(echo implementer >"$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_CODE_SESSION_ID") & wait')"
+# A subagent's runs of the script's writes are denied, however they reach it.
+# Each case runs twice: as is, and against a copy of the hooks whose rule is
+# switched off (role-guard-marker-write.jq always false), where the same
+# command must be allowed and must change the marker. That shows each case is
+# a real write and that this rule, not another, is what stops it.
+disabled=$(mktemp -d)
+trap 'rm -rf "$roles_dir" "$disabled"' EXIT
+cp -R "$here/../hooks" "$here/../scripts" "$disabled/"
+echo false >"$disabled/hooks/role-guard-marker-write.jq"
+deny_case() { # deny_case <label> <marker content or none> <command>
+	local before after real_guard=$guard
+	before=$([ "$2" = none ] && echo none || printf '%s\n' "$2" | tr '\n' '|')
+	record "deny $before" "subagent $1" "$(as_agent "$2" a1 "$3")"
+	guard="$disabled/hooks/role-guard.sh"
+	after=$(as_agent "$2" a1 "$3")
+	guard=$real_guard
+	record "allow, changed" "subagent $1, rule off" \
+		"$([ "${after%% *}" = allow ] && echo allow || echo "${after%% *}"), $([ "${after#* }" != "$before" ] && echo changed || echo unchanged)"
+}
+R='$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/role-marker.sh'
+parent=$'implementer\nissue: 52\nnotify: repo planning'
+deny_case "START self-pin" epic-coordinator "$self_pin"
+deny_case "self-pin, unpinned parent" none "$self_pin"
+deny_case "self-pin for another issue" $'implementer\nissue: 7' "$self_pin"
+deny_case "START notify record" "$parent" "$notify_doc"
+deny_case "/role <role>" epic-coordinator "$role_pin"
+deny_case "/role none" planner "$role_none"
+deny_case "pin, quoted path" planner "bash \"$R\" pin implementer"
+deny_case "pin, unquoted path" planner "bash $R pin implementer"
+deny_case "pin, executed directly" planner "\"$R\" pin implementer"
+deny_case "pin, sourced" planner ". \"$R\" pin implementer"
+deny_case "pin, single-quoted subcommand" planner "bash \"$R\" 'pin' implementer"
+deny_case "unpin, quoted path" planner "bash \"$R\" unpin"
+deny_case "unpin, unquoted path" planner "bash $R unpin"
+deny_case "unpin, executed directly" planner "$R unpin"
+deny_case "unpin, sourced" planner "source \"$R\" unpin"
+deny_case "notify, quoted path" "$parent" "bash \"$R\" notify <<< x"
+deny_case "notify, unquoted path" "$parent" "echo x | bash $R notify"
+deny_case "notify, executed directly" "$parent" "echo x | \"$R\" notify"
+deny_case "notify, sourced" "$parent" "echo x | . \"$R\" notify"
+deny_case "pin after a read" planner "bash \"$R\" show; bash \"$R\" pin implementer"
+deny_case "subcommand from a variable" planner "c=unpin; bash \"$R\" \"\$c\""
+deny_case "pin under then" planner "if true; then \"$R\" pin implementer; fi"
+deny_case "pin with an assignment prefix" planner "X=1 \"$R\" pin implementer"
+deny_case "pin through env" planner "env X=1 bash \"$R\" pin implementer"
+deny_case "pin with a shell option" planner "bash -e \"$R\" pin implementer"
+deny_case "pin, partly quoted path" planner 'bash "$CLAUDE_TICKET_WORKFLOW_ROOT"/scripts/role-marker.sh pin implementer'
+deny_case "unpin, partly quoted path executed directly" planner '"$CLAUDE_TICKET_WORKFLOW_ROOT"/scripts/role-marker.sh unpin'
+deny_case "pin after a redirect" planner "bash \"$R\" 2>/dev/null pin implementer"
+deny_case "unpin after a line continuation" planner "$(printf '%s\n' "bash \"$R\" \\" '  unpin')"
 
 # Its reads pass, and still see the parent's role: an implementer's subagent
 # is refused by the skill's guards just as the implementer is.
 record "allow epic-coordinator|" "subagent spawn-guard read" "$(as_agent epic-coordinator a1 "$role_read")"
-record "allow implementer|issue: 52|" "subagent one-issue-guard read" "$(as_agent $'implementer\nissue: 52' a1 "$issue_read")"
+record "allow implementer|issue: 52|" "subagent one-issue-guard read" "$(as_agent $'implementer\nissue: 52' a1 "$role_read")"
 record "implementer" "subagent's spawn-guard read sees the parent's role" \
-	"$(CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" bash -c "$role_read")"
+	"$(CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" CLAUDE_TICKET_WORKFLOW_ROOT="$here/.." bash -c "$role_read" 2>/dev/null | head -n 1)"
+record "allow planner|" "subagent single-quoted show" "$(as_agent planner a1 "bash \"$R\" 'show'")"
+record "allow planner|" "subagent run with no subcommand" "$(as_agent planner a1 "bash \"$R\"")"
+record "allow planner|" "subagent show after a redirect" "$(as_agent planner a1 "bash \"$R\" 2>/dev/null show")"
+record "allow planner|" "subagent show after a line continuation" "$(as_agent planner a1 "$(printf '%s\n' "bash \"$R\" \\" '  show')")"
+record "allow planner|" "subagent show, partly quoted path" "$(as_agent planner a1 'bash "$CLAUDE_TICKET_WORKFLOW_ROOT"/scripts/role-marker.sh show')"
 
-# Other commands pass: all three of the id, the roles directory, and a write
-# are needed.
-record "allow epic-coordinator|" "subagent grep piped to tee" "$(as_agent epic-coordinator a1 'grep -rn session-roles /dev/null | tee /dev/null')"
-record "allow epic-coordinator|" "subagent commit quoting the variables" "$(as_agent epic-coordinator a1 'git -C /nonexistent commit -m "Unset \$CLAUDE_CODE_SESSION_ID for session-roles writes" 2>/dev/null; true')"
-record "allow none" "subagent test run with a roles-dir override" "$(as_agent none a1 'CLAUDE_SESSION_ROLES_DIR=/nonexistent true < /dev/null > /dev/null')"
-record "allow none" "subagent command, a longer variable name" "$(as_agent none a1 'echo "$CLAUDE_CODE_SESSION_IDX $CLAUDE_SESSION_ROLES_DIR" | tee /dev/null')"
-record "allow epic-coordinator|" "subagent commit whose message has -> and tee" "$(as_agent epic-coordinator a1 'git -C /nonexistent commit -m "Keep $CLAUDE_SESSION_ID -> session-roles; tee and rm stay" 2>/dev/null; true')"
-record "allow epic-coordinator|" "subagent commit through a heredoc" "$(as_agent epic-coordinator a1 "$(printf '%s\n' "git -C /nonexistent commit -F - <<'EOF' 2>/dev/null; true" 'Write $CLAUDE_CODE_SESSION_ID > session-roles/x' 'EOF')")"
-record "allow epic-coordinator|" "subagent single-quoted pattern into sed -i" "$(as_agent epic-coordinator a1 "grep -rl 'session-roles|CLAUDE_CODE_SESSION_ID' /dev/null | xargs sed -i.bak s/x/y/")"
+# Mentions of the script pass.
+record "allow planner|" "subagent commit naming a run" "$(as_agent planner a1 'git -C /nonexistent commit -m "Run bash scripts/role-marker.sh pin planner" 2>/dev/null; true')"
+record "allow planner|" "subagent commit through a heredoc" "$(as_agent planner a1 "$(printf '%s\n' "git -C /nonexistent commit -F - <<'EOF' 2>/dev/null; true" 'bash scripts/role-marker.sh unpin' 'EOF')")"
+record "allow planner|" "subagent grep of the script" "$(as_agent planner a1 "grep -c pin \"$R\"")"
+record "allow planner|" "subagent git add of the script" "$(as_agent planner a1 'git -C /nonexistent add scripts/role-marker.sh tests/x.sh 2>/dev/null; true')"
+record "allow planner|" "subagent echo of a run" "$(as_agent planner a1 'echo "then run bash scripts/role-marker.sh pin planner" >/dev/null')"
+record "allow planner|" "subagent find naming the script" "$(as_agent planner a1 'find /nonexistent -name role-marker.sh -print 2>/dev/null; true')"
 
-# decide_agent <command>: the decision alone, for a command that shouldn't run.
-decide_agent() {
-	decide_raw none "$(jq -n --arg sid "$sid" --arg c "$1" '{session_id: $sid, agent_id: "a1", tool_name: "Bash", tool_input: {command: $c}}')"
-}
-record allow "subagent write to a file beside the roles directory" "$(decide_agent 'echo "role for ${CLAUDE_CODE_SESSION_ID}" >> ~/.claude/session-roles.log')"
-record deny "subagent chmod of the marker" "$(decide_agent 'chmod 000 "$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_CODE_SESSION_ID"')"
-record deny "subagent sponge into the marker" "$(decide_agent 'echo implementer | sponge ~/.claude/session-roles/$CLAUDE_CODE_SESSION_ID')"
-record deny "subagent ex edit of the marker" "$(decide_agent "ex -sc '%s/planner/implementer/|x' \"\$CLAUDE_SESSION_ROLES_DIR/\$CLAUDE_CODE_SESSION_ID\"")"
-record deny "subagent python with single-quoted code" "$(decide_agent "python3 -c 'import os; open(os.environ[\"CLAUDE_SESSION_ROLES_DIR\"] + \"/\" + os.environ[\"CLAUDE_CODE_SESSION_ID\"], \"w\")'")"
+# The old rule guessed at writes from command text, and denied this grep: it
+# names a session-id variable and the roles directory, and redirects.
+record "allow planner|" "subagent grep into a file (once a false deny)" \
+	"$(as_agent planner a1 "grep -rn CLAUDE_SESSION_ID /dev/null | grep session-roles > $roles_dir.out; true")"
+rm -f "$roles_dir.out"
+# The accepted gap: a write improvised without the script passes. No doc shows
+# one, so a subagent would have to make it up.
+record "allow implementer|" "subagent hand-written write (documented gap)" \
+	"$(as_agent planner a1 'echo implementer >"$CLAUDE_SESSION_ROLES_DIR/$CLAUDE_CODE_SESSION_ID"')"
+record "allow none" "subagent run nested in bash -c (documented gap)" "$(as_agent planner a1 "bash -c 'bash \"$R\" unpin'")"
 
-# The main thread's own calls pass: its self-pin still writes.
+# The main thread's own calls pass: its self-pin and notify record still write.
 record "allow implementer|issue: 52|" "main thread's self-pin" "$(as_agent epic-coordinator '' "$self_pin")"
+record "allow implementer|issue: 52|notify: helper planning|" "main thread's notify record" "$(as_agent "$parent" '' "$notify_doc")"
 record "allow none" "main thread's /role none" "$(as_agent planner '' "$role_none")"
 record allow "empty agent_id is the main thread's call" \
 	"$(decide_raw planner "$(jq -n --arg sid "$sid" --arg c "$role_none" '{session_id: $sid, agent_id: "", tool_name: "Bash", tool_input: {command: $c}}')")"
@@ -335,98 +380,5 @@ record "$em_200" "session start: em dash counted in bytes, at the limit" "$(noti
 record none "session start: em dash counted in bytes, over the limit" "$(notifies $'implementer\nnotify: 0'"$em_200"$'\n')"
 record none "session start: notify on the role line is no role" "$(injects $'notify: repo planning\nimplementer\n')"
 record none "session start: notify without a valid role" "$(notifies $'bogus\nnotify: repo planning\n')"
-
-# scripts/record-notify.sh writes the line START Step 1 records.
-record_notify="$here/../scripts/record-notify.sh"
-
-# Prints the marker after recording <session name> into <marker content>
-# (none: no marker), then the script's exit status on a last line.
-write_notify() { # write_notify <marker content | none> <session name>
-	rm -f "$roles_dir/$sid"
-	[ "$1" = none ] || printf '%s' "$1" >"$roles_dir/$sid"
-	printf '%s\n' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" CLAUDE_SESSION_ID= \
-		bash "$record_notify" 2>/dev/null
-	local status=$?
-	cat "$roles_dir/$sid" 2>/dev/null || echo none
-	echo "exit $status"
-}
-
-rewritten=$(write_notify $'implementer\nissue: 52\nnotify: old\n' 'repo #52: new')
-record $'implementer\nissue: 52\nnotify: repo #52: new\nexit 0' "notify write: replaces the old line" "$rewritten"
-rewritten=${rewritten%$'\n'exit 0}
-record implementer "notify write: role still first" "$(injects "$rewritten")"
-record "repo #52: new" "notify write: re-injected" "$(notifies "$rewritten")"
-record $'epic-coordinator\nnotify: planning\nexit 0' "notify write: marker without a trailing newline" "$(write_notify 'epic-coordinator' planning)"
-tricky="widgets #40: epic — user's \"auth\" & CI [ad63a1] \$(touch $roles_dir/pwned)"
-record $'implementer\nnotify: '"$tricky"$'\nexit 0' "notify write: quotes and shell syntax stay data" "$(write_notify $'implementer\n' "$tricky")"
-record absent "notify write: nothing in the name ran" "$([ -e "$roles_dir/pwned" ] && echo present || echo absent)"
-record $'implementer\nnotify: repo planning\nexit 0' "notify write: surrounding whitespace trimmed" "$(write_notify $'implementer\n' $'  repo planning \t')"
-record $'none\nexit 1' "notify write: no marker, none created" "$(write_notify none 'repo planning')"
-record $'implementer\nnotify: old\nexit 1' "notify write: backtick rejected, marker untouched" "$(write_notify $'implementer\nnotify: old\n' 'x`id`')"
-record $'implementer\nexit 1' "notify write: blank name rejected" "$(write_notify $'implementer\n' '   ')"
-record $'implementer\nexit 1' "notify write: overlong name rejected" "$(write_notify $'implementer\n' "$(printf '%0201d' 0)")"
-record $'implementer\nexit 1' "notify write: over 200 bytes with an em dash" "$(write_notify $'implementer\n' "0$em_200")"
-record $'implementer\nnotify: '"$em_200"$'\nexit 0' "notify write: 200 bytes with an em dash" "$(write_notify $'implementer\n' "$em_200")"
-
-# The session id: the harness's CLAUDE_CODE_SESSION_ID first, then the hook's
-# CLAUDE_SESSION_ID export (older CLIs). A child launched from the Bash tool can
-# inherit its parent's CLAUDE_SESSION_ID, so that must not win.
-id_write() { # id_write <CLAUDE_CODE_SESSION_ID> <CLAUDE_SESSION_ID>; prints the marker and the exit status
-	printf 'implementer\n' >"$roles_dir/$sid"
-	printf 'repo planning\n' | CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$1" CLAUDE_SESSION_ID="$2" \
-		bash "$record_notify" 2>/dev/null
-	local status=$?
-	cat "$roles_dir/$sid"
-	echo "exit $status"
-}
-record $'implementer\nnotify: repo planning\nexit 0' "notify write: CLAUDE_SESSION_ID fallback" "$(id_write '' "$sid")"
-record $'implementer\nexit 1' "notify write: inherited CLAUDE_SESSION_ID loses to the harness's id" "$(id_write child-session "$sid")"
-record $'implementer\nexit 1' "notify write: no session id" "$(id_write '' '')"
-
-# The snippet START Step 1 documents, run as written: the name on the heredoc's
-# middle line, the plugin root from the SessionStart hook's variable.
-skill_md="$here/../skills/ticket-workflow/SKILL.md"
-snippet=$(awk '/^Then \*\*record the target in the marker\*\*/ { found = 1 }
-	found && /^```bash$/ { inside = 1; next }
-	inside && /^```$/ { exit }
-	inside' "$skill_md")
-run_snippet() { # run_snippet <marker content> <session name> [plugin root]; prints the marker
-	printf '%s' "$1" >"$roles_dir/$sid"
-	# A line loop, not ${snippet//...}: bash 3.2 and 5.2 quote the replacement
-	# differently, and 5.2 expands & in it.
-	while IFS= read -r line; do
-		[ "$line" = '<session name>' ] && line=$2
-		printf '%s\n' "$line"
-	done <<<"$snippet" >"$roles_dir/snippet.sh"
-	CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID="$sid" CLAUDE_SESSION_ID= \
-		CLAUDE_TICKET_WORKFLOW_ROOT="${3-$here/..}" bash "$roles_dir/snippet.sh" 2>"$roles_dir/snippet.err"
-	cat "$roles_dir/$sid"
-}
-record 1 "SKILL.md snippet found" "$(printf '%s\n' "$snippet" | grep -c 'record-notify.sh')"
-record $'implementer\nissue: 52\nnotify: '"$tricky" "SKILL.md snippet: quotes and shell syntax stay data" "$(run_snippet $'implementer\nissue: 52\n' "$tricky")"
-record absent "SKILL.md snippet: nothing in the name ran" "$([ -e "$roles_dir/pwned" ] && echo present || echo absent)"
-record $'implementer\nnotify: NOTIFY' "SKILL.md snippet: a name that was the old delimiter" "$(run_snippet $'implementer\n' NOTIFY)"
-record implementer "SKILL.md snippet: plugin root unset, nothing run" "$(run_snippet $'implementer\n' 'repo planning' '')"
-record 1 "SKILL.md snippet: plugin root unset, says why" "$(grep -c 'nothing recorded' "$roles_dir/snippet.err")"
-
-# A subagent shares its parent's session id, so START Step 1's notify record
-# would rewrite the parent's marker. The script finds the id and the roles
-# directory itself, so the command names neither: running it is the write.
-notify_cmd=$(while IFS= read -r line; do
-	[ "$line" = '<session name>' ] && line='helper planning'
-	printf '%s\n' "$line"
-done <<<"$snippet")
-parent=$'implementer\nissue: 52\nnotify: repo planning'
-export CLAUDE_TICKET_WORKFLOW_ROOT="$here/.."
-record "deny implementer|issue: 52|notify: repo planning|" "subagent runs START's notify record" "$(as_agent "$parent" a1 "$notify_cmd")"
-record "deny implementer|" "subagent runs record-notify.sh, quoted path" "$(as_agent implementer a1 "$(printf '%s\n' 'bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<'"'"'EOF'"'"'' 'x' 'EOF')")"
-record "deny implementer|" "subagent runs record-notify.sh, unquoted path" "$(as_agent implementer a1 'bash $CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh </dev/null')"
-record "deny implementer|" "subagent executes record-notify.sh directly" "$(as_agent implementer a1 '"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<< x')"
-record "deny implementer|" "subagent sources record-notify.sh" "$(as_agent implementer a1 'echo x | . "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh"')"
-record "allow implementer|" "subagent commit naming record-notify.sh" "$(as_agent implementer a1 'git -C /nonexistent commit -m "Fix scripts/record-notify.sh" 2>/dev/null; true')"
-record "allow implementer|" "subagent grep of record-notify.sh" "$(as_agent implementer a1 'grep -c notify_name_ok "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh"')"
-record "allow implementer|" "subagent message mentioning a run" "$(as_agent implementer a1 'echo "then run bash scripts/record-notify.sh" >/dev/null')"
-record "allow implementer|issue: 52|notify: helper planning|" "main thread runs START's notify record" "$(as_agent "$parent" '' "$notify_cmd")"
-unset CLAUDE_TICKET_WORKFLOW_ROOT
 
 finish
