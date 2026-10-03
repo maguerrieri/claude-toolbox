@@ -19,8 +19,10 @@
 #
 # A heuristic over the command text, not a shell parser, like
 # role-guard-launch.jq. A run inside another shell's quoted string
-# (bash -c '…'), one whose subcommand arrives on stdin (… | xargs …), and one
-# through a copy or symlink of the script under another name pass it. So does
+# (bash -c '…'), one whose subcommand arrives on stdin (… | xargs …), one
+# whose path is spelled with escapes (role\-marker.sh), and one through a copy
+# or symlink of the script under another name pass it: they take intent, and
+# this is a drift backstop for a subagent following the docs, not a lock. So does
 # a write that doesn't use the script at all: the docs show none, so a
 # subagent would have to improvise one (#203 accepted that risk rather than
 # keep guessing at writes from command text, which denied harmless commands).
@@ -37,19 +39,23 @@ def strip_heredocs: gsub("<<-?[ \\t]*['\"]?(?<w>[\\w.-]+)['\"]?[^\\n]*\\n(?:[^\\
 # quoted plain word (a "pin" subcommand) loses its quotes, every other quoted
 # string is emptied so nothing inside one counts, line continuations are
 # joined, and redirections (2>/dev/null, <<< x) are dropped, so the word after
-# the path is the subcommand.
+# the path is the subcommand. Quoted letters lose their quotes even inside a
+# word ("un"pin, un'p'in), and an unquoted backslash escape loses its
+# backslash (un\pin), as the shell reads them.
 def normalize:
   gsub("(?<![^\\s;&|(`{])(?:\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*'|[^\\s\"';&|()<>])*?(?:\"[^\"\\\\]*role-marker\\.sh\"|'[^']*role-marker\\.sh'|role-marker\\.sh)(?![\\w.-])"; "ROLE_MARKER_SH")
   | gsub("\"(?<w>[A-Za-z-]+)\"|'(?<v>[A-Za-z-]+)'"; "\(.w // .v)")
   | gsub("\"(?:[^\"\\\\]|\\\\.)*\""; "\"\"")
   | gsub("'[^']*'"; "''")
   | gsub("\\\\\\n"; " ")
+  | gsub("\\\\(?<c>[^\\n])"; "\(.c)")
   | gsub("[0-9]*[<>]{1,3}&?[ \\t]*[^\\s;&|()<>]+"; " ");
 
-# The path, then a writing subcommand: pin, unpin, notify, or a word the text
-# doesn't show (starting with $ or a backtick, or an emptied quoted string).
+# The path, then a writing subcommand: pin, unpin or notify, or a word whose
+# text doesn't show, wholly or in part (it holds a $, a backtick, or an emptied
+# quoted string: "$c", ${c}, $(…), un''pin).
 def write_re:
-  "ROLE_MARKER_SH(?![\\w.-])[ \\t]+(?:(?:pin|unpin|notify)(?![\\w.-])|[$`]|\"\"|'')";
+  "ROLE_MARKER_SH(?![\\w.-])[ \\t]+(?:(?:pin|unpin|notify)(?![\\w.-])|[^\\s;&|()<>]*(?:[$`]|\"\"|''))";
 
 (.agent_id // "") != ""
 and .tool_name == "Bash"

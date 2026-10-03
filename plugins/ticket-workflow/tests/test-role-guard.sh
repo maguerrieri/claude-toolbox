@@ -275,6 +275,12 @@ else
 fi
 deny_case "pin, subcommand from a substitution" planner "bash \"$R\" \$(echo pin) implementer"
 deny_case "pin, subcommand from backticks" planner "bash \"$R\" \`echo pin\` implementer"
+deny_case "unpin, escaped subcommand" planner "bash \"$R\" un\\pin"
+deny_case "unpin, partly quoted subcommand" planner "bash \"$R\" \"un\"pin"
+deny_case "unpin, single-quoted letters inside the subcommand" planner "bash \"$R\" un'p'in"
+deny_case "unpin, empty quotes inside the subcommand" planner "bash \"$R\" un''pin"
+record "allow none" "subagent escaped path (documented gap)" \
+	"$(as_agent planner a1 "bash \"\$CLAUDE_TICKET_WORKFLOW_ROOT\"/scripts/role\\-marker.sh unpin")"
 deny_case "pin with an assignment prefix" planner "X=1 \"$R\" pin implementer"
 deny_case "pin through env" planner "env X=1 bash \"$R\" pin implementer"
 deny_case "pin with a shell option" planner "bash -e \"$R\" pin implementer"
