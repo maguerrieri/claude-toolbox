@@ -253,6 +253,17 @@ deny_case "pin under then" planner "if true; then \"$R\" pin implementer; fi"
 deny_case "pin with an assignment prefix" planner "X=1 \"$R\" pin implementer"
 deny_case "pin through env" planner "env X=1 bash \"$R\" pin implementer"
 deny_case "pin with a shell option" planner "bash -e \"$R\" pin implementer"
+deny_case "pin with a shell option that takes an operand" planner "bash -o pipefail \"$R\" pin implementer"
+deny_case "unpin through env -u" planner "env -u CLAUDE_SESSION_ID \"$R\" unpin"
+deny_case "unpin through env -i -u and bash" planner "env -i -u X PATH=\"\$PATH\" CLAUDE_SESSION_ROLES_DIR=\"\$CLAUDE_SESSION_ROLES_DIR\" CLAUDE_CODE_SESSION_ID=\"\$CLAUDE_CODE_SESSION_ID\" bash \"$R\" unpin"
+# GNU env's long option; macOS's BSD env lacks it, so there only the decision
+# is checked.
+if env --unset=X true 2>/dev/null; then
+	deny_case "unpin through env --unset" planner "env --unset=X \"$R\" unpin"
+else
+	record "deny planner|" "subagent unpin through env --unset" "$(as_agent planner a1 "env --unset=X \"$R\" unpin")"
+fi
+deny_case "unpin through exec -a" planner "exec -a name \"$R\" unpin"
 deny_case "pin, partly quoted path" planner 'bash "$CLAUDE_TICKET_WORKFLOW_ROOT"/scripts/role-marker.sh pin implementer'
 deny_case "unpin, partly quoted path executed directly" planner '"$CLAUDE_TICKET_WORKFLOW_ROOT"/scripts/role-marker.sh unpin'
 deny_case "pin after a redirect" planner "bash \"$R\" 2>/dev/null pin implementer"
