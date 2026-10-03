@@ -63,6 +63,8 @@ record "implementer|issue: 7|notify: repo x| exit 0" "pin: the same role keeps t
 	"$(run $'implementer\nissue: 7\nnotify: repo x\n' '' pin implementer)"
 record "implementer|issue: 7|issue: 52| exit 0" "pin: a second issue is appended" \
 	"$(run $'implementer\nissue: 7\n' '' pin implementer --issue 52)"
+record "implementer|issue: 7|issue: 52|notify: repo x| exit 0" "pin: a new issue goes before the notify line" \
+	"$(run $'implementer\nissue: 7\nnotify: repo x\n' '' pin implementer --issue 52)"
 record "implementer|issue: 52|notify: x| exit 0" "pin: a recorded issue isn't repeated" \
 	"$(run $'implementer\nissue: 52\nnotify: x\n' '' pin implementer --issue 52)"
 record "implementer|issue: 5|issue: 52| exit 0" "pin: issue lines match whole" \
