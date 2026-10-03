@@ -125,8 +125,15 @@ record "implementer|notify: $tricky| exit 0" "notify: quotes and shell syntax st
 record absent "notify: nothing in the name ran" "$([ -e "$tmp/pwned" ] && echo present || echo absent)"
 record "implementer|notify: repo planning| exit 0" "notify: surrounding whitespace trimmed" \
 	"$(run $'implementer\n' $'  repo planning \t\n' notify)"
-record "implementer|notify: second| exit 0" "notify: only the first line is the name" \
-	"$(run $'implementer\n' $'second\nthird\n' notify)"
+record "implementer|notify: old| exit 1" "notify: two lines refused, marker untouched" \
+	"$(run $'implementer\nnotify: old\n' $'repo one\nrepo two\n' notify)"
+record 1 "notify: two lines says why" "$(grep -c 'more than one line; nothing written' "$tmp/err")"
+record "implementer| exit 1" "notify: a second, empty line refused" "$(run $'implementer\n' $'repo planning\n\n' notify)"
+record "implementer| exit 1" "notify: a leading empty line refused" "$(run $'implementer\n' $'\nrepo planning\n' notify)"
+record "implementer|notify: repo planning| exit 0" "notify: one trailing newline is fine" \
+	"$(run $'implementer\n' $'repo planning\n' notify)"
+record "implementer|notify: repo planning| exit 0" "notify: no trailing newline is fine" \
+	"$(run $'implementer\n' 'repo planning' notify)"
 record "none exit 1" "notify: no marker, none created" "$(run none 'repo planning' notify)"
 record 1 "notify: no marker says why" "$(grep -c 'no role marker' "$tmp/err")"
 record "implementer|notify: old| exit 1" "notify: backtick rejected, marker untouched" \

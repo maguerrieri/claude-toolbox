@@ -24,8 +24,9 @@
 # skipped, and stderr says so.
 # notify replaces any earlier notify: line and keeps the rest; the name comes
 # on stdin, from a quoted heredoc, so no character of it reaches a shell as
-# syntax, and must pass notify_name_ok, the check role-session-start.sh applies
-# before re-injecting it.
+# syntax. It must be one line (a single trailing newline aside) and pass
+# notify_name_ok, the check role-session-start.sh applies before re-injecting
+# it.
 #
 # The session id is the harness's own CLAUDE_CODE_SESSION_ID (Claude Code
 # 2.1.132+), else the CLAUDE_SESSION_ID the SessionStart hook exports on older
@@ -96,7 +97,20 @@ notify)
 	[ $# -eq 1 ] || fail "$usage"
 	# shellcheck source=notify-name.sh
 	. "$here/notify-name.sh" 2>/dev/null || fail 'notify-name.sh is missing'
-	name=$(head -n 1)
+	# The name comes from a heredoc; from a terminal, reading would only block.
+	[ ! -t 0 ] || fail "$usage"
+	# All of stdin, kept exact (the x stops $(...) from stripping trailing
+	# newlines), less one trailing newline: a second line is refused, not cut
+	# off, so a heredoc holding two names records neither.
+	name=$(
+		cat
+		printf x
+	)
+	name=${name%x}
+	name=${name%$'\n'}
+	case "$name" in
+	*$'\n'*) fail 'the name is more than one line' ;;
+	esac
 	# Trim surrounding whitespace, which notify_name_ok refuses.
 	name=${name#"${name%%[![:space:]]*}"}
 	name=${name%"${name##*[![:space:]]}"}
