@@ -21,9 +21,17 @@ marker_id_ok() {
 	esac
 }
 
-# marker_role <marker> prints the role: the marker's first line, whitespace
-# stripped. Only that line is the role. A self-pinned implementer's marker
-# records its issue on the next line (`issue: <id>`), which must not run into it.
+# marker_role_of <text> prints the role in <text>, a marker's content: its
+# first line, whitespace stripped. Only that line is the role. A self-pinned
+# implementer's marker records its issue on the next line (`issue: <id>`),
+# which must not run into it.
+marker_role_of() {
+	local first=${1%%$'\n'*}
+	printf '%s' "${first//[[:space:]]/}"
+}
+
+# marker_role <marker> prints the role of the marker file, as marker_role_of
+# reads it.
 marker_role() {
-	head -n 1 "$1" 2>/dev/null | tr -d '[:space:]'
+	marker_role_of "$(head -n 1 "$1" 2>/dev/null)"
 }
