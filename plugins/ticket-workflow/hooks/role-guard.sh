@@ -26,10 +26,13 @@
 #   following a skill's START step would re-pin its parent. Its calls, and
 #   only its calls, carry an agent_id (checked on Claude Code 2.1.282). So
 #   such a call is denied when it would write the marker: a Bash command
-#   that role-guard-marker-write.jq judges a marker write (a run of
-#   scripts/record-notify.sh included), or a file edit in the roles directory. Reads pass, so the skill's guards still see the parent's
-#   role. Deny, not ask, with no override: the write is never the subagent's
-#   to make.
+#   that names scripts/role-marker.sh, which makes every marker write the
+#   docs describe, followed by any subcommand but `show`, wherever it sits
+#   outside quotes and heredocs (role-guard-marker-write.jq), or a file edit
+#   in the roles directory. Reads pass (`role-marker.sh show`), so
+#   the skill's guards still see the parent's role. Deny, not ask, with no
+#   override: the write is never the subagent's to make. A write improvised
+#   without the script passes; the docs show none.
 #
 # The role guards match the charters' stated philosophy: the guard is the
 # unattended default, not a lock. The implementer check is a heuristic over the command
@@ -41,16 +44,22 @@
 #
 # Fails open: any missing dependency, unreadable marker, or unparseable payload
 # exits 0 (allow). This is a drift nudge, not a security control.
+# shellcheck source-path=SCRIPTDIR
 set -uo pipefail
 
 input=$(cat)
 
 command -v jq >/dev/null 2>&1 || exit 0
 
-# Fail open (not an unbound-variable abort) when neither the override nor HOME
-# is available.
-[ -n "${CLAUDE_SESSION_ROLES_DIR:-}${HOME:-}" ] || exit 0
-roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
+hook_dir=${BASH_SOURCE[0]%/*}
+[ "$hook_dir" != "${BASH_SOURCE[0]}" ] || hook_dir=.
+
+# The roles directory, the session-id check, and the role read, shared with
+# role-marker.sh. Fail open (not an unbound-variable abort) when neither the
+# override nor HOME is available.
+# shellcheck source=../scripts/marker-lib.sh
+. "$hook_dir/../scripts/marker-lib.sh" 2>/dev/null || exit 0
+marker_roles_dir || exit 0
 
 emit() { # emit <decision> <reason>
 	jq -n --arg decision "$1" --arg reason "$2" '{
@@ -85,9 +94,8 @@ in_roles_dir() {
 agent_re='"agent_id"[[:space:]]*:[[:space:]]*"[^"]'
 if [[ $input =~ $agent_re ]]; then
 	subagent_write=no
-	if { [[ $input == *record-notify.sh* ]] || { [[ $input == *SESSION_ID* ]] &&
-		[[ $input == *session-roles* || $input == *CLAUDE_SESSION_ROLES_DIR* || $input == *"$roles_dir"* ]]; }; } &&
-		printf '%s' "$input" | jq -e --arg dir "$roles_dir" -f "${BASH_SOURCE[0]%/*}/role-guard-marker-write.jq" >/dev/null 2>&1; then
+	if [[ $input == *role-marker.sh* ]] &&
+		printf '%s' "$input" | jq -e -f "$hook_dir/role-guard-marker-write.jq" >/dev/null 2>&1; then
 		subagent_write=yes
 	else
 		# A file edit (Edit, Write, MultiEdit, NotebookEdit) in the roles
@@ -107,7 +115,7 @@ if [[ $input =~ $agent_re ]]; then
 	if [ "$subagent_write" = yes ]; then
 		emit deny "This call would write the role marker, and it comes from an in-process subagent or other in-process agent (its hook input carries an agent_id). You run inside your parent's session and share its session id, so the marker is the parent session's, not yours.
 
-Skip the self-pin and the notify record (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker is fine. If this command only mentions a session-id variable and the roles directory (a grep pattern, a commit message), single-quote those names or pass the text through a file."
+Skip the self-pin and the notify record (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker (role-marker.sh show) is fine. If this command only mentions the script (a commit message, an echo), keep the mention inside quotes or pass the text through a file."
 		exit 0
 	fi
 fi
@@ -122,20 +130,13 @@ id_re='"session_id"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)"'
 fields=$(printf '%s' "$input" | jq -r '[.session_id // "", .tool_name // ""] | @tsv' 2>/dev/null) || exit 0
 session_id=${fields%%$'\t'*}
 tool=${fields#*$'\t'}
-[ -n "$session_id" ] || exit 0
-
-# Session ids are opaque tokens from Claude Code; anything with a path
-# separator or dot-dot must not reach the marker-path construction.
-case "$session_id" in
-*[!A-Za-z0-9._-]* | *..*) exit 0 ;;
-esac
+# Anything but a plain token must not reach the marker path.
+marker_id_ok "$session_id" || exit 0
 
 marker="$roles_dir/$session_id"
 [ -f "$marker" ] || exit 0
 
-# The role is the first line: a self-pinned implementer's marker records its
-# issue on a second line (`issue: <id>`), which must not run into the role.
-role=$(head -n 1 "$marker" 2>/dev/null | tr -d '[:space:]') || exit 0
+role=$(marker_role "$marker") || exit 0
 
 # Defense in depth: hooks.json already filters on `matcher`, but a future
 # matcher change shouldn't silently widen either guard.
@@ -149,7 +150,7 @@ Planners don't implement: file the work (/make-ticket) and hand it down (/spawn-
 Approve to make this one edit anyway, or run '/role none' to drop the charter for the rest of the session."
 	;;
 implementer:Bash | implementer:create_session | implementer:mcp__*__create_session)
-	printf '%s' "$input" | jq -e -f "$(dirname "${BASH_SOURCE[0]}")/role-guard-launch.jq" >/dev/null 2>&1 || exit 0
+	printf '%s' "$input" | jq -e -f "$hook_dir/role-guard-launch.jq" >/dev/null 2>&1 || exit 0
 	decision=deny
 	reason="This session is pinned to the implementer charter, which owns exactly one issue. Launching a session that leads with /start-ticket, /start-epic, /spawn-tickets, /spawn-epic, or /make-ticket --spawn or --start spawns work for an issue, and that allocation is your coordinator's call, not yours.
 

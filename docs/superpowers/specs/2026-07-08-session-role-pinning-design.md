@@ -114,6 +114,49 @@ what compaction breaks, and because there is no PR before START Step 7, when a
 long implementation may already have compacted. The marker is re-injected
 without the session doing anything.
 
+**Update (#203):** every marker read and write a session makes now goes through one script,
+`scripts/role-marker.sh`: `show` prints the marker, `pin <role> [--issue <id>]`
+pins (keeping a marker whose first line already names the role, and appending
+an `issue:` line only when it's missing), `unpin` deletes it, and `notify`
+records the `Notify:` target, absorbing `scripts/record-notify.sh`. Before, each
+was a shell snippet the model copied out of the docs, and the session-id lookup
+was copied nine times; one copy had already drifted. The script owns the one
+lookup (`CLAUDE_CODE_SESSION_ID`, else `CLAUDE_SESSION_ID`, then a plain-token
+check), writes through a temp file and a rename, always ends the marker with a
+newline (an append onto a marker without one used to turn `implementer` into
+`implementerissue: 52`), and exits 1 with the reason on stderr when it writes
+nothing. A bad `--issue` still pins the role and skips only the issue line.
+The docs run it as `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" …`.
+With the plugin root unset, or stale (the cache keeps plugin versions side by
+side, so after a mid-session update it can name one without the script), START
+and EPIC skip the pin and the notify record and say why, while the guards
+retry a failed read by the path the Glob tool finds (a failed read is never
+clearance), as `/role` does for all its commands. Skipping the
+pin is a regression from the inline snippets, which pinned with only
+`CLAUDE_CODE_SESSION_ID`. The hooks take the session id from
+their input, so they don't run the script; they source its helper,
+`scripts/marker-lib.sh`, for the roles directory, the id check, and the
+first-line role read.
+
+The subagent guard changed with it. It used to infer a marker write from
+command text (a session-id variable, the roles directory, and a write, all in
+one command), which missed a path carried over from an earlier command and
+falsely denied harmless commands such as a grep redirected to a file. Now a
+subagent's Bash call is denied when it names `role-marker.sh` (or a variable
+set to it) followed by any word but `show`, anywhere outside quotes and
+heredocs, unless that word is a path or an option; the file-edit check on the
+roles directory stays. Review shaped that rule. A first version required the
+script to be in a command position (a command word, or the argument of bash,
+env and the like), and review kept finding positions it missed (an `if`
+condition, a `case` branch, an option's operand before the script), so the
+position test was dropped. A second listed the writing subcommands, and
+review kept finding ways to hide one (`{pin,}`, `&>/dev/null pin`), so the
+list became an allow-list of `show`, which also covers a writing subcommand
+added later. Its cost is a false deny when the path and a plain word are only
+data to another command (`cp …/role-marker.sh backup`).
+The docs show no hand-written marker write, so a subagent would have to
+improvise one to get past the guard: that leftover risk was accepted.
+
 ### Which tiers pin
 
 - **planner** — always via `/role planner`; it's the tier with no spawn edge

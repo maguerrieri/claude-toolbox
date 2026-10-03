@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Role-marker script tests
+        run: bash plugins/ticket-workflow/tests/test-role-marker.sh
       - name: Role-guard hook tests
         run: bash plugins/ticket-workflow/tests/test-role-guard.sh
       - name: Session-identity tests

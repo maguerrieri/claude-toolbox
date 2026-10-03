@@ -27,7 +27,7 @@ grounding rule is what makes any lost or delayed message harmless.
   not: compaction drops it, and a session that forgets the name
   stops pinging. So a session that self-pins a role (START Step 1, EPIC Step 1)
   also writes the target into its role marker as a `notify: <session name>`
-  line (`scripts/record-notify.sh`), and the SessionStart hook re-injects it
+  line (`scripts/role-marker.sh notify`), and the SessionStart hook re-injects it
   next to the charter after resume or compaction. The latest write
   replaces any earlier line, so a re-brief naming a new spawner wins. The
   marker is the one place the name is kept; `/role none` deletes it, and the

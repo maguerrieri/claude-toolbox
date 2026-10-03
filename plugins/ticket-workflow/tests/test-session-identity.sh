@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Tests for how a session finds the identity its role marker is keyed on (the
-# skill's Session roles: *Session identity*). They run the real snippets, pulled
-# out of the docs, so the docs can't drift from what is tested:
+# skill's Session roles: *Session identity*). They run the real one-liners,
+# pulled out of the docs, so the docs can't drift from what is tested:
 #
-# - the START Step 1 self-pin prefers the harness's CLAUDE_CODE_SESSION_ID over
-#   the CLAUDE_SESSION_ID this plugin exports, and a child launched through the
-#   spawn edge's `env -u CLAUDE_SESSION_ID` can't write its parent's marker;
+# - START Step 1's self-pin, run as a child session, pins the child's own
+#   marker: scripts/role-marker.sh prefers the harness's CLAUDE_CODE_SESSION_ID
+#   over the CLAUDE_SESSION_ID this plugin exports, and a child launched through
+#   the spawn edge's `env -u CLAUDE_SESSION_ID` can't write its parent's marker
+#   (test-role-marker.sh covers the lookup in full);
 # - the SessionStart hook exports CLAUDE_SESSION_ID only when the harness
 #   doesn't set CLAUDE_CODE_SESSION_ID;
 # - in every code block of the ticket-workflow and spawn docs, each claude
-#   launch strips CLAUDE_SESSION_ID, and the marker is keyed only on the
-#   resolved id;
+#   launch strips CLAUDE_SESSION_ID, and the marker is reached only through
+#   role-marker.sh: no block names the roles directory or a session-id
+#   variable, and each run of the script is the documented form;
 # - the SessionStart matcher covers every documented source.
 #
 #   bash plugins/ticket-workflow/tests/test-session-identity.sh
@@ -24,14 +27,15 @@ roles_dir=$(mktemp -d)
 trap 'rm -rf "$roles_dir"' EXIT
 . "$here/lib.sh"
 
-resolve='sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"'
+# The one form every doc runs the script in.
+run_prefix='bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" '
 
 # --- The self-pin, run as a child session --------------------------------
 
 # START Step 1's self-pin, as an implementer recording issue 52.
-self_pin=$(extract_block "$skill/SKILL.md" "grep -qxF 'issue: <id>'" |
+self_pin=$(extract_block "$skill/SKILL.md" 'role-marker.sh" pin <role> --issue <id>' |
 	sed -e "s/<role>/implementer/g" -e "s/<id>/52/g")
-record yes "self-pin snippet found in SKILL.md" "$([ -n "$self_pin" ] && echo yes || echo no)"
+record yes "self-pin one-liner found in SKILL.md" "$([ -n "$self_pin" ] && echo yes || echo no)"
 
 # Runs the self-pin as a child whose environment holds only the given
 # variables, with the parent's marker (named `parent`) pinned as planner, then
@@ -40,7 +44,8 @@ record yes "self-pin snippet found in SKILL.md" "$([ -n "$self_pin" ] && echo ye
 pin_as_child() { # pin_as_child [VAR=value ...] [prefix command ...]
 	rm -f "$roles_dir"/*
 	printf 'planner\n' >"$roles_dir/parent"
-	env -i PATH="$PATH" CLAUDE_SESSION_ROLES_DIR="$roles_dir" "$@" bash -c "$self_pin"
+	env -i PATH="$PATH" CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" \
+		"$@" bash -c "$self_pin" 2>/dev/null
 	for f in "$roles_dir"/*; do
 		[ -f "$f" ] && printf '%s=%s ' "$(basename "$f")" "$(tr '\n' '|' <"$f")"
 	done
@@ -88,27 +93,23 @@ record "CLAUDE_SESSION_ID CLAUDE_TICKET_WORKFLOW_ROOT " "hook exports the id on 
 # --- The docs' code blocks -----------------------------------------------
 
 # Scans every fenced code block in the given files and prints one line per
-# violation, then `launches=<n>`:
+# violation, then `launches=<n>` and `marker_runs=<n>`:
 # - each command (split on ; && || | ( ) and backticks, with line continuations
 #   joined) that runs claude with --bg, --background, -p or --print is a
 #   launch, and must strip CLAUDE_SESSION_ID;
-# - any other mention of CLAUDE_SESSION_ID or CLAUDE_CODE_SESSION_ID must be the
-#   resolve line itself, so the marker is keyed on nothing else;
-# - a block that uses $sid must assign it (a Bash call doesn't inherit it);
+# - no line names CLAUDE_SESSION_ID or CLAUDE_CODE_SESSION_ID (but for that
+#   env -u) or the roles directory (session-roles, CLAUDE_SESSION_ROLES_DIR,
+#   roles_dir): role-marker.sh finds both, so a block that names them is
+#   reading or writing the marker by hand;
+# - each line naming role-marker.sh runs it in the documented form, with a
+#   subcommand the script has;
 # - a block must be closed.
 scan_blocks() { # scan_blocks <file> ...
-	awk -v resolve="$resolve" '
-		function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-		function end_block(   i, uses, assigns) {
-			uses = 0; assigns = 0
-			for (i = 1; i <= n; i++) {
-				if (index(block[i], "$sid")) uses = 1
-				if (trim(block[i]) == resolve) assigns = 1
-			}
-			if (uses && !assigns) printf "%s:%d: block uses $sid without assigning it\n", file, start
-			in_block = 0
-		}
-		function check_line(text, at,   segs, k, i, cmd, rest) {
+	# The documented commands, each to the end of its command; notify's quoted
+	# heredoc can't sit inside the single-quoted program, so it comes in here.
+	awk -v prefix="$run_prefix" \
+		-v commands="^(show|unpin|pin <role>|pin <role> --issue <id>|notify <<'NOTIFY_NAME_EOF')[ \t]*(;|&&|[|][|]|\$)" '
+		function check_line(text, at,   segs, k, i, cmd, rest, p, off, line) {
 			k = split(text, segs, /;|&&|\|\||\||\(|\)|`/)
 			for (i = 1; i <= k; i++) {
 				cmd = " " segs[i] " "
@@ -119,25 +120,40 @@ scan_blocks() { # scan_blocks <file> ...
 			}
 			rest = text
 			gsub(/env -u CLAUDE_SESSION_ID/, "", rest)
-			if (rest ~ /CLAUDE_(CODE_)?SESSION_ID/ && trim(text) != resolve)
-				printf "%s:%d: session id used outside the resolve line\n", file, at
+			if (rest ~ /CLAUDE_(CODE_)?SESSION_ID/)
+				printf "%s:%d: session id named outside role-marker.sh\n", file, at
+			if (text ~ /session-roles|CLAUDE_SESSION_ROLES_DIR|roles_dir/)
+				printf "%s:%d: roles directory named outside role-marker.sh\n", file, at
+			# Every role-marker.sh on the line, not just the first, must end a
+			# documented prefix and be followed by exactly a documented command:
+			# its arguments, then the end of the line or a separator (notify
+			# with its documented heredoc).
+			off = index(prefix, "role-marker.sh") - 1
+			line = text
+			while ((i = index(line, "role-marker.sh"))) {
+				p = i - off
+				rest = substr(line, p + length(prefix))
+				if (p >= 1 && substr(line, p, length(prefix)) == prefix &&
+					rest ~ commands) marker_runs++
+				else printf "%s:%d: role-marker.sh not run as documented\n", file, at
+				line = substr(line, i + length("role-marker.sh"))
+			}
 		}
-		FNR == 1 && in_block { printf "%s:%d: unterminated code block\n", file, start; end_block() }
+		FNR == 1 && in_block { printf "%s:%d: unterminated code block\n", file, start; in_block = 0 }
 		/^[ \t]*```/ {
-			if (in_block) end_block()
-			else { in_block = 1; n = 0; start = FNR; file = FILENAME; pending = "" }
+			if (in_block) in_block = 0
+			else { in_block = 1; start = FNR; file = FILENAME; pending = "" }
 			next
 		}
 		in_block {
-			block[++n] = $0
 			if (pending == "") pending_at = FNR
 			if ($0 ~ /\\$/) { pending = pending substr($0, 1, length($0) - 1) " "; next }
 			check_line(pending $0, pending_at)
 			pending = ""
 		}
 		END {
-			if (in_block) { printf "%s:%d: unterminated code block\n", file, start; end_block() }
-			printf "launches=%d\n", launches
+			if (in_block) printf "%s:%d: unterminated code block\n", file, start
+			printf "launches=%d\nmarker_runs=%d\n", launches, marker_runs
 		}
 	' "$@"
 }
@@ -146,7 +162,7 @@ scan_blocks() { # scan_blocks <file> ...
 fixture="$roles_dir/fixture.md"
 scan_fixture() { # scan_fixture <block text>
 	printf '```bash\n%s\n```\n' "$1" >"$fixture"
-	scan_blocks "$fixture" | grep -vc '^launches='
+	scan_blocks "$fixture" | grep -vc '^launches=\|^marker_runs='
 }
 record 0 "scan: a stripped launch passes" "$(scan_fixture 'env -u CLAUDE_SESSION_ID claude --bg "a"')"
 record 1 "scan: an unstripped launch" "$(scan_fixture 'claude --bg "a"')"
@@ -155,23 +171,45 @@ record 1 "scan: a launch split across lines" "$(scan_fixture "$(printf 'claude \
 record 1 "scan: a second launch on a stripped line" \
 	"$(scan_fixture 'env -u CLAUDE_SESSION_ID claude --bg "a"; claude -p "b"')"
 record 0 "scan: mkdir -p and .claude paths are not launches" "$(scan_fixture 'mkdir -p "$HOME/.claude/x" --bg')"
-record 1 "scan: a raw session-id marker path" "$(scan_fixture 'cat "$roles_dir/$CLAUDE_SESSION_ID"')"
-record 1 "scan: \$sid used without assigning it" "$(scan_fixture 'cat "$roles_dir/$sid"')"
-printf '```bash\n%s\n' "$resolve" >"$fixture"
-record 1 "scan: an unterminated block" "$(scan_blocks "$fixture" | grep -vc '^launches=')"
+record 0 "scan: a documented run passes" "$(scan_fixture "${run_prefix}pin <role> --issue <id>")"
+record 0 "scan: a documented notify run passes" \
+	"$(scan_fixture "$(printf '%s\n' "${run_prefix}notify <<'NOTIFY_NAME_EOF'" '<session name>' 'NOTIFY_NAME_EOF')")"
+record 2 "scan: a hand-written marker read" "$(scan_fixture 'cat "$roles_dir/$CLAUDE_CODE_SESSION_ID"')"
+record 1 "scan: a hand-written marker write" "$(scan_fixture "printf 'planner\\n' >~/.claude/session-roles/x")"
+record 1 "scan: the old session-id lookup" "$(scan_fixture 'sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"')"
+record 1 "scan: the roles-dir override" "$(scan_fixture 'echo "$CLAUDE_SESSION_ROLES_DIR"')"
+record 1 "scan: the script run another way" "$(scan_fixture 'bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/role-marker.sh" show')"
+record 1 "scan: a subcommand the script lacks" "$(scan_fixture "${run_prefix}set planner")"
+record 1 "scan: a documented run, then another kind on the same line" \
+	"$(scan_fixture "${run_prefix}show; bash \"\$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/role-marker.sh\" pin planner")"
+record 0 "scan: two documented runs on one line" "$(scan_fixture "${run_prefix}show; ${run_prefix}pin <role>")"
+record 1 "scan: show with an extra argument" "$(scan_fixture "${run_prefix}show extra")"
+record 1 "scan: pin with an undocumented option" "$(scan_fixture "${run_prefix}pin <role> --bogus")"
+record 1 "scan: notify without its heredoc" "$(scan_fixture "${run_prefix}notify extra")"
+printf '```bash\n%s\n' "${run_prefix}show" >"$fixture"
+record 1 "scan: an unterminated block" "$(scan_blocks "$fixture" | grep -vc '^launches=\|^marker_runs=')"
+printf 'text\n\n```bash\n%s\n' "${run_prefix}show" >"$fixture"
+record 1 "scan: an unterminated block is reported at its opening fence" \
+	"$(scan_blocks "$fixture" | grep -c "fixture.md:3: unterminated code block")"
 
 docs=()
 while IFS= read -r f; do docs+=("$f"); done < <(find "$plugin" "$spawn_plugin" -name '*.md' | sort)
 scan=$(scan_blocks "${docs[@]}")
-record "" "doc code-block violations" "$(printf '%s\n' "$scan" | grep -v '^launches=')"
+record "" "doc code-block violations" "$(printf '%s\n' "$scan" | grep -v '^launches=\|^marker_runs=')"
 launches=$(printf '%s\n' "$scan" | sed -n 's/^launches=//p')
 record yes "doc code blocks hold the local launches (found $launches)" "$([ "$launches" -ge 5 ] && echo yes || echo no)"
+marker_runs=$(printf '%s\n' "$scan" | sed -n 's/^marker_runs=//p')
+record yes "doc code blocks hold the marker runs (found $marker_runs)" "$([ "$marker_runs" -ge 8 ] && echo yes || echo no)"
 
-# Each known launch site still has its launch in a code block, so moving one
-# into prose can't pass the scan vacuously.
+# Each known launch site still has its launch in a code block, and each known
+# marker site its run, so moving one into prose can't pass the scan vacuously.
 for f in "$skill/SKILL.md" "$skill/phases/epic.md" "$plugin/commands/spawn-epic.md" "$spawn_plugin/skills/spawn/backends/local.md"; do
 	record yes "${f#"$plugin/../"} has a launch in a code block" \
 		"$([ "$(scan_blocks "$f" | sed -n 's/^launches=//p')" -gt 0 ] && echo yes || echo no)"
+done
+for f in "$skill/SKILL.md" "$plugin/commands/role.md" "$plugin/commands/spawn-epic.md"; do
+	record yes "${f#"$plugin/../"} runs role-marker.sh in a code block" \
+		"$([ "$(scan_blocks "$f" | sed -n 's/^marker_runs=//p')" -gt 0 ] && echo yes || echo no)"
 done
 
 # --- The SessionStart matcher ----------------------------------------------
