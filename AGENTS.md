@@ -48,12 +48,14 @@ it start a second issue: its self-pinned marker records its own issue on a
 second line, and START refuses any other. A self-pinned session also records
 its `Notify:` target on a `notify:` line, which SessionStart re-injects next to
 the charter so its pings survive compaction. The marker's role is its first
-line only. Every read and write of the marker goes through one script,
-`plugins/ticket-workflow/scripts/role-marker.sh` (`show`, `pin`, `unpin`,
+line only. Every read and write of the marker that a session makes goes
+through one script, `plugins/ticket-workflow/scripts/role-marker.sh` (`show`, `pin`, `unpin`,
 `notify`; its tests: `bash plugins/ticket-workflow/tests/test-role-marker.sh`),
 which finds the session id and writes atomically; the docs show no other way
 in, and their code blocks are checked for that
-(`tests/test-session-identity.sh`). The marker is keyed on the session id, so
+(`tests/test-session-identity.sh`). The hooks read the marker directly, through
+the script's helper `scripts/marker-lib.sh`, since they take the session id
+from their input. The marker is keyed on the session id, so
 it doesn't follow `/clear` or a fork (re-pin with `/role`), and the same hook
 denies an in-process subagent (or any agent running inside the session),
 which shares its parent's id, any command naming the script followed by a
