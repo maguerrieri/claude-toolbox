@@ -127,9 +127,11 @@ newline (an append onto a marker without one used to turn `implementer` into
 `implementerissue: 52`), and exits 1 with the reason on stderr when it writes
 nothing. A bad `--issue` still pins the role and skips only the issue line.
 The docs run it as `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" …`.
-With the plugin root unset, START and EPIC skip the pin and the notify record,
-while the guards retry a failed read by the path the Glob tool finds (a failed
-read is never clearance), as `/role` does for all its commands. Skipping the
+With the plugin root unset, or stale (the cache keeps plugin versions side by
+side, so after a mid-session update it can name one without the script), START
+and EPIC skip the pin and the notify record and say why, while the guards
+retry a failed read by the path the Glob tool finds (a failed read is never
+clearance), as `/role` does for all its commands. Skipping the
 pin is a regression from the inline snippets, which pinned with only
 `CLAUDE_CODE_SESSION_ID`. The hooks take the session id from
 their input, so they don't run the script; they source its helper,
