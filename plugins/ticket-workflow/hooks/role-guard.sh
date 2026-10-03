@@ -27,9 +27,9 @@
 #   only its calls, carry an agent_id (checked on Claude Code 2.1.282). So
 #   such a call is denied when it would write the marker: a Bash command
 #   that names scripts/role-marker.sh, which makes every marker write the
-#   docs describe, followed by a writing subcommand, wherever it sits outside
-#   quotes and heredocs (role-guard-marker-write.jq), or a file edit in the
-#   roles directory. Reads pass (`role-marker.sh show`), so
+#   docs describe, followed by any subcommand but `show`, wherever it sits
+#   outside quotes and heredocs (role-guard-marker-write.jq), or a file edit
+#   in the roles directory. Reads pass (`role-marker.sh show`), so
 #   the skill's guards still see the parent's role. Deny, not ask, with no
 #   override: the write is never the subagent's to make. A write improvised
 #   without the script passes; the docs show none.
