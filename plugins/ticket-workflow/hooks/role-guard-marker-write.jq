@@ -7,8 +7,10 @@
 # any subcommand but `show`: pin, unpin, notify, or one the text doesn't show
 # (a variable, a quoted expansion). `show` passes, so a subagent still reads
 # its parent's role, and so does a run with no subcommand, which writes
-# nothing. A run is the script as a command word (after any VAR=value
-# assignments), or as the argument of bash, sh, zsh, exec, env, source or `.`,
+# nothing. A run is the script as a command word (at the start, after a
+# separator, or after a reserved word that a command follows, such as if,
+# while or then, and after any VAR=value assignments), or as the argument of
+# bash, sh, zsh, exec, env, source or `.`,
 # after the options each takes, operands included (bash -o pipefail, exec -a
 # name, env -u NAME or -C dir), its path quoted or not. A mention passes: in a
 # quoted string (a commit message), in a heredoc body, or as another command's
@@ -48,10 +50,16 @@ def launcher_re:
   + "|env\\s+(?:(?:-[uCSPLU]\\s*\\S+|--(?:unset|chdir|split-string)(?:=|\\s+)\\S+|-\\S+|[A-Za-z_]\\w*=\\S*)\\s+)*"
   + "|(?:source|\\.)\\s+";
 
+# Where a command word can start: the start of the text, a separator
+# (; & | && || newline, a subshell's or substitution's opening, a group's `{`),
+# or a reserved word a command follows (if elif then else while until do time !).
+def command_start_re:
+  "(?:\\A|[;&|(\\n`{!]|(?<![\\w.-])(?:if|elif|then|else|while|until|do|time)(?=\\s))";
+
 def run_re:
   "(?:"
   + "(?:\\A|[\\s;&|(`])(?:" + launcher_re + ")"
-  + "|(?:\\A|[;&|(\\n`{!]|(?<![\\w.-])(?:then|do|else)(?=\\s))\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*"
+  + "|" + command_start_re + "\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*"
   + ")"
   + "ROLE_MARKER_SH(?![\\w.-])"
   + "(?:[ \\t]+(?<sub>[^\\s;&|()<>]+))?";
