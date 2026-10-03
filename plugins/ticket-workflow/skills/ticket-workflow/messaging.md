@@ -4,8 +4,9 @@ A **wake-up channel** between related sessions — a spawned implementer pinging
 coordinator ("PR up", "blocked"), or a coordinator poking a child — carried by the
 harness's built-in session messaging: `SendMessage({to: <session name>, message:
 "…"})`, with `ListAgents` to look receivers up. Delivery is the harness's job:
-nothing to arm, nothing to keep alive across resume/compaction, and a send to an
-offline session is **queued and delivered when that session next wakes**
+nothing to arm, nothing to keep alive across resume/compaction (only the
+target's *name* needs keeping, and the role marker keeps it; see Addressing),
+and a send to an offline session is **queued and delivered when that session next wakes**
 (verified empirically) — write to it as at-least-once-on-next-wake, not
 guaranteed.
 
@@ -22,6 +23,17 @@ grounding rule is what makes any lost or delayed message harmless.
   direction, the spawner already named every child at spawn (`--name "<repo>
   <ID>: <desc>"`), so both directions are addressable by name — no paths, no
   keys.
+- **The target survives compaction.** The briefing that carried `Notify:` does
+  not: compaction or `/clear` drops it, and a session that forgets the name
+  stops pinging. So a session that self-pins a role (START Step 1, EPIC Step 1)
+  also writes the target into its role marker as a `notify: <session name>`
+  line, and the SessionStart hook re-injects it next to the charter after
+  resume, `/clear`, or compaction. The marker is the one place the name is
+  kept; `/role none` deletes it, and the `notify:` line goes with it. The hook
+  prints only a name made of letters, digits, spaces, and `._:#/()@+,-`, up
+  to 100 characters (every `<repo> <ID>: <desc>` spawn name fits), so the
+  line can't carry markup or shell syntax into context. A session with no
+  role marker keeps the name in context only.
 - **Each edge's `Notify:` names that edge's own spawner.** When you spawn,
   put *your* name in the child's `Notify:`, never the `Notify:` you inherited:
   a grandchild (an implementer's helper, say) never addresses its grandparent.

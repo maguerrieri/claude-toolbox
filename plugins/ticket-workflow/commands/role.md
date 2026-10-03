@@ -40,7 +40,7 @@ sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
    the valid values — plus, when a session id resolves and a marker file
    exists, the current pin (`cat "$roles_dir/$sid"` after the two lines
    above: the role on its first line, then any `issue:` lines an implementer
-   recorded) — and stop.
+   recorded and a `notify:` line naming its `Notify:` target) — and stop.
 
 2. If no session id resolves (both variables unset), this is a Claude Code
    older than 2.1.132 whose SessionStart hook didn't run (plugin installed
@@ -56,7 +56,10 @@ sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
    [ -n "$sid" ] && rm -f "$roles_dir/$sid"
    ```
 
-   State that the role is dropped and no charter governs the session; stop.
+   This deletes the whole marker, so any `issue:` lines and the `notify:`
+   line go with it: after the next compaction the session no longer has its
+   `Notify:` target re-injected. State that the role is dropped and no charter
+   governs the session; stop.
 
 4. **Pin:** write the marker, keyed by session id (`$sid`, above), unless
    its first line already names this role:
@@ -71,12 +74,14 @@ sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
    fi
    ```
 
-   A hand pin writes the role line only. The `issue:` lines a spawned
-   implementer's self-pin adds (START Step 1) have no source here, so a fresh
-   hand pin leaves START's one-issue guard unarmed. Re-pinning the role the
-   marker already holds (compared as the hooks read it: first line, whitespace
-   stripped) leaves the marker untouched, so a spawned implementer that runs
-   `/role implementer` keeps its issue lines.
+   A hand pin writes the role line only. The `issue:` and `notify:` lines a
+   spawned session's self-pin adds (START Step 1) have no source here, so a
+   fresh hand pin leaves START's one-issue guard unarmed and re-injects no
+   `Notify:` target. Re-pinning the role the marker already holds (compared as
+   the hooks read it: first line, whitespace stripped) leaves the marker
+   untouched, so a spawned implementer that runs `/role implementer` keeps its
+   issue and notify lines. Pinning a different role rewrites the marker and
+   drops them.
 
 5. Read the charter at
    `$CLAUDE_TICKET_WORKFLOW_ROOT/skills/ticket-workflow/roles/<role>.md` and

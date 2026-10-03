@@ -93,6 +93,19 @@ Both hooks read the role with `head -n 1`: the old `tr -d '[:space:]'`
 over the whole file would run the issue line into the role
 (`implementerissue:52`) and silently turn both guards off.
 
+**Update (#156):** a session that self-pins also records its briefing's
+`Notify:` target as a `notify: <session name>` line (START Step 1's *Note your
+notifier*; EPIC Step 1 for a coordinator's own), replacing any earlier one.
+`role-session-start.sh` re-injects it after the charter, so a spawned session
+that compacts or is `/clear`ed keeps pinging its spawner instead of dropping to
+the poll. The name is whitelisted (letters, digits, spaces, `._:#/()@+,-`, at
+most 100 characters) by both the writer and the hook, since the hook prints it
+into context. The alternative considered was the PR body. It was rejected
+because reading it back depends on the session remembering to look, which is
+what compaction breaks, and because there is no PR before START Step 7, when a
+long implementation may already have compacted. The marker is re-injected
+without the session doing anything.
+
 ### Which tiers pin
 
 - **planner** — always via `/role planner`; it's the tier with no spawn edge
