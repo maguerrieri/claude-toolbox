@@ -15,6 +15,10 @@
 # (`head -n 1 "$roles_dir/$sid" 2>/dev/null`), which pass: a subagent is in
 # its parent's session, and the parent's role is the one that governs it.
 #
+# The one exception is scripts/record-notify.sh (runs_record_notify, below):
+# it finds the id and the directory itself, so running it is a marker write
+# whatever else the command names.
+#
 # Like role-guard-launch.jq, this is a heuristic over the command text, not a
 # shell parser. A marker path carried in from an earlier call (a cd, a pasted
 # literal id) or an id read through indirection passes it; an unquoted mention
@@ -47,6 +51,17 @@ def strip_single: gsub("'[^']*'"; "''");
 
 def strip_double: gsub("\"(?:[^\"\\\\]|\\\\.)*\""; "\"\"");
 
+# START/EPIC Step 1's notify write. scripts/record-notify.sh finds the session
+# id and the roles directory itself, so the command names neither, and runs
+# no write the text shows. It counts when the script is run: as a command
+# word, or as the argument of bash, sh, zsh, source, exec or `.`, its path
+# quoted or not. A quoted mention inside a longer string (a commit message)
+# or as another command's argument (a grep) doesn't.
+def runs_record_notify:
+  gsub("\"[^\"\\\\]*record-notify\\.sh\""; "RECORD_NOTIFY_SH")
+  | strip_double
+  | test("(?:(?:\\A|[\\s;&|(`])(?:bash|sh|zsh|source|exec|\\.)\\s+(?:-\\S+\\s+)*|(?:\\A|[;&|(\\n`])\\s*)(?:RECORD_NOTIFY_SH|[^\\s\"';&|()<>]*record-notify\\.sh)(?![\\w.-])");
+
 (.agent_id // "") != ""
 and .tool_name == "Bash"
 and ((.tool_input.command // "") | strip_heredocs
@@ -55,4 +70,5 @@ and ((.tool_input.command // "") | strip_heredocs
   # An interpreter reads the environment itself, often from single-quoted
   # code, so for one the names are read in the whole command.
   | (if ($bare | interpreter) then . else $unsingled end) as $named
-  | ($named | names_id) and ($named | names_dir) and ($bare | writes))
+  | (($named | names_id) and ($named | names_dir) and ($bare | writes))
+    or ($unsingled | runs_record_notify))
