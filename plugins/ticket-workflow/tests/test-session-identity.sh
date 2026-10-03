@@ -125,11 +125,17 @@ scan_blocks() { # scan_blocks <file> ...
 				printf "%s:%d: session id named outside role-marker.sh\n", file, at
 			if (text ~ /session-roles|CLAUDE_SESSION_ROLES_DIR|roles_dir/)
 				printf "%s:%d: roles directory named outside role-marker.sh\n", file, at
-			if (index(text, "role-marker.sh")) {
-				p = index(text, prefix)
-				rest = p ? substr(text, p + length(prefix)) : ""
-				if (p && rest ~ /^(show|unpin|notify|pin <role>|pin <role> --issue <id>)([ \t]|$)/) marker_runs++
+			# Every role-marker.sh on the line, not just the first, must end a
+			# documented prefix and be followed by a documented subcommand.
+			off = index(prefix, "role-marker.sh") - 1
+			line = text
+			while ((i = index(line, "role-marker.sh"))) {
+				start = i - off
+				rest = substr(line, start + length(prefix))
+				if (start >= 1 && substr(line, start, length(prefix)) == prefix &&
+					rest ~ /^(show|unpin|notify|pin <role>|pin <role> --issue <id>)([ \t;]|$)/) marker_runs++
 				else printf "%s:%d: role-marker.sh not run as documented\n", file, at
+				line = substr(line, i + length("role-marker.sh"))
 			}
 		}
 		FNR == 1 && in_block { printf "%s:%d: unterminated code block\n", file, start; in_block = 0 }
@@ -173,6 +179,9 @@ record 1 "scan: the old session-id lookup" "$(scan_fixture 'sid="${CLAUDE_CODE_S
 record 1 "scan: the roles-dir override" "$(scan_fixture 'echo "$CLAUDE_SESSION_ROLES_DIR"')"
 record 1 "scan: the script run another way" "$(scan_fixture 'bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/role-marker.sh" show')"
 record 1 "scan: a subcommand the script lacks" "$(scan_fixture "${run_prefix}set planner")"
+record 1 "scan: a documented run, then another kind on the same line" \
+	"$(scan_fixture "${run_prefix}show; bash \"\$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/role-marker.sh\" pin planner")"
+record 0 "scan: two documented runs on one line" "$(scan_fixture "${run_prefix}show; ${run_prefix}pin <role>")"
 printf '```bash\n%s\n' "${run_prefix}show" >"$fixture"
 record 1 "scan: an unterminated block" "$(scan_blocks "$fixture" | grep -vc '^launches=\|^marker_runs=')"
 
