@@ -142,15 +142,18 @@ The subagent guard changed with it. It used to infer a marker write from
 command text (a session-id variable, the roles directory, and a write, all in
 one command), which missed a path carried over from an earlier command and
 falsely denied harmless commands such as a grep redirected to a file. Now a
-subagent's Bash call is denied when it names `role-marker.sh` followed by a
-writing subcommand (`pin`, `unpin`, `notify`, or one the text doesn't show,
-such as a variable), anywhere outside quotes and heredocs; `show` passes, and
-the file-edit check on the roles directory stays. A first version also
-required the script to be in a command position (a command word, or the
-argument of bash, env and the like), and review kept finding positions it
-missed (an `if` condition, a `case` branch, an option's operand before the
-script), so the position test was dropped. Its cost is a false deny when the
-path and a subcommand are only data to another command.
+subagent's Bash call is denied when it names `role-marker.sh` (or a variable
+set to it) followed by any word but `show`, anywhere outside quotes and
+heredocs, unless that word is a path or an option; the file-edit check on the
+roles directory stays. Review shaped that rule. A first version required the
+script to be in a command position (a command word, or the argument of bash,
+env and the like), and review kept finding positions it missed (an `if`
+condition, a `case` branch, an option's operand before the script), so the
+position test was dropped. A second listed the writing subcommands, and
+review kept finding ways to hide one (`{pin,}`, `&>/dev/null pin`), so the
+list became an allow-list of `show`, which also covers a writing subcommand
+added later. Its cost is a false deny when the path and a plain word are only
+data to another command (`cp …/role-marker.sh backup`).
 The docs show no hand-written marker write, so a subagent would have to
 improvise one to get past the guard: that leftover risk was accepted.
 

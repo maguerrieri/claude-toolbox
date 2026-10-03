@@ -59,8 +59,7 @@ from their input. The marker is keyed on the session id, so
 it doesn't follow `/clear` or a fork (re-pin with `/role`), and the same hook
 denies an in-process subagent (or any agent running inside the session),
 which shares its parent's id, any command naming the script followed by a
-writing subcommand (`pin`, `unpin`, `notify`, or a hidden one); `show`
-passes. Ticket work itself never
+subcommand other than `show`. Ticket work itself never
 runs in an in-process agent team: EPIC rejects `--team`, and every child is a
 background session of its own.
 `/role none` unpins.
