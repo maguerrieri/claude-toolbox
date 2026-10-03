@@ -114,7 +114,7 @@ what compaction breaks, and because there is no PR before START Step 7, when a
 long implementation may already have compacted. The marker is re-injected
 without the session doing anything.
 
-**Update (#203):** every marker read and write now goes through one script,
+**Update (#203):** every marker read and write a session makes now goes through one script,
 `scripts/role-marker.sh`: `show` prints the marker, `pin <role> [--issue <id>]`
 pins (keeping a marker whose first line already names the role, and appending
 an `issue:` line only when it's missing), `unpin` deletes it, and `notify`

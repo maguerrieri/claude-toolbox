@@ -241,6 +241,12 @@ done
 record "implementer|issue: 52| exit 0" "doc: START's self-pin" "$(run_doc none "$self_pin")"
 record "implementer|issue: 52|notify: repo planning| exit 0" "doc: START's notify record" \
 	"$(run_doc $'implementer\nissue: 52\n' "$notify_doc")"
+# A name that is the delimiter itself, recorded with another delimiter as the
+# docs say.
+notify_own_delim=$(extract_block "$skill/SKILL.md" 'role-marker.sh" notify' |
+	sed -e 's/NOTIFY_NAME_EOF/OTHER_EOF/g' -e 's/^<session name>$/NOTIFY_NAME_EOF/')
+record "implementer|notify: NOTIFY_NAME_EOF| exit 0" "doc: a name that is the delimiter, with another delimiter" \
+	"$(run_doc $'implementer\n' "$notify_own_delim")"
 record "implementer|issue: 52| exit 0" "doc: the spawn guard's read" "$(run_doc $'implementer\nissue: 52\n' "$show_doc")"
 record implementer "doc: the read's first line is the role" "$(head -n 1 "$tmp/out")"
 record "planner| exit 0" "doc: /role <role>" "$(run_doc $'implementer\nissue: 52\n' "$role_pin")"
