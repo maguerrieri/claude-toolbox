@@ -8,17 +8,18 @@
 # (a variable, a quoted expansion). `show` passes, so a subagent still reads
 # its parent's role, and so does a run with no subcommand, which writes
 # nothing. A run is the script as a command word (after any VAR=value
-# assignments) or as the argument of bash, sh, zsh, exec or env (after their
-# options) or of source or `.`, its path quoted or not. A mention passes: in a
+# assignments), or as the argument of bash, sh, zsh, exec, env, source or `.`,
+# after the options each takes, operands included (bash -o pipefail, exec -a
+# name, env -u NAME or -C dir), its path quoted or not. A mention passes: in a
 # quoted string (a commit message), in a heredoc body, or as another command's
 # argument (a grep, a git add).
 #
 # A heuristic over the command text, not a shell parser, like
 # role-guard-launch.jq. A run nested in another shell's string (bash -c '…'),
-# behind a wrapper (nohup, xargs, timeout), or through a copy or symlink of the
-# script under another name passes it. So does a write that doesn't use the
-# script at all: the docs show none, so a subagent would have to improvise one
-# (the PR for #203 accepted that risk rather than keep guessing at writes from
+# behind another wrapper (nohup, xargs, timeout), or through a copy or symlink
+# of the script under another name passes it. So does a write that doesn't use
+# the script at all: the docs show none, so a subagent would have to improvise
+# one (#203 accepted that risk rather than keep guessing at writes from
 # command text, which denied harmless commands).
 
 # A heredoc body, from the line after `<<WORD` to the line holding WORD.
@@ -38,9 +39,18 @@ def normalize:
   | gsub("\\\\\\n"; " ")
   | gsub("[0-9]*[<>]{1,3}&?[ \\t]*[^\\s;&|()<>]+"; " ");
 
+# The commands that can run the script as an argument, each followed by the
+# options it takes before that argument. An option with a separate operand
+# comes first in each list, so the operand isn't read as the script.
+def launcher_re:
+  "(?:bash|sh|zsh)\\s+(?:(?:[-+][oO]\\s+\\S+|[-+]\\S+)\\s+)*"
+  + "|exec\\s+(?:(?:-a\\s+\\S+|-\\S+)\\s+)*"
+  + "|env\\s+(?:(?:-[uCSPLU]\\s*\\S+|--(?:unset|chdir|split-string)(?:=|\\s+)\\S+|-\\S+|[A-Za-z_]\\w*=\\S*)\\s+)*"
+  + "|(?:source|\\.)\\s+";
+
 def run_re:
   "(?:"
-  + "(?:\\A|[\\s;&|(`])(?:(?:bash|sh|zsh|exec|env)\\s+(?:(?:-\\S+|[A-Za-z_]\\w*=\\S*)\\s+)*|(?:source|\\.)\\s+)"
+  + "(?:\\A|[\\s;&|(`])(?:" + launcher_re + ")"
   + "|(?:\\A|[;&|(\\n`{!]|(?<![\\w.-])(?:then|do|else)(?=\\s))\\s*(?:[A-Za-z_]\\w*=\\S*\\s+)*"
   + ")"
   + "ROLE_MARKER_SH(?![\\w.-])"
