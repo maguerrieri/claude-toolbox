@@ -1,4 +1,5 @@
-# Sourced by scripts/record-notify.sh and hooks/role-session-start.sh: the one
+# shellcheck shell=bash
+# Sourced by scripts/role-marker.sh (notify) and hooks/role-session-start.sh: the one
 # check a Notify: target must pass to be written into a role marker and to be
 # re-injected from it, so the writer never records a name the hook would drop.
 #
