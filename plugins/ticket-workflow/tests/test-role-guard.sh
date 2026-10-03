@@ -409,4 +409,24 @@ record $'implementer\nnotify: NOTIFY' "SKILL.md snippet: a name that was the old
 record implementer "SKILL.md snippet: plugin root unset, nothing run" "$(run_snippet $'implementer\n' 'repo planning' '')"
 record 1 "SKILL.md snippet: plugin root unset, says why" "$(grep -c 'nothing recorded' "$roles_dir/snippet.err")"
 
+# A subagent shares its parent's session id, so START Step 1's notify record
+# would rewrite the parent's marker. The script finds the id and the roles
+# directory itself, so the command names neither: running it is the write.
+notify_cmd=$(while IFS= read -r line; do
+	[ "$line" = '<session name>' ] && line='helper planning'
+	printf '%s\n' "$line"
+done <<<"$snippet")
+parent=$'implementer\nissue: 52\nnotify: repo planning'
+export CLAUDE_TICKET_WORKFLOW_ROOT="$here/.."
+record "deny implementer|issue: 52|notify: repo planning|" "subagent runs START's notify record" "$(as_agent "$parent" a1 "$notify_cmd")"
+record "deny implementer|" "subagent runs record-notify.sh, quoted path" "$(as_agent implementer a1 "$(printf '%s\n' 'bash "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<'"'"'EOF'"'"'' 'x' 'EOF')")"
+record "deny implementer|" "subagent runs record-notify.sh, unquoted path" "$(as_agent implementer a1 'bash $CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh </dev/null')"
+record "deny implementer|" "subagent executes record-notify.sh directly" "$(as_agent implementer a1 '"$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh" <<< x')"
+record "deny implementer|" "subagent sources record-notify.sh" "$(as_agent implementer a1 'echo x | . "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh"')"
+record "allow implementer|" "subagent commit naming record-notify.sh" "$(as_agent implementer a1 'git -C /nonexistent commit -m "Fix scripts/record-notify.sh" 2>/dev/null; true')"
+record "allow implementer|" "subagent grep of record-notify.sh" "$(as_agent implementer a1 'grep -c notify_name_ok "$CLAUDE_TICKET_WORKFLOW_ROOT/scripts/record-notify.sh"')"
+record "allow implementer|" "subagent message mentioning a run" "$(as_agent implementer a1 'echo "then run bash scripts/record-notify.sh" >/dev/null')"
+record "allow implementer|issue: 52|notify: helper planning|" "main thread runs START's notify record" "$(as_agent "$parent" '' "$notify_cmd")"
+unset CLAUDE_TICKET_WORKFLOW_ROOT
+
 finish

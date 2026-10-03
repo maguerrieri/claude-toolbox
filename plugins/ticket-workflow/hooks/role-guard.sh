@@ -26,8 +26,8 @@
 #   following a skill's START step would re-pin its parent. Its calls, and
 #   only its calls, carry an agent_id (checked on Claude Code 2.1.282). So
 #   such a call is denied when it would write the marker: a Bash command
-#   that role-guard-marker-write.jq judges a marker write, or a file edit in
-#   the roles directory. Reads pass, so the skill's guards still see the parent's
+#   that role-guard-marker-write.jq judges a marker write (a run of
+#   scripts/record-notify.sh included), or a file edit in the roles directory. Reads pass, so the skill's guards still see the parent's
 #   role. Deny, not ask, with no override: the write is never the subagent's
 #   to make.
 #
@@ -85,8 +85,8 @@ in_roles_dir() {
 agent_re='"agent_id"[[:space:]]*:[[:space:]]*"[^"]'
 if [[ $input =~ $agent_re ]]; then
 	subagent_write=no
-	if [[ $input == *SESSION_ID* ]] &&
-		[[ $input == *session-roles* || $input == *CLAUDE_SESSION_ROLES_DIR* || $input == *"$roles_dir"* ]] &&
+	if { [[ $input == *record-notify.sh* ]] || { [[ $input == *SESSION_ID* ]] &&
+		[[ $input == *session-roles* || $input == *CLAUDE_SESSION_ROLES_DIR* || $input == *"$roles_dir"* ]]; }; } &&
 		printf '%s' "$input" | jq -e --arg dir "$roles_dir" -f "${BASH_SOURCE[0]%/*}/role-guard-marker-write.jq" >/dev/null 2>&1; then
 		subagent_write=yes
 	else
@@ -107,7 +107,7 @@ if [[ $input =~ $agent_re ]]; then
 	if [ "$subagent_write" = yes ]; then
 		emit deny "This call would write the role marker, and it comes from an in-process subagent or other in-process agent (its hook input carries an agent_id). You run inside your parent's session and share its session id, so the marker is the parent session's, not yours.
 
-Skip the self-pin (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker is fine. If this command only mentions a session-id variable and the roles directory (a grep pattern, a commit message), single-quote those names or pass the text through a file."
+Skip the self-pin and the notify record (START Step 1, EPIC Step 1) and /role, and follow the charter your briefing names from context. Reading the marker is fine. If this command only mentions a session-id variable and the roles directory (a grep pattern, a commit message), single-quote those names or pass the text through a file."
 		exit 0
 	fi
 fi
