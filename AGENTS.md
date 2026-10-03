@@ -45,8 +45,10 @@ points check its marker and refuse, and a hook denies a hand-rolled
 `claude --bg`/`-p` or `create_session` that leads with an issue-spawning command
 (its tests: `bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can
 it start a second issue: its self-pinned marker records its own issue on a
-second line, and START refuses any other. The marker's role is its first line
-only. The marker is keyed on the session id, so it doesn't follow `/clear` or a
+second line, and START refuses any other. A self-pinned session also records
+its `Notify:` target on a `notify:` line, which SessionStart re-injects next to
+the charter so its pings survive compaction. The marker's role is its first
+line only. The marker is keyed on the session id, so it doesn't follow `/clear` or a
 fork (re-pin with `/role`), and the same hook denies a marker write from an
 in-process subagent (or any agent running inside the session), which shares
 its parent's id. Ticket work itself never
