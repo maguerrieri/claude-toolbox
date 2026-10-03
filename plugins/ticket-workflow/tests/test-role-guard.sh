@@ -276,6 +276,8 @@ fi
 deny_case "pin, subcommand from a substitution" planner "bash \"$R\" \$(echo pin) implementer"
 deny_case "pin, subcommand from backticks" planner "bash \"$R\" \`echo pin\` implementer"
 deny_case "unpin, escaped subcommand" planner "bash \"$R\" un\\pin"
+deny_case "unpin after a process-substitution redirect" planner "bash \"$R\" < <(printf x) unpin"
+record "allow planner|" "subagent process substitution as the subcommand (writes nothing)" "$(as_agent planner a1 "bash \"$R\" <(printf x) unpin")"
 deny_case "unpin after a heredoc operator on its line" planner "$(printf '%s\n' "bash \"$R\" <<EOF unpin" 'x' 'EOF')"
 deny_case "notify after a quoted heredoc operator" "$parent" "$(printf '%s\n' "bash \"$R\" <<'END-MSG' notify" 'other name' 'END-MSG')"
 deny_case "unpin, partly quoted subcommand" planner "bash \"$R\" \"un\"pin"

@@ -40,8 +40,9 @@ def strip_heredocs: gsub("<<-?[ \\t]*['\"]?(?<w>[\\w.-]+)['\"]?(?<rest>[^\\n]*)\
 # "$R"/x/role-marker.sh, '/x/role-marker.sh'), becomes one bare word. Then a
 # quoted plain word (a "pin" subcommand) loses its quotes, every other quoted
 # string is emptied so nothing inside one counts, line continuations are
-# joined, and redirections (2>/dev/null, <<< x) are dropped, so the word after
-# the path is the subcommand. Quoted letters lose their quotes even inside a
+# joined, a process substitution becomes one word, and redirections
+# (2>/dev/null, <<< x, < <(…)) are dropped, so the word after the path is the
+# subcommand. Quoted letters lose their quotes even inside a
 # word ("un"pin, un'p'in), and an unquoted backslash escape loses its
 # backslash (un\pin), as the shell reads them.
 def normalize:
@@ -51,6 +52,7 @@ def normalize:
   | gsub("'[^']*'"; "''")
   | gsub("\\\\\\n"; " ")
   | gsub("\\\\(?<c>[^\\n])"; "\(.c)")
+  | gsub("[<>]\\([^()]*\\)"; "PROCSUB")
   | gsub("[0-9]*[<>]{1,3}&?[ \\t]*[^\\s;&|()<>]+"; " ");
 
 # The path, then a writing subcommand: pin, unpin or notify, or a word whose
