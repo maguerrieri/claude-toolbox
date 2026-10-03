@@ -11,12 +11,10 @@ Thin launcher over `/start-epic`: spawn ONE background session that runs the ful
 0. **Implementer spawn guard** (the `ticket-workflow` skill's Session roles section). Read this session's role marker first:
 
 ```bash
-roles_dir="${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}"
-sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
-[ -n "$sid" ] && head -n 1 "$roles_dir/$sid" 2>/dev/null
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" show
 ```
 
-   If it prints `implementer`, or a charter you hold in context makes you one, **launch nothing**. Epics are the planner's to spawn and yours to flag. Ping your `Notify:` spawner `filed: <epic-id> (already open), suggest spawning` per the skill's `messaging.md`, or note it on your issue/PR when no `Notify:` is wired, then return to your own issue. Say so in one line. A human steering this session can override (`/role none` drops the pin).
+   If the read fails with the plugin root unset, retry it by the path the Glob tool finds (the skill's Session roles: *Pinning*); a read that still fails clears nothing. If its first line is `implementer`, or a charter you hold in context makes you one, **launch nothing**. Epics are the planner's to spawn and yours to flag. Ping your `Notify:` spawner `filed: <epic-id> (already open), suggest spawning` per the skill's `messaging.md`, or note it on your issue/PR when no `Notify:` is wired, then return to your own issue. Say so in one line. A human steering this session can override (`/role none` drops the pin).
 
 1. Take the first token of "$ARGUMENTS" as the epic ID (used only for the session name). Pass the **full** "$ARGUMENTS" through to the child **verbatim** — briefing and flags (`--finish`, `--coordinate`, `--independent`) are parsed by the `/start-epic` orchestrator, not here. Do **not** append a `SPAWN_CAP`: the epic orchestrator caps each child itself, and an explicit `--finish` must reach it intact. **Do** append a `Role: epic-coordinator` directive so the spawned orchestrator adopts its charter (EPIC Step 1 reads `roles/epic-coordinator.md`) — this is the one role you set at the epic boundary; the children get `Role: implementer` from the EPIC phase itself.
 2. Determine `<repo>` for the session name — basename of the repo the work targets (the current repo unless the briefing names another).
