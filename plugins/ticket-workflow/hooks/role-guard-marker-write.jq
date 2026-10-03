@@ -30,9 +30,11 @@
 # another command (bash -c 'cmd' …/role-marker.sh unpin, where the path is
 # just $0) is denied.
 
-# A heredoc body, from the line after `<<WORD` to the line holding WORD. The
-# delimiter may hold - and . (<<'END-MSG').
-def strip_heredocs: gsub("<<-?[ \\t]*['\"]?(?<w>[\\w.-]+)['\"]?[^\\n]*\\n(?:[^\\n]*\\n)*?[ \\t]*\\k<w>(?=\\n|\\z)"; "<<");
+# A heredoc: the `<<WORD` operator and its body, from the next line to the line
+# holding WORD. The rest of the operator's own line stays, since more of the
+# command can follow it there (… <<EOF unpin). The delimiter may hold - and .
+# (<<'END-MSG').
+def strip_heredocs: gsub("<<-?[ \\t]*['\"]?(?<w>[\\w.-]+)['\"]?(?<rest>[^\\n]*)\\n(?:[^\\n]*\\n)*?[ \\t]*\\k<w>(?=\\n|\\z)"; " \(.rest)");
 
 # A shell word naming the script, however it's quoted ("$R/x/role-marker.sh",
 # "$R"/x/role-marker.sh, '/x/role-marker.sh'), becomes one bare word. Then a
