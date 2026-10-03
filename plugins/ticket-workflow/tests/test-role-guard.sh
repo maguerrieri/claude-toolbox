@@ -276,6 +276,8 @@ fi
 deny_case "pin, subcommand from a substitution" planner "bash \"$R\" \$(echo pin) implementer"
 deny_case "pin, subcommand from backticks" planner "bash \"$R\" \`echo pin\` implementer"
 deny_case "unpin, escaped subcommand" planner "bash \"$R\" un\\pin"
+deny_case "unpin after a heredoc operator on its line" planner "$(printf '%s\n' "bash \"$R\" <<EOF unpin" 'x' 'EOF')"
+deny_case "notify after a quoted heredoc operator" "$parent" "$(printf '%s\n' "bash \"$R\" <<'END-MSG' notify" 'other name' 'END-MSG')"
 deny_case "unpin, partly quoted subcommand" planner "bash \"$R\" \"un\"pin"
 deny_case "unpin, single-quoted letters inside the subcommand" planner "bash \"$R\" un'p'in"
 deny_case "unpin, empty quotes inside the subcommand" planner "bash \"$R\" un''pin"
