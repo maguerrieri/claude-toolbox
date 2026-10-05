@@ -82,13 +82,20 @@ can't also match `#263`. If the listing itself fails (non-zero exit, output that
 isn't JSON), **you don't know**, so don't spawn fresh on it: report the error
 and let the caller decide.
 
-**Drop your own row**: the one whose `sessionId` is `$CLAUDE_SESSION_ID`, or,
-when that variable is unset, the one whose `pid` is an ancestor of your shell
-(a Bash tool call runs under its session's process):
+**Drop your own row**, by two checks, both always applied:
+
+- its `sessionId` is the harness's `$CLAUDE_CODE_SESSION_ID` (Claude Code
+  2.1.132+ gives every Bash call its own session's id). Never key on the older
+  `CLAUDE_SESSION_ID` here: it is an ordinary exported variable, so a child can
+  inherit its parent's, and matching it would drop the parent's row and keep
+  yours;
+- its `pid` is an ancestor of your shell (a Bash tool call runs under its
+  session's process), which covers a CLI too old to set
+  `CLAUDE_CODE_SESSION_ID`:
 
 ```bash
 ancestors=" "; p=$$; while [ "${p:-1}" -gt 1 ]; do ancestors="$ancestors$p "; p=$(ps -o ppid= -p "$p" | tr -d ' '); done
-# drop a row when case "$ancestors" in *" <row pid> "*) matches
+# drop a row when .sessionId == $CLAUDE_CODE_SESSION_ID, or when case "$ancestors" in *" <row pid> "*) matches
 ```
 
 If neither identifies your row and your own name could match the prefix (a
