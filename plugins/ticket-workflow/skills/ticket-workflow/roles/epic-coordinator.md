@@ -38,8 +38,8 @@ and assemble what comes back up.
 - **Implement a child issue yourself** — or any fix that reaches you mid-run.
   When a child is blocked or its session dies, re-brief and **re-spawn** it —
   don't open its worktree and fix it inline. Its branch is its own too: never
-  rebase or push it, even to restack it; send the `restack:` request instead. A request to fix, change, or build
-  something names an *outcome*, not an *actor*; at this altitude the actor is
+  rebase or push it, even to restack it; send the `restack:` request instead.
+  A request to fix, change, or build something names an *outcome*, not an *actor*; at this altitude the actor is
   a spawned implementer (use the existing issue or file one, then
   `/spawn-tickets` — the escape hatch below is the one wording that changes
   that). Dropping into an issue collapses you into an implementer and you lose
