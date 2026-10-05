@@ -102,7 +102,7 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
     echo "unknown: report the row, launch nothing"   # no transcript, several, unparseable, or no launch prompt
   elif printf '%s\n' "$prompt" | grep -qE '(^|[[:space:]])Worktree: epic-238-263([[:space:]]|$)'; then
     # the launch prompt names the assigned branch: this epic's child
-    ( cd /home/me/toolbox && claude --bg --resume "$id" "Resumed after a machine restart. While you were down: #262 merged and main moved. Re-read your PR and branch state, then continue the START cycle for #263 where you left off." )
+    ( cd /home/me/toolbox && env -u CLAUDE_SESSION_ID claude --bg --resume "$id" "Resumed after a machine restart. While you were down: #262 merged and main moved. Re-read your PR and branch state, then continue the START cycle for #263 where you left off." )
   else
     echo "another session's work: leave it alone, name it in the table"
   fi
