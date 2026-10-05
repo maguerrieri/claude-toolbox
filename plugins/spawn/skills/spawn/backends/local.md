@@ -89,13 +89,15 @@ and let the caller decide.
   `CLAUDE_SESSION_ID` here: it is an ordinary exported variable, so a child can
   inherit its parent's, and matching it would drop the parent's row and keep
   yours;
-- its `pid` is an ancestor of your shell (a Bash tool call runs under its
-  session's process), which covers a CLI too old to set
-  `CLAUDE_CODE_SESSION_ID`:
+- for a **live** row only (any status but `stopped` or `done`; you are running,
+  so your row is live), its `pid` is an ancestor of your shell (a Bash tool
+  call runs under its session's process), which covers a CLI too old to set
+  `CLAUDE_CODE_SESSION_ID`. A stopped or done row's `pid` is historical, and
+  after a restart the OS may have reused it for one of your ancestors:
 
 ```bash
 ancestors=" "; p=$$; while [ "${p:-1}" -gt 1 ]; do ancestors="$ancestors$p "; p=$(ps -o ppid= -p "$p" | tr -d ' '); done
-# drop a row whose sessionId is this session's id (the first check), or when case "$ancestors" in *" <row pid> "*) matches
+# drop a row whose sessionId is this session's id (the first check), or a live row when case "$ancestors" in *" <row pid> "*) matches
 ```
 
 If neither identifies your row and your own name could match the prefix (a
