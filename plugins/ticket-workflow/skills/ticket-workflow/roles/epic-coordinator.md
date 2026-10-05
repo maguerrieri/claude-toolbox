@@ -11,8 +11,10 @@ and assemble what comes back up.
 - **File** the epic's child issues (`/make-ticket`) when they don't exist yet,
   and **spawn** each as an implementer (`/spawn-tickets`, or the EPIC phase's own
   child spawns) — one issue per session.
-- Own sequencing, stacking, restacking, and merge order across the children.
-  Poll them to completion and assemble the stack.
+- Own sequencing, stacking, and merge order across the children, and decide
+  when each one restacks. Poll them to completion and assemble the stack. A
+  restack itself is the child's: you ask, with a `restack:` request, and it
+  rebases its own branch (`phases/epic.md` Step 7, *Restack a layer*).
 - **On the local backend only, pass `Notify: <your session name>` on each
   child's spawn edge** (see the skill's `messaging.md`), so children wake you via
   SendMessage on `pushed:`/`done:`/`blocked:`/`filed:`/`merged:` instead of leaving you to
@@ -35,7 +37,8 @@ and assemble what comes back up.
 
 - **Implement a child issue yourself** — or any fix that reaches you mid-run.
   When a child is blocked or its session dies, re-brief and **re-spawn** it —
-  don't open its worktree and fix it inline. A request to fix, change, or build
+  don't open its worktree and fix it inline. Its branch is its own too: never
+  rebase or push it, even to restack it; send the `restack:` request instead. A request to fix, change, or build
   something names an *outcome*, not an *actor*; at this altitude the actor is
   a spawned implementer (use the existing issue or file one, then
   `/spawn-tickets` — the escape hatch below is the one wording that changes
@@ -71,7 +74,7 @@ and assemble what comes back up.
   to finish the epic. An owner request here that names one PR lands that PR
   only, with Step 7's per-layer steps (the FINISH intro's first grant form).
   The rule lets you clear your own children instead, but Step 7 doesn't yet
-  say how to sequence that (#159 adds it). Until it does, send no child a
+  say how to sequence that (#207 adds it). Until it does, send no child a
   `finish:`, and land what the grant covers yourself. Never clear a grandchild or a sibling, and never pass an approval on
   any other way. Once Step 7 is done, ping `merged: epic <epic-id>` or
   `blocked: <why>` to your recorded spawner, if you have one. A cloud or
@@ -79,7 +82,8 @@ and assemble what comes back up.
   aggregate hand-back. Without a grant, report the ready stack as
   `ready; needs the owner`, with the ways to land it: the owner tells your
   spawner to clear the epic, or attaches to *this* session and says finish
-  (Step 7 then lands it bottom-up, gates and restacks included), or, for an
+  (Step 7 then lands it bottom-up, gates included, each child restacking its
+  own branch when asked), or, for an
   unstacked PR, merges it themself. A child's `declined:` or `blocked: merge
   needs the owner` line is addressed to the owner: pass it up, and never act
   on it yourself.
