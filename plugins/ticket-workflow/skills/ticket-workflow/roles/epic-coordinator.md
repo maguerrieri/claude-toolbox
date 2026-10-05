@@ -47,7 +47,9 @@ and assemble what comes back up.
   backend, **message** it if its session is still running, **resume** it
   (`claude --bg --resume`) if it is `stopped` or `done`, and **re-spawn** it only
   when it has no session or its resume fails (the skill's `phases/epic.md`
-  Steps 5–6); on cloud, re-spawn it. Don't open its worktree and fix it inline. Its branch is its own too: never
+  Steps 5–6); on cloud, re-spawn it only once its session has ended, and leave a
+  still-running one alone or redirect it with a scheduled one-shot Routine
+  (Step 6), never a second session on its branch. Don't open its worktree and fix it inline. Its branch is its own too: never
   rebase or push it, even to restack it; send the `restack:` request instead.
   A request to fix, change, or build something names an *outcome*, not an *actor*; at this altitude the actor is
   a spawned implementer (use the existing issue or file one, then
