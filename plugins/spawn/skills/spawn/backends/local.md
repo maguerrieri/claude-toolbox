@@ -89,8 +89,9 @@ and let the caller decide.
   `CLAUDE_SESSION_ID` here: it is an ordinary exported variable, so a child can
   inherit its parent's, and matching it would drop the parent's row and keep
   yours;
-- for a **live** row only (any status but `stopped` or `done`; you are running,
-  so your row is live), its `pid` is an ancestor of your shell (a Bash tool
+- for a **live** row only (a status in the *running* class below, `busy`,
+  `blocked` and the like; you are running, so your row is live, and a stopped,
+  done or unplaceable row never counts), its `pid` is an ancestor of your shell (a Bash tool
   call runs under its session's process), which covers a CLI too old to set
   `CLAUDE_CODE_SESSION_ID`. A stopped or done row's `pid` is historical, and
   after a restart the OS may have reused it for one of your ancestors:
