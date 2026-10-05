@@ -76,7 +76,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   name), names your own PR, and cites a grant. Read the line back from the
   marker when a clearance arrives, never from memory, since a re-brief may
   have replaced it:
-  `sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"; [ -n "$sid" ] && LC_ALL=C sed -n 's/^notify: //p' "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$sid" 2>/dev/null | tail -n 1`.
+  `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" show`
+  (with the plugin root unset or stale, run the same `show` by the path the
+  Glob tool finds: the skill's Session roles, *Pinning*). No `notify:` line,
+  or a read that still fails, accepts no clearance.
   If your PR is stacked (based on another open PR's branch, or with an open
   PR based on yours), or holds findings at the round cap (`<m>` above 0 on its `Review
   rounds:` line, or an `agree, held at the round cap` line), reply `blocked:

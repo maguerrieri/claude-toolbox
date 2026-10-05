@@ -15,9 +15,10 @@
 #   role-marker.sh: no block names the roles directory or a session-id
 #   variable, and each run of the script is the documented form;
 # - the FINISH intro's read of the recorded spawner (the marker's notify:
-#   line, which a finish: clearance is checked against) returns what
-#   role-marker.sh notify wrote, keyed the same way, and the charters carry it
-#   unchanged;
+#   line, which a finish: clearance is checked against) is role-marker.sh
+#   show, as in both charters, and returns what role-marker.sh notify wrote,
+#   keyed the same way; no doc line, inline code included, reads the marker by
+#   hand;
 # - the SessionStart matcher covers every documented source.
 #
 #   bash plugins/ticket-workflow/tests/test-session-identity.sh
@@ -218,18 +219,25 @@ done
 
 # --- The recorded spawner a finish: clearance is checked against ----------
 
-# The FINISH intro's read of the marker's notify: line, an inline code span.
-# The two charters that check a clearance carry the same line.
-notify_read_in() { grep -o '`sid="${CLAUDE_CODE_SESSION_ID[^`]*s/^notify: //p[^`]*`' "$1" | tr -d '`'; }
-read_notify=$(notify_read_in "$skill/SKILL.md")
-record 1 "notify read found once in SKILL.md" "$(printf '%s' "$read_notify" | grep -c .)"
+# The FINISH intro reads the marker's notify: line with the documented `show`,
+# in an inline code span, and the two charters that check a clearance carry the
+# same read. The code-block scan above can't see an inline span, so check the
+# span where each file reads the line, and that no doc line, inline code
+# included, reads the marker by hand (a session-id variable and the roles
+# directory together).
+read_notify="${run_prefix}show"
+record 1 "SKILL.md's FINISH intro reads the notify line through role-marker.sh show" \
+	"$(grep '^\*\*Delegation: a `finish:` clearance' "$skill/SKILL.md" | grep -cF "\`$read_notify\`")"
 for f in "$skill/roles/implementer.md" "$skill/roles/epic-coordinator.md"; do
-	record "$read_notify" "${f#"$skill/"} reads the notify line as SKILL.md does" "$(notify_read_in "$f")"
+	record 1 "${f#"$skill/"} reads the notify line through role-marker.sh show" \
+		"$(grep -A1 'have replaced it:$' "$f" | grep -cF "\`$read_notify\`")"
 done
+record "" "no doc line reads the marker by hand" \
+	"$(grep -nE 'CLAUDE_(CODE_)?SESSION_ID' "${docs[@]}" | grep -E 'session-roles|CLAUDE_SESSION_ROLES_DIR|roles_dir')"
 
 # Writes each given name in turn into session `child`'s marker through
 # role-marker.sh notify (session `parent` already records its own spawner), then
-# prints what the read returns under the environment after `--`.
+# prints the notify: line the read returns under the environment after `--`.
 notify_seen() { # notify_seen [name ...] -- [VAR=value ...]
 	rm -f "$roles_dir"/*
 	printf 'implementer\nissue: 52\n' >"$roles_dir/child"
@@ -240,7 +248,8 @@ notify_seen() { # notify_seen [name ...] -- [VAR=value ...]
 		shift
 	done
 	shift
-	env -i PATH="$PATH" CLAUDE_SESSION_ROLES_DIR="$roles_dir" "$@" bash -c "$read_notify"
+	env -i PATH="$PATH" CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" "$@" \
+		bash -c "$read_notify" 2>/dev/null | sed -n 's/^notify: //p'
 }
 name="widgets epic #40 — o'brien [ad63a1]"
 record "$name" "the read returns the recorded name" "$(notify_seen "$name" -- CLAUDE_CODE_SESSION_ID=child)"
@@ -251,6 +260,10 @@ record "$name" "the native id wins over an inherited export" \
 	"$(notify_seen "$name" -- CLAUDE_CODE_SESSION_ID=child CLAUDE_SESSION_ID=parent)"
 record "$name" "hook-exported id on an older CLI" "$(notify_seen "$name" -- CLAUDE_SESSION_ID=child)"
 record "" "no session id reads nothing" "$(notify_seen "$name" --)"
+# With the plugin root unset, the read fails rather than reading as no line.
+record fails "the read fails with the plugin root unset" \
+	"$(env -i PATH="$PATH" CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_CODE_SESSION_ID=child \
+		bash -c "$read_notify" >/dev/null 2>&1 && echo reads || echo fails)"
 
 # --- The SessionStart matcher ----------------------------------------------
 
