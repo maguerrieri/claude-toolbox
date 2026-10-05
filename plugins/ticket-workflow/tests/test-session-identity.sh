@@ -11,6 +11,10 @@
 # - in every code block of the ticket-workflow and spawn docs, each claude
 #   launch strips CLAUDE_SESSION_ID, and the marker is keyed only on the
 #   resolved id;
+# - the FINISH intro's read of the recorded spawner (the marker's notify:
+#   line, which a finish: clearance is checked against) returns what
+#   record-notify.sh wrote, keyed the same way, and the charters carry it
+#   unchanged;
 # - the SessionStart matcher covers every documented source.
 #
 #   bash plugins/ticket-workflow/tests/test-session-identity.sh
@@ -173,6 +177,42 @@ for f in "$skill/SKILL.md" "$skill/phases/epic.md" "$plugin/commands/spawn-epic.
 	record yes "${f#"$plugin/../"} has a launch in a code block" \
 		"$([ "$(scan_blocks "$f" | sed -n 's/^launches=//p')" -gt 0 ] && echo yes || echo no)"
 done
+
+# --- The recorded spawner a finish: clearance is checked against ----------
+
+# The FINISH intro's read of the marker's notify: line, an inline code span.
+# The two charters that check a clearance carry the same line.
+notify_read_in() { grep -o '`sid="${CLAUDE_CODE_SESSION_ID[^`]*s/^notify: //p[^`]*`' "$1" | tr -d '`'; }
+read_notify=$(notify_read_in "$skill/SKILL.md")
+record 1 "notify read found once in SKILL.md" "$(printf '%s' "$read_notify" | grep -c .)"
+for f in "$skill/roles/implementer.md" "$skill/roles/epic-coordinator.md"; do
+	record "$read_notify" "${f#"$skill/"} reads the notify line as SKILL.md does" "$(notify_read_in "$f")"
+done
+
+# Writes each given name in turn into session `child`'s marker through
+# record-notify.sh (session `parent` already records its own spawner), then
+# prints what the read returns under the environment after `--`.
+notify_seen() { # notify_seen [name ...] -- [VAR=value ...]
+	rm -f "$roles_dir"/*
+	printf 'implementer\nissue: 52\n' >"$roles_dir/child"
+	printf 'implementer\nissue: 7\nnotify: the parent'\''s spawner\n' >"$roles_dir/parent"
+	while [ "$1" != -- ]; do
+		printf '%s\n' "$1" | env -i PATH="$PATH" CLAUDE_SESSION_ROLES_DIR="$roles_dir" \
+			CLAUDE_CODE_SESSION_ID=child bash "$plugin/scripts/record-notify.sh" 2>/dev/null
+		shift
+	done
+	shift
+	env -i PATH="$PATH" CLAUDE_SESSION_ROLES_DIR="$roles_dir" "$@" bash -c "$read_notify"
+}
+name="widgets epic #40 — o'brien [ad63a1]"
+record "$name" "the read returns the recorded name" "$(notify_seen "$name" -- CLAUDE_CODE_SESSION_ID=child)"
+record "second" "a re-brief's name replaces the earlier one" \
+	"$(notify_seen first second -- CLAUDE_CODE_SESSION_ID=child)"
+record "" "no notify: line, no recorded spawner" "$(notify_seen -- CLAUDE_CODE_SESSION_ID=child)"
+record "$name" "the native id wins over an inherited export" \
+	"$(notify_seen "$name" -- CLAUDE_CODE_SESSION_ID=child CLAUDE_SESSION_ID=parent)"
+record "$name" "hook-exported id on an older CLI" "$(notify_seen "$name" -- CLAUDE_SESSION_ID=child)"
+record "" "no session id reads nothing" "$(notify_seen "$name" --)"
 
 # --- The SessionStart matcher ----------------------------------------------
 
