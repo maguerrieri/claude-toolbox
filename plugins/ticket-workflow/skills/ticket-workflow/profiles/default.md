@@ -443,7 +443,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
 ## EPIC
 - Reuses `SPAWN_CAP` for every child spawned during the epic fan-out (default: implement + test,
-  then stop at a reviewed PR — no merge unless a human is steering that child's own session and tells
+  then stop at a reviewed PR — no merge unless the owner is steering that child's own session and tells
   it to merge mid-run). The EPIC phase's optional finish flag (`--finish` / "merge when green") is an
   explicit user opt-in that lifts the cap for the orchestrator's own FINISH pass, and it reaches a child only as a `finish:` clearance (below). The
   orchestrator also strips merge-intent flags from what it forwards to children (see the EPIC phase's
