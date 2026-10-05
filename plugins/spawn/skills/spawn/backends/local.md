@@ -115,7 +115,7 @@ than carry on. Then **decide by `status`**:
 short **re-briefing** prompt:
 
 ```bash
-( cd "<row cwd>" && claude --bg --resume <sessionId> "<re-brief>" )
+( cd "<row cwd>" && env -u CLAUDE_SESSION_ID claude --bg --resume <sessionId> "<re-brief>" )
 ```
 
 `--bg --resume` continues the session in the background **under the same
@@ -124,7 +124,7 @@ name stay what the caller recorded. The re-brief is not the original prompt,
 which the session already holds: say that it was resumed, what changed while it
 was down (a base branch that moved, a PR merged, a restack, a raised budget), and
 to re-derive its state from the durable record (branch, PR, tracker) before
-carrying on. Quote it the way *Launch* below says.
+carrying on. Quote it, and strip `CLAUDE_SESSION_ID`, the way *Launch* below says.
 
 A session belongs to the directory it was launched from, so if that `cwd` no
 longer exists, don't resume from somewhere else: launch fresh and say why in the
