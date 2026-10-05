@@ -127,6 +127,16 @@ Tool commands run under zsh. Do not use `path` as a loop or script variable:
 zsh ties the `path` array to `PATH`, so assigning `path` replaces command lookup.
 Use a task-specific name such as `file_path` instead.
 
+## Cross-session messages: `from-name`, not `from`
+
+A SendMessage delivery arrives wrapped as `<cross-session-message
+from="uds:/tmp/cc-socks/<pid>.sock" from-name="<session name>" …>`. `from` is
+the transport (reply) address. The sender's session name is `from-name`. The
+SendMessage tool's own description shows only `from`, so a doc that matches a
+sender by name (the FINISH intro's `finish:` clearance) must name `from-name`.
+Checked against real transcripts on 2026-10-05, after #157's rework briefly
+switched to `from` on the tool description's word.
+
 ## SKILL.md size — when to split phases into their own files
 
 ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~430
