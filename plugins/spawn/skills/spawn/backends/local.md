@@ -95,7 +95,7 @@ and let the caller decide.
 
 ```bash
 ancestors=" "; p=$$; while [ "${p:-1}" -gt 1 ]; do ancestors="$ancestors$p "; p=$(ps -o ppid= -p "$p" | tr -d ' '); done
-# drop a row when .sessionId == $CLAUDE_CODE_SESSION_ID, or when case "$ancestors" in *" <row pid> "*) matches
+# drop a row whose sessionId is this session's id (the first check), or when case "$ancestors" in *" <row pid> "*) matches
 ```
 
 If neither identifies your row and your own name could match the prefix (a
