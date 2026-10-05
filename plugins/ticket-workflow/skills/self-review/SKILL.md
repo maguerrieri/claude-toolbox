@@ -31,9 +31,10 @@ upstream, which on a pushed branch is the branch itself, and it would review not
    `high $ARGUMENTS`. Don't add `--fix` or `--comment`: the caller applies the fixes itself
    and records them in the PR, so you report and change nothing.
 2. **Fallback: a manual adversarial read.** If `code-review` isn't in your skill list, or
-   invoking it fails, review the range yourself: read `git diff $ARGUMENTS` and the
-   surrounding code it touches, as a reviewer hunting for bugs, contradictions, and stale
-   cross-references, not as the diff's author. Report each finding with a `path:line`
+   invoking it fails, review the range yourself: read `git diff $ARGUMENTS --` (the trailing
+   `--` keeps git reading the range as revisions, never paths) and the surrounding code it
+   touches, as a reviewer hunting for bugs, contradictions, and stale cross-references, not
+   as the diff's author. Report each finding with a `path:line`
    anchor, what is wrong, and the fix it needs.
 
 Don't edit, commit, or push anything, and don't post to GitHub. This pass only reports.
