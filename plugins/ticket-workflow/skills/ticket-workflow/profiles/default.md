@@ -330,8 +330,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   its own `budget:` marker, EPIC Step 5). An unpersisted raise is lost at the next compaction.
   Then the loop resumes, pushes included, until the new cap is reached or the review is clean.
 
-- **Pushes the cap never blocks.** A **CI fix**, a **restack** a coordinator redirects (rebase onto
-  a new base), and a merge of the base that clears a **conflict** always push, since a red,
+- **Pushes the cap never blocks.** A **CI fix**, a **restack** a `restack:` request asks for (rebase
+  onto a new base; START Step 8's *Restack on request*), and a merge of the base that clears a **conflict** always push, since a red,
   mis-based, or unmergeable PR isn't a reviewed PR:
   count the review it triggers, answer it by disposition, and rewrite the line. If that push doesn't
   auto-request a review (neither pending signal after it), request once for the new head and record
