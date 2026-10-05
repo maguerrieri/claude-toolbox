@@ -28,8 +28,9 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   `/start-epic`, and `/spawn-epic`. Files an issue from conversation context and
   takes it from open to a reviewed PR and on to merged, with a pluggable
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
-  parallel fan-out. Its internal `self-review` skill keeps START's self-review
-  passes on Opus when the implementer runs on a lower-tier model.
+  parallel fan-out. Its internal `self-review` skill runs START's self-review
+  passes on Opus when the implementer runs on a lower-tier model; if that wrapper
+  can't run, the passes fall back to the session's own model.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
