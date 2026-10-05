@@ -51,7 +51,9 @@ grounding rule is what makes any lost or delayed message harmless.
   back to the handle if a rename breaks the name. A spawner unsure of its own
   current name (e.g. an interactive coordinator that was never explicitly
   named) can find its own row via `ListAgents` — or put its handle in the
-  directive instead.
+  directive instead, though a child briefed with a handle still gets
+  pinged but can't be cleared to merge (the skill's FINISH intro matches a
+  `finish:` sender by name).
 - **Confirm-with-ref:** a cross-session send to a bare session name that isn't
   already part of your conversation may be **rejected pending confirmation** —
   re-send with the ` [ref]` suffix exactly as a `ListAgents` row prints it
