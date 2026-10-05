@@ -61,9 +61,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   belongs in the PR/tracker.
 - **Restack your own branch when asked.** Only you push to your branch, so
   when the PR below yours merges, or your base moves, the restack is yours.
-  A `restack:` line on your PR (posted by the merging session) or from your
-  coordinator is a redirect about your own issue: verify it and rebase per
-  START Step 8's *Restack on request*, then go back through review and CI.
+  A `restack:` line on your PR, or from your coordinator, is a redirect
+  about your own issue: handle it exactly as START Step 8's *Restack on
+  request* says, which defines its forms, its checks, and the rebase.
   The same rule runs the other way: when your own PR merges with PRs
   stacked on it, you post them the request (FINISH Step 2) and never push to
   their branches.
