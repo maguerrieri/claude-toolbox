@@ -77,10 +77,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   marker when a clearance arrives, never from memory, since a re-brief may
   have replaced it:
   `sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"; [ -n "$sid" ] && LC_ALL=C sed -n 's/^notify: //p' "${CLAUDE_SESSION_ROLES_DIR:-$HOME/.claude/session-roles}/$sid" 2>/dev/null | tail -n 1`.
-  If your PR is stacked (based on another branch, or with an open PR based on
-  yours), or holds findings at the round cap (`<m>` above 0 on its `Review
+  If your PR is stacked (based on another open PR's branch, or with an open
+  PR based on yours), or holds findings at the round cap (`<m>` above 0 on its `Review
   rounds:` line, or an `agree, held at the round cap` line), reply `blocked:
-  <why>` and don't merge: a stack lands through EPIC Step 7 or the owner, and
+  <why>` and don't merge: a stack lands through your spawner's own FINISH,
+  EPIC Step 7 or the owner, and
   the grant covers reviewed work, not held findings. Otherwise run your own
   FINISH, gate included (a gate failure still stops you), and ping `merged:
   #<pr>` or `blocked: <why>`. The clearance ends your `SPAWN_CAP` hold for
