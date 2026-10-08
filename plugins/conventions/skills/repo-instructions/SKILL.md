@@ -13,26 +13,25 @@ every session.
 At the repository root:
 
 - `AGENTS.md` is canonical for shared, harness-neutral project instructions.
-- `CLAUDE.md` is a compatibility shim, recommended, whose complete contents
+- `CLAUDE.md` is a recommended compatibility shim whose complete contents
   are:
 
   ```markdown
   @AGENTS.md
   ```
 
-Keep the shim even though current Claude Code can read `AGENTS.md` without
-it. In a repository with the shim, Claude Code loads `AGENTS.md` through the
-import, so it arrives on every version and in every session that reads
-`CLAUDE.md`. Without the shim it depends on Claude Code's native `AGENTS.md`
-reading, which older versions and some sessions lack and which switches off
-when a `CLAUDE.md` or `CLAUDE.local.md` appears (*Harness behavior*, below):
-a contributor who adds a `CLAUDE.local.md` for their own notes silently loses
+The shim is recommended, not required: current Claude Code can read
+`AGENTS.md` without it, so a repository that lacks it isn't broken, but add
+it. With the shim, Claude Code loads `AGENTS.md` through the import, so it
+arrives on every version and in every session that reads `CLAUDE.md`.
+Without it, `AGENTS.md` depends on Claude Code's native reading, which older
+versions and some sessions lack, and which switches off as soon as any of the
+`CLAUDE.md` files listed under *Harness behavior* (below) exists: a
+contributor who adds a `CLAUDE.local.md` for their own notes silently loses
 `AGENTS.md`. The shim also serves any other tool that reads `CLAUDE.md` and
-follows `@` imports. What it gives up, per Claude Code's docs: native
-reading's other files, such as nested `AGENTS.md` files, which a root
-`CLAUDE.md` turns off.
-The baseline keeps shared guidance in root `AGENTS.md`, so that loses
-nothing here.
+follows `@` imports. Its cost, per Claude Code's docs, is native discovery
+of nested `AGENTS.md` files, which the root shim turns off (*Harness
+behavior and scoped files*).
 
 Prefer the import over a symlink: it works on platforms where creating symlinks
 needs elevated privileges. Keep the shim pure. GitHub Copilot CLI also discovers
@@ -79,14 +78,16 @@ are machine-local configuration, not a portable repository contract.
   docs (below), v2.1.277 and later also read `AGENTS.md` natively, but under
   the default setting only when no `CLAUDE.md`, `.claude/CLAUDE.md` or
   `CLAUDE.local.md` exists in the working directory or above it (the
-  user-level `~/.claude/CLAUDE.md` doesn't count). With one, it reads the
+  user-level `~/.claude/CLAUDE.md`, an organization's managed `CLAUDE.md`,
+  and `.claude/rules/` files don't count). With one, it reads the
   `CLAUDE.md` files and whatever they import. The docs also list sessions
-  without native reading: the first one after upgrading from v2.1.276 or
-  earlier, any with the built-in `AGENTS.md` plugin disabled, and, before
-  v2.1.281, Amazon Bedrock or telemetry-disabled ones. A user-level
-  **Project instructions** setting can switch to reading both files
-  (`claude-md-and-agents-md`, which skips an `AGENTS.md` already imported, so
-  the shim isn't read twice) or `CLAUDE.md` only.
+  without native reading: any with the built-in `AGENTS.md` plugin disabled,
+  in some cases the first one after upgrading from v2.1.276 or earlier, and,
+  before v2.1.281, Amazon Bedrock or telemetry-disabled ones. A **Project
+  instructions** setting, set in `/config` or user or managed settings but
+  not in project settings, changes the default: `claude-md-and-agents-md`
+  reads both files (skipping an `AGENTS.md` already imported, so the shim
+  isn't read twice), and `claude-md` reads `CLAUDE.md` only.
   Verified on Claude Code 2.1.294 in headless `claude -p` runs with no tools,
   by asking for a codeword kept in `AGENTS.md`: with only `AGENTS.md` it
   loaded; adding a `CLAUDE.local.md`, or a `CLAUDE.md` without the import,
@@ -103,7 +104,10 @@ depending on a nested layout. Prefer each harness's scoped mechanism when
 identical cross-harness behavior is not established. Claude Code's docs
 describe loading a subdirectory's `AGENTS.md` when Claude reads a file there,
 but only as part of native reading, which the root shim turns off under the
-default setting. That is unverified here; don't depend on it.
+default setting. So a nested `AGENTS.md` kept for another harness, such as
+Codex, doesn't reach Claude Code in a repository with the shim; give Claude
+Code that guidance through `.claude/rules/` instead. Neither the nested
+loading nor the shim's suppression of it is verified here.
 
 ## Plugins declared per repository
 
