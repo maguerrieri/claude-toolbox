@@ -13,11 +13,26 @@ every session.
 At the repository root:
 
 - `AGENTS.md` is canonical for shared, harness-neutral project instructions.
-- `CLAUDE.md` is a compatibility shim whose complete contents are:
+- `CLAUDE.md` is a compatibility shim, recommended, whose complete contents
+  are:
 
   ```markdown
   @AGENTS.md
   ```
+
+Keep the shim even though current Claude Code can read `AGENTS.md` without
+it. In a repository with the shim, Claude Code loads `AGENTS.md` through the
+import, so it arrives on every version and in every session that reads
+`CLAUDE.md`. Without the shim it depends on Claude Code's native `AGENTS.md`
+reading, which older versions and some sessions lack and which switches off
+when a `CLAUDE.md` or `CLAUDE.local.md` appears (*Harness behavior*, below):
+a contributor who adds a `CLAUDE.local.md` for their own notes silently loses
+`AGENTS.md`. The shim also serves any other tool that reads `CLAUDE.md` and
+follows `@` imports. What it gives up, per Claude Code's docs: native
+reading's other files, such as nested `AGENTS.md` files, which a root
+`CLAUDE.md` turns off.
+The baseline keeps shared guidance in root `AGENTS.md`, so that loses
+nothing here.
 
 Prefer the import over a symlink: it works on platforms where creating symlinks
 needs elevated privileges. Keep the shim pure. GitHub Copilot CLI also discovers
@@ -48,8 +63,9 @@ When both `CLAUDE.md` and `AGENTS.md` already exist:
 3. Relocate harness-only guidance to that harness's owned surface.
 4. Audit repository automation that parses one instruction filename directly;
    migrate that consumer first or defer this repository's file migration.
-5. Reduce root `CLAUDE.md` to the exact `@AGENTS.md` shim and verify each
-   supported harness loads the intended context.
+5. Reduce root `CLAUDE.md` to the exact `@AGENTS.md` shim rather than
+   deleting it (*Portable baseline* says why), and verify each supported
+   harness loads the intended context.
 
 User-level settings such as Codex
 `project_doc_fallback_filenames = ["CLAUDE.md"]` can ease a migration, but they
@@ -59,7 +75,24 @@ are machine-local configuration, not a portable repository contract.
 
 - Codex natively discovers `AGENTS.override.md` and `AGENTS.md`; configured
   fallback names come after those files.
-- Claude Code reads `CLAUDE.md`, not `AGENTS.md`, and expands `@file` imports.
+- Claude Code reads `CLAUDE.md` and expands `@file` imports. Per its memory
+  docs (below), v2.1.277 and later also read `AGENTS.md` natively, but under
+  the default setting only when no `CLAUDE.md`, `.claude/CLAUDE.md` or
+  `CLAUDE.local.md` exists in the working directory or above it (the
+  user-level `~/.claude/CLAUDE.md` doesn't count). With one, it reads the
+  `CLAUDE.md` files and whatever they import. The docs also list sessions
+  without native reading: the first one after upgrading from v2.1.276 or
+  earlier, any with the built-in `AGENTS.md` plugin disabled, and, before
+  v2.1.281, Amazon Bedrock or telemetry-disabled ones. A user-level
+  **Project instructions** setting can switch to reading both files
+  (`claude-md-and-agents-md`, which skips an `AGENTS.md` already imported, so
+  the shim isn't read twice) or `CLAUDE.md` only.
+  Verified on Claude Code 2.1.294 in headless `claude -p` runs with no tools,
+  by asking for a codeword kept in `AGENTS.md`: with only `AGENTS.md` it
+  loaded; adding a `CLAUDE.local.md`, or a `CLAUDE.md` without the import,
+  dropped it; with the `@AGENTS.md` shim it loaded, with or without a
+  `CLAUDE.local.md`. Interactive sessions and the non-default settings
+  weren't tested.
 - GitHub Copilot CLI discovers `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
 - Gemini CLI defaults to `GEMINI.md`; users can configure other context
   filenames and use `@file.md` imports.
@@ -67,7 +100,10 @@ are machine-local configuration, not a portable repository contract.
 The root baseline is the portable contract. Nested and path-scoped instruction
 discovery differs across harnesses, so verify every supported harness before
 depending on a nested layout. Prefer each harness's scoped mechanism when
-identical cross-harness behavior is not established.
+identical cross-harness behavior is not established. Claude Code's docs
+describe loading a subdirectory's `AGENTS.md` when Claude reads a file there,
+but only as part of native reading, which the root shim turns off under the
+default setting. That is unverified here; don't depend on it.
 
 ## Plugins declared per repository
 
@@ -125,6 +161,6 @@ scope here):
 
 - [AGENTS.md standard](https://agents.md/)
 - [OpenAI: custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md/)
-- [Anthropic: Claude Code memory and AGENTS.md imports](https://code.claude.com/docs/en/memory)
+- [Anthropic: Claude Code memory, CLAUDE.md and AGENTS.md](https://code.claude.com/docs/en/memory)
 - [GitHub: Copilot CLI custom instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions)
 - [Google: Gemini CLI project context](https://geminicli.com/docs/cli/gemini-md/)
