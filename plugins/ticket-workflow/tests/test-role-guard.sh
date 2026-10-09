@@ -198,6 +198,74 @@ record yes "planner EnterWorktree reason names the worktree" \
 record yes "planner Edit reason names the edit" \
 	"$(reason_of Edit file_path /repo/x | grep -q 'make this one edit anyway' && echo yes || echo no)"
 
+# A planner's edits under a scratch or memory directory get no decision. The
+# fixture stands in for a repo, a job directory, $TMPDIR and a Claude config
+# reached through a symlink (as ~/.claude is on some machines). It lives
+# beside the tests, not in a temp directory, since everything under one is
+# exempt.
+fx=$(mktemp -d "$here/.scratch-fixture.XXXXXX")
+case $(cd -P "$fx" && pwd -P) in
+/tmp/* | /private/tmp/*)
+	rm -rf "$fx"
+	fx=$(mktemp -d "$HOME/.scratch-fixture.XXXXXX")
+	;;
+esac
+trap 'rm -rf "$roles_dir" "$fx"' EXIT
+mkdir -p "$fx/repo/sub" "$fx/tmpdir/sub" "$fx/config/jobs/abc/tmp" "$fx/config/projects/-repo/memory"
+: >"$fx/repo/file.txt"
+ln -s "$fx/config" "$fx/config-link"
+ln -s "$fx/repo" "$fx/tmpdir/repo-link"
+ln -s "$fx/repo/sub" "$fx/tmpdir/sub-link"
+ln -s "$fx/repo/file.txt" "$fx/tmpdir/file-link"
+ln -s "$fx/repo/new.txt" "$fx/tmpdir/dangling-link"
+ln -s "$fx/tmpdir/sub" "$fx/repo/scratch-link"
+fx_phys=$(cd -P "$fx" && pwd -P)
+
+job="$fx/config-link/jobs/abc" tmpdir="$fx/tmpdir" config="$fx/config-link"
+planner_edit() { # planner_edit <expected> <label> <tool> <path>
+	local field=file_path
+	[ "$3" = NotebookEdit ] && field=notebook_path
+	printf 'planner\n' >"$roles_dir/$sid"
+	out=$(jq -n --arg sid "$sid" --arg tool "$3" --arg f "$field" --arg p "$4" \
+		'{session_id: $sid, tool_name: $tool, tool_input: {($f): $p}}' |
+		env CLAUDE_SESSION_ROLES_DIR="$roles_dir" CLAUDE_JOB_DIR="$job" TMPDIR="$tmpdir" CLAUDE_CONFIG_DIR="$config" bash "$guard")
+	[ -n "$out" ] || out='{"hookSpecificOutput": {"permissionDecision": "allow"}}'
+	record "$1" "planner $3: $2" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision')"
+}
+
+for tool in Write Edit; do
+	planner_edit allow "job directory" $tool "$job/tmp/issue-body.md"
+	planner_edit allow "job directory, physical path" $tool "$fx/config/jobs/abc/tmp/issue-body.md"
+	planner_edit allow "/tmp" $tool /tmp/issue-body.md
+	planner_edit allow "/tmp, a .. that stays inside" $tool /tmp/sub/../issue-body.md
+	planner_edit allow "\$TMPDIR" $tool "$fx/tmpdir/issue-body.md"
+	planner_edit allow "auto-memory directory" $tool "$fx/config-link/projects/-repo/memory/note.md"
+	planner_edit allow "auto-memory directory, physical path" $tool "$fx_phys/config/projects/-repo/memory/MEMORY.md"
+	planner_edit allow "auto-memory directory not created yet" $tool "$fx/config-link/projects/-other/memory/note.md"
+
+	planner_edit ask "repo file" $tool "$fx/repo/file.txt"
+	planner_edit ask "symlinked directory resolving into a repo" $tool "$fx/tmpdir/repo-link/file.txt"
+	planner_edit ask "symlinked file resolving into a repo" $tool "$fx/tmpdir/file-link"
+	planner_edit ask "dangling symlink into a repo" $tool "$fx/tmpdir/dangling-link"
+	planner_edit ask ".. escape out of /tmp into a repo" $tool "/tmp/../..$fx_phys/repo/file.txt"
+	planner_edit ask ".. escape out of \$TMPDIR into a repo" $tool "$fx/tmpdir/../repo/file.txt"
+	planner_edit ask "symlink then .., the OS reading in the repo" $tool "$fx/tmpdir/sub-link/../file.txt"
+	planner_edit ask "symlink then .., the text reading in the repo" $tool "$fx/repo/scratch-link/../file.txt"
+	planner_edit ask "projects directory outside memory" $tool "$fx/config/projects/-repo/notes.md"
+	planner_edit ask "memory directory one level too deep" $tool "$fx/config/projects/a/b/memory/note.md"
+	planner_edit ask "the memory directory itself" $tool "$fx/config/projects/-repo/memory"
+	planner_edit ask "relative path" $tool tmp/issue-body.md
+done
+planner_edit allow "/tmp" NotebookEdit /tmp/scratch.ipynb
+planner_edit ask "repo file" NotebookEdit "$fx/repo/x.ipynb"
+planner_edit allow "/tmp" MultiEdit /tmp/issue-body.md
+job='' planner_edit ask "job directory, CLAUDE_JOB_DIR unset" Write "$fx/config/jobs/abc/tmp/issue-body.md"
+tmpdir=/ planner_edit ask "TMPDIR=/ exempts nothing" Write "$fx/repo/file.txt"
+config="$fx/nowhere" planner_edit ask "memory directory of another config" Write "$fx/config/projects/-repo/memory/note.md"
+record allow "subagent planner Write to /tmp" "$(decide_raw planner "$(jq -n --arg sid "$sid" '{session_id: $sid, agent_id: "a1", tool_name: "Write", tool_input: {file_path: "/tmp/issue-body.md"}}')")"
+record deny "subagent planner Write to a roles directory under a temp directory" "$(decide_raw planner "$(jq -n --arg sid "$sid" --arg p "$roles_dir/$sid" '{session_id: $sid, agent_id: "a1", tool_name: "Write", tool_input: {file_path: $p}}')")"
+record ask "planner EnterWorktree under /tmp (no scratch exemption)" "$(decide planner EnterWorktree path /tmp/wt)"
+
 # The PreToolUse matcher names mcp__.*__create_session, so Claude Code reads it
 # as a regex and tests it unanchored: it must be anchored to keep tools that
 # merely contain a guarded name out.
@@ -257,7 +325,7 @@ as_agent() {
 # command must be allowed and must change the marker. That shows each case is
 # a real write and that this rule, not another, is what stops it.
 disabled=$(mktemp -d)
-trap 'rm -rf "$roles_dir" "$disabled"' EXIT
+trap 'rm -rf "$roles_dir" "$fx" "$disabled"' EXIT
 cp -R "$here/../hooks" "$here/../scripts" "$disabled/"
 echo false >"$disabled/hooks/role-guard-marker-write.jq"
 deny_case() { # deny_case <label> <marker content or none> <command>

@@ -19,6 +19,15 @@
 #   a stacked or cloud child's PR) included, goes through `git worktree add` in
 #   Bash, so the gate doesn't touch it: only START, an implementer's phase,
 #   calls EnterWorktree.
+#   File edits under a scratch or memory directory are a planner's own work
+#   (an issue body for FILE, a memory note), so they get no decision here,
+#   and Claude Code's own permission checks still apply to them: the
+#   background job's directory ($CLAUDE_JOB_DIR), the system temp directory
+#   (/tmp, /private/tmp, $TMPDIR), and the auto-memory directories
+#   (<config>/projects/*/memory/). Both the path and the directories are
+#   resolved first (symlinks and `..`, for a path that doesn't exist yet too),
+#   so a symlinked ~/.claude still matches and /tmp/../<repo>/file doesn't.
+#   EnterWorktree gets no such exemption, wherever the worktree is.
 #
 # - implementer: launching a session whose prompt *leads* with an
 #   issue-spawning command is denied with a redirect to file + ping instead.
@@ -100,6 +109,74 @@ in_roles_dir() {
 	[ "${got##*/}" = "${want##*/}" ] && [ "$(dirname -- "$1")" -ef "$(dirname -- "$roles_dir")" ]
 }
 
+# walk_path <path> [text] sets walked to the absolute <path> with `.`, `..`
+# and repeated slashes resolved and, unless `text` is given, each existing
+# symlink followed (a dangling one too, since a write creates its target).
+# Each `..` drops the last part reached so far, which after a symlink is the
+# physical directory, as the OS takes it. A part that doesn't exist is kept as
+# written. With `text` nothing is read from disk: that is how a tool that
+# normalizes a path before opening it (Node's path.resolve) takes it. Fails on
+# a relative path or past 40 symlinks.
+walk_path() {
+	local todo=$1 out='' part target hops=0
+	case $todo in /*) ;; *) return 1 ;; esac
+	while [ -n "$todo" ]; do
+		part=${todo%%/*}
+		if [ "$part" = "$todo" ]; then todo=; else todo=${todo#*/}; fi
+		case $part in
+		'' | .) continue ;;
+		..)
+			out=${out%/*}
+			continue
+			;;
+		esac
+		if [ $# -eq 1 ] && [ -L "$out/$part" ]; then
+			hops=$((hops + 1))
+			[ "$hops" -le 40 ] || return 1
+			target=$(readlink -- "$out/$part") || return 1
+			case $target in /*) out= ;; esac
+			todo=$target${todo:+/$todo}
+			continue
+		fi
+		out=$out/$part
+	done
+	walked=${out:-/}
+}
+
+# in_scratch <walked path>: is it strictly inside a scratch or memory
+# directory (the header's planner bullet)? Reads scratch_dirs and projects_dir,
+# which scratch_path sets.
+in_scratch() {
+	local dir rest
+	for dir in ${scratch_dirs[@]+"${scratch_dirs[@]}"}; do
+		[[ $1 == "$dir"/?* ]] && return 0
+	done
+	[ -n "$projects_dir" ] || return 1
+	rest=${1#"$projects_dir"/}
+	[ "$rest" != "$1" ] || return 1
+	dir=${rest%%/*}
+	[[ -n $dir && $rest == "$dir"/memory/?* ]]
+}
+
+# scratch_path <path>: may a pinned planner edit <path> without the prompt?
+# Both readings of the path must land in a scratch or memory directory: the
+# OS's, and that of a tool that normalizes the path before opening it. They
+# differ only after a symlink followed by `..`.
+scratch_path() {
+	local dir
+	scratch_dirs=()
+	for dir in "${CLAUDE_JOB_DIR:-}" /tmp /private/tmp "${TMPDIR:-}"; do
+		[ -n "$dir" ] && walk_path "$dir" && [ "$walked" != / ] && scratch_dirs+=("$walked")
+	done
+	projects_dir=
+	if [ -n "${CLAUDE_CONFIG_DIR:-}${HOME:-}" ] &&
+		walk_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" && [ "$walked" != / ]; then
+		projects_dir=$walked
+	fi
+	walk_path "$1" && in_scratch "$walked" || return 1
+	walk_path "$1" text && walk_path "$walked" && in_scratch "$walked"
+}
+
 # A subagent's marker write (the header's last bullet). This comes before the
 # pinned-session check below, because a subagent that pins an unpinned parent
 # makes the same mistake. The bash tests keep jq to subagent calls that could
@@ -160,13 +237,19 @@ planner:Edit | planner:Write | planner:MultiEdit | planner:NotebookEdit | planne
 	if [ "$tool" = EnterWorktree ]; then
 		what="enter this worktree"
 		dont="Planners don't open worktrees or implement"
+		scratch=
 	else
+		file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)
+		if [ -n "$file_path" ] && scratch_path "$file_path"; then
+			exit 0
+		fi
 		what="make this one edit"
 		dont="Planners don't implement"
+		scratch=" Scratch and memory files don't prompt: the job directory, /tmp, \$TMPDIR, and the auto-memory directories."
 	fi
 	reason="This session is pinned to the planner charter (/role planner), which owns the whole initiative and delegates the work drawn on it.
 
-$dont: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets).
+$dont: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets).$scratch
 
 Approve to $what anyway, or run '/role none' to drop the charter for the rest of the session."
 	context="Pinned planner: this call asked the owner first. If they approved it, go ahead. If they rejected it, don't retry it or make the change another way: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets)."
