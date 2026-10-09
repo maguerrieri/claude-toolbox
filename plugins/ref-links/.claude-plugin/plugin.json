@@ -1,0 +1,9 @@
+{
+  "name": "ref-links",
+  "description": "Draws #N issue and PR references in replies as GitHub links, resolving the repo from the word before #N",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mario Guerrieri"
+  },
+  "types": "./types/index.d.ts"
+}

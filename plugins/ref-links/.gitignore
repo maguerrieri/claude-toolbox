@@ -1,0 +1,5 @@
+# Laid by Claude Code each time it loads this folder for development (an
+# interactive `--plugin-dir` session): the API's types and a tsconfig that
+# extends them. Regenerated on every load, so never committed.
+/.claude-plugin/types/
+/tsconfig.json
