@@ -4,6 +4,8 @@ argument-hint: <epic-id> [briefing] [--finish] [--coordinate | --independent]
 ---
 Run the epic: **$ARGUMENTS**
 
+**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), run no EPIC step and follow the skill's Step 0 *Projects mode* routing instead of what this command says below.
+
 **Invoke the `ticket-workflow` skill now via the Skill tool** and run its **EPIC** phase, following the skill's EPIC steps — the skill is authoritative; don't restate the steps here (that just lets the command and skill drift). The skill content loads when you invoke it; don't read its `SKILL.md` file directly. Parse "$ARGUMENTS" as:
 
 - the **epic ID** (first token);
@@ -15,5 +17,3 @@ If this `/start-epic` itself arrived relayed mid-run (a SendMessage, a Routine o
 **Strip those flags — and any `Role:` or `Notify:` directive — from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`, nor the orchestrator's own `Role: epic-coordinator` (each child gets its own `Role: implementer` from EPIC Step 5), nor the orchestrator's spawner as their own `Notify:` (each child's names the orchestrator, the one session that may clear it to merge).
 
 Then do the skill's **Step 0** (select tracker + profile) and run the EPIC cycle exactly as written in the skill's `phases/epic.md` (Steps 1–7, which the skill's EPIC index paragraph tells you to read) — that's the authoritative flow. On the cloud backend the cycle spans several turns by design — each poll ends behind a `send_later` wake-up (EPIC Step 6); keep the completion criteria open until every box is checked.
-
-In a Claude Projects thread (any `mcp__hearthbot__` tool present), run no EPIC step: follow the skill's Step 0 *Projects mode* instead.

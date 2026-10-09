@@ -29,6 +29,9 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   takes it from open to a reviewed PR and on to merged, with a pluggable
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
   parallel fan-out.
+  Inside a Claude Project it switches to a Projects mode that leaves branches,
+  PR watching and fan-out to the Projects harness: the spawning commands start
+  project threads instead of background sessions, and `/role` does nothing.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
