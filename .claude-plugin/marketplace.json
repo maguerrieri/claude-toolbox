@@ -41,6 +41,11 @@
       "description": "End-to-end issue workflow (make/start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile"
     },
     {
+      "name": "ref-links",
+      "source": "./plugins/ref-links",
+      "description": "Draws #N issue and PR references in replies as GitHub links, resolving the repo from the word before #N"
+    },
+    {
       "name": "provenance",
       "source": {
         "source": "github",

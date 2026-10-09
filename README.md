@@ -9,9 +9,9 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
-  list pulls in every plugin below except `gm` and `provenance`. Install this
-  one to get the default set. New default plugins added to this repo should
-  also be added to its dependencies.
+  list pulls in every plugin below except `gm`, `ref-links` and
+  `provenance`. Install this one to get the default set. New default plugins
+  added to this repo should also be added to its dependencies.
 - **conventions** — cross-repo development conventions: commit-message format
   and a portable repository-instruction policy built around canonical root
   `AGENTS.md` plus a pure `CLAUDE.md` import shim.
@@ -41,6 +41,19 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   git-versioned saves that autosave every turn's dialogue, and a GM screen (a
   `gm:screen` subagent plus state sealed on disk) that keeps secrets out of the
   player's transcript.
+- **ref-links** — a mod (function hooks, no skill) that draws every `#N`
+  in a reply as a link to that issue or PR on GitHub. The repo comes from
+  what precedes the `#`: `owner/repo#N` names it, a known repo's name
+  (`www #8`, the form session names use) picks it from the repos your
+  background sessions ran in and your recent GitHub activity, and a bare
+  `#N` means the session's own repo. A name two owners share, code,
+  existing links and headings are left alone. It changes only what's drawn;
+  the transcript keeps what the model wrote. Opt-in, so install it on its
+  own:
+
+  ```
+  /plugin install ref-links --marketplace maguerrieri/claude-toolbox
+  ```
 - **provenance** — researcher and verifier agents plus the orchestration skill
   for [provenance](https://github.com/maguerrieri/provenance), a cited-research
   pipeline whose citations a machine checks and a person reviews. It lives in
@@ -100,8 +113,8 @@ the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
-five default plugins (`gm` and `provenance` aren't `defaults` dependencies;
-install them separately).
+five default plugins (`gm`, `ref-links` and `provenance` aren't `defaults`
+dependencies; install them separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these

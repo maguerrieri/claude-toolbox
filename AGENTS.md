@@ -207,4 +207,4 @@ the `ref`), and applies the same rule. A head pin whose tag `ref` doesn't point 
 without a bump; a base pin it can't fetch is noted and head is checked alone; other source
 types get a `skip` line. A head `marketplace.json` the check can't read, or an entry
 without a name and source, fails too, since CI doesn't run `claude plugin validate`.
-`provenance` isn't a `defaults` dependency (neither is `gm`).
+`provenance` isn't a `defaults` dependency (neither is `gm` or `ref-links`).
