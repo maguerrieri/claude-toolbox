@@ -63,6 +63,20 @@ open — the guard is a drift nudge, not a security control.
 Bash is deliberately NOT gated: planners legitimately run `gh`, `git worktree
 list`, greps, and `/make-ticket` itself shells out.
 
+**Update (#218):** edits under a scratch or memory directory make no decision,
+since they're a planner's own work (an issue body for FILE, a memory note), not
+implementation: the background job's directory (`$CLAUDE_JOB_DIR`), the system
+temp directory (`/tmp`, `/private/tmp`, `$TMPDIR`), and the auto-memory
+directories (`<config>/projects/*/memory/`, `<config>` being
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}`). Both the path and the directories are
+resolved first: symlinks are followed (a dangling one too) and `..` is taken
+both as the OS takes it and as a tool that normalizes the path first does, and
+both readings must land inside. So a symlinked `~/.claude` still matches, while
+`/tmp/../<repo>/file` and a link out of `/tmp` into a repo still prompt. No
+decision leaves Claude Code's own permission checks in force. The same issue
+moved the docs' issue bodies, disposition comments and cap raises to stdin
+(`gh … --body-file -`), so FILE writes no file at all.
+
 **Update (#147):** the matcher now also covers `Bash` and the cloud
 `create_session` tool, for a second guard: while `implementer` is pinned, a
 `claude --bg`/`-p` or `create_session` launch whose prompt *leads* with an

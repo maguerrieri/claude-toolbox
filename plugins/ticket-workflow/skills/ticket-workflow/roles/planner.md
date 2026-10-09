@@ -87,7 +87,11 @@ a one-line reminder of the actor test above, and file edits and entering a
 worktree prompt for approval while pinned (the drift guard made mechanical;
 approve one to drop a tier deliberately, or `/role none` to unpin). A
 rejected prompt tells you, in a line the hook attaches to the call, to file
-and spawn rather than retry. Set it once per
+and spawn rather than retry. Edits under a scratch or memory directory don't
+prompt, since they're your own work, not implementation: the background
+job's directory, `/tmp`, `$TMPDIR`, and the auto-memory directories
+(`<config>/projects/*/memory/`). Claude Code's own permission checks still
+apply there. Set it once per
 session: `/clear` and a fork that starts its own session begin a new session
 the pin doesn't follow (the skill's *Session identity*), so run `/role planner`
 again there. Every `/spawn-epic` and `/spawn-tickets` below

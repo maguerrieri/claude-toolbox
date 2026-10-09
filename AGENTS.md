@@ -40,7 +40,9 @@ A session can also carry a **role** (`planner` / `epic-coordinator` /
 by hand with `/role planner` (a per-session marker + hooks make it durable
 across resume/compaction, put a one-line reminder of a pinned planner's or
 coordinator's actor test on every prompt, and gate a pinned planner's edits and
-`EnterWorktree` behind a permission prompt); the lower tiers are injected by
+`EnterWorktree` behind a permission prompt, except edits under a scratch or
+memory directory: the job directory, `/tmp`, `$TMPDIR`, and
+`<config>/projects/*/memory/`); the lower tiers are injected by
 `/spawn-epic` and the SPAWN/EPIC phases. A pinned implementer can't spawn
 issue work: the issue-spawning entry points check its marker and refuse, and a
 hook denies a hand-rolled `claude --bg`/`-p` or `create_session` that leads
