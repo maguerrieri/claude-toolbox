@@ -72,7 +72,9 @@ directories (`<config>/projects/*/memory/`, `<config>` being
 resolved first: symlinks are followed (a dangling one too) and `..` is taken
 both as the OS takes it and as a tool that normalizes the path first does, and
 both readings must land inside. So a symlinked `~/.claude` still matches, while
-`/tmp/../<repo>/file` and a link out of `/tmp` into a repo still prompt. No
+`/tmp/../<repo>/file` and a link out of `/tmp` into a repo still prompt. A
+`TMPDIR` or job directory that holds `$HOME` counts as none, since it would
+hold the user's checkouts too. No
 decision leaves Claude Code's own permission checks in force. The same issue
 moved the docs' issue bodies, disposition comments and cap raises to stdin
 (`gh … --body-file -`), so FILE writes no file at all.
