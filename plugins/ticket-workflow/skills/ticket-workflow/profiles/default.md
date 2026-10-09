@@ -244,7 +244,14 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   its title when it has none, or `summary` for the summary-sentence finding. The parenthetical is
   there when the entry has a severity badge. `<disposition>` is `fixed in <sha> — …` or
   `not changing — …` (at the cap, also `agree, held at the round cap — …`). Push fixes first so
-  the lines can cite SHAs; `gh pr comment <pr> --body-file <file>`. If every entry is "not changing" (no push), don't
+  the lines can cite SHAs. Pass the comment on stdin through a quoted heredoc, with no file
+  written (the github tracker's `CREATE` has the delimiter and zsh caveats):
+  ```bash
+  gh pr comment <pr> --body-file - <<'COMMENT_EOF'
+  <one line per entry>
+  COMMENT_EOF
+  ```
+  If every entry is "not changing" (no push), don't
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
 - **Count the rounds.** A round is one review by the **engaged bot** on a **new head** — a review
@@ -339,9 +346,15 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `<k>` more rounds the count plus `<k>`. **Raise only a child that has handed back** (its session
     idle, its row frozen): a child still in its loop rewrites the body every round, and a raise
     written over it either gets lost or erases what the child just wrote. Rewrite only the line's
-    `(cap <cap>)`, from a fresh read of the body: `gh pr view <pr> -R <owner>/<repo> --json body -q
-    .body` to a file, edit the one line, `gh pr edit <pr> -R <owner>/<repo> --body-file <file>`.
-    `-R` binds both calls to the child's repo, since the raiser may sit in another checkout. Without
+    `(cap <cap>)`, from a fresh read of the body, piped straight back with no file written (a file
+    edit prompts a pinned planner):
+    ```bash
+    body=$(gh pr view <pr> -R <owner>/<repo> --json body -q .body) && [ -n "$body" ] &&
+      printf '%s\n' "$body" | sed -E 's/^(Review rounds: [0-9]+ \(cap )[0-9]+\)/\1<new>)/' |
+      gh pr edit <pr> -R <owner>/<repo> --body-file -
+    ```
+    The empty-body check keeps a failed read from blanking the PR. `<new>` is the new cap, digits
+    only. `-R` binds both calls to the child's repo, since the raiser may sit in another checkout. Without
     `gh`, use the GitHub MCP server's `update_pull_request` (its `owner`/`repo`, the whole new
     `body`); a session with no PR write at all can't raise, so it leaves the raise to the owner.
     Re-read the body to confirm the new cap stuck. A coordinator also posts
