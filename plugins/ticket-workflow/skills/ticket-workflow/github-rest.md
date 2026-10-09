@@ -15,23 +15,38 @@ its own file says. Local sessions keep the `gh` spellings in those files.
 
 **Conventions for every command here.**
 
-- `{owner}` and `{repo}` are filled in by `gh api` from the current directory's remote, with no
-  GraphQL call. Outside the repo, or where the tracker file says to pass `-R OWNER/REPO`, write the
-  real `OWNER/REPO` in the path instead.
+- `{owner}` and `{repo}` in the **path** are filled in by `gh api` from the current directory's
+  remote, with no GraphQL call. Outside the repo, or where a step passes `-R OWNER/REPO`, write
+  the real `OWNER/REPO` in the path instead, derived from that repo's remote as the github tracker
+  says: `git -C <dir> remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+)/([^/]+)$#\1/\2#'`.
+- **Query parameters never go in the URL.** Pass them as `-X GET -f key=value`, which URL-encodes
+  each value. `gh api` expands `{owner}`, `:owner`, `{repo}`, `:repo`, `{branch}` and `:branch`
+  anywhere in the endpoint string, so a label like `epic:repo-split` or a branch like `branch-x`
+  in the URL gets mangled, and a space or `&` in it breaks the query.
 - Multi-line bodies go on stdin with `-F body=@-` and a quoted heredoc, under the same rules as the
   github tracker's `CREATE` (quoted delimiter, no file, no pipe into the same command). Short
   one-line values use `-f key=value`; arrays use `-f 'key[]=value'`.
-- REST spells some fields differently from `gh … --json`. The ones the skill reads:
-  `url` → `.html_url`, `headRefName` → `.head.ref`, `baseRefName` → `.base.ref`,
-  `isDraft` → `.draft`, labels → `[.labels[].name]`, an author's `.login` → `.user.login`
-  (bots carry a `[bot]` suffix in REST). REST states are lowercase `open`/`closed`, and a merged
-  PR is `closed` with a non-null `merged_at`. Where a step compares against `MERGED`, `OPEN` or
-  `CLOSED`, normalize with
-  `(if .merged_at then "MERGED" else (.state | ascii_upcase) end)`.
-- List endpoints return 30 items by default. Pass `per_page=100` and `--paginate` wherever the
-  original command set `-L`.
+- List endpoints return 30 items by default. Every list below passes `per_page=100` and
+  `--paginate`.
 - The search API is blocked too (*"sessions are bound to their configured repositories"*), so
   searches become a paginated list filtered with `--jq`.
+
+**Field names.** REST spells the fields the skill reads differently from `gh … --json`:
+
+| `gh --json` field | REST |
+|---|---|
+| `url` | `.html_url` |
+| `headRefName`, `headRefOid`, `baseRefName` | `.head.ref`, `.head.sha`, `.base.ref` |
+| `isDraft` | `.draft` |
+| `labels` | `[.labels[].name]` |
+| an author's `.login` | `.user.login`; bots carry a `[bot]` suffix |
+| `state` | lowercase `open`/`closed`; a merged PR is `closed` with a non-null `merged_at` |
+| `mergeCommit.oid` | `.merge_commit_sha` |
+| `mergeable` | `true` / `false` / `null` for `MERGEABLE` / `CONFLICTING` / `UNKNOWN` |
+| `mergeStateStatus` | `.mergeable_state`, lowercase (`clean`, `behind`, `dirty`, `blocked`, `unstable`, `unknown`, …) |
+
+The single-PR read below normalizes `state`, `mergeable` and `mergeStateStatus` to the uppercase
+values the skill compares against, so the steps' tests work unchanged.
 
 ## Tracker ops (`trackers/github.md`)
 
@@ -46,7 +61,7 @@ gh api 'repos/{owner}/{repo}/issues/<n>' --jq '{number, title, body, labels: [.l
 **`SEARCH`** — lowercase the 2–4 terms; every term must appear in the title or body. If nothing
 matches, drop the least distinctive term and run it once more.
 ```bash
-gh api 'repos/{owner}/{repo}/issues?state=open&per_page=100' --paginate --jq '.[] | select(.pull_request | not)
+gh api -X GET --paginate 'repos/{owner}/{repo}/issues' -f state=open -f per_page=100 --jq '.[] | select(.pull_request | not)
   | select(((.title + "\n" + (.body // "")) | ascii_downcase) as $t | ["<term1>", "<term2>"] | all(. as $w | $t | contains($w)))
   | {number, title, url: .html_url}'
 ```
@@ -76,25 +91,28 @@ gh api -X PATCH 'repos/{owner}/{repo}/issues/<n>' -f state=closed -f state_reaso
 
 **`EPIC_CHILDREN`** — sub-issues, then the task-list body (also `DEPS`' body read), then a label:
 ```bash
-gh api 'repos/{owner}/{repo}/issues/<n>/sub_issues?per_page=100' --paginate --jq '.[] | {number, title, state, labels: [.labels[].name]}'
+gh api -X GET --paginate 'repos/{owner}/{repo}/issues/<n>/sub_issues' -f per_page=100 --jq '.[] | {number, title, state, labels: [.labels[].name]}'
 gh api 'repos/{owner}/{repo}/issues/<n>' --jq .body
-gh api 'repos/{owner}/{repo}/issues?labels=epic:<name>&state=all&per_page=100' --paginate --jq '.[] | select(.pull_request | not) | {number, title, state, labels: [.labels[].name]}'
+gh api -X GET --paginate 'repos/{owner}/{repo}/issues' -f labels='epic:<name>' -f state=all -f per_page=100 --jq '.[] | select(.pull_request | not) | {number, title, state, labels: [.labels[].name]}'
 ```
-A milestone filter takes the milestone's number, `milestone=<num>` in place of `labels=…`:
+A milestone filter takes the milestone's number, `-f milestone=<num>` in place of `labels`:
 ```bash
-gh api 'repos/{owner}/{repo}/milestones?state=all' --jq '.[] | select(.title == "<name>") | .number'
+gh api -X GET --paginate 'repos/{owner}/{repo}/milestones' -f state=all -f per_page=100 --jq '.[] | select(.title == "<name>") | .number'
 ```
 
-**`DEPENDENCY_PR`** — the Jira adapter's `DEPENDENCY_PR` uses the same list with its own filter
-over `.title` and `.body`:
+**`DEPENDENCY_PR`**
 ```bash
-gh api 'repos/{owner}/{repo}/pulls?state=open&per_page=100' --paginate --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number, headRefName: .head.ref}'
+gh api -X GET --paginate 'repos/{owner}/{repo}/pulls' -f state=open -f per_page=100 --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number, headRefName: .head.ref}'
+```
+The Jira adapter's `DEPENDENCY_PR` matches the ticket key in the title or body instead:
+```bash
+gh api -X GET --paginate 'repos/{owner}/{repo}/pulls' -f state=open -f per_page=100 --jq '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number, headRefName: .head.ref}'
 ```
 
 **`COORD`**
 ```bash
-gh api 'repos/{owner}/{repo}/issues/<epic_id>/comments' -f body="claim: <session> -> <files>"            # post a marker
-gh api 'repos/{owner}/{repo}/issues/<epic_id>/comments?per_page=100' --paginate --jq '.[].body'         # read existing markers
+gh api 'repos/{owner}/{repo}/issues/<epic_id>/comments' -f body="claim: <session> -> <files>"                 # post a marker
+gh api -X GET --paginate 'repos/{owner}/{repo}/issues/<epic_id>/comments' -f per_page=100 --jq '.[].body'   # read existing markers
 ```
 
 ## Pull requests (`SKILL.md`, `phases/epic.md`, `profiles/default.md`)
@@ -106,9 +124,27 @@ gh api 'repos/{owner}/{repo}/pulls' -f base=<base_branch> -f head=<branch> -f ti
 PR_BODY_EOF
 ```
 
-**Read one PR** (`gh pr view <pr> --json …`). The body alone is `--jq .body`.
+**Read one PR** (`gh pr view <pr> --json …`, every field set the skill asks for except the
+lists below). The body alone is `--jq .body`.
 ```bash
-gh api 'repos/{owner}/{repo}/pulls/<pr>' --jq '{state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end), baseRefName: .base.ref, headRefName: .head.ref, isDraft: .draft, headSha: .head.sha, body}'
+gh api 'repos/{owner}/{repo}/pulls/<pr>' --jq '{number, title, body, url: .html_url,
+  state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end),
+  baseRefName: .base.ref, headRefName: .head.ref, headRefOid: .head.sha, isDraft: .draft,
+  mergeCommit: {oid: .merge_commit_sha},
+  mergeable: (if .mergeable == true then "MERGEABLE" elif .mergeable == false then "CONFLICTING" else "UNKNOWN" end),
+  mergeStateStatus: ((.mergeable_state // "unknown") | ascii_upcase)}'
+```
+GitHub computes `mergeable` in the background, so the first read after a push can say
+`UNKNOWN`; read it again a few seconds later before acting on it, as you would locally.
+
+**Commits, comments and reviews** (the list fields of FINISH Step 1's
+`--json commits,title,body,isDraft,comments,reviews`). Read all three, along with the single-PR
+read above for the title, body and draft flag. Each commit's full message is `.commit.message`;
+its first line is the subject.
+```bash
+gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/commits' -f per_page=100 --jq '.[] | {oid: .sha, message: .commit.message}'
+gh api -X GET --paginate 'repos/{owner}/{repo}/issues/<pr>/comments' -f per_page=100 --jq '.[] | {author: .user.login, body}'
+gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/reviews' -f per_page=100 --jq '.[] | {author: .user.login, state, body, commit_id}'
 ```
 
 **Edit** (`gh pr edit`): the base with `-f base=<new_base>`, the body from stdin as at create.
@@ -121,15 +157,19 @@ PR_BODY_EOF
 
 **List by base** (`gh pr list --state open --base <branch>`):
 ```bash
-gh api 'repos/{owner}/{repo}/pulls?state=open&base=<branch>&per_page=100' --paginate --jq '.[] | {number, headRefName: .head.ref, isDraft: .draft}'
+gh api -X GET --paginate 'repos/{owner}/{repo}/pulls' -f state=open -f base=<branch> -f per_page=100 --jq '.[] | {number, headRefName: .head.ref, isDraft: .draft}'
 ```
 
-**List by head** (`gh pr list --head <branch>`, EPIC Step 6; use `state=all` for *Resume before
-spawning*). `head` must be `owner:branch`: GitHub ignores a bare branch name and returns
-every PR.
+**List by head** (`gh pr list --head <branch>`: EPIC Step 6, *Resume before spawning* with
+`state=all`, and FINISH's stacked-parent check). `head` must be `<owner>:<branch>`, where
+`<owner>` is the owner of the repo the PR lives in, written out, never `{owner}`. GitHub ignores a
+bare branch name and returns every PR. When a step passes `-R <owner>/<repo>`, that same repo goes
+in the path and its owner in `head`.
 ```bash
-gh api 'repos/{owner}/{repo}/pulls?head={owner}:<branch>&state=open&per_page=100' --paginate --jq '.[] | {number, url: .html_url, state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end), isDraft: .draft, baseRefName: .base.ref, body, createdAt: .created_at, headSha: .head.sha}'
+gh api -X GET --paginate 'repos/<owner>/<repo>/pulls' -f head='<owner>:<branch>' -f state=open -f per_page=100 --jq '.[] | {number, url: .html_url, state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end), isDraft: .draft, baseRefName: .base.ref, body, createdAt: .created_at, headRefOid: .head.sha}'
 ```
+`reviewDecision` has no REST equivalent, and EPIC Step 6 doesn't need it: it reads the threads
+and the review body. For `statusCheckRollup`, read CI on `headRefOid` as below.
 
 **Comment** (`gh pr comment <pr> --body-file -`):
 ```bash
@@ -141,7 +181,7 @@ COMMENT_EOF
 **Reviewers so far** (`gh pr view <pr> --json reviews`). Copilot shows as
 `copilot-pull-request-reviewer[bot]`.
 ```bash
-gh api 'repos/{owner}/{repo}/pulls/<pr>/reviews?per_page=100' --paginate --jq '[.[].user.login] | unique'
+gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/reviews' -f per_page=100 --jq '[.[].user.login] | unique'
 ```
 
 **Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). Not verified through the
@@ -151,9 +191,9 @@ both fail, take `REVIEW_BOT`'s no-bot path as for any failed request.
 gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
 
-**Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged. A permission rule
-written for `gh pr merge` does not match this command, so a standing rule for the cloud names
-this one.
+**Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged, including what it
+says about permission rules: a rule written for `gh pr merge`, allow or deny, does not match this
+command, so in a cloud session the rule has to name it.
 ```bash
 gh api -X PUT 'repos/{owner}/{repo}/pulls/<pr>/merge' -f merge_method=rebase
 ```
@@ -162,47 +202,48 @@ gh api -X PUT 'repos/{owner}/{repo}/pulls/<pr>/merge' -f merge_method=rebase
 `POST …/pulls/<pr>/ccr/ready_for_review`, `POST …/pulls/<pr>/ccr/convert_to_draft`, and `PUT`
 or `DELETE …/pulls/<pr>/ccr/auto_merge`.
 
-`reviewDecision` has no REST field. Derive it from each reviewer's latest decisive review:
-
-```bash
-gh api 'repos/{owner}/{repo}/pulls/<pr>/reviews?per_page=100' --paginate --slurp \
-  | jq 'add | map(select(.state == "APPROVED" or .state == "CHANGES_REQUESTED")) | group_by(.user.login) | map(last.state)
-        | if any(. == "CHANGES_REQUESTED") then "CHANGES_REQUESTED" elif any(. == "APPROVED") then "APPROVED" else "" end'
-```
-EPIC's Step 6 doesn't rely on it for review-clean anyway; it reads the threads and the review body.
-
 ### CI (`gh pr checks`, `statusCheckRollup`)
 
-CI lives on the head commit. Get the sha from the PR (`.head.sha` above), then read both check
+CI lives on the head commit. Get the sha from the PR (`headRefOid` above), then read both check
 runs and legacy commit statuses:
 
 ```bash
-gh api 'repos/{owner}/{repo}/commits/<sha>/check-runs?per_page=100' --paginate \
+gh api -X GET --paginate 'repos/{owner}/{repo}/commits/<sha>/check-runs' -f per_page=100 \
   --jq '.check_runs[] | {name, status, conclusion}'
 gh api 'repos/{owner}/{repo}/commits/<sha>/status' --jq '.statuses[] | {context, state}'
 ```
 
-CI is green when every check run is `completed` with a `success`, `neutral` or `skipped`
-conclusion and every status is `success`. It is pending while a run isn't `completed` or a status
-is `pending`. Copilot's in-flight review shows here as a `copilot-pull-request-reviewer` check
-run that isn't `completed`, which is `REVIEW_BOT`'s "pending" signal. There is no `--watch`:
-re-run the read until nothing is pending, from a background command or the Monitor tool, never a
-foreground `sleep`. `--fail-fast` means stopping at the first `failure`, `cancelled` or
-`timed_out` conclusion.
+Classify the result:
+
+- **No check runs and no statuses at all** is *pending*, not green. Right after a push, Actions
+  hasn't created the runs yet; `gh pr checks` reports "no checks" there too. Only a repo that you
+  know runs no CI on PRs reads an empty result as nothing to wait for.
+- **Pending:** a check run whose `status` isn't `completed`, or a status whose `state` is
+  `pending`.
+- **Failed:** a completed run whose `conclusion` is `failure`, `cancelled`, `timed_out`,
+  `action_required`, `startup_failure` or `stale`, or a status of `failure` or `error`.
+  `--fail-fast` stops at the first of these.
+- **Green:** at least one run or status, nothing pending, nothing failed. The remaining
+  conclusions (`success`, `neutral`, `skipped`) pass.
+
+Copilot's in-flight review shows here as a `copilot-pull-request-reviewer` check run that isn't
+`completed`, which is `REVIEW_BOT`'s "pending" signal. There is no `--watch`: re-run the read until
+nothing is pending, from a background command or the Monitor tool, never a foreground `sleep`.
 
 ## Review threads (`REVIEW_BOT`)
 
 GraphQL thread node ids (`PRRT_…`) don't exist on this path. The proxy's CCR routes key every
 thread on the REST id of its comments instead.
 
-**Read the threads.** `GET …/ccr/review_threads` returns one entry per thread,
-`{resolved, outdated, path, line, comment_ids: [...]}`, with the thread's first comment first.
-Join it to the PR's review comments for the fields the GraphQL query returned (needs standalone
-`jq`, like the round count):
+**Read the threads.** `GET …/ccr/review_threads` returns every thread in one response, as
+`{resolved, outdated, path, line, comment_ids: [...]}` with the thread's first comment first. It
+isn't paged: it ignores `per_page` (checked on #204, 11 threads with `per_page=1`). Join it to
+the PR's review comments for the fields the GraphQL query returned (needs standalone `jq`, like
+the round count):
 
 ```bash
 threads=$(gh api 'repos/{owner}/{repo}/pulls/<pr>/ccr/review_threads')
-gh api 'repos/{owner}/{repo}/pulls/<pr>/comments?per_page=100' --paginate --slurp \
+gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/comments' -f per_page=100 --slurp \
   | jq --argjson t "$threads" '(add | INDEX(.id)) as $c
       | $t[] | select(.resolved == false)
       | $c[(.comment_ids[0] | tostring)] as $f

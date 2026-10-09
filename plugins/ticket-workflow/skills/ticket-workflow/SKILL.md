@@ -440,7 +440,7 @@ gh pr merge <pr> --rebase
 If the merge is **blocked by a permission layer** (e.g. an auto-mode classifier citing an earlier "do not merge" cap from the START briefing or `SPAWN_CAP`), don't just re-run it — the context is unchanged, so the verdict repeats. Report the block plainly and surface the deterministic fallbacks, any one of which unblocks:
 
 - the user **runs the merge themself**: `gh pr merge <pr> --rebase`;
-- a standing **permission rule** allowing `gh pr merge` (e.g. in the project's `.claude/settings.json`), then re-run;
+- a standing **permission rule** allowing `gh pr merge` (e.g. in the project's `.claude/settings.json`), then re-run. In a cloud session the merge is `github-rest.md`'s `gh api -X PUT …/pulls/<pr>/merge`, which a `gh pr merge` rule doesn't match, so the rule names that command;
 - only where the PR's author is an account other than the user's, the user **approves the PR** (GitHub UI, or `gh pr review <pr> --approve` from their own account — a bot review doesn't count as human approval), then re-run the merge. GitHub never lets an author approve their own PR, so where sessions open PRs with the user's `gh` auth, leave this one out.
 
 Once the PR is merged — by whichever path — continue with Steps 3–5.
