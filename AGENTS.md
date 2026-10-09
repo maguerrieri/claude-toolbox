@@ -69,6 +69,12 @@ runs in an in-process agent team: EPIC rejects `--team`, and every child is a
 background session of its own.
 `/role none` unpins.
 
+Inside a Claude Projects thread (detected by the `mcp__hearthbot__` tools),
+the skill's Step 0 **Projects mode** hands orchestration to the Projects
+harness: no spawning, epics, roles, worktrees or review-bot loop; issue filing,
+the implement/test/docs steps, `/code-review`, FINISH's gate and the issue
+close still run. The `spawn` skill launches nothing there either.
+
 ## Development workflow
 
 Built with the **`superpowers`** plugin (from the built-in `claude-plugins-official`

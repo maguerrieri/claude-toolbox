@@ -4,6 +4,8 @@ argument-hint: <planner | epic-coordinator | implementer | none>
 ---
 Pin (or unpin) this session's role charter: **$ARGUMENTS**
 
+In a Claude Projects thread (any `mcp__hearthbot__` tool present), don't pin or unpin anything: the harness's coordinator/thread split is the altitude there, and the skill's Step 0 *Projects mode* never writes the marker. Say so in one line and stop.
+
 A role set here is durable: it's recorded in a per-session marker file that the
 plugin's hooks consume — the SessionStart hook re-injects the charter after
 `--resume` and compaction, the UserPromptSubmit hook adds a one-line reminder

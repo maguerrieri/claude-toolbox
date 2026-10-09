@@ -6,6 +6,8 @@ Spawn a background epic run for: **$ARGUMENTS**
 
 Thin launcher over `/start-epic`: spawn ONE background session that runs the full EPIC cycle, then hand back immediately. Don't run any EPIC step yourself — no fetching the epic, no enumerating children, no Step 0; the spawned session does all of it.
 
+**Projects mode, before anything else.** In a Claude Projects thread (any `mcp__hearthbot__` tool present), launch nothing: only the project chat starts threads there. Say in one line to ask the project chat to start a thread per child of the epic (the skill's Step 0 *Projects mode*).
+
 **First, reject a `--team` flag** (a flag, not the word inside the briefing's prose), before the guard below: launch nothing and stop with `--team is not supported: ticket work never runs in an agent team; re-run with --coordinate (COORD markers) or with no routing flag` — the same line, and the same order, as the EPIC phase's Step 1 (the reason is in its Step 3, *No agent teams*).
 
 0. **Implementer spawn guard** (the `ticket-workflow` skill's Session roles section). Read this session's role marker first:
