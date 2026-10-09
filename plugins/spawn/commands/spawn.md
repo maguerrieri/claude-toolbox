@@ -4,7 +4,7 @@ argument-hint: <task description>  [; <another task> ...]
 ---
 Spawn background work for: **$ARGUMENTS**
 
-In a Claude Projects thread (any `mcp__hearthbot__` tool present), launch nothing and say in one line to ask the project chat to start a thread per task (the skill's *Projects mode first*).
+In a Claude Project (any `mcp__hearthbot__` tool present), launch nothing and follow the skill's *Projects mode first* (a thread points at the project chat; the channel session starts the threads itself).
 
 Use the `spawn` skill. Parse "$ARGUMENTS" into one or more `(prompt, desc)` units (a single task is the common case; a `;`-separated list or "N agents to each do X" fans out), **select the backend** (the skill's step 3 — `$CLAUDE_CODE_REMOTE_SESSION_ID` set → cloud `create_session`, else local `claude --bg`) and read that backend file, spawn one session per unit named `<context> <desc>` (in parallel — all launches in a single message), report the table of spawned sessions with the backend's own inspect path, and hand back — don't block on them.
 
