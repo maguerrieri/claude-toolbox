@@ -184,9 +184,12 @@ COMMENT_EOF
 gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/reviews' -f per_page=100 --jq '[.[].user.login] | unique'
 ```
 
-**Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). Not verified through the
-proxy. If it fails and the GitHub MCP tools are loaded, `request_copilot_review` does the same; if
-both fail, take `REVIEW_BOT`'s no-bot path as for any failed request.
+**Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). A success response doesn't
+mean the request registered. On #222 (2026-10-09) this call and the GitHub MCP tool
+`request_copilot_review` both returned success and left no `review_requested` event on the PR. So
+a minute after requesting, run `REVIEW_BOT`'s timeline count. If it is still zero, use the MCP tool when
+it's loaded, and if the count stays zero after that too, the request failed. Take `REVIEW_BOT`'s
+no-bot fallback as for any failed request.
 ```bash
 gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
