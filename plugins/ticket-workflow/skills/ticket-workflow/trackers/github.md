@@ -1,6 +1,6 @@
 # Tracker adapter: GitHub Issues
 
-Use the `gh` CLI. In worktrees, cwd detection usually works, but pass `-R OWNER/REPO` if `gh` ever picks the wrong repo — derive `OWNER/REPO` from the worktree's own remote (`git -C <worktree> remote get-url origin`, e.g. `git@github.com:OWNER/REPO.git` → `OWNER/REPO`), not from `gh` itself (it uses the same cwd detection and would just repeat the error).
+Use the `gh` CLI. In a cloud session, use the REST spellings in `github-rest.md` for every op below instead (SKILL.md Step 0): the cloud proxy rejects the GraphQL these `gh issue` commands are built on. In worktrees, cwd detection usually works, but pass `-R OWNER/REPO` if `gh` ever picks the wrong repo — derive `OWNER/REPO` from the worktree's own remote (`git -C <worktree> remote get-url origin`, e.g. `git@github.com:OWNER/REPO.git` → `OWNER/REPO`), not from `gh` itself (it uses the same cwd detection and would just repeat the error).
 
 ## ID format
 - An issue ID is a number, written `42` or `#42`. Strip any leading `#`.

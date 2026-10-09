@@ -1,0 +1,239 @@
+# GitHub over REST (cloud sessions)
+
+Claude Code's cloud proxy rejects every GitHub GraphQL request with HTTP 403 and the message
+*"GitHub GraphQL is not available from Claude Code sessions; use the REST API …"*. That covers
+`gh api graphql` and also every `gh` subcommand built on GraphQL: `gh issue view/list/create/edit/close/comment`,
+`gh pr view/list/create/edit/merge/checks/comment`, `gh repo view` and `gh search`. The REST API
+still works: `gh api repos/{owner}/{repo}/...`, `gh pr diff`, `gh run list/view`. (Reproduced
+2026-10-09 on gh 2.89.0; #134.)
+
+**When to use this file.** Step 0 sends you here when `CLAUDE_CODE_REMOTE` is `true`, or as soon
+as any `gh` call returns that 403. From then on, use the spelling below for every GitHub call the
+tracker, the profile, the phases and `messaging.md` name, for the rest of the session. Everything
+else about each op (what to read off the result, what counts as success, the fallbacks) stays as
+its own file says. Local sessions keep the `gh` spellings in those files.
+
+**Conventions for every command here.**
+
+- `{owner}` and `{repo}` are filled in by `gh api` from the current directory's remote, with no
+  GraphQL call. Outside the repo, or where the tracker file says to pass `-R OWNER/REPO`, write the
+  real `OWNER/REPO` in the path instead.
+- Multi-line bodies go on stdin with `-F body=@-` and a quoted heredoc, under the same rules as the
+  github tracker's `CREATE` (quoted delimiter, no file, no pipe into the same command). Short
+  one-line values use `-f key=value`; arrays use `-f 'key[]=value'`.
+- REST spells some fields differently from `gh … --json`. The ones the skill reads:
+  `url` → `.html_url`, `headRefName` → `.head.ref`, `baseRefName` → `.base.ref`,
+  `isDraft` → `.draft`, labels → `[.labels[].name]`, an author's `.login` → `.user.login`
+  (bots carry a `[bot]` suffix in REST). REST states are lowercase `open`/`closed`, and a merged
+  PR is `closed` with a non-null `merged_at`. Where a step compares against `MERGED`, `OPEN` or
+  `CLOSED`, normalize with
+  `(if .merged_at then "MERGED" else (.state | ascii_upcase) end)`.
+- List endpoints return 30 items by default. Pass `per_page=100` and `--paginate` wherever the
+  original command set `-L`.
+- The search API is blocked too (*"sessions are bound to their configured repositories"*), so
+  searches become a paginated list filtered with `--jq`.
+
+## Tracker ops (`trackers/github.md`)
+
+The issues list endpoints also return pull requests, which is what `select(.pull_request | not)`
+drops below.
+
+**`FETCH`**
+```bash
+gh api 'repos/{owner}/{repo}/issues/<n>' --jq '{number, title, body, labels: [.labels[].name], assignees: [.assignees[].login], url: .html_url}'
+```
+
+**`SEARCH`** — lowercase the 2–4 terms; every term must appear in the title or body. If nothing
+matches, drop the least distinctive term and run it once more.
+```bash
+gh api 'repos/{owner}/{repo}/issues?state=open&per_page=100' --paginate --jq '.[] | select(.pull_request | not)
+  | select(((.title + "\n" + (.body // "")) | ascii_downcase) as $t | ["<term1>", "<term2>"] | all(. as $w | $t | contains($w)))
+  | {number, title, url: .html_url}'
+```
+
+**`CREATE`** — prints the new number itself. An unknown label fails the call with 422, so retry
+without it, as `CREATE` says.
+```bash
+gh api 'repos/{owner}/{repo}/issues' -f title="<title>" [-f 'labels[]=<label>'] -F body=@- --jq .number <<'ISSUE_BODY_EOF'
+<body>
+ISSUE_BODY_EOF
+```
+
+**`START`**
+```bash
+gh api -X POST 'repos/{owner}/{repo}/issues/<n>/assignees' -f "assignees[]=$(gh api user --jq .login)"
+# optional, only if the repo uses such a label:
+gh api -X POST 'repos/{owner}/{repo}/issues/<n>/labels' -f 'labels[]=in progress'
+```
+
+**`DONE`** — the state reads `closed` (lowercase) once the merge closed it. If it's still open,
+comment, then close:
+```bash
+gh api 'repos/{owner}/{repo}/issues/<n>' --jq .state
+gh api 'repos/{owner}/{repo}/issues/<n>/comments' -f body="Resolved by #<pr> (merged)."
+gh api -X PATCH 'repos/{owner}/{repo}/issues/<n>' -f state=closed -f state_reason=completed
+```
+
+**`EPIC_CHILDREN`** — sub-issues, then the task-list body (also `DEPS`' body read), then a label:
+```bash
+gh api 'repos/{owner}/{repo}/issues/<n>/sub_issues?per_page=100' --paginate --jq '.[] | {number, title, state, labels: [.labels[].name]}'
+gh api 'repos/{owner}/{repo}/issues/<n>' --jq .body
+gh api 'repos/{owner}/{repo}/issues?labels=epic:<name>&state=all&per_page=100' --paginate --jq '.[] | select(.pull_request | not) | {number, title, state, labels: [.labels[].name]}'
+```
+A milestone filter takes the milestone's number, `milestone=<num>` in place of `labels=…`:
+```bash
+gh api 'repos/{owner}/{repo}/milestones?state=all' --jq '.[] | select(.title == "<name>") | .number'
+```
+
+**`DEPENDENCY_PR`** — the Jira adapter's `DEPENDENCY_PR` uses the same list with its own filter
+over `.title` and `.body`:
+```bash
+gh api 'repos/{owner}/{repo}/pulls?state=open&per_page=100' --paginate --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number, headRefName: .head.ref}'
+```
+
+**`COORD`**
+```bash
+gh api 'repos/{owner}/{repo}/issues/<epic_id>/comments' -f body="claim: <session> -> <files>"            # post a marker
+gh api 'repos/{owner}/{repo}/issues/<epic_id>/comments?per_page=100' --paginate --jq '.[].body'         # read existing markers
+```
+
+## Pull requests (`SKILL.md`, `phases/epic.md`, `profiles/default.md`)
+
+**Create** (`gh pr create`). Add `-F draft=true` for a draft.
+```bash
+gh api 'repos/{owner}/{repo}/pulls' -f base=<base_branch> -f head=<branch> -f title="<title>" -F body=@- --jq '{number, url: .html_url}' <<'PR_BODY_EOF'
+<body>
+PR_BODY_EOF
+```
+
+**Read one PR** (`gh pr view <pr> --json …`). The body alone is `--jq .body`.
+```bash
+gh api 'repos/{owner}/{repo}/pulls/<pr>' --jq '{state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end), baseRefName: .base.ref, headRefName: .head.ref, isDraft: .draft, headSha: .head.sha, body}'
+```
+
+**Edit** (`gh pr edit`): the base with `-f base=<new_base>`, the body from stdin as at create.
+```bash
+gh api -X PATCH 'repos/{owner}/{repo}/pulls/<pr>' -f base=<new_base>
+gh api -X PATCH 'repos/{owner}/{repo}/pulls/<pr>' -F body=@- <<'PR_BODY_EOF'
+<body>
+PR_BODY_EOF
+```
+
+**List by base** (`gh pr list --state open --base <branch>`):
+```bash
+gh api 'repos/{owner}/{repo}/pulls?state=open&base=<branch>&per_page=100' --paginate --jq '.[] | {number, headRefName: .head.ref, isDraft: .draft}'
+```
+
+**List by head** (`gh pr list --head <branch>`, EPIC Step 6; use `state=all` for *Resume before
+spawning*). `head` must be `owner:branch`: GitHub ignores a bare branch name and returns
+every PR.
+```bash
+gh api 'repos/{owner}/{repo}/pulls?head={owner}:<branch>&state=open&per_page=100' --paginate --jq '.[] | {number, url: .html_url, state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end), isDraft: .draft, baseRefName: .base.ref, body, createdAt: .created_at, headSha: .head.sha}'
+```
+
+**Comment** (`gh pr comment <pr> --body-file -`):
+```bash
+gh api 'repos/{owner}/{repo}/issues/<pr>/comments' -F body=@- <<'COMMENT_EOF'
+<comment>
+COMMENT_EOF
+```
+
+**Reviewers so far** (`gh pr view <pr> --json reviews`). Copilot shows as
+`copilot-pull-request-reviewer[bot]`.
+```bash
+gh api 'repos/{owner}/{repo}/pulls/<pr>/reviews?per_page=100' --paginate --jq '[.[].user.login] | unique'
+```
+
+**Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). Not verified through the
+proxy. If it fails and the GitHub MCP tools are loaded, `request_copilot_review` does the same; if
+both fail, take `REVIEW_BOT`'s no-bot path as for any failed request.
+```bash
+gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
+```
+
+**Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged. A permission rule
+written for `gh pr merge` does not match this command, so a standing rule for the cloud names
+this one.
+```bash
+gh api -X PUT 'repos/{owner}/{repo}/pulls/<pr>/merge' -f merge_method=rebase
+```
+
+**Draft, ready, auto-merge** go through the proxy's own routes:
+`POST …/pulls/<pr>/ccr/ready_for_review`, `POST …/pulls/<pr>/ccr/convert_to_draft`, and `PUT`
+or `DELETE …/pulls/<pr>/ccr/auto_merge`.
+
+`reviewDecision` has no REST field. Derive it from each reviewer's latest decisive review:
+
+```bash
+gh api 'repos/{owner}/{repo}/pulls/<pr>/reviews?per_page=100' --paginate --slurp \
+  | jq 'add | map(select(.state == "APPROVED" or .state == "CHANGES_REQUESTED")) | group_by(.user.login) | map(last.state)
+        | if any(. == "CHANGES_REQUESTED") then "CHANGES_REQUESTED" elif any(. == "APPROVED") then "APPROVED" else "" end'
+```
+EPIC's Step 6 doesn't rely on it for review-clean anyway; it reads the threads and the review body.
+
+### CI (`gh pr checks`, `statusCheckRollup`)
+
+CI lives on the head commit. Get the sha from the PR (`.head.sha` above), then read both check
+runs and legacy commit statuses:
+
+```bash
+gh api 'repos/{owner}/{repo}/commits/<sha>/check-runs?per_page=100' --paginate \
+  --jq '.check_runs[] | {name, status, conclusion}'
+gh api 'repos/{owner}/{repo}/commits/<sha>/status' --jq '.statuses[] | {context, state}'
+```
+
+CI is green when every check run is `completed` with a `success`, `neutral` or `skipped`
+conclusion and every status is `success`. It is pending while a run isn't `completed` or a status
+is `pending`. Copilot's in-flight review shows here as a `copilot-pull-request-reviewer` check
+run that isn't `completed`, which is `REVIEW_BOT`'s "pending" signal. There is no `--watch`:
+re-run the read until nothing is pending, from a background command or the Monitor tool, never a
+foreground `sleep`. `--fail-fast` means stopping at the first `failure`, `cancelled` or
+`timed_out` conclusion.
+
+## Review threads (`REVIEW_BOT`)
+
+GraphQL thread node ids (`PRRT_…`) don't exist on this path. The proxy's CCR routes key every
+thread on the REST id of its comments instead.
+
+**Read the threads.** `GET …/ccr/review_threads` returns one entry per thread,
+`{resolved, outdated, path, line, comment_ids: [...]}`, with the thread's first comment first.
+Join it to the PR's review comments for the fields the GraphQL query returned (needs standalone
+`jq`, like the round count):
+
+```bash
+threads=$(gh api 'repos/{owner}/{repo}/pulls/<pr>/ccr/review_threads')
+gh api 'repos/{owner}/{repo}/pulls/<pr>/comments?per_page=100' --paginate --slurp \
+  | jq --argjson t "$threads" '(add | INDEX(.id)) as $c
+      | $t[] | select(.resolved == false)
+      | $c[(.comment_ids[0] | tostring)] as $f
+      | {comment_id: $f.id, path, outdated, url: $f.html_url, author: $f.user.login,
+         body: $f.body, review_id: $f.pull_request_review_id}'
+```
+
+`comment_id` stands in for the thread's node `id` in the reply and resolve steps. `url` ends in
+the same `#discussion_r<id>` anchor as the GraphQL first comment's `url`, and `review_id` is the
+id the GraphQL `pullRequestReview.url` fragment carried, so the valid cap marker's coverage check
+works as written: drop the `resolved` filter and keep the threads whose `review_id` is the newest
+bot review's `id`. Copilot's review comments carry the author login `Copilot` in REST.
+
+**Reply, then resolve.**
+
+```bash
+# reply on the thread
+gh api 'repos/{owner}/{repo}/pulls/<pr>/comments/<comment_id>/replies' -f body="Fixed in <sha> — …"
+# resolve it
+gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/ccr/comments/<comment_id>/resolve'
+```
+
+The resolve call answers `{"comment_ids": [...], "resolved": true}`. `…/unresolve` reopens a
+thread the same way.
+
+## No `gh` at all
+
+Some cloud containers have no `gh` installed. There, use the GitHub MCP tools for the same reads
+and writes: `issue_read` / `issue_write` / `add_issue_comment` / `sub_issue_write` for the
+tracker ops, `list_pull_requests`, `pull_request_read` (`get`, `get_check_runs`, `get_reviews`,
+`get_comments`, `get_review_comments`, which returns thread node ids), `create_pull_request`,
+`update_pull_request`, `merge_pull_request`, `add_reply_to_pull_request_comment`,
+`resolve_review_thread` and `request_copilot_review` for the PR ones. `phases/epic.md` Step 6
+spells out the MCP version of the coordinator's poll, including its pagination.

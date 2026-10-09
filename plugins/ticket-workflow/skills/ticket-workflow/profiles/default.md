@@ -81,8 +81,11 @@ dropped when it has none.
   on; never invent docs that didn't exist.
 
 ## REVIEW_BOT
-Driven by `gh` + the GitHub GraphQL API, plus standalone `jq` for the body-gate and round-count reads below
-(`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp`, run the filter
+Driven by `gh` + the GitHub GraphQL API locally. In a cloud session the proxy rejects GraphQL, so
+every `gh` call in this op (the thread query, reply and resolve, `gh pr view`, `gh pr checks`,
+`gh pr edit`, `gh pr comment`) takes its `github-rest.md` spelling instead (SKILL.md Step 0);
+review threads there are keyed on a comment id rather than a node `id`. Both paths use standalone
+`jq` for the body-gate and round-count reads below (`gh` won't combine `--slurp` with `--jq`; without `jq`, drop `--paginate --slurp`, run the filter
 via `--jq` on one `per_page=100` page, and start it with `.[]` instead of `.[][]` — a single page is
 a flat array, not `--slurp`'s array of pages — exact until the PR passes 100 reviews, 100 PR
 comments, *or* 100 timeline events, the three collections it reads; past any, walk `?page=N` by
