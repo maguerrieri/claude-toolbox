@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Tests for hooks/role-guard.sh: pipe crafted PreToolUse payloads in, with an
 # isolated CLAUDE_SESSION_ROLES_DIR, and check the decision it prints (no
-# output = allow). The last section checks that hooks/role-session-start.sh
-# reads the role, and the Notify: target, from the same markers.
+# output = allow). The last sections check that hooks/role-session-start.sh
+# reads the role, and the Notify: target, from the same markers, and that
+# hooks/role-prompt-reminder.sh reminds only a pinned planner or coordinator.
 # scripts/role-marker.sh, which writes them, has its own tests
 # (test-role-marker.sh). Needs jq, like the hooks.
 #
@@ -157,15 +158,54 @@ cloud_case allow epic-coordinator "coordinator cloud spawn" '/start-ticket 52'
 record ask "planner Edit (existing guard)" "$(decide planner Edit file_path /repo/x)"
 record allow "coordinator Edit" "$(decide epic-coordinator Edit file_path /repo/x)"
 
+# Entering a worktree is the step before a planner's first edit, so it asks
+# too. Only the planner: START, an implementer's phase, is what calls it.
+record ask "planner EnterWorktree by name" "$(decide planner EnterWorktree name agents-md)"
+record ask "planner EnterWorktree by path" "$(decide planner EnterWorktree path /repo/.claude/worktrees/x)"
+record ask "two-line planner marker, EnterWorktree" "$(decide $'planner\nnotify: repo planning' EnterWorktree name x)"
+record allow "coordinator EnterWorktree" "$(decide epic-coordinator EnterWorktree name x)"
+record allow "implementer EnterWorktree" "$(decide $'implementer\nissue: 52' EnterWorktree path /repo/.claude/worktrees/52-x)"
+record allow "no marker, EnterWorktree" "$(decide none EnterWorktree name x)"
+record allow "planner ExitWorktree" "$(decide planner ExitWorktree action keep)"
+
+# The ask's reason reaches only the human, so the planner gates also carry one
+# line of additionalContext for the model. The implementer's deny reason
+# already reaches the model, so it carries none.
+context_of() { # context_of <role> <tool> <input field> <value>
+	rm -f "$roles_dir/$sid"
+	printf "$marker_fmt" "$1" >"$roles_dir/$sid"
+	jq -n --arg sid "$sid" --arg tool "$2" --arg field "$3" --arg value "$4" \
+		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}' |
+		CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$guard" |
+		jq -r '.hookSpecificOutput.additionalContext // "none"'
+}
+for tool in Edit Write EnterWorktree; do
+	record yes "planner $tool context names the delegation" \
+		"$(context_of planner "$tool" file_path /repo/x | grep -q '/make-ticket.*/spawn-epic' && echo yes || echo no)"
+done
+record none "implementer deny carries no context" "$(context_of implementer Bash command "$spawn_ticket")"
+reason_of() { # reason_of <tool> <input field> <value>: the planner gate's reason
+	rm -f "$roles_dir/$sid"
+	printf "$marker_fmt" planner >"$roles_dir/$sid"
+	jq -n --arg sid "$sid" --arg tool "$1" --arg field "$2" --arg value "$3" \
+		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}' |
+		CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$guard" |
+		jq -r '.hookSpecificOutput.permissionDecisionReason'
+}
+record yes "planner EnterWorktree reason names the worktree" \
+	"$(reason_of EnterWorktree name x | grep -q 'enter this worktree anyway' && echo yes || echo no)"
+record yes "planner Edit reason names the edit" \
+	"$(reason_of Edit file_path /repo/x | grep -q 'make this one edit anyway' && echo yes || echo no)"
+
 # The PreToolUse matcher names mcp__.*__create_session, so Claude Code reads it
 # as a regex and tests it unanchored: it must be anchored to keep tools that
 # merely contain a guarded name out.
 matcher=$(jq -r '.hooks.PreToolUse[0].matcher' "$here/../hooks/hooks.json")
 matches() { jq -rn --arg m "$matcher" --arg t "$1" 'if ($t | test($m)) then "match" else "no match" end'; }
-for tool in Edit Write MultiEdit NotebookEdit Bash create_session mcp__Claude_Code_Remote__create_session; do
+for tool in Edit Write MultiEdit NotebookEdit EnterWorktree Bash create_session mcp__Claude_Code_Remote__create_session; do
 	record match "PreToolUse matcher: $tool" "$(matches "$tool")"
 done
-for tool in TodoWrite BashOutput KillBash mcp__ide__Edit_file mcp__x__create_session_log; do
+for tool in TodoWrite BashOutput KillBash ExitWorktree mcp__ide__Edit_file mcp__x__create_session_log; do
 	record "no match" "PreToolUse matcher: $tool" "$(matches "$tool")"
 done
 
@@ -449,5 +489,56 @@ record "$em_200" "session start: em dash counted in bytes, at the limit" "$(noti
 record none "session start: em dash counted in bytes, over the limit" "$(notifies $'implementer\nnotify: 0'"$em_200"$'\n')"
 record none "session start: notify on the role line is no role" "$(injects $'notify: repo planning\nimplementer\n')"
 record none "session start: notify without a valid role" "$(notifies $'bogus\nnotify: repo planning\n')"
+
+# role-prompt-reminder.sh puts a one-line actor test next to every prompt of a
+# pinned planner or coordinator, and stays silent for everyone else.
+reminder="$here/../hooks/role-prompt-reminder.sh"
+
+# Prints the context the hook adds for <marker content or none> and a raw
+# UserPromptSubmit payload, or silent when it prints nothing.
+remind_raw() { # remind_raw <marker content or none> <payload>
+	rm -f "$roles_dir/$sid"
+	[ "$1" = none ] || printf '%s' "$1" >"$roles_dir/$sid"
+	out=$(printf '%s' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$reminder")
+	status=$?
+	if [ "$status" -ne 0 ]; then
+		echo "exit $status"
+	elif [ -z "$out" ]; then
+		echo silent
+	else
+		printf '%s' "$out" | jq -r 'if .hookSpecificOutput.hookEventName == "UserPromptSubmit"
+			then .hookSpecificOutput.additionalContext else "wrong event" end'
+	fi
+}
+prompt_payload=$(jq -n --arg sid "$sid" '{session_id: $sid, hook_event_name: "UserPromptSubmit", prompt: "add that to AGENTS.md (move from CLAUDE.md first if needed)"}')
+remind() { remind_raw "$1" "$prompt_payload"; }
+
+planner_reminder=$(remind $'planner\n')
+record yes "reminder: planner names the planner's delegation" \
+	"$(printf '%s' "$planner_reminder" | grep -q '^Pinned role: planner.*/make-ticket.*/spawn-epic, /spawn-tickets' && echo yes || echo no)"
+record yes "reminder: planner carries the actor test" \
+	"$(printf '%s' "$planner_reminder" | grep -q 'only when the owner names you' && echo yes || echo no)"
+coordinator_reminder=$(remind $'epic-coordinator\nnotify: repo planning\n')
+record yes "reminder: coordinator names the coordinator's delegation" \
+	"$(printf '%s' "$coordinator_reminder" | grep -q '^Pinned role: epic-coordinator.*/make-ticket.*/spawn-tickets' && echo yes || echo no)"
+record no "reminder: coordinator doesn't name /spawn-epic" \
+	"$(printf '%s' "$coordinator_reminder" | grep -q 'spawn-epic' && echo yes || echo no)"
+record yes "reminder: one line each" \
+	"$([ "$(printf '%s\n' "$planner_reminder" | wc -l)" -eq 1 ] && [ "$(printf '%s\n' "$coordinator_reminder" | wc -l)" -eq 1 ] && echo yes || echo no)"
+record yes "reminder: planner marker without a trailing newline" \
+	"$(remind planner | grep -q '^Pinned role: planner' && echo yes || echo no)"
+record silent "reminder: implementer" "$(remind $'implementer\nissue: 52\nnotify: repo planning\n')"
+record silent "reminder: no marker" "$(remind none)"
+record silent "reminder: unknown role" "$(remind $'bogus\n')"
+record silent "reminder: role on the second line only" "$(remind $'notify: x\nplanner\n')"
+record silent "reminder: no session id" "$(remind_raw $'planner\n' '{"hook_event_name":"UserPromptSubmit","prompt":"fix X"}')"
+record silent "reminder: unsafe session id" "$(remind_raw $'planner\n' '{"session_id":"../x","prompt":"fix X"}')"
+record silent "reminder: malformed payload" "$(remind_raw $'planner\n' 'not json')"
+record silent "reminder: session id only inside the prompt" \
+	"$(remind_raw $'planner\n' "$(jq -n --arg sid "$sid" '{prompt: ("\"session_id\": \"" + $sid + "\"")}')")"
+out=$(printf '%s' "$prompt_payload" | CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$reminder")
+record silent "reminder: no roles directory" "${out:-silent}"
+record "bash \"\${CLAUDE_PLUGIN_ROOT}/hooks/role-prompt-reminder.sh\"" "hooks.json registers the reminder" \
+	"$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command' "$here/../hooks/hooks.json")"
 
 finish

@@ -3,9 +3,17 @@
 # on what the session says about itself: forgetting the role is exactly the
 # drift being guarded).
 #
-# - planner: file edits escalate to a permission prompt ("ask") rather than a
-#   hard deny, so an *unattended* planner can't silently drift into
-#   implementation, while a human at the wheel approves with one keystroke.
+# - planner: file edits and EnterWorktree escalate to a permission prompt
+#   ("ask") rather than a hard deny, so an *unattended* planner can't silently
+#   drift into implementation, while a human at the wheel approves with one
+#   keystroke. Entering a worktree is the step before the first edit, so the
+#   prompt comes before any work is set up. The prompt's reason is shown only
+#   to the human, so each also carries one line of additionalContext, which
+#   reaches the model whichever way the prompt is answered (checked on Claude
+#   Code 2.1.293 with a permission-prompt tool that denied): a rejected call
+#   then tells the model to file and spawn rather than retry. Other tiers'
+#   temporary worktrees (EPIC, the FINISH intro) go through `git worktree add`
+#   in Bash, and only START, an implementer's phase, calls EnterWorktree.
 #
 # - implementer: launching a session whose prompt *leads* with an
 #   issue-spawning command is denied with a redirect to file + ping instead.
@@ -61,13 +69,13 @@ hook_dir=${BASH_SOURCE[0]%/*}
 . "$hook_dir/../scripts/marker-lib.sh" 2>/dev/null || exit 0
 marker_roles_dir || exit 0
 
-emit() { # emit <decision> <reason>
-	jq -n --arg decision "$1" --arg reason "$2" '{
-  hookSpecificOutput: {
+emit() { # emit <decision> <reason> [<context for the model>]
+	jq -n --arg decision "$1" --arg reason "$2" --arg context "${3:-}" '{
+  hookSpecificOutput: ({
     hookEventName: "PreToolUse",
     permissionDecision: $decision,
     permissionDecisionReason: $reason
-  }
+  } + (if $context == "" then {} else {additionalContext: $context} end))
 }'
 }
 
@@ -140,14 +148,23 @@ role=$(marker_role "$marker") || exit 0
 
 # Defense in depth: hooks.json already filters on `matcher`, but a future
 # matcher change shouldn't silently widen either guard.
+context=
 case "$role:$tool" in
-planner:Edit | planner:Write | planner:MultiEdit | planner:NotebookEdit)
+planner:Edit | planner:Write | planner:MultiEdit | planner:NotebookEdit | planner:EnterWorktree)
 	decision=ask
+	if [ "$tool" = EnterWorktree ]; then
+		what="enter this worktree"
+		dont="Planners don't open worktrees or implement"
+	else
+		what="make this one edit"
+		dont="Planners don't implement"
+	fi
 	reason="This session is pinned to the planner charter (/role planner), which owns the whole initiative and delegates the work drawn on it.
 
-Planners don't implement: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets).
+$dont: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets).
 
-Approve to make this one edit anyway, or run '/role none' to drop the charter for the rest of the session."
+Approve to $what anyway, or run '/role none' to drop the charter for the rest of the session."
+	context="Pinned planner: this call asked the owner first. If they rejected it, don't retry it or make the change another way: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets)."
 	;;
 implementer:Bash | implementer:create_session | implementer:mcp__*__create_session)
 	printf '%s' "$input" | jq -e -f "$hook_dir/role-guard-launch.jq" >/dev/null 2>&1 || exit 0
@@ -161,4 +178,4 @@ A helper session for this issue's own work is fine: give it a prompt that leads 
 *) exit 0 ;;
 esac
 
-emit "$decision" "$reason"
+emit "$decision" "$reason" "$context"

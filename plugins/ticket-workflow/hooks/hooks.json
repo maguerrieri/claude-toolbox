@@ -1,5 +1,5 @@
 {
-  "description": "Session roles — export the session id as a fallback for CLIs that don't set CLAUDE_CODE_SESSION_ID, re-inject the charter and any recorded Notify: target across resume and compaction, guard a pinned planner against drifting into implementation, stop a pinned implementer from launching issue-spawning sessions, and keep in-process subagents from writing their parent's role marker.",
+  "description": "Session roles — export the session id as a fallback for CLIs that don't set CLAUDE_CODE_SESSION_ID, re-inject the charter and any recorded Notify: target across resume and compaction, remind a pinned planner or epic-coordinator of its charter on every prompt, guard a pinned planner against drifting into implementation (edits and entering a worktree prompt first), stop a pinned implementer from launching issue-spawning sessions, and keep in-process subagents from writing their parent's role marker.",
   "hooks": {
     "SessionStart": [
       {
@@ -12,9 +12,19 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/role-prompt-reminder.sh\""
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
-        "matcher": "^(Edit|Write|MultiEdit|NotebookEdit|Bash|create_session|mcp__.*__create_session)$",
+        "matcher": "^(Edit|Write|MultiEdit|NotebookEdit|EnterWorktree|Bash|create_session|mcp__.*__create_session)$",
         "hooks": [
           {
             "type": "command",
