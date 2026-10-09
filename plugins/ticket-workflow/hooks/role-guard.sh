@@ -6,8 +6,10 @@
 # - planner: file edits and EnterWorktree escalate to a permission prompt
 #   ("ask") rather than a hard deny, so an *unattended* planner can't silently
 #   drift into implementation, while a human at the wheel approves with one
-#   keystroke. Entering a worktree is the step before the first edit, so the
-#   prompt comes before any work is set up. The prompt's reason is shown only
+#   keystroke. Entering a worktree comes before the first edit, so the prompt
+#   comes before any file is written. (EnterWorktree by name also creates the
+#   worktree. A worktree made with `git worktree add` in Bash, as START makes
+#   its own, exists before the prompt.) The prompt's reason is shown only
 #   to the human, so each also carries one line of additionalContext, which
 #   reaches the model even when the prompt is rejected (checked on Claude Code
 #   2.1.293 with a permission-prompt tool that denied; the docs place it beside

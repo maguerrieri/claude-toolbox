@@ -498,8 +498,9 @@ record none "session start: notify without a valid role" "$(notifies $'bogus\nno
 # pinned planner or coordinator, and stays silent for everyone else.
 reminder="$here/../hooks/role-prompt-reminder.sh"
 
-# Prints the context the hook adds for <marker content or none> and a raw
-# UserPromptSubmit payload, or silent when it prints nothing.
+# Prints what the hook adds (its plain stdout) for <marker content or none>
+# and a raw UserPromptSubmit payload, silent when it prints nothing, or the
+# exit status when it fails.
 remind_raw() { # remind_raw <marker content or none> <payload>
 	rm -f "$roles_dir/$sid"
 	[ "$1" = none ] || printf '%s' "$1" >"$roles_dir/$sid"
@@ -510,8 +511,7 @@ remind_raw() { # remind_raw <marker content or none> <payload>
 	elif [ -z "$out" ]; then
 		echo silent
 	else
-		printf '%s' "$out" | jq -r 'if .hookSpecificOutput.hookEventName == "UserPromptSubmit"
-			then .hookSpecificOutput.additionalContext else "wrong event" end'
+		printf '%s' "$out"
 	fi
 }
 prompt_payload=$(jq -n --arg sid "$sid" '{session_id: $sid, hook_event_name: "UserPromptSubmit", prompt: "add that to AGENTS.md (move from CLAUDE.md first if needed)"}')
@@ -522,9 +522,13 @@ record yes "reminder: planner names the planner's delegation" \
 	"$(printf '%s' "$planner_reminder" | grep -q '^Pinned role: planner.*/make-ticket.*/spawn-epic, /spawn-tickets' && echo yes || echo no)"
 record yes "reminder: planner carries the actor test" \
 	"$(printf '%s' "$planner_reminder" | grep -q 'only when the owner names you' && echo yes || echo no)"
+record yes "reminder: the owner's own command counts as naming the session" \
+	"$(printf '%s' "$planner_reminder" | grep -q 'runs the command for it here themself (/start-ticket)' && echo yes || echo no)"
 coordinator_reminder=$(remind $'epic-coordinator\nnotify: repo planning\n')
 record yes "reminder: coordinator names the coordinator's delegation" \
 	"$(printf '%s' "$coordinator_reminder" | grep -q '^Pinned role: epic-coordinator.*/make-ticket.*/spawn-tickets' && echo yes || echo no)"
+record yes "reminder: coordinator re-briefs a child before spawning" \
+	"$(printf '%s' "$coordinator_reminder" | grep -q 'message its running session, resume a stopped one' && echo yes || echo no)"
 record no "reminder: coordinator doesn't name /spawn-epic" \
 	"$(printf '%s' "$coordinator_reminder" | grep -q 'spawn-epic' && echo yes || echo no)"
 record yes "reminder: one line each" \
@@ -538,9 +542,10 @@ record silent "reminder: role on the second line only" "$(remind $'notify: x\npl
 record silent "reminder: no session id" "$(remind_raw $'planner\n' '{"hook_event_name":"UserPromptSubmit","prompt":"fix X"}')"
 record silent "reminder: unsafe session id" "$(remind_raw $'planner\n' '{"session_id":"../x","prompt":"fix X"}')"
 record silent "reminder: malformed payload" "$(remind_raw $'planner\n' 'not json')"
-# Past the regex fast path (the session has a marker), jq is what fails.
-record silent "reminder: malformed payload with a pinned session id" \
-	"$(remind_raw $'planner\n' "{\"session_id\":\"$sid\",\"prompt\":\"fix X\", broken")"
+# The hook parses no JSON, so a broken payload whose id it can read still gets
+# the reminder, and never a failure that could block the prompt.
+record yes "reminder: malformed payload with a pinned session id doesn't fail" \
+	"$(remind_raw $'planner\n' "{\"session_id\":\"$sid\",\"prompt\":\"fix X\", broken" | grep -q '^Pinned role: planner' && echo yes || echo no)"
 record silent "reminder: session id only inside the prompt" \
 	"$(remind_raw $'planner\n' "$(jq -n --arg sid "$sid" '{prompt: ("\"session_id\": \"" + $sid + "\"")}')")"
 out=$(printf '%s' "$prompt_payload" | CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$reminder")
