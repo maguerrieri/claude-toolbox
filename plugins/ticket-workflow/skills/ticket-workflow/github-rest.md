@@ -7,9 +7,10 @@ Claude Code's cloud proxy rejects every GitHub GraphQL request with HTTP 403 and
 still works: `gh api repos/{owner}/{repo}/...`, `gh pr diff`, `gh run list/view`. (Reproduced
 2026-10-09 on gh 2.89.0; #134.)
 
-**When to use this file.** Step 0 sends you here when `CLAUDE_CODE_REMOTE` is `true`, or as soon
-as any `gh` call returns that 403. From then on, use the spelling below for every GitHub call the
-tracker, the profile, the phases and `messaging.md` name, for the rest of the session. Everything
+**When to use this file.** Step 0 sends you here in a cloud session (`CLAUDE_CODE_REMOTE_SESSION_ID`
+is set, the same test the `spawn` skill uses to pick its backend), or as soon as any `gh` call
+returns that 403. From then on, use the spelling below for every GitHub call the tracker, the
+profile and the phases name, for the rest of the session. Everything
 else about each op (what to read off the result, what counts as success, the fallbacks) stays as
 its own file says. Local sessions keep the `gh` spellings in those files.
 
@@ -20,16 +21,26 @@ its own file says. Local sessions keep the `gh` spellings in those files.
   the real `OWNER/REPO` in the path instead, derived from that repo's remote as the github tracker
   says: `git -C <dir> remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+)/([^/]+)$#\1/\2#'`.
 - **Query parameters never go in the URL.** Pass them as `-X GET -f key=value`, which URL-encodes
-  each value. `gh api` expands `{owner}`, `:owner`, `{repo}`, `:repo`, `{branch}` and `:branch`
-  anywhere in the endpoint string, so a label like `epic:repo-split` or a branch like `branch-x`
-  in the URL gets mangled, and a space or `&` in it breaks the query.
+  each value. `gh api` expands `{owner}`, `{repo}` and `{branch}`, and `:owner`, `:repo` and
+  `:branch` ending at a word boundary, anywhere in the endpoint string. So in the URL a label like
+  `epic:repo-split` or a head like `<owner>:branch-x` gets mangled, and a space or `&` breaks the
+  query.
 - Multi-line bodies go on stdin with `-F body=@-` and a quoted heredoc, under the same rules as the
   github tracker's `CREATE` (quoted delimiter, no file, no pipe into the same command). Short
   one-line values use `-f key=value`; arrays use `-f 'key[]=value'`.
-- List endpoints return 30 items by default. Every list below passes `per_page=100` and
-  `--paginate`.
+- **Lists go through `scripts/gh-rest-list.sh`, never `gh api --paginate`.** `--paginate` follows
+  GitHub's next-page link, which points at `repositories/<id>/…`, a path the proxy refuses with
+  403. gh still exits 0 with page 1 printed, so a list past 100 items is silently cut. The script
+  asks for `page=1, 2, …` itself and prints every item as one JSON array (`--key check_runs` for an
+  endpoint that wraps its list in an object). Run it as
+  `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh"`, found as SKILL.md says for
+  `role-marker.sh`, and filter its output with standalone `jq`. The same goes for the REST reads
+  `REVIEW_BOT` already makes with `--paginate --slurp` (reviews, PR comments, the timeline):
+  run `gh-rest-list.sh '<endpoint>' --pages | jq '<the same filter>'`, without the URL's
+  `?per_page=100`. `--pages` keeps the array-of-pages shape `--slurp` gives, so the filter is
+  unchanged.
 - The search API is blocked too (*"sessions are bound to their configured repositories"*), so
-  searches become a paginated list filtered with `--jq`.
+  searches become a full list filtered with `jq`.
 
 **Field names.** REST spells the fields the skill reads differently from `gh … --json`:
 
@@ -61,13 +72,14 @@ gh api 'repos/{owner}/{repo}/issues/<n>' --jq '{number, title, body, labels: [.l
 **`SEARCH`** — lowercase the 2–4 terms; every term must appear in the title or body. If nothing
 matches, drop the least distinctive term and run it once more.
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/issues' -f state=open -f per_page=100 --jq '.[] | select(.pull_request | not)
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues' -f state=open | jq -c '.[] | select(.pull_request | not)
   | select(((.title + "\n" + (.body // "")) | ascii_downcase) as $t | ["<term1>", "<term2>"] | all(. as $w | $t | contains($w)))
   | {number, title, url: .html_url}'
 ```
 
-**`CREATE`** — prints the new number itself. An unknown label fails the call with 422, so retry
-without it, as `CREATE` says.
+**`CREATE`** — prints the new number itself. Only pass a label that exists (the check under
+`START`); REST may create a missing label rather than fail, so `CREATE`'s retry-without-it
+never triggers.
 ```bash
 gh api 'repos/{owner}/{repo}/issues' -f title="<title>" [-f 'labels[]=<label>'] -F body=@- --jq .number <<'ISSUE_BODY_EOF'
 <body>
@@ -80,6 +92,11 @@ gh api -X POST 'repos/{owner}/{repo}/issues/<n>/assignees' -f "assignees[]=$(gh 
 # optional, only if the repo uses such a label:
 gh api -X POST 'repos/{owner}/{repo}/issues/<n>/labels' -f 'labels[]=in progress'
 ```
+Check a label exists before adding it, since REST may create a missing one instead of failing
+(prints the name if it exists, nothing if not):
+```bash
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/labels' | jq -r --arg l '<label>' '.[] | select(.name == $l) | .name'
+```
 
 **`DONE`** — the state reads `closed` (lowercase) once the merge closed it. If it's still open,
 comment, then close:
@@ -91,28 +108,28 @@ gh api -X PATCH 'repos/{owner}/{repo}/issues/<n>' -f state=closed -f state_reaso
 
 **`EPIC_CHILDREN`** — sub-issues, then the task-list body (also `DEPS`' body read), then a label:
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/issues/<n>/sub_issues' -f per_page=100 --jq '.[] | {number, title, state, labels: [.labels[].name]}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues/<n>/sub_issues' | jq -c '.[] | {number, title, state, labels: [.labels[].name]}'
 gh api 'repos/{owner}/{repo}/issues/<n>' --jq .body
-gh api -X GET --paginate 'repos/{owner}/{repo}/issues' -f labels='epic:<name>' -f state=all -f per_page=100 --jq '.[] | select(.pull_request | not) | {number, title, state, labels: [.labels[].name]}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues' -f labels='epic:<name>' -f state=all | jq -c '.[] | select(.pull_request | not) | {number, title, state, labels: [.labels[].name]}'
 ```
 A milestone filter takes the milestone's number, `-f milestone=<num>` in place of `labels`:
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/milestones' -f state=all -f per_page=100 --jq '.[] | select(.title == "<name>") | .number'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/milestones' -f state=all | jq -r '.[] | select(.title == "<name>") | .number'
 ```
 
 **`DEPENDENCY_PR`**
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/pulls' -f state=open -f per_page=100 --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number, headRefName: .head.ref}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls' -f state=open | jq -c '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number, headRefName: .head.ref}'
 ```
 The Jira adapter's `DEPENDENCY_PR` matches the ticket key in the title or body instead:
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/pulls' -f state=open -f per_page=100 --jq '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number, headRefName: .head.ref}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls' -f state=open | jq -c '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number, headRefName: .head.ref}'
 ```
 
 **`COORD`**
 ```bash
 gh api 'repos/{owner}/{repo}/issues/<epic_id>/comments' -f body="claim: <session> -> <files>"                 # post a marker
-gh api -X GET --paginate 'repos/{owner}/{repo}/issues/<epic_id>/comments' -f per_page=100 --jq '.[].body'   # read existing markers
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues/<epic_id>/comments' | jq -r '.[].body'   # read existing markers
 ```
 
 ## Pull requests (`SKILL.md`, `phases/epic.md`, `profiles/default.md`)
@@ -142,9 +159,9 @@ GitHub computes `mergeable` in the background, so the first read after a push ca
 read above for the title, body and draft flag. Each commit's full message is `.commit.message`;
 its first line is the subject.
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/commits' -f per_page=100 --jq '.[] | {oid: .sha, message: .commit.message}'
-gh api -X GET --paginate 'repos/{owner}/{repo}/issues/<pr>/comments' -f per_page=100 --jq '.[] | {author: .user.login, body}'
-gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/reviews' -f per_page=100 --jq '.[] | {author: .user.login, state, body, commit_id}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls/<pr>/commits' | jq -c '.[] | {oid: .sha, message: .commit.message}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues/<pr>/comments' | jq -c '.[] | {author: .user.login, body}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls/<pr>/reviews' | jq -c '.[] | {author: .user.login, state, body, commit_id}'
 ```
 
 **Edit** (`gh pr edit`): the base with `-f base=<new_base>`, the body from stdin as at create.
@@ -157,7 +174,7 @@ PR_BODY_EOF
 
 **List by base** (`gh pr list --state open --base <branch>`):
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/pulls' -f state=open -f base=<branch> -f per_page=100 --jq '.[] | {number, headRefName: .head.ref, isDraft: .draft}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls' -f state=open -f base=<branch> | jq -c '.[] | {number, headRefName: .head.ref, isDraft: .draft}'
 ```
 
 **List by head** (`gh pr list --head <branch>`: EPIC Step 6, *Resume before spawning* with
@@ -166,7 +183,7 @@ gh api -X GET --paginate 'repos/{owner}/{repo}/pulls' -f state=open -f base=<bra
 bare branch name and returns every PR. When a step passes `-R <owner>/<repo>`, that same repo goes
 in the path and its owner in `head`.
 ```bash
-gh api -X GET --paginate 'repos/<owner>/<repo>/pulls' -f head='<owner>:<branch>' -f state=open -f per_page=100 --jq '.[] | {number, url: .html_url, state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end), isDraft: .draft, baseRefName: .base.ref, body, createdAt: .created_at, headRefOid: .head.sha}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/<owner>/<repo>/pulls' -f head='<owner>:<branch>' -f state=open | jq -c '.[] | {number, url: .html_url, state: (if .merged_at then "MERGED" else (.state | ascii_upcase) end), isDraft: .draft, baseRefName: .base.ref, body, createdAt: .created_at, headRefOid: .head.sha}'
 ```
 `reviewDecision` has no REST equivalent, and EPIC Step 6 doesn't need it: it reads the threads
 and the review body. For `statusCheckRollup`, read CI on `headRefOid` as below.
@@ -181,7 +198,7 @@ COMMENT_EOF
 **Reviewers so far** (`gh pr view <pr> --json reviews`). Copilot shows as
 `copilot-pull-request-reviewer[bot]`.
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/reviews' -f per_page=100 --jq '[.[].user.login] | unique'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls/<pr>/reviews' | jq -c '[.[].user.login] | unique'
 ```
 
 **Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). A success response doesn't
@@ -201,6 +218,18 @@ command, so in a cloud session the rule has to name it.
 gh api -X PUT 'repos/{owner}/{repo}/pulls/<pr>/merge' -f merge_method=rebase
 ```
 
+**Merge permission rules.** A deny or ask rule written for `gh pr merge` is the project saying
+merges are the human's. Treat it as covering this command too: when the project's settings have
+one, don't run the REST merge; hand the merge to the user as FINISH's blocked-merge fallbacks say.
+
+**Other PR and repo calls.**
+```bash
+gh api 'repos/{owner}/{repo}' --jq .default_branch                 # gh repo view --json defaultBranchRef
+gh api -X PATCH 'repos/{owner}/{repo}/pulls/<pr>' -f state=open    # gh pr reopen
+```
+`gh stack` is a gh extension and isn't installed in cloud containers (checked 2026-10-09), so a
+cloud session takes the skill's "no `gh stack`" paths.
+
 **Draft, ready, auto-merge** go through the proxy's own routes:
 `POST …/pulls/<pr>/ccr/ready_for_review`, `POST …/pulls/<pr>/ccr/convert_to_draft`, and `PUT`
 or `DELETE …/pulls/<pr>/ccr/auto_merge`.
@@ -211,20 +240,21 @@ CI lives on the head commit. Get the sha from the PR (`headRefOid` above), then 
 runs and legacy commit statuses:
 
 ```bash
-gh api -X GET --paginate 'repos/{owner}/{repo}/commits/<sha>/check-runs' -f per_page=100 \
-  --jq '.check_runs[] | {name, status, conclusion}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/commits/<sha>/check-runs' --key check_runs \
+  | jq -c '.[] | {name, status, conclusion}'
 gh api 'repos/{owner}/{repo}/commits/<sha>/status' --jq '.statuses[] | {context, state}'
 ```
 
 Classify the result:
 
-- **No check runs and no statuses at all** is *pending*, not green. Right after a push, Actions
-  hasn't created the runs yet; `gh pr checks` reports "no checks" there too. Only a repo that you
-  know runs no CI on PRs reads an empty result as nothing to wait for.
-- **Pending:** a check run whose `status` isn't `completed`, or a status whose `state` is
-  `pending`.
+- **No check runs and no statuses at all**: pending while the repo has CI that would run on the
+  PR (a workflow under `.github/workflows/`), since Actions can take a moment to create the runs
+  after a push. With no workflows, there is no CI to wait for, which is where `gh pr checks`'s
+  "no checks reported" leaves a local session too.
+- **Pending:** a check run whose `status` isn't `completed`, one whose `conclusion` is `stale`
+  (as `gh pr checks` counts it), or a status whose `state` is `pending`.
 - **Failed:** a completed run whose `conclusion` is `failure`, `cancelled`, `timed_out`,
-  `action_required`, `startup_failure` or `stale`, or a status of `failure` or `error`.
+  `action_required` or `startup_failure`, or a status of `failure` or `error`.
   `--fail-fast` stops at the first of these.
 - **Green:** at least one run or status, nothing pending, nothing failed. The remaining
   conclusions (`success`, `neutral`, `skipped`) pass.
@@ -246,8 +276,8 @@ the round count):
 
 ```bash
 threads=$(gh api 'repos/{owner}/{repo}/pulls/<pr>/ccr/review_threads')
-gh api -X GET --paginate 'repos/{owner}/{repo}/pulls/<pr>/comments' -f per_page=100 --slurp \
-  | jq --argjson t "$threads" '(add | INDEX(.id)) as $c
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls/<pr>/comments' \
+  | jq --argjson t "$threads" 'INDEX(.id) as $c
       | $t[] | select(.resolved == false)
       | $c[(.comment_ids[0] | tostring)] as $f
       | {comment_id: $f.id, path, outdated, url: $f.html_url, author: $f.user.login,

@@ -31,3 +31,5 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-role-guard.sh
       - name: Session-identity tests
         run: bash plugins/ticket-workflow/tests/test-session-identity.sh
+      - name: REST list-helper tests
+        run: bash plugins/ticket-workflow/tests/test-gh-rest-list.sh
