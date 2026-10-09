@@ -1,0 +1,29 @@
+name: ref-links CI
+
+on:
+  push:
+    paths:
+      - "plugins/ref-links/**"
+      - ".github/workflows/ref-links-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/ref-links/**"
+      - ".github/workflows/ref-links-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # The mod API is early access and changes between releases, so CI runs
+      # the build the tests were written against. Bump it on purpose, with
+      # the tests, when the mod moves to a newer API.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.295
+      - name: Validate the plugin
+        run: claude plugin validate plugins/ref-links
+      - name: Run the plugin's tests
+        run: claude plugin test plugins/ref-links
