@@ -1,12 +1,14 @@
 ---
-description: Pin this session to a role charter (planner / epic-coordinator / implementer) or drop it with "none" — persists across resume and compaction, and arms a drift guard for planner (edits prompt for approval) and implementer (issue-spawning launches are denied)
+description: Pin this session to a role charter (planner / epic-coordinator / implementer) or drop it with "none" — persists across resume and compaction, reminds a planner or coordinator of its actor test on every prompt, and arms a drift guard for planner (edits and entering a worktree prompt for approval) and implementer (issue-spawning launches are denied)
 argument-hint: <planner | epic-coordinator | implementer | none>
 ---
 Pin (or unpin) this session's role charter: **$ARGUMENTS**
 
 A role set here is durable: it's recorded in a per-session marker file that the
 plugin's hooks consume — the SessionStart hook re-injects the charter after
-`--resume` and compaction, and the PreToolUse guard turns file edits
+`--resume` and compaction, the UserPromptSubmit hook adds a one-line reminder
+of the tier's actor test to every prompt while `planner` or `epic-coordinator`
+is pinned, and the PreToolUse guard turns file edits and `EnterWorktree`
 into a permission prompt while the `planner` charter is pinned, and denies a
 `claude --bg`/`-p` or `create_session` launch that leads with an issue-spawning
 command while `implementer` is. This is the
@@ -97,7 +99,9 @@ the same command with that path in place of
    can pre-approve.
 
 6. Confirm to the user: role pinned, what it binds (`planner` also arms the
-   edit guard — edits prompt for approval until `/role none`; `implementer`
+   edit guard — edits and entering a worktree prompt for approval until
+   `/role none`; `planner` and `epic-coordinator` get a one-line reminder on
+   every prompt; `implementer`
    arms the spawn guard — issue-spawning entry points refuse and issue-spawn
    launches are denied until `/role none`), and that it survives
    resume/compaction but not `/clear` or a fork, after which `/role` is run

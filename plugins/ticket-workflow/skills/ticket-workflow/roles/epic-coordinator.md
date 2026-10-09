@@ -129,3 +129,6 @@ ambiguous, spawn — a spawn the human didn't want costs one redirect ("no, do
 it here"); an inline fix they didn't want costs the altitude. (Planning has no
 such ambiguity: you spawn nothing upward, so "plan a follow-on epic" said to
 you can only mean you.) The guard is the **unattended** default, not a lock.
+While this role is pinned, a plugin hook repeats this actor test in one line
+on every prompt, so it's in front of you when a request arrives. Nothing gates
+your edits: the reminder is the whole mechanism at this tier.

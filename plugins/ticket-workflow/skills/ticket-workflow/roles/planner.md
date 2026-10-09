@@ -82,9 +82,12 @@ keeps you from *drifting* into implementation, not from *choosing* it.
 Unlike the tiers below it, the planner isn't reached by a spawn edge, so nothing
 injects this charter automatically. Run **`/role planner`** in the top session:
 it pins the charter in a per-session marker that the plugin's hooks consume —
-the charter is re-injected after resume and compaction, and file edits
-prompt for approval while pinned (the drift guard made mechanical; approve one
-to drop a tier deliberately, or `/role none` to unpin). Set it once per
+the charter is re-injected after resume and compaction, every prompt carries
+a one-line reminder of the actor test above, and file edits and entering a
+worktree prompt for approval while pinned (the drift guard made mechanical;
+approve one to drop a tier deliberately, or `/role none` to unpin). A
+rejected prompt tells you, in a line the hook attaches to the call, to file
+and spawn rather than retry. Set it once per
 session: `/clear` and a fork that starts its own session begin a new session
 the pin doesn't follow (the skill's *Session identity*), so run `/role planner`
 again there. Every `/spawn-epic` and `/spawn-tickets` below

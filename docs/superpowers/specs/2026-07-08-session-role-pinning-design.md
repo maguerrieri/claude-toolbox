@@ -157,10 +157,55 @@ data to another command (`cp …/role-marker.sh backup`).
 The docs show no hand-written marker write, so a subagent would have to
 improvise one to get past the guard: that leftover risk was accepted.
 
+**Update (#217):** a freshly pinned planner skipped its charter. Asked to "add
+that to AGENTS.md", it ran a skill whose job is writing AGENTS.md, entered a
+worktree and wrote the file, and only the `Write` hit the edit gate. The guard
+worked but fired at the third step, so three changes move it earlier:
+
+- **A `UserPromptSubmit` hook** (`hooks/role-prompt-reminder.sh`). The charter
+  enters context at SessionStart and when `/role` reads it, which can be turns
+  before the request it governs. For a marker whose first line is `planner` or
+  `epic-coordinator`, the hook returns one line of `additionalContext` with the
+  tier's actor test: a request to fix, add, change or build something names an
+  outcome, so file it and hand it down (`/spawn-epic` or `/spawn-tickets` for a
+  planner, `/spawn-tickets` for a coordinator), unless the owner names the
+  session itself. An implementer, no marker, an unknown role, and a missing or
+  unsafe session id print nothing. It reads the marker the way `role-guard.sh`
+  does: a bash regex finds the id and exits before jq when there's no marker.
+  Every prompt pays for the line, so it stays one line. It never reads the
+  prompt text.
+- **`EnterWorktree` is gated for a planner.** The matcher gains
+  `EnterWorktree`, and `role-guard.sh` asks for `planner:EnterWorktree` as it
+  does for the edits. Planner-only: no other tier's documented flow needs it
+  gated, and checked against `SKILL.md` and `phases/epic.md`, every temporary
+  worktree outside START (EPIC's, the FINISH intro's) goes through
+  `git worktree add` in Bash. Only START, an implementer's phase, calls
+  `EnterWorktree`.
+- **The planner gates carry one line for the model.** An `ask`'s
+  `permissionDecisionReason` is shown only in the prompt, so a rejected call
+  told the model only "The user doesn't want to proceed with this tool use".
+  PreToolUse also accepts `additionalContext`. Checked on Claude Code 2.1.293
+  in a `claude -p` run whose `--permission-prompt-tool` denied the call (the
+  headless stand-in for a human's rejection): the transcript carries the
+  context as a `hook_additional_context` attachment ahead of the rejected
+  tool result, and the model quoted it, while the reason never reached it.
+  The attachment is recorded when the hook runs, before the prompt is
+  answered, and the docs place it beside the tool result when the call runs,
+  so it should arrive either way; only the rejected path was run. A second
+  run, calling `EnterWorktree`, showed PreToolUse firing for it under that
+  tool name, with the same result. Both planner gates now attach `Pinned planner: … If they rejected it, don't retry it or
+  make the change another way: file the work … and hand it down …`. The
+  implementer's deny needs none, since a deny's reason reaches the model.
+
+A smoke test on 2.1.293 (one Opus run each, so consistent with the change, not
+proof of it): a headless session pinned as planner and asked to "add a line
+saying hello to notes.md" read the file, called `Edit` and hit the gate
+without the reminder. With it, the session only located the file, made no
+edit, and answered with the actor test.
+
 ### Which tiers pin
 
-- **planner** — always via `/role planner`; it's the tier with no spawn edge
-  and the only one with a guard.
+- **planner** — always via `/role planner`; it's the tier with no spawn edge.
 - **spawned tiers** — self-pin on adoption: START Step 1 / EPIC Step 1 write
   the marker themselves when they adopt a `Role:` directive (#36; originally
   this was an optional `/role <role>` follow-up), so every tier is
@@ -177,7 +222,8 @@ improvise one to get past the guard: that leftover risk was accepted.
   `allow|deny|ask|defer`.
 - Rejected en route: `CLAUDE_SESSION_ID` is not natively in Bash env (hence
   the env-file export); `UserPromptSubmit` does not fire for slash commands
-  (`UserPromptExpansion` does), so no prompt-sniffing hook.
+  (`UserPromptExpansion` does), so no prompt-sniffing hook. (#217 adds a
+  `UserPromptSubmit` hook that ignores the prompt and only adds a reminder.)
 - Plugin hook packaging: `plugins/<name>/hooks/hooks.json`, paths via
   `${CLAUDE_PLUGIN_ROOT}` (idiom confirmed against official plugins).
 
