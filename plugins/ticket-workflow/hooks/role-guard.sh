@@ -26,8 +26,9 @@
 #   (/tmp, /private/tmp, $TMPDIR), and the auto-memory directories
 #   (<config>/projects/*/memory/). Both the path and the directories are
 #   resolved first (symlinks and `..`, for a path that doesn't exist yet too),
-#   so a symlinked ~/.claude still matches and /tmp/../<repo>/file doesn't.
-#   EnterWorktree gets no such exemption, wherever the worktree is.
+#   so a symlinked ~/.claude still matches and /tmp/../<repo>/file doesn't. A
+#   TMPDIR or job directory that holds $HOME counts as none. EnterWorktree
+#   gets no such exemption, wherever the worktree is.
 #
 # - implementer: launching a session whose prompt *leads* with an
 #   issue-spawning command is denied with a redirect to file + ping instead.
@@ -109,6 +110,19 @@ in_roles_dir() {
 	[ "${got##*/}" = "${want##*/}" ] && [ "$(dirname -- "$1")" -ef "$(dirname -- "$roles_dir")" ]
 }
 
+# edit_path sets file_path to the path a file edit (Edit, Write, MultiEdit,
+# NotebookEdit) names, or to nothing. A bash regex reads it, and jq only a path
+# with JSON escapes in it, which the regex can't.
+edit_path() {
+	local path_re='"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"([^"\\]*)"'
+	file_path=
+	if [[ $input =~ $path_re ]]; then
+		file_path=${BASH_REMATCH[2]}
+	elif [[ $input == *'"file_path"'* || $input == *'"notebook_path"'* ]]; then
+		file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null)
+	fi
+}
+
 # walk_path <path> [text] sets walked to the absolute <path> with `.`, `..`
 # and repeated slashes resolved and, unless `text` is given, each existing
 # symlink followed (a dangling one too, since a write creates its target).
@@ -163,10 +177,15 @@ in_scratch() {
 # OS's, and that of a tool that normalizes the path before opening it. They
 # differ only after a symlink followed by `..`.
 scratch_path() {
-	local dir
+	local dir home=
+	[ -n "${HOME:-}" ] && walk_path "$HOME" && home=$walked
 	scratch_dirs=()
 	for dir in "${CLAUDE_JOB_DIR:-}" /tmp /private/tmp "${TMPDIR:-}"; do
-		[ -n "$dir" ] && walk_path "$dir" && [ "$walked" != / ] && scratch_dirs+=("$walked")
+		[ -n "$dir" ] && walk_path "$dir" || continue
+		# A directory that holds $HOME (or /) holds the user's checkouts too, so
+		# a TMPDIR set that wide is no scratch directory.
+		[[ $walked == / || $home == "$walked" || $home == "$walked"/* ]] && continue
+		scratch_dirs+=("$walked")
 	done
 	projects_dir=
 	if [ -n "${CLAUDE_CONFIG_DIR:-}${HOME:-}" ] &&
@@ -188,16 +207,8 @@ if [[ $input =~ $agent_re ]]; then
 		printf '%s' "$input" | jq -e -f "$hook_dir/role-guard-marker-write.jq" >/dev/null 2>&1; then
 		subagent_write=yes
 	else
-		# A file edit (Edit, Write, MultiEdit, NotebookEdit) in the roles
-		# directory. A bash regex reads the path, and jq only a path with JSON
-		# escapes in it, which the regex can't.
-		file_path=
-		path_re='"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"([^"\\]*)"'
-		if [[ $input =~ $path_re ]]; then
-			file_path=${BASH_REMATCH[2]}
-		elif [[ $input == *'"file_path"'* || $input == *'"notebook_path"'* ]]; then
-			file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null)
-		fi
+		# A file edit in the roles directory.
+		edit_path
 		if [ -n "$file_path" ] && in_roles_dir "${file_path%/*}"; then
 			subagent_write=yes
 		fi
@@ -239,7 +250,7 @@ planner:Edit | planner:Write | planner:MultiEdit | planner:NotebookEdit | planne
 		dont="Planners don't open worktrees or implement"
 		scratch=
 	else
-		file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)
+		edit_path
 		if [ -n "$file_path" ] && scratch_path "$file_path"; then
 			exit 0
 		fi
