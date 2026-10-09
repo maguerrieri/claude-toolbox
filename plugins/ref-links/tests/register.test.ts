@@ -141,6 +141,7 @@ describe('the refresh', () => {
         'maguerrieri/provenance',
         'maguerrieri/www',
       ],
+      local: ['maguerrieri/claude-toolbox', 'maguerrieri/www'],
       github: ['anthropics/claude-code', 'maguerrieri/dotfiles', 'maguerrieri/provenance', 'maguerrieri/www'],
       refreshedAt: NOW,
     })
@@ -155,9 +156,30 @@ describe('the refresh', () => {
     await w.clock.settle()
     expect(w.stored.known).toEqual({
       repos: ['maguerrieri/claude-toolbox', 'maguerrieri/provenance', 'maguerrieri/www'],
+      local: ['maguerrieri/claude-toolbox', 'maguerrieri/www'],
       github: ['maguerrieri/provenance'],
       refreshedAt: NOW,
     })
+  })
+
+  test('when claude agents fails, keeps the last local list', async ($, on) => {
+    const commands = { ...SOURCES, 'claude agents --json --all': null }
+    const old = { repos: [], local: ['maguerrieri/www'], github: [], refreshedAt: NOW - TTL_MS - 1 }
+    const w = world(on, { commands, store: { known: old } })
+    await start($)
+    await w.clock.settle()
+    expect(w.stored.known).toHaveProperty('local', ['maguerrieri/www'])
+    expect(await w.draw($, 'www #8')).toBe(`[www #8](${issue('maguerrieri/www', 8)})`)
+  })
+
+  test('when one of the gh reads fails, adds to the last GitHub list', async ($, on) => {
+    const commands = { ...SOURCES }
+    delete commands['gh api users/maguerrieri/events?per_page=100 --paginate --jq .[].repo.name']
+    const old = { repos: [], local: [], github: ['anthropics/claude-code'], refreshedAt: NOW - TTL_MS - 1 }
+    const w = world(on, { commands, store: { known: old } })
+    await start($)
+    await w.clock.settle()
+    expect(w.stored.known).toHaveProperty('github', ['anthropics/claude-code', 'maguerrieri/dotfiles', 'maguerrieri/www'])
   })
 
   test('a second session.start in one load keeps one interval', async ($, on) => {

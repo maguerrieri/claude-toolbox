@@ -16,8 +16,14 @@ export const TTL_MS = 6 * 60 * 60 * 1000
 /** How often a session checks the cache's age. */
 export const CHECK_MS = 30 * 60 * 1000
 
-/** `repos` is every source merged; `github` is what gh found, kept for a round without gh. */
-type Cache = { repos: Repo[]; github: Repo[]; refreshedAt: number }
+/**
+ * `repos` is every source merged. `local` and `github` are what each source
+ * found, so a round where one fails can keep that source's last list.
+ */
+type Cache = { repos: Repo[]; local: Repo[]; github: Repo[]; refreshedAt: number }
+
+/** What gh found, and whether both of its reads answered. */
+type GitHubRepos = { repos: Repo[]; isComplete: boolean }
 
 // Module state, which a reload starts over: whether a refresh is running (at
 // worst a reload runs one twice), this load's timers, and the index built for
@@ -29,13 +35,14 @@ let built: { versions: string; index: RepoIndex } | null = null
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    built = null
     try {
       const cache = readCache(await $.store.get(STORE_KEY))
       if (cache !== null) await setRepos($, cache.repos)
-      await refreshCurrent($)
     } catch (error) {
       $.ui.log(`ref-links: reading the cache failed: ${String(error)}`, { to: 'debug' })
     }
+    await refreshCurrent($)
     for (const timer of timers) timer.cancel()
     timers = [
       $.clock.after(0, () => void refreshIfStale($)),
@@ -45,8 +52,8 @@ export const register: Register = on => {
   })
 
   // `/cd`, a worktree move or a host's directory change can put the session
-  // in another repo.
-  // It only observes, so a failure passes the event on as it came.
+  // in another repo. These hooks only observe or redraw, so on a failure the
+  // event goes on as it came (a `next` already called replays its result).
   on('classic.CwdChanged', async ($, e, next) => {
     const result = await next(e)
     await refreshCurrent($)
@@ -61,7 +68,7 @@ export const register: Register = on => {
     }
     const text = linkify(e.props.text, built.index)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text } })
-  })
+  }).catch(($, e, next) => next(e))
 }
 
 async function refreshIfStale($: EngineInterface): Promise<void> {
@@ -76,11 +83,16 @@ async function refreshIfStale($: EngineInterface): Promise<void> {
       return
     }
     const current = (await $.state.get(CURRENT)).value ?? null
-    const [local, github] = await Promise.all([reposFromSessions($), reposFromGitHub($)])
-    // Without gh this round, keep what it found last time.
-    const remote = github === null ? (cache?.github ?? []) : mergeRepos(github)
-    const repos = mergeRepos([...local, ...remote, ...(current === null ? [] : [current])])
-    await $.store.set(STORE_KEY, { repos, github: remote, refreshedAt: now } satisfies Cache)
+    const [found, fromGitHub] = await Promise.all([reposFromSessions($), reposFromGitHub($)])
+    // A source that failed this round keeps its last list, and one of gh's
+    // two reads failing adds to it rather than replacing it.
+    const local = found === null ? (cache?.local ?? []) : mergeRepos(found)
+    const github =
+      fromGitHub === null
+        ? (cache?.github ?? [])
+        : mergeRepos(fromGitHub.isComplete ? fromGitHub.repos : [...fromGitHub.repos, ...(cache?.github ?? [])])
+    const repos = mergeRepos([...local, ...github, ...(current === null ? [] : [current])])
+    await $.store.set(STORE_KEY, { repos, local, github, refreshedAt: now } satisfies Cache)
     await setRepos($, repos)
   } catch (error) {
     $.ui.log(`ref-links: refreshing the known repos failed: ${String(error)}`, { to: 'debug' })
@@ -91,12 +103,13 @@ async function refreshIfStale($: EngineInterface): Promise<void> {
 
 function readCache(value: unknown): Cache | null {
   if (typeof value !== 'object' || value === null) return null
-  const { repos, github, refreshedAt } = value as Partial<Record<keyof Cache, unknown>>
+  const { repos, local, github, refreshedAt } = value as Partial<Record<keyof Cache, unknown>>
   if (!Array.isArray(repos) || typeof refreshedAt !== 'number') return null
-  return { repos: repoList(repos), github: Array.isArray(github) ? repoList(github) : [], refreshedAt }
+  return { repos: repoList(repos), local: repoList(local), github: repoList(github), refreshedAt }
 }
 
-function repoList(values: unknown[]): Repo[] {
+function repoList(values: unknown): Repo[] {
+  if (!Array.isArray(values)) return []
   return mergeRepos(values.filter((value): value is string => typeof value === 'string'))
 }
 
@@ -105,29 +118,32 @@ async function setRepos($: EngineInterface, repos: Repo[]): Promise<void> {
   if (!sameList(held.value, repos)) await $.state.set(REPOS, repos)
 }
 
+/** Reads the session's repo into state; a failure leaves the state as it was. */
 async function refreshCurrent($: EngineInterface): Promise<void> {
-  let current: Repo | null = null
   try {
     const repo = await $.session.repo()
-    current = repo?.remote ? parseGitHubRemote(repo.remote) : null
-  } catch {
-    current = null
+    const current = repo?.remote ? parseGitHubRemote(repo.remote) : null
+    const held = await $.state.get(CURRENT)
+    if (held.value !== current) await $.state.set(CURRENT, current)
+  } catch (error) {
+    $.ui.log(`ref-links: reading the session's repo failed: ${String(error)}`, { to: 'debug' })
   }
-  const held = await $.state.get(CURRENT)
-  if (held.value !== current) await $.state.set(CURRENT, current)
 }
 
-/** The repos the owner's sessions ran in, from each session's cwd. */
-async function reposFromSessions($: EngineInterface): Promise<Repo[]> {
+/**
+ * The repos the owner's background sessions ran in, from each session's cwd;
+ * null when `claude agents` fails or answers something else than a list.
+ */
+async function reposFromSessions($: EngineInterface): Promise<Repo[] | null> {
   const listed = await run($, ['claude', 'agents', '--json', '--all'])
-  if (listed === null) return []
+  if (listed === null) return null
   let rows: unknown
   try {
     rows = JSON.parse(listed)
   } catch {
-    return []
+    return null
   }
-  if (!Array.isArray(rows)) return []
+  if (!Array.isArray(rows)) return null
   // A worktree under .claude/worktrees/ shares its main checkout's origin,
   // and the main checkout outlives it.
   const cwds = new Set<string>()
@@ -146,7 +162,7 @@ async function reposFromSessions($: EngineInterface): Promise<Repo[]> {
  * The repos the owner touched on GitHub (their events, pushes to their own
  * repos); null when `gh` is missing, signed out, or both reads failed.
  */
-async function reposFromGitHub($: EngineInterface): Promise<Repo[] | null> {
+async function reposFromGitHub($: EngineInterface): Promise<GitHubRepos | null> {
   const login = (await run($, ['gh', 'api', 'user', '--jq', '.login']))?.trim() ?? ''
   if (!/^[A-Za-z0-9-]{1,39}$/.test(login)) return null
   const [events, owned] = await Promise.all([
@@ -154,7 +170,8 @@ async function reposFromGitHub($: EngineInterface): Promise<Repo[] | null> {
     run($, ['gh', 'api', 'user/repos?sort=pushed&per_page=100', '--jq', '.[].full_name']),
   ])
   if (events === null && owned === null) return null
-  return `${events ?? ''}\n${owned ?? ''}`.split('\n').filter(line => line.trim() !== '')
+  const repos = `${events ?? ''}\n${owned ?? ''}`.split('\n').filter(line => line.trim() !== '')
+  return { repos, isComplete: events !== null && owned !== null }
 }
 
 /** A command's stdout when it exits 0; null when it fails or can't start. */
