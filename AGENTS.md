@@ -166,7 +166,15 @@ reads the default — splitting reintroduces the #22 bypass failure in a new for
 (skim the index, skip the phase file). **EPIC is the one phase already split
 out** (`phases/epic.md`, done in #79 when its cloud port made it phase-sized):
 `SKILL.md` carries a one-paragraph index for it ending "Read `phases/epic.md`
-now", and the phase file carries its own completion checklist. Don't split
+now", and the phase file carries its own completion checklist. **Session
+roles' reference material is the second thing split out** (`role-marker.md`,
+#202), and it isn't a phase: the role-marker stack grew that section's
+paragraphs (the marker format, the hooks, session identity, the guards' known
+limits) across six PRs until they conflicted with each other, while most runs
+need only the commands. `SKILL.md` keeps the roles, how `Role:` propagates, a
+short *Pinning* carrying the commands each step runs, and a pointer saying when
+to "read `role-marker.md` now". The section was a few very long paragraphs, so
+the move cut characters (~98 KB → ~93 KB) rather than lines. Don't split
 another phase preemptively. Split it into a read-on-demand `phases/<phase>.md`
 (the same read-on-demand idiom as `trackers/`, `profiles/`, and `roles/`) when
 one of these fires:

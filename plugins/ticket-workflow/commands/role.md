@@ -18,7 +18,7 @@ command while `implementer` is. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
 are normally injected by spawn edges (`Role:` directives), not by hand.
 It is also how a session gets its pin back where the marker doesn't follow
-it (the skill's Session roles: *Session identity*). `/clear` and forks
+it (the skill's `role-marker.md`, *Session identity*). `/clear` and forks
 (`--fork-session`, `/branch`, and `/fork` with agent view on) start a new
 session id that nothing links to the old one. With agent view off, `/fork`
 runs in-process under this session's pin, so there's nothing to re-pin. After
@@ -29,7 +29,7 @@ any other agent running inside the session) can't pin at all: it shares its
 parent's session, so the PreToolUse hook denies its marker write.
 
 Every marker read and write goes through the plugin's `scripts/role-marker.sh`
-(the skill's Session roles), which finds this session's id itself: the
+(the skill's Session roles; `role-marker.md` has the detail), which finds this session's id itself: the
 harness's `CLAUDE_CODE_SESSION_ID` (Claude Code 2.1.132+), else the
 `CLAUDE_SESSION_ID` this plugin's SessionStart hook exports on older CLIs. The
 commands below run it from `$CLAUDE_TICKET_WORKFLOW_ROOT`, which the same hook

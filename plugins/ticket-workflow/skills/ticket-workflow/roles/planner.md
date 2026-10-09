@@ -93,6 +93,6 @@ job's directory, `/tmp`, `$TMPDIR`, and the auto-memory directories
 (`<config>/projects/*/memory/`). Claude Code's own permission checks still
 apply there. Set it once per
 session: `/clear` and a fork that starts its own session begin a new session
-the pin doesn't follow (the skill's *Session identity*), so run `/role planner`
+the pin doesn't follow (the skill's `role-marker.md`, *Session identity*), so run `/role planner`
 again there. Every `/spawn-epic` and `/spawn-tickets` below
 propagates the lower tiers on its own.
