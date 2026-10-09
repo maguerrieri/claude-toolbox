@@ -45,15 +45,13 @@ marker="$roles_dir/$session_id"
 
 role=$(marker_role "$marker") || exit 0
 
+# Each tier's delegation, as its charter's actor test words it.
 case "$role" in
-planner)
-	reminder="Pinned role: planner (/role planner). A request to fix, add, change or build something names an outcome, not an actor: file it (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets). Do it yourself only when the owner names you (\"do it here\", \"fix it yourself\")."
-	;;
-epic-coordinator)
-	reminder="Pinned role: epic-coordinator. A request to fix, add, change or build something names an outcome, not an actor: use the child issue or file one (/make-ticket), then hand it down (/spawn-tickets). Do it yourself only when the owner names you (\"do it here\", \"fix it yourself\")."
-	;;
+planner) delegate="file it (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets)" ;;
+epic-coordinator) delegate="use the child issue or file one (/make-ticket), then hand it down (/spawn-tickets)" ;;
 *) exit 0 ;;
 esac
+reminder="Pinned role: $role. A request to fix, add, change or build something names an outcome, not an actor: $delegate. Do it yourself only when the owner names you (\"do it here\", \"fix it yourself\")."
 
 jq -n --arg context "$reminder" '{
   hookSpecificOutput: {

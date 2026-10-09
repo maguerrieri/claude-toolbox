@@ -42,11 +42,12 @@ across resume/compaction, put a one-line reminder of a pinned planner's or
 coordinator's actor test on every prompt, and gate a pinned planner's edits and
 `EnterWorktree` behind a permission prompt); the lower tiers are injected by
 `/spawn-epic` and the SPAWN/EPIC phases. A pinned implementer can't spawn
-issue work: the issue-spawning entry points check its marker and refuse, and a hook denies a hand-rolled
-`claude --bg`/`-p` or `create_session` that leads with an issue-spawning command
-(its tests: `bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can
-it start a second issue: its self-pinned marker records its own issue on a
-second line, and START refuses any other. A self-pinned session also records
+issue work: the issue-spawning entry points check its marker and refuse, and a
+hook denies a hand-rolled `claude --bg`/`-p` or `create_session` that leads
+with an issue-spawning command (its tests:
+`bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can it start a
+second issue: its self-pinned marker records its own issue on a second line,
+and START refuses any other. A self-pinned session also records
 its `Notify:` target on a `notify:` line, which SessionStart re-injects next to
 the charter so its pings survive compaction. The marker's role is its first
 line only. Every read and write of the marker that a session makes goes

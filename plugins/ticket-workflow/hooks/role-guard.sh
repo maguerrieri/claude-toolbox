@@ -12,9 +12,11 @@
 #   reaches the model even when the prompt is rejected (checked on Claude Code
 #   2.1.293 with a permission-prompt tool that denied; the docs place it beside
 #   the tool result when the call runs): a rejected call then tells the model
-#   to file and spawn rather than retry. Other tiers'
-#   temporary worktrees (EPIC, the FINISH intro) go through `git worktree add`
-#   in Bash, and only START, an implementer's phase, calls EnterWorktree.
+#   to file and spawn rather than retry. Every other documented worktree,
+#   EPIC's and the FINISH intro's temporary checkout (which a planner runs for
+#   a stacked or cloud child's PR) included, goes through `git worktree add` in
+#   Bash, so the gate doesn't touch it: only START, an implementer's phase,
+#   calls EnterWorktree.
 #
 # - implementer: launching a session whose prompt *leads* with an
 #   issue-spawning command is denied with a redirect to file + ping instead.
@@ -165,7 +167,7 @@ planner:Edit | planner:Write | planner:MultiEdit | planner:NotebookEdit | planne
 $dont: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets).
 
 Approve to $what anyway, or run '/role none' to drop the charter for the rest of the session."
-	context="Pinned planner: this call asked the owner first. If they rejected it, don't retry it or make the change another way: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets)."
+	context="Pinned planner: this call asked the owner first. If they approved it, go ahead. If they rejected it, don't retry it or make the change another way: file the work (/make-ticket) and hand it down (/spawn-epic, /spawn-tickets)."
 	;;
 implementer:Bash | implementer:create_session | implementer:mcp__*__create_session)
 	printf '%s' "$input" | jq -e -f "$hook_dir/role-guard-launch.jq" >/dev/null 2>&1 || exit 0

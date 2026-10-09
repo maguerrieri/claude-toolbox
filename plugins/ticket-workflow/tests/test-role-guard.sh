@@ -20,12 +20,17 @@ sid=test-session
 # The marker is written with this format; '%s' drops the trailing newline.
 marker_fmt='%s\n'
 
-# Prints allow, ask, or deny for a raw payload, with <role> pinned (or none).
-# <role> is the whole marker content, so it can carry an issue line.
-decide_raw() {
+# Prints the guard's raw output for a raw payload, with <role> pinned (or
+# none). <role> is the whole marker content, so it can carry an issue line.
+run_guard() { # run_guard <role> <payload>
 	rm -f "$roles_dir/$sid"
 	[ "$1" = none ] || printf "$marker_fmt" "$1" >"$roles_dir/$sid"
-	out=$(printf '%s' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$guard")
+	printf '%s' "$2" | CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$guard"
+}
+
+# Prints allow, ask, or deny for a raw payload, as run_guard runs it.
+decide_raw() {
+	out=$(run_guard "$1" "$2")
 	if [ -z "$out" ]; then
 		echo allow
 	else
@@ -33,10 +38,14 @@ decide_raw() {
 	fi
 }
 
+payload() { # payload <tool> <input field> <value>
+	jq -n --arg sid "$sid" --arg tool "$1" --arg field "$2" --arg value "$3" \
+		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}'
+}
+
 # decide <role> <tool> <input field> <value>
 decide() {
-	decide_raw "$1" "$(jq -n --arg sid "$sid" --arg tool "$2" --arg field "$3" --arg value "$4" \
-		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}')"
+	decide_raw "$1" "$(payload "$2" "$3" "$4")"
 }
 
 bash_case() { # bash_case <expected> <role> <label> <command>
@@ -172,25 +181,17 @@ record allow "planner ExitWorktree" "$(decide planner ExitWorktree action keep)"
 # line of additionalContext for the model. The implementer's deny reason
 # already reaches the model, so it carries none.
 context_of() { # context_of <role> <tool> <input field> <value>
-	rm -f "$roles_dir/$sid"
-	printf "$marker_fmt" "$1" >"$roles_dir/$sid"
-	jq -n --arg sid "$sid" --arg tool "$2" --arg field "$3" --arg value "$4" \
-		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}' |
-		CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$guard" |
-		jq -r '.hookSpecificOutput.additionalContext // "none"'
+	run_guard "$1" "$(payload "$2" "$3" "$4")" | jq -r '.hookSpecificOutput.additionalContext // "none"'
 }
 for tool in Edit Write EnterWorktree; do
 	record yes "planner $tool context names the delegation" \
 		"$(context_of planner "$tool" file_path /repo/x | grep -q '/make-ticket.*/spawn-epic' && echo yes || echo no)"
 done
+record yes "planner context lets an approved call go ahead" \
+	"$(context_of planner Edit file_path /repo/x | grep -q 'If they approved it, go ahead' && echo yes || echo no)"
 record none "implementer deny carries no context" "$(context_of implementer Bash command "$spawn_ticket")"
 reason_of() { # reason_of <tool> <input field> <value>: the planner gate's reason
-	rm -f "$roles_dir/$sid"
-	printf "$marker_fmt" planner >"$roles_dir/$sid"
-	jq -n --arg sid "$sid" --arg tool "$1" --arg field "$2" --arg value "$3" \
-		'{session_id: $sid, tool_name: $tool, tool_input: {($field): $value}}' |
-		CLAUDE_SESSION_ROLES_DIR="$roles_dir" bash "$guard" |
-		jq -r '.hookSpecificOutput.permissionDecisionReason'
+	run_guard planner "$(payload "$1" "$2" "$3")" | jq -r '.hookSpecificOutput.permissionDecisionReason'
 }
 record yes "planner EnterWorktree reason names the worktree" \
 	"$(reason_of EnterWorktree name x | grep -q 'enter this worktree anyway' && echo yes || echo no)"
@@ -212,6 +213,9 @@ done
 # Fail open.
 record allow "unsafe session id" "$(decide_raw implementer '{"session_id":"../x","tool_name":"Bash","tool_input":{"command":"claude --bg \"/start-ticket 1\""}}')"
 record allow "malformed payload" "$(decide_raw implementer 'not json')"
+# Past the regex fast path (the session has a marker), jq is what fails.
+record allow "malformed payload with a pinned session id" \
+	"$(decide_raw planner "{\"session_id\":\"$sid\",\"tool_name\":\"Edit\", broken")"
 out=$(printf '%s' '{"session_id":"s","tool_name":"Bash","tool_input":{"command":"claude --bg /start-ticket 1"}}' |
 	CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$guard")
 record allow "no roles directory" "${out:-allow}"
@@ -534,6 +538,9 @@ record silent "reminder: role on the second line only" "$(remind $'notify: x\npl
 record silent "reminder: no session id" "$(remind_raw $'planner\n' '{"hook_event_name":"UserPromptSubmit","prompt":"fix X"}')"
 record silent "reminder: unsafe session id" "$(remind_raw $'planner\n' '{"session_id":"../x","prompt":"fix X"}')"
 record silent "reminder: malformed payload" "$(remind_raw $'planner\n' 'not json')"
+# Past the regex fast path (the session has a marker), jq is what fails.
+record silent "reminder: malformed payload with a pinned session id" \
+	"$(remind_raw $'planner\n' "{\"session_id\":\"$sid\",\"prompt\":\"fix X\", broken")"
 record silent "reminder: session id only inside the prompt" \
 	"$(remind_raw $'planner\n' "$(jq -n --arg sid "$sid" '{prompt: ("\"session_id\": \"" + $sid + "\"")}')")"
 out=$(printf '%s' "$prompt_payload" | CLAUDE_SESSION_ROLES_DIR="$roles_dir/missing" bash "$reminder")
