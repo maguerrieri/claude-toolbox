@@ -26,11 +26,24 @@ describe('resolution rules', () => {
     )
   })
 
-  test('an unknown a/b word with one space is a word, not a repo', () => {
-    expect(link('pushed to origin/main #219', ctx)).toBe(`pushed to origin/main [#219](${issue(CURRENT, 219)})`)
-    expect(link('and/or #12', ctx)).toBe(`and/or [#12](${issue(CURRENT, 12)})`)
-    expect(link('edited hooks/register.tsx #224', ctx)).toBe(
-      `edited hooks/register.tsx [#224](${issue(CURRENT, 224)})`,
+  test('an unknown a/b word with one space leaves the #N unlinked', () => {
+    for (const text of ['pushed to origin/main #219', 'and/or #12', 'edited hooks/register.tsx #224', 'octo/widgets #12']) {
+      expect(link(text, ctx), text).toBe(text)
+    }
+  })
+
+  test('a wrapped repo name still names the repo, and the link covers the #N', () => {
+    const www = (n: number) => issue('maguerrieri/www', n)
+    expect(link('**www** #8', ctx)).toBe(`**www** [#8](${www(8)})`)
+    expect(link('`www` #8', ctx)).toBe(`\`www\` [#8](${www(8)})`)
+    expect(link('_www_ #8', ctx)).toBe(`_www_ [#8](${www(8)})`)
+    expect(link('(www) #8', ctx)).toBe(`(www) [#8](${www(8)})`)
+    expect(link('**PR** #9', ctx)).toBe(`**PR** [#9](${issue(CURRENT, 9)})`)
+  })
+
+  test('a repo name with an underscore', () => {
+    expect(link('my_repo #3', { current: null, known: ['octo/my_repo'] })).toBe(
+      `[my_repo #3](${issue('octo/my_repo', 3)})`,
     )
   })
 
@@ -118,6 +131,12 @@ describe("don't touch", () => {
     same('    echo #12')
     expect(link('para #1\n\n    echo #12\n\n    more #13\nafter #3', ctx)).toBe(
       `para [#1](${issue(CURRENT, 1)})\n\n    echo #12\n\n    more #13\nafter [#3](${issue(CURRENT, 3)})`,
+    )
+  })
+
+  test('a fence four columns in, after a blank line, is indented code, not a fence', () => {
+    expect(link('para\n\n    ```\n    x #1\n\nsee #12', ctx)).toBe(
+      `para\n\n    \`\`\`\n    x #1\n\nsee [#12](${issue(CURRENT, 12)})`,
     )
   })
 

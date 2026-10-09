@@ -65,8 +65,10 @@ export function repoIndex(context: LinkContext): RepoIndex {
 // leads one): the start, whitespace, or punctuation that opens or separates.
 // Anything else (a letter, `/`, `&`, `-`, `.`) means the # is part of a word,
 // a path or an entity.
-const LEFT = /[\s([{<>"'*_~,;:!?|—–“‘]/
+const LEFT = /[\s([{<>"'*_~`,;:!?|—–“‘]/
 const TOKEN_CHAR = /[A-Za-z0-9._/-]/
+// What may close around the word before the #: emphasis, code, a parenthesis.
+const WRAPPER = /[*_`)]/
 const REF = /#([1-9][0-9]{0,6})(?![A-Za-z0-9_])/g
 
 type Range = readonly [start: number, end: number]
@@ -107,31 +109,41 @@ function resolve(
   index: RepoIndex,
   isProtected: (start: number, end: number) => boolean,
 ): Link | null {
-  // The word before the #, directly attached or one space back.
-  const tokenEnd = text[hash - 1] === ' ' ? hash - 1 : hash
+  // The word before the #, directly attached or one space back, and maybe
+  // wrapped (`**www** #8`, `` `www` #8 ``). A wrapped word stays outside the
+  // link, which then covers the #N alone.
+  const isSpaced = text[hash - 1] === ' '
+  let tokenEnd = isSpaced ? hash - 1 : hash
+  let wrapped = 0
+  while (wrapped < 3 && WRAPPER.test(text[tokenEnd - 1] ?? '')) {
+    tokenEnd--
+    wrapped++
+  }
   let start = tokenEnd
   while (start > 0 && TOKEN_CHAR.test(text[start - 1] ?? '')) start--
+  while (wrapped > 0 && start < tokenEnd && text[start] === '_') start++
   const token = text.slice(start, tokenEnd)
   const isWord =
     token !== '' &&
     !token.endsWith('.') &&
     (start === 0 || LEFT.test(text[start - 1] ?? '')) &&
-    !isProtected(start, tokenEnd)
+    (wrapped > 0 || !isProtected(start, tokenEnd))
+  const linkStart = wrapped > 0 ? hash : start
 
   if (isWord) {
     const named = OWNER_REPO.exec(token)
     if (named) {
       // `owner/repo#N` is GitHub's own spelling: always that repo. With a
-      // space, an a/b word is as often a branch or a path (`origin/main
-      // #219`), so only a repo we know of counts; any other is just a word.
+      // space, an a/b word may be a branch or a path (`origin/main #219`)
+      // as easily as a repo, so only a repo we know of counts. Any other
+      // leaves the #N unlinked: neither repo is a safe guess.
       const repo = `${named[1]}/${named[2]}`
-      if (tokenEnd === hash || index.repos.has(repo.toLowerCase())) return { start, url: issueUrl(repo, n) }
-    } else {
-      const repos = REPO_NAME.test(token) ? index.byName.get(token.toLowerCase()) : undefined
-      if (repos !== undefined) {
-        const repo = pick(repos, index.current)
-        return repo === null ? null : { start, url: issueUrl(repo, n) }
-      }
+      return !isSpaced || index.repos.has(repo.toLowerCase()) ? { start: linkStart, url: issueUrl(repo, n) } : null
+    }
+    const repos = REPO_NAME.test(token) ? index.byName.get(token.toLowerCase()) : undefined
+    if (repos !== undefined) {
+      const repo = pick(repos, index.current)
+      return repo === null ? null : { start: linkStart, url: issueUrl(repo, n) }
     }
   }
 
@@ -201,14 +213,16 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
         endsBlock = true
       }
     } else if (indented === null) {
+      // An indented block comes first: a fence four columns in, after a
+      // blank line, is that block's text, not a fence.
       const opener = FENCE.exec(line)
       const marker = opener?.[1]
-      if (marker !== undefined && !(marker[0] === '`' && opener?.[2]?.includes('`'))) {
-        prose.push([proseStart, offset])
-        fence = { char: marker[0] ?? '`', length: marker.length, start: offset }
-      } else if (codeMayStart && !isBlank && INDENTED.test(line) && !LIST_ITEM.test(line)) {
+      if (codeMayStart && !isBlank && INDENTED.test(line) && !LIST_ITEM.test(line)) {
         prose.push([proseStart, offset])
         indented = offset
+      } else if (marker !== undefined && !(marker[0] === '`' && opener?.[2]?.includes('`'))) {
+        prose.push([proseStart, offset])
+        fence = { char: marker[0] ?? '`', length: marker.length, start: offset }
       } else if (HEADING.test(line) || DEFINITION.test(line)) {
         const label = DEFINITION.exec(line)?.[1]
         if (label !== undefined) definitions.add(normalizeLabel(label))
