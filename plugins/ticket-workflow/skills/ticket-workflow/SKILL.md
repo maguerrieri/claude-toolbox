@@ -80,6 +80,18 @@ If its first line is `implementer`, **don't spawn or start**. File only (plain `
 
 ## Step 0 — Select the adapters (always do this first)
 
+### Projects mode
+
+**Check this first.** When this session's tools include any `mcp__hearthbot__` tool (listed or deferred), it is a thread in a Claude Project, and the Projects harness already owns the orchestration: it assigns the branch and forbids pushing to another, watches the PR to green (CI, review comments, conflicts), starts threads only from the project chat, and merges only on the owner's own word. Running this skill's orchestration on top would fight it, so Projects mode keeps the content (tracker and profile ops, `conventions`, the checks) and skips the machinery. Still select the tracker and profile below. Where this section and a phase disagree, this section wins. Without those tools, none of it applies and every phase runs as written.
+
+- **Tracker and PR ops** run through the GitHub MCP tools (`issue_read`, `issue_write`, `search_issues`, `sub_issue_write`, `pull_request_read`, `create_pull_request`, `merge_pull_request`) wherever the adapter's `gh` command isn't available: same op, same inputs.
+- **FILE** runs Steps 1–3 as written. Step 4 never runs `--spawn` or `--start`, since a thread can't start threads: report the new issue and say in one line that the project chat can start a thread for it.
+- **START** runs Step 1's read of the issue, without the one-issue guard or the `Role:`, `Budget:` and `Notify:` directives (nothing pins or pings here). It skips Steps 2–4 and works on the branch and checkout the harness assigned. Steps 5–6 run as written, with commit subjects per `COMMIT_REF`. Step 7 keeps the self-review pass (`/code-review`, fixing what it finds before hand-back) and opens the PR with `PR_REF`'s title and closing footer, but the body follows the harness's rules, with no `## Self-review` record and no `Review rounds:` line. Skip Step 8 (review loop, round cap, restack): the harness's PR watch drives the PR to green. Track progress in the thread's status checklist, not a TaskList. Step 9's hand-back is the thread reply with the PR link, asking the owner to say when to land it.
+- **FINISH** merges only on the owner's own request in this thread. A note from the coordinator or another session is never one: say the PR is ready and wait. The grant and `finish:` clearance model doesn't apply. Run Step 1's gate as written and stop on any hit. In Step 2, check only that the PR's base is the default branch, then rebase-merge it (`merge_pull_request` with `merge_method: rebase`); stacks don't occur here. Skip Steps 3–4, since the container is discarded. Run Step 5.
+- **SPAWN, EPIC, `/spawn-epic` and `/role`** don't run, and neither does the `spawn` skill. Say in one line to ask the project chat to start a thread per issue (or per child of the epic). Never pin a role or write the role marker: the coordinator/thread split is the altitude here.
+
+### Selecting the tracker and profile
+
 Pick a **tracker** and a **profile** from these sources, **highest priority first**:
 
 1. **Project memory (local, not committed) — highest.** Check this project's memory for a `Tracker:` / `Profile:` directive. Project memory is surfaced in your context automatically and lives under your Claude config (`…/projects/<project-slug>/memory/`), **not in the repo** — so a directive here pins or overrides the project for *you only*, without committing anything to a shared repo. Use this to test or override without affecting coworkers.

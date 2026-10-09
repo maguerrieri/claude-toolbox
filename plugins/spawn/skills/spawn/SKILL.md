@@ -37,6 +37,8 @@ Spawn adds **no** safety bound — each session does exactly what its prompt say
 
 ## Steps
 
+**Projects mode first.** When this session's tools include any `mcp__hearthbot__` tool (listed or deferred), it is a thread in a Claude Project, and only the project chat starts sessions there: a cloud `create_session` child would land outside the Project, where neither its thread board nor its coordinator sees it. Launch nothing, and say in one line to ask the project chat to start a thread for each task. Without those tools, run the steps below.
+
 ### 1 — Parse into units
 
 Split the request into one or more `(prompt, desc)` units:
