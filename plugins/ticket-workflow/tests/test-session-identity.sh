@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for how a session finds the identity its role marker is keyed on (the
-# skill's Session roles: *Session identity*). They run the real one-liners,
+# skill's role-marker.md, *Session identity*). They run the real one-liners,
 # pulled out of the docs, so the docs can't drift from what is tested:
 #
 # - START Step 1's self-pin, run as a child session, pins the child's own
