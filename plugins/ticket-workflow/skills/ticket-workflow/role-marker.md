@@ -14,7 +14,7 @@ Reference for `SKILL.md`'s **Session roles** section. That section and the steps
 
 ## The hooks
 
-- **SessionStart** re-injects the charter, and any recorded `notify:` line, after resume and compaction. A directive read at Step 1 doesn't survive those. It also sets `CLAUDE_TICKET_WORKFLOW_ROOT` (below), and on CLIs that don't set the harness's session id it exports one of its own (*Session identity*).
+- **SessionStart** re-injects the charter, and any recorded `notify:` line, after resume and compaction. A `Role:` directive read at START or EPIC Step 1 doesn't survive those. It also sets `CLAUDE_TICKET_WORKFLOW_ROOT` (below), and on CLIs that don't set the harness's session id it exports one of its own (*Session identity*).
 - **UserPromptSubmit** adds a one-line reminder of the tier's actor test to every prompt while `planner` or `epic-coordinator` is pinned. The charter in context can be turns old when a request arrives, and a skill's own procedure then takes over.
 - **PreToolUse**, while `planner` is pinned, turns file edits and `EnterWorktree` into a permission prompt: drift-proof unattended, one keystroke for a human, the charter's escape hatch made mechanical. The prompt's reason reaches only the human, so the call also carries one line of context telling the model to file and spawn if it was rejected. An edit under a scratch or memory directory (the background job's directory, `/tmp`, `$TMPDIR`, or an auto-memory directory `<config>/projects/*/memory/`) is a planner's own work and gets no prompt from it.
 - **PreToolUse**, while `implementer` is pinned, denies a `claude --bg`/`-p` or cloud `create_session` launch whose prompt leads with an issue-spawning command. That backstops `SKILL.md`'s implementer spawn guard against a hand-rolled spawn.
@@ -22,7 +22,7 @@ Reference for `SKILL.md`'s **Session roles** section. That section and the steps
 
 ## The plugin root
 
-The docs run the script as `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" <subcommand>`. The SessionStart hook sets that variable. When it's unset (the plugin was installed mid-session, or hooks are off) the command stops with the shell's `parameter not set` message (bash: `parameter null or not set`). It can also be stale: the plugin cache keeps versions side by side, so after a mid-session update it can name an older version without the script, and the command fails with `No such file`. `SKILL.md`'s *Pinning* says what a write and a read do then; the read's Glob retry is the same one `/role` uses for each of its commands.
+The docs run the script from `$CLAUDE_TICKET_WORKFLOW_ROOT`, which the SessionStart hook sets. Two things break that, and `SKILL.md`'s *Pinning* has the error each one gives and what a write and a read do then (the read's Glob retry is the one `/role` uses for each of its commands). The variable is unset when the plugin was installed mid-session or hooks are off. It is stale after a mid-session update: the plugin cache keeps versions side by side, so it can name an older version that doesn't have the script.
 
 ## Session identity
 
