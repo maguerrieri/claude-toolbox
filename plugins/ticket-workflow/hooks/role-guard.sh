@@ -9,9 +9,10 @@
 #   keystroke. Entering a worktree is the step before the first edit, so the
 #   prompt comes before any work is set up. The prompt's reason is shown only
 #   to the human, so each also carries one line of additionalContext, which
-#   reaches the model whichever way the prompt is answered (checked on Claude
-#   Code 2.1.293 with a permission-prompt tool that denied): a rejected call
-#   then tells the model to file and spawn rather than retry. Other tiers'
+#   reaches the model even when the prompt is rejected (checked on Claude Code
+#   2.1.293 with a permission-prompt tool that denied; the docs place it beside
+#   the tool result when the call runs): a rejected call then tells the model
+#   to file and spawn rather than retry. Other tiers'
 #   temporary worktrees (EPIC, the FINISH intro) go through `git worktree add`
 #   in Bash, and only START, an implementer's phase, calls EnterWorktree.
 #
