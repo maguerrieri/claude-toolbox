@@ -45,10 +45,11 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   in a reply as a link to that issue or PR on GitHub. The repo comes from
   what precedes the `#`: `owner/repo#N` names it, a known repo's name
   (`www #8`, the form session names use) picks it from the repos your
-  sessions ran in and your recent GitHub activity, and a bare `#N` means
-  the session's own repo. A name two owners share, code, existing links and
-  headings are left alone. It changes only what's drawn; the transcript
-  keeps what the model wrote. Opt-in, so install it on its own:
+  background sessions ran in and your recent GitHub activity, and a bare
+  `#N` means the session's own repo. A name two owners share, code,
+  existing links and headings are left alone. It changes only what's drawn;
+  the transcript keeps what the model wrote. Opt-in, so install it on its
+  own:
 
   ```
   /plugin install ref-links --marketplace maguerrieri/claude-toolbox
