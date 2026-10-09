@@ -244,13 +244,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   its title when it has none, or `summary` for the summary-sentence finding. The parenthetical is
   there when the entry has a severity badge. `<disposition>` is `fixed in <sha> — …` or
   `not changing — …` (at the cap, also `agree, held at the round cap — …`). Push fixes first so
-  the lines can cite SHAs. Pass the comment on stdin through a quoted heredoc, with no file
-  written (the github tracker's `CREATE` has the delimiter and zsh caveats):
-  ```bash
-  gh pr comment <pr> --body-file - <<'COMMENT_EOF'
-  <one line per entry>
-  COMMENT_EOF
-  ```
+  the lines can cite SHAs. Post it with `gh pr comment <pr> --body-file -`, the comment on stdin
+  through a quoted heredoc and no file written, exactly as the github tracker's `CREATE` shows
+  (its delimiter and zsh caveats apply; start the terminator line in column one).
   If every entry is "not changing" (no push), don't
   re-request a review for a fresh verdict — Copilot restates unchanged findings and re-opens the gate.
 
@@ -347,7 +343,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     idle, its row frozen): a child still in its loop rewrites the body every round, and a raise
     written over it either gets lost or erases what the child just wrote. Rewrite only the line's
     `(cap <cap>)`, from a fresh read of the body, piped straight back with no file written (a file
-    edit prompts a pinned planner):
+    edit can stop on a permission prompt):
     ```bash
     body=$(gh pr view <pr> -R <owner>/<repo> --json body -q .body) && [ -n "$body" ] &&
       printf '%s\n' "$body" | sed -E 's/^(Review rounds: [0-9]+ \(cap )[0-9]+\)/\1<new>)/' |

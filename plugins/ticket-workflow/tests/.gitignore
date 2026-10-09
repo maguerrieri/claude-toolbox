@@ -1,0 +1,2 @@
+# test-role-guard.sh's scratch fixture, left behind only if the run is killed.
+.scratch-fixture.*
