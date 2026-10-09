@@ -9,7 +9,8 @@ plugin's hooks consume — the SessionStart hook re-injects the charter after
 `--resume` and compaction, the UserPromptSubmit hook adds a one-line reminder
 of the tier's actor test to every prompt while `planner` or `epic-coordinator`
 is pinned, and the PreToolUse guard turns file edits and `EnterWorktree`
-into a permission prompt while the `planner` charter is pinned, and denies a
+into a permission prompt while the `planner` charter is pinned (edits under the
+job directory, `/tmp`, `$TMPDIR` or an auto-memory directory excepted), and denies a
 `claude --bg`/`-p` or `create_session` launch that leads with an issue-spawning
 command while `implementer` is. This is the
 manual step `roles/planner.md` describes for the top session; the tiers below
