@@ -165,22 +165,30 @@ worked but fired at the third step, so three changes move it earlier:
 - **A `UserPromptSubmit` hook** (`hooks/role-prompt-reminder.sh`). The charter
   enters context at SessionStart and when `/role` reads it, which can be turns
   before the request it governs. For a marker whose first line is `planner` or
-  `epic-coordinator`, the hook returns one line of `additionalContext` with the
-  tier's actor test: a request to fix, add, change or build something names an
-  outcome, so file it and hand it down (`/spawn-epic` or `/spawn-tickets` for a
-  planner, `/spawn-tickets` for a coordinator), unless the owner names the
-  session itself. An implementer, no marker, an unknown role, and a missing or
-  unsafe session id print nothing. It reads the marker the way `role-guard.sh`
-  does: a bash regex finds the id and exits before jq when there's no marker.
-  Every prompt pays for the line, so it stays one line. It never reads the
-  prompt text.
+  `epic-coordinator`, the hook prints one line, which Claude Code adds to the
+  prompt's context, with the tier's actor test: a request to fix, add, change
+  or build something names an outcome, so hand it down (a planner files it and
+  runs `/spawn-epic` or `/spawn-tickets`; a coordinator re-briefs the child
+  that owns it, or files it and runs `/spawn-tickets`), unless the owner names
+  the session itself or runs the command for it there (`/start-ticket`, which
+  matters since a slash command fires `UserPromptSubmit` too). An implementer,
+  no marker, an unknown role, and a missing or unsafe session id print
+  nothing. Every prompt pays for the line, so it stays one line, and the hook
+  starts no jq: a bash regex reads the session id (the input has no nested
+  objects, and a JSON string can't hold the unescaped quotes the pattern needs,
+  so the prompt can't supply a match), `marker-lib.sh` checks it and reads the
+  role, and the line goes out as plain stdout. It never reads the prompt text.
 - **`EnterWorktree` is gated for a planner.** The matcher gains
   `EnterWorktree`, and `role-guard.sh` asks for `planner:EnterWorktree` as it
   does for the edits. Planner-only: no other tier's documented flow needs it
   gated, and checked against `SKILL.md` and `phases/epic.md`, every temporary
   worktree outside START (EPIC's, the FINISH intro's) goes through
   `git worktree add` in Bash. Only START, an implementer's phase, calls
-  `EnterWorktree`.
+  `EnterWorktree`. The gate catches the route the incident took
+  (`EnterWorktree` by name, which also creates the worktree). A worktree made
+  with `git worktree add` in Bash, as START makes its own, isn't gated, since
+  gating a planner's Bash stays out of scope. There the edit gate is still the
+  first prompt, and the reminder is what moves the decision earlier.
 - **The planner gates carry one line for the model.** An `ask`'s
   `permissionDecisionReason` is shown only in the prompt, so a rejected call
   told the model only "The user doesn't want to proceed with this tool use".
@@ -193,9 +201,11 @@ worked but fired at the third step, so three changes move it earlier:
   answered, and the docs place it beside the tool result when the call runs,
   so it should arrive either way; only the rejected path was run. A second
   run, calling `EnterWorktree`, showed PreToolUse firing for it under that
-  tool name, with the same result. Both planner gates now attach `Pinned planner: … If they rejected it, don't retry it or
-  make the change another way: file the work … and hand it down …`. The
-  implementer's deny needs none, since a deny's reason reaches the model.
+  tool name, with the same result. Both planner gates now attach `Pinned
+  planner: … If they approved it, go ahead. If they rejected it, don't retry
+  it or make the change another way: file the work … and hand it down …`. The
+  implementer's deny needs none, since a deny's reason reaches the model. Only
+  2.1.293 was checked; the plugin otherwise runs on older CLIs too.
 
 A smoke test on 2.1.293 (one Opus run each, so consistent with the change, not
 proof of it): a headless session pinned as planner and asked to "add a line
