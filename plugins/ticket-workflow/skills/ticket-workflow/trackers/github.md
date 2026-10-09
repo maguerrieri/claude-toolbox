@@ -26,9 +26,13 @@ gh issue list --search "<query>" --state open --json number,title,url -L 50
 
 ## CREATE(title, body, labels?)  — file a new issue (FILE phase)
 ```bash
-gh issue create --title "<title>" --body-file <path>  [--label "<label>"]
+gh issue create --title "<title>" [--label "<label>"] --body-file - <<'ISSUE_BODY_EOF'
+<body>
+ISSUE_BODY_EOF
 ```
-- Write the body to a temp file and pass `--body-file` — issue bodies are multi-line, quote- and backtick-heavy markdown, and a file sidesteps the brittle shell escaping an inline `--body "…"` would need.
+- Pass the body on stdin through a quoted heredoc, with `--body-file -`, and write no file. Issue bodies are multi-line, quote- and backtick-heavy markdown, and the quoted heredoc keeps every backtick, quote and `$` literal, which sidesteps the brittle shell escaping an inline `--body "…"` would need. A temp file did the same, but writing one is a file edit, which prompts a pinned planner (and, under `~/.claude`, Claude Code itself).
+- A body line that is exactly `ISSUE_BODY_EOF` would end the heredoc early, so for such a body use another delimiter, the same word in both places.
+- Don't also pipe into the command: under zsh, which runs these commands, a pipe and a heredoc on one command both feed stdin and are concatenated (`multios`).
 - `--label` is best-effort: it errors if the label doesn't exist in the repo (`gh` doesn't create labels on the fly) — retry without it rather than failing the CREATE.
 - On success `gh issue create` prints the new issue's URL; the trailing path segment is the number (`…/issues/57` → `57`). Return that number — it's the `<n>` every other op consumes.
 
