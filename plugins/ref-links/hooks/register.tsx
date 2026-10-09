@@ -1,7 +1,8 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Repo } from '../types'
-import { linkify, mergeRepos, parseGitHubRemote } from './linkify'
+import { linkify, mergeRepos, parseGitHubRemote, repoIndex } from './linkify'
+import type { RepoIndex } from './linkify'
 
 // Drawing a reply reads these two values and nothing else, so it never waits
 // on git or the network. The session refreshes them off the render path.
@@ -15,20 +16,31 @@ export const TTL_MS = 6 * 60 * 60 * 1000
 /** How often a session checks the cache's age. */
 export const CHECK_MS = 30 * 60 * 1000
 
-type Cache = { repos: Repo[]; refreshedAt: number }
+/** `repos` is every source merged; `github` is what gh found, kept for a round without gh. */
+type Cache = { repos: Repo[]; github: Repo[]; refreshedAt: number }
 
-// Set while a refresh runs. A reload starts it over, which at worst runs one
-// refresh twice.
+// Module state, which a reload starts over: whether a refresh is running (at
+// worst a reload runs one twice), this load's timers, and the index built for
+// the state versions it was built from.
 let isRefreshing = false
+let timers: Timer[] = []
+let built: { versions: string; index: RepoIndex } | null = null
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    const cache = readCache(await $.store.get(STORE_KEY))
-    if (cache !== null) await setRepos($, cache.repos)
-    await refreshCurrent($)
-    $.clock.after(0, () => void refreshIfStale($))
-    $.clock.every(CHECK_MS, () => void refreshIfStale($))
+    try {
+      const cache = readCache(await $.store.get(STORE_KEY))
+      if (cache !== null) await setRepos($, cache.repos)
+      await refreshCurrent($)
+    } catch (error) {
+      $.ui.log(`ref-links: reading the cache failed: ${String(error)}`, { to: 'debug' })
+    }
+    for (const timer of timers) timer.cancel()
+    timers = [
+      $.clock.after(0, () => void refreshIfStale($)),
+      $.clock.every(CHECK_MS, () => void refreshIfStale($)),
+    ]
     return started
   })
 
@@ -43,7 +55,11 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const [repos, current] = await Promise.all([$.state.get(REPOS), $.state.get(CURRENT)])
-    const text = linkify(e.props.text, { current: current.value ?? null, known: repos.value ?? [] })
+    const versions = `${repos.version}:${current.version}`
+    if (built?.versions !== versions) {
+      built = { versions, index: repoIndex({ current: current.value ?? null, known: repos.value ?? [] }) }
+    }
+    const text = linkify(e.props.text, built.index)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text } })
   })
 }
@@ -62,9 +78,9 @@ async function refreshIfStale($: EngineInterface): Promise<void> {
     const current = (await $.state.get(CURRENT)).value ?? null
     const [local, github] = await Promise.all([reposFromSessions($), reposFromGitHub($)])
     // Without gh this round, keep what it found last time.
-    const remote = github ?? cache?.repos ?? []
+    const remote = github === null ? (cache?.github ?? []) : mergeRepos(github)
     const repos = mergeRepos([...local, ...remote, ...(current === null ? [] : [current])])
-    await $.store.set(STORE_KEY, { repos, refreshedAt: now } satisfies Cache)
+    await $.store.set(STORE_KEY, { repos, github: remote, refreshedAt: now } satisfies Cache)
     await setRepos($, repos)
   } catch (error) {
     $.ui.log(`ref-links: refreshing the known repos failed: ${String(error)}`, { to: 'debug' })
@@ -75,9 +91,13 @@ async function refreshIfStale($: EngineInterface): Promise<void> {
 
 function readCache(value: unknown): Cache | null {
   if (typeof value !== 'object' || value === null) return null
-  const { repos, refreshedAt } = value as Partial<Cache>
+  const { repos, github, refreshedAt } = value as Partial<Record<keyof Cache, unknown>>
   if (!Array.isArray(repos) || typeof refreshedAt !== 'number') return null
-  return { repos: mergeRepos(repos.filter((r): r is string => typeof r === 'string')), refreshedAt }
+  return { repos: repoList(repos), github: Array.isArray(github) ? repoList(github) : [], refreshedAt }
+}
+
+function repoList(values: unknown[]): Repo[] {
+  return mergeRepos(values.filter((value): value is string => typeof value === 'string'))
 }
 
 async function setRepos($: EngineInterface, repos: Repo[]): Promise<void> {

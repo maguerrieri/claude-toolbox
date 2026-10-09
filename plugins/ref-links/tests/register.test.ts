@@ -25,7 +25,11 @@ function world(on: On, { commands = {}, remote = CURRENT_REMOTE, store = {} }: W
 
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('classic.CwdChanged', () => ({}))
-  on('store.get', ($, e) => ({ value: stored[e.key] }))
+  const reads = { count: 0 }
+  on('store.get', ($, e) => {
+    reads.count++
+    return { value: stored[e.key] }
+  })
   on('store.set', ($, e) => {
     stored[e.key] = JSON.parse(JSON.stringify(e.value))
     return { value: undefined }
@@ -53,6 +57,7 @@ function world(on: On, { commands = {}, remote = CURRENT_REMOTE, store = {} }: W
     clock,
     ran,
     stored,
+    reads,
     setRemote: (url: string | null) => {
       repoRemote = url
     },
@@ -136,20 +141,33 @@ describe('the refresh', () => {
         'maguerrieri/provenance',
         'maguerrieri/www',
       ],
+      github: ['anthropics/claude-code', 'maguerrieri/dotfiles', 'maguerrieri/provenance', 'maguerrieri/www'],
       refreshedAt: NOW,
     })
     expect(await w.draw($, 'www #8')).toBe(`[www #8](${issue('maguerrieri/www', 8)})`)
   })
 
-  test('without gh, keeps the local sources and the last GitHub list', async ($, on) => {
+  test('without gh, keeps the local sources and the last GitHub list, and lets older local ones go', async ($, on) => {
     const commands = { ...SOURCES, 'gh api user --jq .login': null }
-    const w = world(on, {
-      commands,
-      store: { known: { repos: ['maguerrieri/provenance'], refreshedAt: NOW - TTL_MS - 1 } },
-    })
+    const old = { repos: ['gone/checkout', 'maguerrieri/provenance'], github: ['maguerrieri/provenance'], refreshedAt: NOW - TTL_MS - 1 }
+    const w = world(on, { commands, store: { known: old } })
     await start($)
     await w.clock.settle()
-    expect(w.stored.known).toHaveProperty('repos', ['maguerrieri/claude-toolbox', 'maguerrieri/provenance', 'maguerrieri/www'])
+    expect(w.stored.known).toEqual({
+      repos: ['maguerrieri/claude-toolbox', 'maguerrieri/provenance', 'maguerrieri/www'],
+      github: ['maguerrieri/provenance'],
+      refreshedAt: NOW,
+    })
+  })
+
+  test('a second session.start in one load keeps one interval', async ($, on) => {
+    const w = world(on, { commands: SOURCES, store: { known: { repos: [], refreshedAt: NOW } } })
+    await start($)
+    await start($)
+    await w.clock.settle()
+    w.reads.count = 0
+    await w.clock.advance(CHECK_MS)
+    expect(w.reads.count).toBe(1)
   })
 
   test('skips a fresh cache, and refreshes once it ages past the TTL', async ($, on) => {
