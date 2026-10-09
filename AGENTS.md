@@ -168,8 +168,8 @@ each with a one-paragraph index in `SKILL.md` ending "Read `phases/<phase>.md`
 now" and its own completion checklist or "does NOT" list in the phase file:
 EPIC (`phases/epic.md`, done in #79 when its cloud port made it phase-sized)
 and SPAWN (`phases/spawn.md`, done in #202 when `SKILL.md` had reached 536
-lines; only `/spawn-tickets` and FILE's `--spawn` run it, so START runs stop
-loading it). **Session roles' reference material is split out too**
+lines; only `/spawn-tickets`, FILE's `--spawn` and EPIC, which reads it
+too, need it, so START and FINISH runs stop loading it). **Session roles' reference material is split out too**
 (`role-marker.md`, #202), and it isn't a phase: the role-marker stack grew that
 section's paragraphs (the marker format, the hooks, session identity, the
 guards' known limits) across six PRs until they conflicted with each other,
