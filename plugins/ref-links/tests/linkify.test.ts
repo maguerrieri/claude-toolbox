@@ -1,69 +1,79 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { linkify, mergeRepos, parseGitHubRemote } from '../hooks/linkify'
+import { linkify, mergeRepos, parseGitHubRemote, repoIndex } from '../hooks/linkify'
+import type { LinkContext } from '../hooks/linkify'
 
 const CURRENT = 'maguerrieri/claude-toolbox'
 const KNOWN = ['maguerrieri/www', 'maguerrieri/provenance', 'maguerrieri/claude-toolbox']
 const ctx = { current: CURRENT, known: KNOWN }
+const link = (text: string, context: LinkContext) => linkify(text, repoIndex(context))
 
 const issue = (repo: string, n: number) => `https://github.com/${repo}/issues/${n}`
 
 describe('resolution rules', () => {
   test('owner/repo#N links to that repo, known or not', () => {
-    expect(linkify('see maguerrieri/provenance#3', ctx)).toBe(
+    expect(link('see maguerrieri/provenance#3', ctx)).toBe(
       `see [maguerrieri/provenance#3](${issue('maguerrieri/provenance', 3)})`,
     )
-    expect(linkify('see octo/widgets#12.', { current: null, known: [] })).toBe(
+    expect(link('see octo/widgets#12.', { current: null, known: [] })).toBe(
       `see [octo/widgets#12](${issue('octo/widgets', 12)}).`,
     )
   })
 
-  test('owner/repo #N with one space links to that repo', () => {
-    expect(linkify('octo/widgets #12 landed', ctx)).toBe(
-      `[octo/widgets #12](${issue('octo/widgets', 12)}) landed`,
+  test('owner/repo #N with one space links when the repo is known', () => {
+    expect(link('maguerrieri/www #12 landed', ctx)).toBe(
+      `[maguerrieri/www #12](${issue('maguerrieri/www', 12)}) landed`,
+    )
+  })
+
+  test('an unknown a/b word with one space is a word, not a repo', () => {
+    expect(link('pushed to origin/main #219', ctx)).toBe(`pushed to origin/main [#219](${issue(CURRENT, 219)})`)
+    expect(link('and/or #12', ctx)).toBe(`and/or [#12](${issue(CURRENT, 12)})`)
+    expect(link('edited hooks/register.tsx #224', ctx)).toBe(
+      `edited hooks/register.tsx [#224](${issue(CURRENT, 224)})`,
     )
   })
 
   test('a known repo name before #N links to that repo, either spacing', () => {
-    expect(linkify('www #8 and www#9', ctx)).toBe(
+    expect(link('www #8 and www#9', ctx)).toBe(
       `[www #8](${issue('maguerrieri/www', 8)}) and [www#9](${issue('maguerrieri/www', 9)})`,
     )
   })
 
   test('the repo name matches case-insensitively and keeps its spelling', () => {
-    expect(linkify('WWW #8', ctx)).toBe(`[WWW #8](${issue('maguerrieri/www', 8)})`)
+    expect(link('WWW #8', ctx)).toBe(`[WWW #8](${issue('maguerrieri/www', 8)})`)
   })
 
   test('a session-name prefix resolves through the name', () => {
-    expect(linkify('claude-toolbox #217: fix', ctx)).toBe(
+    expect(link('claude-toolbox #217: fix', ctx)).toBe(
       `[claude-toolbox #217](${issue(CURRENT, 217)}): fix`,
     )
   })
 
   test('a bare #N links to the current repo', () => {
-    expect(linkify('#219', ctx)).toBe(`[#219](${issue(CURRENT, 219)})`)
-    expect(linkify('Merged (#42).', ctx)).toBe(`Merged ([#42](${issue(CURRENT, 42)})).`)
+    expect(link('#219', ctx)).toBe(`[#219](${issue(CURRENT, 219)})`)
+    expect(link('Merged (#42).', ctx)).toBe(`Merged ([#42](${issue(CURRENT, 42)})).`)
   })
 
   test('#N after a word that is no known repo links to the current repo', () => {
-    expect(linkify('PR #219, issue #218 and #42', ctx)).toBe(
+    expect(link('PR #219, issue #218 and #42', ctx)).toBe(
       `PR [#219](${issue(CURRENT, 219)}), issue [#218](${issue(CURRENT, 218)}) and [#42](${issue(CURRENT, 42)})`,
     )
   })
 
   test('the three forms in one reply', () => {
-    expect(linkify('#219, www #8 and maguerrieri/provenance#3', ctx)).toBe(
+    expect(link('#219, www #8 and maguerrieri/provenance#3', ctx)).toBe(
       `[#219](${issue(CURRENT, 219)}), [www #8](${issue('maguerrieri/www', 8)}) and ` +
         `[maguerrieri/provenance#3](${issue('maguerrieri/provenance', 3)})`,
     )
   })
 
   test('a bare #N stays unlinked without a current repo', () => {
-    expect(linkify('PR #219', { current: null, known: KNOWN })).toBe('PR #219')
+    expect(link('PR #219', { current: null, known: KNOWN })).toBe('PR #219')
   })
 
   test('the current repo counts as known even when the list lacks it', () => {
-    expect(linkify('claude-toolbox #5', { current: CURRENT, known: [] })).toBe(
+    expect(link('claude-toolbox #5', { current: CURRENT, known: [] })).toBe(
       `[claude-toolbox #5](${issue(CURRENT, 5)})`,
     )
   })
@@ -73,25 +83,25 @@ describe('ambiguous names', () => {
   const twoOwners = ['alice/www', 'bob/www']
 
   test('a name under two owners prefers the current repo owner', () => {
-    expect(linkify('www #8', { current: 'bob/site', known: twoOwners })).toBe(
+    expect(link('www #8', { current: 'bob/site', known: twoOwners })).toBe(
       `[www #8](${issue('bob/www', 8)})`,
     )
   })
 
   test('a name under two owners, neither the current one, stays unlinked', () => {
-    expect(linkify('www #8', { current: 'carol/site', known: twoOwners })).toBe('www #8')
-    expect(linkify('www#8', { current: null, known: twoOwners })).toBe('www#8')
+    expect(link('www #8', { current: 'carol/site', known: twoOwners })).toBe('www #8')
+    expect(link('www#8', { current: null, known: twoOwners })).toBe('www#8')
   })
 
   test('the same repo listed twice in different case is not ambiguous', () => {
-    expect(linkify('www #8', { current: null, known: ['alice/www', 'Alice/WWW'] })).toBe(
+    expect(link('www #8', { current: null, known: ['alice/www', 'Alice/WWW'] })).toBe(
       `[www #8](${issue('alice/www', 8)})`,
     )
   })
 })
 
 describe("don't touch", () => {
-  const same = (text: string) => expect(linkify(text, ctx)).toBe(text)
+  const same = (text: string) => expect(link(text, ctx)).toBe(text)
 
   test('code spans', () => {
     same('run `gh pr view #219` now')
@@ -104,12 +114,32 @@ describe("don't touch", () => {
     same('1. step\n   ```bash\n   echo #12\n   ```')
   })
 
+  test('indented code blocks', () => {
+    same('    echo #12')
+    expect(link('para #1\n\n    echo #12\n\n    more #13\nafter #3', ctx)).toBe(
+      `para [#1](${issue(CURRENT, 1)})\n\n    echo #12\n\n    more #13\nafter [#3](${issue(CURRENT, 3)})`,
+    )
+  })
+
+  test('a nested list item four columns in is still prose', () => {
+    expect(link('- a\n\n    - b #4', ctx)).toBe(`- a\n\n    - b [#4](${issue(CURRENT, 4)})`)
+  })
+
+  test('a paragraph line indented four columns continues the paragraph', () => {
+    expect(link('para\n    more #5', ctx)).toBe(`para\n    more [#5](${issue(CURRENT, 5)})`)
+  })
+
+  test('link reference definitions and the shortcut links they define', () => {
+    same('See [#12].\n\n[#12]: https://example.com/x')
+    same('[docs #3]: <https://example.com>')
+  })
+
   test('an unclosed fence runs to the end', () => {
     same('```\n#219')
   })
 
   test('text after a fence is still linked', () => {
-    expect(linkify('```\n#1\n```\nsee #2', ctx)).toBe(`\`\`\`\n#1\n\`\`\`\nsee [#2](${issue(CURRENT, 2)})`)
+    expect(link('```\n#1\n```\nsee #2', ctx)).toBe(`\`\`\`\n#1\n\`\`\`\nsee [#2](${issue(CURRENT, 2)})`)
   })
 
   test('existing links, autolinks and bare URLs', () => {
@@ -145,19 +175,19 @@ describe("don't touch", () => {
   })
 
   test('a token ending in a period is a sentence, not a repo', () => {
-    expect(linkify('see octo/widgets. #12', ctx)).toBe(`see octo/widgets. [#12](${issue(CURRENT, 12)})`)
+    expect(link('see octo/widgets. #12', ctx)).toBe(`see octo/widgets. [#12](${issue(CURRENT, 12)})`)
   })
 })
 
 describe('pass-through', () => {
   test('a reply with no references comes back unchanged', () => {
     const text = 'Nothing to link here.\n\n- a list\n- `code`'
-    expect(linkify(text, ctx)).toBe(text)
+    expect(link(text, ctx)).toBe(text)
   })
 
   test('an empty cache links only the owner/repo forms and the current repo', () => {
     const empty = { current: CURRENT, known: [] }
-    expect(linkify('www #8, #9 and octo/widgets#1', empty)).toBe(
+    expect(link('www #8, #9 and octo/widgets#1', empty)).toBe(
       `www [#8](${issue(CURRENT, 8)}), [#9](${issue(CURRENT, 9)}) and [octo/widgets#1](${issue('octo/widgets', 1)})`,
     )
   })

@@ -10,6 +10,15 @@ export type LinkContext = {
   known: readonly Repo[]
 }
 
+/** A LinkContext indexed for lookups; build it once per change, not per reply. */
+export type RepoIndex = {
+  current: Repo | null
+  /** Every known repo and the current one, lowercased. */
+  repos: ReadonlySet<string>
+  /** The repos under each lowercased repo name. */
+  byName: ReadonlyMap<string, readonly Repo[]>
+}
+
 const OWNER = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})'
 const NAME = '[A-Za-z0-9._-]{1,100}'
 const OWNER_REPO = new RegExp(`^(${OWNER})/(${NAME})$`)
@@ -41,6 +50,17 @@ export function mergeRepos(repos: Iterable<string>): Repo[] {
   return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, repo]) => repo)
 }
 
+/** The context indexed for linkify; the current repo counts as known. */
+export function repoIndex(context: LinkContext): RepoIndex {
+  const all = mergeRepos(context.current === null ? context.known : [...context.known, context.current])
+  const byName = new Map<string, Repo[]>()
+  for (const repo of all) {
+    const name = repo.slice(repo.indexOf('/') + 1).toLowerCase()
+    byName.set(name, [...(byName.get(name) ?? []), repo])
+  }
+  return { current: context.current, repos: new Set(all.map(repo => repo.toLowerCase())), byName }
+}
+
 // What may stand right before a reference (or before the repo word that
 // leads one): the start, whitespace, or punctuation that opens or separates.
 // Anything else (a letter, `/`, `&`, `-`, `.`) means the # is part of a word,
@@ -56,11 +76,10 @@ type Range = readonly [start: number, end: number]
  * or PR. What the rules can't place, or would place ambiguously, is left as
  * written: a wrong link is worse than none.
  */
-export function linkify(text: string, context: LinkContext): string {
+export function linkify(text: string, index: RepoIndex): string {
   if (!/#[1-9]/.test(text)) return text
 
   const isProtected = protectedRanges(text)
-  const byName = indexByName(context)
   let out = ''
   let copied = 0
 
@@ -69,7 +88,7 @@ export function linkify(text: string, context: LinkContext): string {
     const end = hash + m[0].length
     if (isProtected(hash, end)) continue
 
-    const link = resolve(text, hash, Number(m[1]), context, byName, isProtected)
+    const link = resolve(text, hash, Number(m[1]), index, isProtected)
     if (link === null) continue
 
     out += text.slice(copied, link.start) + `[${text.slice(link.start, end)}](${link.url})`
@@ -85,8 +104,7 @@ function resolve(
   text: string,
   hash: number,
   n: number,
-  context: LinkContext,
-  byName: Map<string, Repo[]>,
+  index: RepoIndex,
   isProtected: (start: number, end: number) => boolean,
 ): Link | null {
   // The word before the #, directly attached or one space back.
@@ -102,19 +120,25 @@ function resolve(
 
   if (isWord) {
     const named = OWNER_REPO.exec(token)
-    if (named) return { start, url: issueUrl(`${named[1]}/${named[2]}`, n) }
-
-    const repos = REPO_NAME.test(token) ? byName.get(token.toLowerCase()) : undefined
-    if (repos !== undefined) {
-      const repo = pick(repos, context.current)
-      return repo === null ? null : { start, url: issueUrl(repo, n) }
+    if (named) {
+      // `owner/repo#N` is GitHub's own spelling: always that repo. With a
+      // space, an a/b word is as often a branch or a path (`origin/main
+      // #219`), so only a repo we know of counts; any other is just a word.
+      const repo = `${named[1]}/${named[2]}`
+      if (tokenEnd === hash || index.repos.has(repo.toLowerCase())) return { start, url: issueUrl(repo, n) }
+    } else {
+      const repos = REPO_NAME.test(token) ? index.byName.get(token.toLowerCase()) : undefined
+      if (repos !== undefined) {
+        const repo = pick(repos, index.current)
+        return repo === null ? null : { start, url: issueUrl(repo, n) }
+      }
     }
   }
 
   // A bare #N, or one after a word that names no known repo: the current repo.
   const before = text[hash - 1]
-  if (context.current === null || (before !== undefined && !LEFT.test(before))) return null
-  return { start: hash, url: issueUrl(context.current, n) }
+  if (index.current === null || (before !== undefined && !LEFT.test(before))) return null
+  return { start: hash, url: issueUrl(index.current, n) }
 }
 
 /** The one repo a name means, preferring the current repo's owner; else null. */
@@ -125,61 +149,81 @@ function pick(repos: readonly Repo[], current: Repo | null): Repo | null {
   return mine.length === 1 ? (mine[0] ?? null) : null
 }
 
-function indexByName(context: LinkContext): Map<string, Repo[]> {
-  const all = mergeRepos(context.current === null ? context.known : [...context.known, context.current])
-  const byName = new Map<string, Repo[]>()
-  for (const repo of all) {
-    const name = repo.slice(repo.indexOf('/') + 1).toLowerCase()
-    byName.set(name, [...(byName.get(name) ?? []), repo])
-  }
-  return byName
-}
-
 function issueUrl(repo: Repo, n: number): string {
   return `https://github.com/${repo}/issues/${n}`
 }
 
 // ---------------------------------------------------------------------------
-// The parts of the markdown no reference is looked for in: fenced code
-// blocks, headings, code spans, links, autolinks and HTML tags, bare URLs,
-// and backslash escapes.
+// The parts of the markdown no reference is looked for in: fenced and
+// indented code blocks, headings, link reference definitions, code spans,
+// links, autolinks and HTML tags, bare URLs, and backslash escapes.
 
 const FENCE = /^[ \t>]*(`{3,}|~{3,})(.*)$/
-const HEADING = /^ {0,3}(?:>[ \t]*)*#{1,6}(?:[ \t]|$)/
+const HEADING = /^ {0,3}(?:>[ \t]*)*#{1,6}(?:\s|$)/
+// Four columns in, after a blank line, a heading or the start, is code; a
+// list item that deep is a nested list. A list's own paragraph that deep is
+// taken for code too: a missed link is the safe way to be wrong.
+const INDENTED = /^(?: {4}| {0,3}\t)/
+const LIST_ITEM = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:\s|$)/
+const DEFINITION = /^ {0,3}\[((?:[^[\]\\]|\\.)+)\]:/
 const AUTOLINK_OR_TAG = /<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|\/?[A-Za-z][^<>]*)>/y
 const BARE_URL = /(?:(?:https?|ftp|file):\/\/|www\.)[^\s<>]*/iy
 
 function protectedRanges(text: string): (start: number, end: number) => boolean {
   const ranges: Range[] = []
   const prose: Range[] = []
+  const definitions = new Set<string>()
 
-  // Lines first: fences and headings are whole lines.
-  let fence: { char: string; length: number } | null = null
-  let fenceStart = 0
+  // Lines first: code blocks, headings and definitions are whole lines.
+  let fence: { char: string; length: number; start: number } | null = null
+  let indented: number | null = null
+  let codeMayStart = true
   let proseStart = 0
   let offset = 0
   for (const line of text.split('\n')) {
     const lineEnd = offset + line.length
-    const opener = FENCE.exec(line)
+    const isBlank = line.trim() === ''
+    let endsBlock = false
+
+    if (indented !== null && !isBlank && !INDENTED.test(line)) {
+      ranges.push([indented, offset])
+      indented = null
+      proseStart = offset
+    }
+
     if (fence !== null) {
-      const marker = opener?.[1]
-      if (marker !== undefined && marker[0] === fence.char && marker.length >= fence.length && opener?.[2]?.trim() === '') {
-        ranges.push([fenceStart, lineEnd])
+      const closer = FENCE.exec(line)
+      const marker = closer?.[1]
+      if (marker !== undefined && marker[0] === fence.char && marker.length >= fence.length && closer?.[2]?.trim() === '') {
+        ranges.push([fence.start, lineEnd])
         fence = null
         proseStart = lineEnd + 1
+        endsBlock = true
       }
-    } else if (opener?.[1] !== undefined && !(opener[1][0] === '`' && opener[2]?.includes('`'))) {
-      prose.push([proseStart, offset])
-      fence = { char: opener[1][0] ?? '`', length: opener[1].length }
-      fenceStart = offset
-    } else if (HEADING.test(line)) {
-      prose.push([proseStart, offset])
-      ranges.push([offset, lineEnd])
-      proseStart = lineEnd + 1
+    } else if (indented === null) {
+      const opener = FENCE.exec(line)
+      const marker = opener?.[1]
+      if (marker !== undefined && !(marker[0] === '`' && opener?.[2]?.includes('`'))) {
+        prose.push([proseStart, offset])
+        fence = { char: marker[0] ?? '`', length: marker.length, start: offset }
+      } else if (codeMayStart && !isBlank && INDENTED.test(line) && !LIST_ITEM.test(line)) {
+        prose.push([proseStart, offset])
+        indented = offset
+      } else if (HEADING.test(line) || DEFINITION.test(line)) {
+        const label = DEFINITION.exec(line)?.[1]
+        if (label !== undefined) definitions.add(normalizeLabel(label))
+        prose.push([proseStart, offset])
+        ranges.push([offset, lineEnd])
+        proseStart = lineEnd + 1
+        endsBlock = HEADING.test(line)
+      }
     }
+
+    codeMayStart = isBlank || endsBlock
     offset = lineEnd + 1
   }
-  if (fence !== null) ranges.push([fenceStart, text.length])
+  if (fence !== null) ranges.push([fence.start, text.length])
+  else if (indented !== null) ranges.push([indented, text.length])
   else prose.push([proseStart, text.length])
 
   // Then the inline constructs, inside each stretch of prose, a paragraph at
@@ -187,16 +231,16 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
   for (const [from, to] of prose) {
     let paragraphStart = from
     for (const blank of text.slice(from, to).matchAll(/\n[ \t]*\n/g)) {
-      inlineRanges(text, paragraphStart, from + blank.index, ranges)
+      inlineRanges(text, paragraphStart, from + blank.index, definitions, ranges)
       paragraphStart = from + blank.index + blank[0].length
     }
-    inlineRanges(text, paragraphStart, to, ranges)
+    inlineRanges(text, paragraphStart, to, definitions, ranges)
   }
 
   return (start, end) => ranges.some(([a, b]) => start < b && a < end)
 }
 
-function inlineRanges(text: string, from: number, to: number, ranges: Range[]): void {
+function inlineRanges(text: string, from: number, to: number, definitions: ReadonlySet<string>, ranges: Range[]): void {
   let i = from
   while (i < to) {
     const c = text[i]
@@ -215,7 +259,7 @@ function inlineRanges(text: string, from: number, to: number, ranges: Range[]): 
         i = close + width
       }
     } else if (c === '[' || (c === '!' && text[i + 1] === '[')) {
-      const linkEnd = matchLink(text, c === '!' ? i + 1 : i, to)
+      const linkEnd = matchLink(text, c === '!' ? i + 1 : i, to, definitions)
       if (linkEnd === -1) {
         i++
       } else {
@@ -259,9 +303,9 @@ function findBacktickRun(text: string, from: number, to: number, width: number):
 
 /**
  * The end of a link starting at the `[` at `open`: `[text](dest)`,
- * `[text][ref]`, or -1 when the brackets aren't followed by either.
+ * `[text][ref]`, or `[ref]` alone when the text defines `ref`; else -1.
  */
-function matchLink(text: string, open: number, to: number): number {
+function matchLink(text: string, open: number, to: number, definitions: ReadonlySet<string>): number {
   const close = matchBracket(text, open, to, '[', ']')
   if (close === -1) return -1
   const next = text[close + 1]
@@ -273,7 +317,7 @@ function matchLink(text: string, open: number, to: number): number {
     const end = matchBracket(text, close + 1, to, '[', ']')
     return end === -1 ? -1 : end + 1
   }
-  return -1
+  return definitions.has(normalizeLabel(text.slice(open + 1, close))) ? close + 1 : -1
 }
 
 function matchBracket(text: string, open: number, to: number, left: string, right: string): number {
@@ -285,4 +329,9 @@ function matchBracket(text: string, open: number, to: number, left: string, righ
     else if (c === right && --depth === 0) return i
   }
   return -1
+}
+
+/** A reference label as CommonMark matches it: trimmed, spaces collapsed, any case. */
+function normalizeLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase()
 }
