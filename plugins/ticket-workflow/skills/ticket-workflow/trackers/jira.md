@@ -69,7 +69,7 @@ Jira PRs reference the ticket key rather than using GitHub closing keywords. Sea
 ```bash
 gh pr list --state open -L 500 --search "<ID> in:title,body" --json number,headRefName,title,body --jq '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number,headRefName}'
 ```
-In a cloud session, list the open PRs with `github-rest.md`'s `DEPENDENCY_PR` call and apply this `--jq` filter to it (SKILL.md Step 0).
+In a cloud session, use `github-rest.md`'s Jira spelling of this call instead (SKILL.md Step 0).
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
