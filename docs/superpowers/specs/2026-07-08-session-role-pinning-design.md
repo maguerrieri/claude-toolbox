@@ -222,8 +222,10 @@ edit, and answered with the actor test.
   `allow|deny|ask|defer`.
 - Rejected en route: `CLAUDE_SESSION_ID` is not natively in Bash env (hence
   the env-file export); `UserPromptSubmit` does not fire for slash commands
-  (`UserPromptExpansion` does), so no prompt-sniffing hook. (#217 adds a
-  `UserPromptSubmit` hook that ignores the prompt and only adds a reminder.)
+  (`UserPromptExpansion` does), so no prompt-sniffing hook. (No longer so on
+  Claude Code 2.1.293, checked headless for #217: a slash command fires
+  `UserPromptExpansion` and then `UserPromptSubmit`. #217's
+  `UserPromptSubmit` hook ignores the prompt and only adds a reminder.)
 - Plugin hook packaging: `plugins/<name>/hooks/hooks.json`, paths via
   `${CLAUDE_PLUGIN_ROOT}` (idiom confirmed against official plugins).
 
