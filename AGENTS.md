@@ -183,7 +183,7 @@ while most runs need only the commands. `SKILL.md` keeps the roles, how
 `Role:` propagates, a short *Pinning* carrying the commands each step runs, and
 a pointer saying when to "read `role-marker.md` now". That section was a few
 very long paragraphs, so its move cut characters, not lines; SPAWN's brought
-`SKILL.md` back under 500 lines (~490 with #225's Projects mode). Don't split
+`SKILL.md` back under 500 lines (~490 with #225's Projects mode, ~500 with #238's untracked change requests). Don't split
 another phase preemptively. Split it into a read-on-demand `phases/<phase>.md`
 (the same read-on-demand idiom as `trackers/`, `profiles/`, and `roles/`) when
 one of these fires:

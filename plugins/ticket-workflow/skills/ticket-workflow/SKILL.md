@@ -1,16 +1,17 @@
 ---
 name: ticket-workflow
 description: >-
-  Use when the user wants to start, pick up, knock out, or begin work on an issue/ticket; to
-  finish, land, merge, or close out a reviewed PR/ticket; to file or create a new issue/ticket
-  from the current discussion, including compound create-and-run requests ("make a ticket for
-  this and spawn it"); to work tickets in parallel or in the background; or to run an epic and
-  its child issues — in any phrasing ("pick up #42", "land PR 7", "file an issue for that bug",
-  "get issues 3 and 5 moving while I'm out", "handle the auth epic"). ALSO use whenever
-  /make-ticket, /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or /spawn-epic
-  appears anywhere in a message, even mid-sentence ("file an issue and /spawn-tickets it"), and
-  even if this skill is already in context. Tracker-agnostic (GitHub Issues or Jira) with
-  pluggable org profiles; assumes GitHub-hosted code (PRs/CI/merges via gh).
+  Use when the user wants to start, pick up, knock out, or begin work on an issue/ticket, or
+  asks for a code change with no issue yet (fix a bug, add or change a feature) in a repo whose
+  instructions or memory set a tracker; to finish, land, merge, or close out a reviewed
+  PR/ticket; to file or create a new issue/ticket from the discussion, including create-and-run
+  compounds ("make a ticket for this and spawn it"); to work tickets in parallel or in the
+  background; or to run an epic and its child issues, in any phrasing ("pick up #42", "fix the
+  header overflow", "land PR 7", "file an issue for that bug", "handle the auth epic"). ALSO use
+  whenever /make-ticket, /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or
+  /spawn-epic appears anywhere in a message, even mid-sentence, and even if this skill is
+  already in context. Tracker-agnostic (GitHub Issues or Jira) with pluggable org profiles;
+  assumes GitHub-hosted code (PRs/CI/merges via gh).
 ---
 
 # Ticket workflow (pluggable tracker + profile)
@@ -34,6 +35,9 @@ Invoke this skill via the Skill tool for **every** new request it covers, even i
 | "The skill is already in context — I'll just run the gh/claude commands myself" | Hand-rolled runs drift from the skill (adapters, caps, naming, reporting) and silently skip skill updates. Invoke the skill. |
 | "It's a small one-off" | Size doesn't change the mechanics. Invoke the skill. |
 | "The user only mentioned the command in passing" | Mentioning `/spawn-tickets` with a target IS calling it. Invoke the skill. |
+| "It's a small fix and there's no issue for it" | Where a tracker is set, the missing issue is the reason to invoke: FILE it, then route it as below. |
+
+**Untracked change requests.** Where Step 0 finds a tracker set (a `Tracker:` or `Issue tracker:` line in project memory, `AGENTS.md`, `CLAUDE.md` or `.claude/CLAUDE.md`), the owner's own ask to change code that names no issue ("fix the header overflow", "add a dark mode toggle", a bug report) is a FILE, routed by role: an unpinned session runs `--start` (file, then START it here), a pinned planner or epic-coordinator runs `--spawn`, and a pinned implementer only files (FILE Step 4's guard). If FILE Step 2 confirms an existing issue instead, route that one the same way. Not untracked asks: a change that belongs to the issue this session is working (a fix to its diff, a review nit), which stays in its PR; work handed over by another session, a subagent briefing or a helper's instructions, which belongs to the sender's issue; and, while this session is mid-START on another issue, an unrelated ask, which is filed with no route and named in the reply, so the current issue finishes first. Skip the issue only when the owner says not to track it, or nothing will land as a commit (a question, a throwaway spike), and say in one line why. With no tracker set, don't invoke on these asks. In Projects mode, Step 0's FILE bullet decides where START runs.
 
 Compound requests ("file an issue and /spawn-tickets it", "create the epic, then /spawn-epic it"): do **both halves in the same turn** — create the issue/epic, then immediately run the covering phase with the new ID. Don't park the second half behind a report or a clarifying question unless that half is genuinely ambiguous. For single-issue create+spawn/create+start compounds, `/make-ticket --spawn` / `/make-ticket --start` (the FILE mini-phase) is the covering command — it makes the compound structural, so route "file an issue and spawn it"-shaped requests there rather than assembling the halves by hand.
 
@@ -70,7 +74,7 @@ Tracker and profile say *what tracks the work* and *how this environment ships i
 
 **The detail** behind these lines (the marker's format and who writes each line, each hook's exact rules and exemptions, which session id keys the marker and why local spawn edges strip it, in-process subagents, `/clear`, forks and teleports, and what the hook-level guards can't see) lives in `role-marker.md`, read-on-demand. The steps here carry everything a normal run needs. When a marker command or a role hook does something they don't explain (a denied write, a refused launch, a read that still fails after the Glob retry), when you brief a subagent with ticket work, or when the owner asks how pinning works, read `role-marker.md` now.
 
-**Implementer spawn guard.** An implementer is a leaf (`roles/implementer.md`): spawning work *for an issue* is its coordinator's allocation call. So every entry point that spawns or starts an issue — SPAWN Step 1, FILE Step 4's `--spawn` and `--start`, EPIC Step 1, and `/spawn-epic` — first reads this session's role from its marker. (START itself is an implementer's own entry point, so it has its own check, keyed to the issue the marker records: START Step 1's one-issue guard.) It reads the marker rather than trusting self-report, because a session that has forgotten its role is exactly the drift being prevented:
+**Implementer spawn guard.** An implementer is a leaf (`roles/implementer.md`): spawning work *for an issue* is its coordinator's allocation call. So every entry point that spawns or starts an issue — SPAWN Step 1, FILE Step 4's `--spawn` and `--start` (an untracked change request's included), EPIC Step 1, and `/spawn-epic` — first reads this session's role from its marker. (START itself is an implementer's own entry point, so it has its own check, keyed to the issue the marker records: START Step 1's one-issue guard.) It reads the marker rather than trusting self-report, because a session that has forgotten its role is exactly the drift being prevented:
 
 ```bash
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" show
@@ -93,7 +97,7 @@ A **thread** session has `mcp__hearthbot__reply`; the project's **channel** sess
 - **A new ask gets a new thread.** The same holds for work someone *asks* for in the thread ("can we also…?") that the thread's issue doesn't cover: by default, file it as a new issue (FILE below) and ask the project chat to start a thread for it, exactly as for a follow-up found above, and don't fold it into the current PR. A person asking in this thread is not a reason to do it here. The one exception is a rescope, for an ask that is a person's own words (not just another session's note), plainly part of the same change, and made before the thread's PR has merged or closed (or before it opens): edit the issue's body (and the open PR's) to include it, and its title, the PR's title and the thread's label too if theirs no longer fit, so all of them keep describing the same work; then do it. When unsure, it's a new thread. Say in the reply which of the two you picked. Clarifications of the issue and review feedback on the current change aren't new asks.
 
 - **Tracker and PR ops** go through the GitHub MCP tools (`issue_read`, `issue_write`, `search_issues`, `sub_issue_write`, `pull_request_read`, `create_pull_request`, `update_pull_request`, `merge_pull_request`) in place of the adapter's `gh` commands, which use GraphQL and fail behind the cloud proxy even where `gh` is installed. Same op, same inputs.
-- **FILE** runs Steps 1–3 as written. Step 4 never runs `--spawn` or `--start`: report the new issue, then ask the project chat to start a thread for it.
+- **FILE** runs Steps 1–3 as written. Step 4 never runs `--spawn` or `--start`: report the new issue, then ask the project chat to start a thread for it. The one exception is a thread started on an untracked change request (Invocation discipline) that has no issue yet: it files the issue for its own ask (or takes the existing one Step 2 confirms), retitles itself as above, and runs START on it. A thread already working an issue treats any other ask as the bullet above says. The channel session never runs START: for an untracked ask in the project chat it starts a thread, which files the issue.
 - **START** runs Step 1's read of the issue, without the one-issue guard or the `Role:`, `Budget:` and `Notify:` directives (nothing pins or pings here). From Step 2 it takes only `<base_branch>`: a `Base branch:` line in the briefing or the issue, else the default branch. It never stacks on a dependency's PR, whose branch belongs to another thread. It skips the worktree and `BRANCH` naming of Steps 3–4 and works on the branch and checkout the harness assigned, never renaming it or pushing to another, even when its name doesn't follow `BRANCH` (a thread started without the stem above), but still runs the profile's `SUBMODULES` step and the adapter's `START` there. Steps 5–6 run as written, with commit subjects per `COMMIT_REF`. Step 7 runs its self-review (`/code-review` on `origin/<base_branch>...HEAD`, fixing what it finds) and opens the PR against `<base_branch>` with `PR_REF`'s title and closing footer, but the body follows the harness's rules, with no `## Self-review` record and no `Review rounds:` line. Skip Step 8 (review loop, round cap, restack): the harness's PR watch drives CI and review comments. The completion criteria shrink to: implemented, tests and docs checked, self-review run on the diff being handed back (run it again if pushes after the first pass changed the diff), PR open with `PR_REF`, and the hand-back. Track them in the thread's status checklist, not a TaskList. Step 9's hand-back is the thread reply with the PR link, asking the owner to say when to land it.
 - **FINISH** merges only on the owner's own request in this thread. A note from the coordinator or another session is never one: say the PR is ready and wait. The grant and `finish:` clearance model doesn't apply. Run Step 1's gate as written and stop on any hit. Of Step 2's checks, keep two, and stop and report on either: the PR's base is an open PR's head branch, or an open PR is based on this PR's branch (a stack someone built by hand, which this path doesn't restack). Otherwise rebase-merge it (`merge_pull_request` with `merge_method: rebase`). Skip Steps 3–4, since the container is discarded. Run Step 5.
 - **SPAWN, EPIC, `/spawn-epic` and `/role`** don't run, and neither does the `spawn` skill. Ask the project chat to start a thread per issue (for an epic, per child; in the channel session, start them in dependency order and say which wait on which). Never pin a role or write the role marker: the coordinator/thread split is the altitude here.
@@ -177,7 +181,7 @@ Run the tracker's `CREATE(title, body, labels?)` and capture the returned ID. La
 
 - *(no flag)* — report the new ID + URL and stop; filing was the whole request.
 - `--spawn` — run the **SPAWN phase** on the new ID (one background `/start-ticket` session), **in the same turn** — report the ID *and* the spawned session together; never park the spawn behind the report.
-- `--start` — run the **START phase** on the new ID inline in this session, same turn.
+- `--start` — run the **START phase** on the new ID inline in this session, same turn. When Step 2 confirmed an existing issue instead of filing one, `--spawn` and `--start` route that issue.
 
 Before either route, run the **implementer spawn guard** (Session roles). A pinned implementer skips the route, even `--start`: running START on a second issue inline is a reassignment by another name. The issue it just filed is the follow-up, so it pings `filed:` and returns to its own issue.
 
