@@ -37,7 +37,7 @@ Spawn adds **no** safety bound — each session does exactly what its prompt say
 
 ## Steps
 
-**Projects mode first.** When this session's tools include any `mcp__hearthbot__` tool (listed or deferred), it runs in a Claude Project, where sessions start as project threads: a cloud `create_session` child would land outside the Project, where neither its thread board nor its coordinator sees it. Launch nothing here. In a thread (it has `mcp__hearthbot__reply`), say in one line of the thread's reply that each task needs its own thread (the channel session reads thread replies and starts them), and keep the tasks out of this thread's own PR. In the project's channel session (it has `mcp__hearthbot__start_thread_session`), start one thread per task with that tool instead, never one thread for several. Without those tools, run the steps below.
+**Projects mode first.** When this session's tools include any `mcp__hearthbot__` tool (listed or deferred), it runs in a Claude Project, where sessions start as project threads: a cloud `create_session` child would land outside the Project, where neither its thread board nor its coordinator sees it. Launch nothing here. In a thread (it has `mcp__hearthbot__reply`), say in one line of the thread's reply that each task needs its own thread (the channel session reads thread replies and starts them), and keep the tasks out of this thread's own PR. In the project's channel session (it has `mcp__hearthbot__start_thread_session`), start one thread per task with that tool instead, never one thread for several; a task that works an issue starts on the branch stem ticket-workflow's Projects mode names (`claude/<BRANCH(id)>`). Without those tools, run the steps below.
 
 ### 1 — Parse into units
 
