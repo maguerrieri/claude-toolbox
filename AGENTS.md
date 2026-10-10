@@ -75,7 +75,7 @@ harness: no spawning, epics, roles, worktrees or review-bot loop; issue filing,
 the implement/test/docs steps, `/code-review`, FINISH's gate and the issue
 close still run. It also keeps one thread per issue and one PR per thread: a thread files
 out-of-scope follow-ups, found or asked for, as new issues and asks, in its reply, for a thread for each
-(a new ask that's plainly part of the same change can instead rescope the issue and PR to cover it),
+(a new ask gets a new thread by default; only one plainly part of the same change may rescope the issue and PR instead),
 and the channel session splits a multi-issue ask into one thread each. The `spawn` skill
 launches nothing there either; a thread points at the project chat, and the channel session
 starts threads itself.
