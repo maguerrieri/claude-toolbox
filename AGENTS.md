@@ -30,9 +30,10 @@ Profile: default
 overrides where `/start-ticket` creates worktrees; the default, `.claude/worktrees/`,
 is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.)
 
-Work is tracked in **GitHub Issues**. Commits and PRs follow the `conventions`
+Work is tracked in **GitHub Issues**. Commits follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
-brackets, AI-assistance flags in the subject parens.
+brackets, AI-assistance flags in the subject parens. PR titles follow its
+`pr-conventions` skill: `scope: Description (#<n>)`, with no flags.
 
 A session can also carry a **role** (`planner` / `epic-coordinator` /
 `implementer`) that pins its altitude and propagates down the spawn edges as a
