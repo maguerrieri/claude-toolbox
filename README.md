@@ -32,8 +32,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   Inside a Claude Project it switches to a Projects mode that leaves branches,
   PR watching and fan-out to the Projects harness: the spawning commands start
   project threads instead of background sessions, each thread keeps to one issue
-  and one PR (follow-ups, and new asks outside the issue, become new issues with
-  their own threads unless the issue is rescoped to cover them), and `/role`
+  and one PR (follow-ups become new issues with their own threads, and so do new
+  asks outside the issue unless the issue is rescoped to cover them), and `/role`
   does nothing.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
