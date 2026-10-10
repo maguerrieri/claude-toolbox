@@ -74,7 +74,8 @@ the skill's Step 0 **Projects mode** hands orchestration to the Projects
 harness: no spawning, epics, roles, worktrees or review-bot loop; issue filing,
 the implement/test/docs steps, `/code-review`, FINISH's gate and the issue
 close still run. It also keeps one thread per issue and one PR per thread: a thread files
-out-of-scope follow-ups as new issues and asks, in its reply, for a thread for each,
+out-of-scope follow-ups, found or asked for, as new issues and asks, in its reply, for a thread for each
+(or rescopes its issue first when a new ask is plainly part of the same change),
 and the channel session splits a multi-issue ask into one thread each. The `spawn` skill
 launches nothing there either; a thread points at the project chat, and the channel session
 starts threads itself.
