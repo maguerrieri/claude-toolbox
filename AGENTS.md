@@ -19,7 +19,8 @@ This marketplace ships the **`ticket-workflow`** plugin (`/make-ticket`,
 `/spawn-epic`) — an end-to-end issue workflow with a pluggable tracker +
 profile. It's pulled in by `defaults`
 and depends on the `spawn` plugin. The `Tracker:`/`Profile:` lines below
-configure it for this repo:
+configure it for this repo, so a plain "fix this" or "add that" ask here
+triggers it too: the skill files an issue, then starts it:
 
 ```
 Tracker: github
@@ -76,7 +77,9 @@ the implement/test/docs steps, `/code-review`, FINISH's gate and the issue
 close still run. It also keeps one thread per issue and one PR per thread: a thread files
 out-of-scope follow-ups, found or asked for, as new issues and asks, in its reply, for a thread for each
 (a new ask gets a new thread by default; only one plainly part of the same change may rescope the issue and PR instead),
-and the channel session splits a multi-issue ask into one thread each. It starts each
+and the channel session splits a multi-issue ask into one thread each. An untracked
+change ask gets an issue first: the channel session files it before starting the
+thread, and a thread started on one with no issue files its own and takes it on. It starts each
 issue's thread on the branch stem `claude/<BRANCH(id)>`, so the branch is named after
 the issue (the harness appends a suffix), and the thread keeps the branch it's given. The `spawn` skill
 launches nothing there either; a thread points at the project chat, and the channel session

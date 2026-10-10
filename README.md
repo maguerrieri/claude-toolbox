@@ -30,7 +30,7 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
   parallel fan-out. In a repo that sets a tracker, a plain "fix this bug" or "add
   this feature" with no issue named also triggers it: it files the issue, then
-  starts it (or spawns it, from a planner).
+  starts it (a pinned planner spawns it instead).
   Inside a Claude Project it switches to a Projects mode that leaves branch creation,
   PR watching and fan-out to the Projects harness: the spawning commands start
   project threads instead of background sessions, each thread keeps to one issue
