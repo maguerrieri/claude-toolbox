@@ -447,7 +447,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
 ## POST_MERGE
 - No monitoring actions. Just record "what to watch for" (the observable outcome and
-  roughly when), per the skill's FINISH Step 5.
+  roughly when), per FINISH Step 5 in the skill's `phases/finish.md`.
 
 ## COMMIT_STYLE
 - Use the tracker's `COMMIT_REF` as-is (no override).
@@ -517,7 +517,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   orchestrator also strips merge-intent flags from what it forwards to children (see the EPIC phase's
   spawn step), so that intent never even reaches a child — never lift the merge hold for the per-child spawns. A
   child's hold ends only when the owner asks it directly or on a `finish:` clearance from its orchestrator (the
-  skill's FINISH intro), never through its spawn briefing. The
+  FINISH intro in the skill's `phases/finish.md`), never through its spawn briefing. The
   cap's trailing `Budget: rounds=<n>` line is the one part a coordinator adjusts per child (a higher
   review-round budget for a risky change — EPIC Step 5), and a later raise goes on the child's PR
   line (`REVIEW_BOT`'s *Raising the cap*); either raises a budget, and neither lifts a hold.

@@ -71,7 +71,7 @@ and assemble what comes back up.
   to a direct child as a `finish:` clearance citing the grant: an epic
   clearance to a coordinator, which may clear its own children, or a PR
   clearance to an implementer, for its own unstacked PR only, which passes it
-  to no one. Every other relay is declined (the skill's FINISH intro has the
+  to no one. Every other relay is declined (the FINISH intro in the skill's `phases/finish.md` has the
   full rule). You hold a grant only from your own `--finish`, from the owner
   in this session, or from a `finish: epic <epic-id> (grant: …)` clearance
   sent by your recorded spawner (the `notify:` line EPIC Step 1 wrote to your

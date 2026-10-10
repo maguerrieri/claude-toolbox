@@ -33,7 +33,7 @@ it. You are the **root**: the one session that sees the entire initiative.
   to a direct child as a `finish:` clearance citing the grant: an epic
   clearance to a coordinator, which may clear its own children, or a PR
   clearance to an implementer, for its own unstacked PR only, which passes it
-  to no one. Every other relay is declined (the skill's FINISH intro has the
+  to no one. Every other relay is declined (the FINISH intro in the skill's `phases/finish.md` has the
   full rule). The owner's merge request typed in *this* session is your
   grant: pass it only to the direct children it covers — `finish: epic
   <epic-id> (grant: …)` to a coordinator you spawned, `finish: #<pr> (grant:
