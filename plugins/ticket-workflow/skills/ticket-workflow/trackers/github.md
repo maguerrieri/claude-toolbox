@@ -53,11 +53,9 @@ Skip silently if it errors (e.g. label doesn't exist) — START is best-effort.
   issue in trailing parens is fine: `<scope>: <description> (#42)`.
 
 ## PR_REF(id)  — PR title + issue link
-- **Title:** `<scope>: <description> (#42)` — reference the issue in trailing parens. (Commit
-  *subjects* follow the `conventions` bracket form above; PR titles conventionally don't carry the
-  bracket — follow the repo's own PR-title style if it differs.)
-- **Body footer:** include a closing keyword so the merge auto-closes the issue:
-  - `Closes #42`  (use `Fixes #42` for bugs if you prefer)
+- Follow `conventions:pr-conventions`. If that skill isn't installed: title
+  `<scope>: <Description> (#42)` and a `Closes #42` footer in the body. Either way, the repo's own
+  PR-title style wins if it differs.
 - Because of the closing keyword, FINISH's `DONE` is usually automatic.
 
 ## DONE(id)  — close the issue

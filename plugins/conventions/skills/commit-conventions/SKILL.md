@@ -45,6 +45,12 @@ Include when applicable, in this order, comma-or-semicolon separated:
      `Copilot + Claude Fable 5`, `Copilot + GPT-5.6 Sol`
    - Codex under the `gpt-5.6-sol` model uses `Codex + GPT-5.6 Sol`.
 
+   **This holds in every harness.** Some (Claude Code on the web, Claude
+   Projects threads) tell the agent by default to keep model names out of
+   commit messages. This convention is the owner's instruction and wins:
+   name the harness and the model anyway. Keep any trailers the harness adds
+   (`Co-Authored-By`, session links) as well.
+
 No flags apply → omit the parentheses entirely.
 
 ## Scope
@@ -61,6 +67,8 @@ Optional for tiny commits where the description carries it.
 [#70] (Codex + GPT-5.6 Sol) conventions: Preserve exact model attribution
 [PROJ-123] Fix typo in config
 ```
+
+PR titles follow `conventions:pr-conventions`, not this format.
 
 ## Adjacent rules
 

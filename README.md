@@ -12,8 +12,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   list pulls in every plugin below except `gm` and `provenance`. Install this
   one to get the default set. New default plugins added to this repo should
   also be added to its dependencies.
-- **conventions** — cross-repo development conventions: commit-message format
-  and a portable repository-instruction policy built around canonical root
+- **conventions** — cross-repo development conventions: commit-message and
+  PR-title formats, and a portable repository-instruction policy built around canonical root
   `AGENTS.md` plus a pure `CLAUDE.md` import shim.
 - **spawn** — generic background-session fan-out: the `spawn` skill plus the
   `/spawn` command, for firing off one or more independent `claude --bg`

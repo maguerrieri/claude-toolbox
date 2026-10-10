@@ -42,8 +42,8 @@ own work config, not here.
 - If the repo documents no convention, the bare Jira form `[<ID>] <description>` is the fallback.
 
 ## PR_REF(id)  — PR title + issue link
-- **Title:** `[<ID>] <short description>`.
-- **Body:** reference the ticket (link or `<ID>`). Jira doesn't auto-close from PR keywords, so closing happens in `DONE`.
+- Follow `conventions:pr-conventions`. If that skill isn't installed: title `[<ID>] <short description>`, and the body references the ticket. Either way, the repo's own PR-title style wins if it differs.
+- Jira doesn't auto-close from PR keywords, so closing happens in `DONE`.
 
 ## DONE(id)  — resolve the ticket
 - Transition the issue to its resolved/done state via the Jira MCP/CLI. Add fix version / resolution per the project's conventions if required.
