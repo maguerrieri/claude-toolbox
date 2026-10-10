@@ -110,7 +110,7 @@ gh api -X PATCH 'repos/{owner}/{repo}/issues/<n>' -f state=closed -f state_reaso
 ```bash
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues/<n>/sub_issues' | jq -c '.[] | {number, title, state, labels: [.labels[].name]}'
 gh api 'repos/{owner}/{repo}/issues/<n>' --jq .body
-bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues' -f labels='epic:<name>' -f state=all | jq -c '.[] | select(.pull_request | not) | {number, title, state, labels: [.labels[].name]}'
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues' -f labels='epic:<name>' -f state=open | jq -c '.[] | select(.pull_request | not) | {number, title, state, labels: [.labels[].name]}'
 ```
 A milestone filter takes the milestone's number, `-f milestone=<num>` in place of `labels`:
 ```bash
@@ -201,19 +201,19 @@ COMMENT_EOF
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls/<pr>/reviews' | jq -c '[.[].user.login] | unique'
 ```
 
-**Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). A success response doesn't
-mean the request registered. On #222 (2026-10-09) this call and the GitHub MCP tool
-`request_copilot_review` both returned success and left no `review_requested` event on the PR. So
-a minute after requesting, run `REVIEW_BOT`'s timeline count. If it is still zero, use the MCP tool when
-it's loaded, and if the count stays zero after that too, the request failed. Take `REVIEW_BOT`'s
-no-bot fallback as for any failed request.
+**Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). Use the GitHub MCP tool
+`request_copilot_review` when it's loaded, else the call below. A success response doesn't mean
+the request registered: on #222 (2026-10-09) both returned success and left no `review_requested`
+event on the PR. So a minute after requesting, run `REVIEW_BOT`'s timeline count. If it is still
+zero, the request failed: take `REVIEW_BOT`'s no-bot fallback as for any failed request.
 ```bash
 gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
 
-**Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged, including what it
-says about permission rules: a rule written for `gh pr merge`, allow or deny, does not match this
-command, so in a cloud session the rule has to name it.
+**Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged. Permission rules
+match commands literally, so one written for `gh pr merge` doesn't match this command: an allow
+rule doesn't pre-approve it (a standing allow for the cloud names this command), and a deny or
+ask rule binds it anyway, as the next paragraph says.
 ```bash
 gh api -X PUT 'repos/{owner}/{repo}/pulls/<pr>/merge' -f merge_method=rebase
 ```
@@ -247,10 +247,10 @@ gh api 'repos/{owner}/{repo}/commits/<sha>/status' --jq '.statuses[] | {context,
 
 Classify the result:
 
-- **No check runs and no statuses at all**: pending while the repo has CI that would run on the
-  PR (a workflow under `.github/workflows/`), since Actions can take a moment to create the runs
-  after a push. With no workflows, there is no CI to wait for, which is where `gh pr checks`'s
-  "no checks reported" leaves a local session too.
+- **No check runs and no statuses at all**: pending for the first five minutes after the head
+  commit was pushed, since Actions can take a moment to create the runs. After that, nothing ran
+  on this head (no workflows, or ones whose path or event filters skip it), so there is no CI to
+  wait for, which is where `gh pr checks`'s "no checks reported" leaves a local session too.
 - **Pending:** a check run whose `status` isn't `completed`, one whose `conclusion` is `stale`
   (as `gh pr checks` counts it), or a status whose `state` is `pending`.
 - **Failed:** a completed run whose `conclusion` is `failure`, `cancelled`, `timed_out`,
@@ -265,32 +265,58 @@ nothing is pending, from a background command or the Monitor tool, never a foreg
 
 ## Review threads (`REVIEW_BOT`)
 
-GraphQL thread node ids (`PRRT_…`) don't exist on this path. The proxy's CCR routes key every
-thread on the REST id of its comments instead.
+**Use the GitHub MCP tools when they're loaded** (`mcp__github__…`, deferred ones included). They
+return real thread node ids and handle paging, so they need no join. Use the REST/CCR spelling
+below only when the tools aren't in the session.
 
-**Read the threads.** `GET …/ccr/review_threads` returns every thread in one response, as
-`{resolved, outdated, path, line, comment_ids: [...]}` with the thread's first comment first. It
-isn't paged: it ignores `per_page` (checked on #204, 11 threads with `per_page=1`). Join it to
-the PR's review comments for the fields the GraphQL query returned (needs standalone `jq`, like
-the round count):
+**Read the threads (MCP).** `pull_request_read` with `method: get_review_comments`,
+`perPage: 100`. Follow `pageInfo.endCursor` as `after` until `hasNextPage` is false, since this is
+a completion gate and must not under-count. Each entry in `review_threads` carries:
+
+- `id`, the thread node id (`PRRT_…`) that resolve takes;
+- `is_resolved` and `is_outdated`;
+- `comments`, first comment first, each with `body`, `path`, `author` and `html_url`.
+
+`author` is the GraphQL-style login (`copilot-pull-request-reviewer` for Copilot), and
+`html_url` ends in the same `#discussion_r<id>` anchor as the GraphQL query's first-comment
+`url`. The tool gives no review id per comment. The valid cap marker's coverage check needs one,
+so it reads `pull_request_review_id` off the REST comments list for each thread's first-comment
+id (the `<id>` in its anchor):
+
+```bash
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls/<pr>/comments' | jq -c '.[] | {comment_id: .id, review_id: .pull_request_review_id}'
+```
+
+**Reply, then resolve (MCP).** Reply with `add_reply_to_pull_request_comment`, giving
+`owner`, `repo`, `pullNumber`, `body` and `commentId` (the numeric `<id>` from the first
+comment's `#discussion_r<id>` anchor, never the `PRRT_` id). Resolve with `resolve_review_thread`,
+giving `owner`, `repo` and `threadId` (the thread's `PRRT_…` id). The MCP tools don't fill in
+`{owner}`/`{repo}`, so write the repo's real owner and name.
+
+**Without the MCP tools: read the threads (REST/CCR).** `GET …/ccr/review_threads` returns every
+thread in one response, as `{resolved, outdated, path, line, comment_ids: [...]}` with the
+thread's first comment first (the join takes the first one still present, in case a reviewer
+deleted the opening comment). It isn't paged: it ignores `per_page` (checked on #204, 11 threads
+with `per_page=1`). Join it to the PR's review comments for the fields the GraphQL query returned
+(needs standalone `jq`, like the round count):
 
 ```bash
 threads=$(gh api 'repos/{owner}/{repo}/pulls/<pr>/ccr/review_threads')
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls/<pr>/comments' \
   | jq --argjson t "$threads" 'INDEX(.id) as $c
       | $t[] | select(.resolved == false)
-      | $c[(.comment_ids[0] | tostring)] as $f
+      | first((.comment_ids[] | tostring | $c[.] // empty), null) as $f
       | {comment_id: $f.id, path, outdated, url: $f.html_url, author: $f.user.login,
          body: $f.body, review_id: $f.pull_request_review_id}'
 ```
 
-`comment_id` stands in for the thread's node `id` in the reply and resolve steps. `url` ends in
-the same `#discussion_r<id>` anchor as the GraphQL first comment's `url`, and `review_id` is the
-id the GraphQL `pullRequestReview.url` fragment carried, so the valid cap marker's coverage check
-works as written: drop the `resolved` filter and keep the threads whose `review_id` is the newest
-bot review's `id`. Copilot's review comments carry the author login `Copilot` in REST.
+`comment_id` stands in for the thread's node `id` in the reply and resolve steps. `url` and
+`review_id` carry what the GraphQL `url` and `pullRequestReview.url` fragment did, so the
+coverage check works as written: drop the `resolved` filter and keep the threads whose
+`review_id` is the newest bot review's `id`. Copilot's review comments carry the author login
+`Copilot` in REST.
 
-**Reply, then resolve.**
+**Without the MCP tools: reply, then resolve (REST/CCR).**
 
 ```bash
 # reply on the thread
