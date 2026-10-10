@@ -226,8 +226,8 @@ done
 # included, reads the marker by hand (a session-id variable and the roles
 # directory together).
 read_notify="${run_prefix}show"
-record 1 "SKILL.md's FINISH intro reads the notify line through role-marker.sh show" \
-	"$(grep '^\*\*Delegation: a `finish:` clearance' "$skill/SKILL.md" | grep -cF "\`$read_notify\`")"
+record 1 "phases/finish.md's FINISH intro reads the notify line through role-marker.sh show" \
+	"$(grep '^\*\*Delegation: a `finish:` clearance' "$skill/phases/finish.md" | grep -cF "\`$read_notify\`")"
 for f in "$skill/roles/implementer.md" "$skill/roles/epic-coordinator.md"; do
 	record 1 "${f#"$skill/"} reads the notify line through role-marker.sh show" \
 		"$(grep -A1 'have replaced it:$' "$f" | grep -cF "\`$read_notify\`")"

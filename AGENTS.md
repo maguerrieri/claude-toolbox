@@ -172,21 +172,28 @@ ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~430
 lines as of #79): the phases cross-reference each other's steps by number (EPIC →
 START Steps 2/3/7, FINISH's gate → START Step 6), and one file keeps full-context
 reads the default — splitting reintroduces the #22 bypass failure in a new form
-(skim the index, skip the phase file). **Two phases are split out so far**,
+(skim the index, skip the phase file). **Three phases are split out so far**,
 each with a one-paragraph index in `SKILL.md` ending "Read `phases/<phase>.md`
-now" and its own completion checklist or "does NOT" list in the phase file:
-EPIC (`phases/epic.md`, done in #79 when its cloud port made it phase-sized)
-and SPAWN (`phases/spawn.md`, done in #202 when `SKILL.md` had reached 536
-lines; only `/spawn-tickets`, FILE's `--spawn` and EPIC, which reads it
-too, need it, so START and FINISH runs stop loading it). **Session roles' reference material is split out too**
+now": EPIC (`phases/epic.md`, done in #79 when its cloud port made it
+phase-sized), SPAWN (`phases/spawn.md`, done in #202 when `SKILL.md` had reached
+536 lines; only `/spawn-tickets`, FILE's `--spawn` and EPIC, which reads it
+too, need it, so START and FINISH runs stop loading it) and FINISH
+(`phases/finish.md`, done in #240 when #238's untracked change requests took
+`SKILL.md` to 502 lines and #239 conflicted with two concurrent PRs in it). EPIC
+and SPAWN carry their own completion checklist or "does NOT" list; FINISH had
+neither. FINISH was the cleaner cut than the FILE mini-phase: only
+`/finish-ticket`, a `finish:` clearance and EPIC Step 7 need it, while FILE runs
+on every untracked change request, so START runs stop loading FINISH and
+`SKILL.md` drops to ~410 lines. The phase file carries the merge-authority intro
+too, so a session handling a `finish:` clearance reads it before accepting.
+**Session roles' reference material is split out too**
 (`role-marker.md`, #202), and it isn't a phase: the role-marker stack grew that
 section's paragraphs (the marker format, the hooks, session identity, the
 guards' known limits) across six PRs until they conflicted with each other,
 while most runs need only the commands. `SKILL.md` keeps the roles, how
 `Role:` propagates, a short *Pinning* carrying the commands each step runs, and
 a pointer saying when to "read `role-marker.md` now". That section was a few
-very long paragraphs, so its move cut characters, not lines; SPAWN's brought
-`SKILL.md` back under 500 lines (~490 with #225's Projects mode, ~500 with #238's untracked change requests). Don't split
+very long paragraphs, so its move cut characters, not lines. Don't split
 another phase preemptively. Split it into a read-on-demand `phases/<phase>.md`
 (the same read-on-demand idiom as `trackers/`, `profiles/`, and `roles/`) when
 one of these fires:

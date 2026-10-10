@@ -76,7 +76,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   as a `finish:` clearance citing the grant: an epic clearance to a
   coordinator, which may clear its own children, or a PR clearance to an
   implementer, for its own unstacked PR only, which passes it to no one. Every
-  other relay is declined (the skill's FINISH intro has the full rule).
+  other relay is declined (the FINISH intro in the skill's `phases/finish.md` has the full rule).
   Accept a `finish: #<pr> (grant: …)` only when it comes from your recorded
   spawner (the `notify:` line START Step 1 wrote to your role marker,
   matched against the `from-name` the harness stamps on the delivery, not
