@@ -42,7 +42,7 @@ it. You are the **root**: the one session that sees the entire initiative.
   `/finish-ticket #<pr>` here for a live implementer's unstacked PR: clear
   it instead of running FINISH yourself, since it owns its branch and
   worktree. For a stacked PR, or a cloud child's (clearances need a local
-  `Notify:` edge), run FINISH here as the FINISH intro's first grant form
+  `Notify:` edge), run FINISH here as the first grant form in `phases/finish.md`'s intro
   says: the child's code in a temporary worktree, never your own checkout,
   and its cleanup left to the child. A cloud coordinator needs `--finish` at
   launch or the owner attached. Never

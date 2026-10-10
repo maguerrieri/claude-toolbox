@@ -1,6 +1,6 @@
 # FINISH phase
 
-Read from `SKILL.md`'s FINISH index, after its Step 0. Unqualified "Step N" references below are this phase's own steps; START, Step 0 and Session roles live in `SKILL.md`, and EPIC in `phases/epic.md`. In Projects mode, `SKILL.md`'s Step 0 *Projects mode* FINISH bullet says which of these steps run, and wins where it disagrees.
+Read from `SKILL.md`'s FINISH index after its Step 0, from EPIC Step 7 (whose cloud and registered-chain overrides in `phases/epic.md` win there), or by a session handling a `finish:` clearance. Unqualified "Step N" references below are this phase's own steps; START, Step 0 and Session roles live in `SKILL.md`, and EPIC in `phases/epic.md`. In Projects mode, `SKILL.md`'s Step 0 *Projects mode* FINISH bullet says which of these steps run, and wins where it disagrees.
 
 Assumes the user has already reviewed and approved the PR. Preconditions: PR open, CI green, review threads resolved, user has reviewed. START produces this state by default.
 
