@@ -132,7 +132,7 @@ gh api 'repos/{owner}/{repo}/issues/<epic_id>/comments' -f body="claim: <session
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/issues/<epic_id>/comments' | jq -r '.[].body'   # read existing markers
 ```
 
-## Pull requests (`SKILL.md`, `phases/epic.md`, `profiles/default.md`)
+## Pull requests (`SKILL.md`, `phases/finish.md`, `phases/epic.md`, `profiles/default.md`)
 
 **Create** (`gh pr create`). Add `-F draft=true` for a draft.
 ```bash

@@ -181,8 +181,9 @@ too, need it, so START and FINISH runs stop loading it) and FINISH
 (`phases/finish.md`, done in #240 when #238's untracked change requests took
 `SKILL.md` to 502 lines and #239 conflicted with two concurrent PRs in it). EPIC
 and SPAWN carry their own completion checklist or "does NOT" list; FINISH had
-neither. FINISH was the cleaner cut than the FILE mini-phase: only
-`/finish-ticket`, a `finish:` clearance and EPIC Step 7 need it, while FILE runs
+neither. FINISH was the cleaner cut than the FILE mini-phase: only a merge
+(`/finish-ticket` or the owner's own words, Projects mode included), a `finish:`
+clearance and EPIC Step 7 need it, while FILE runs
 on every untracked change request, so START runs stop loading FINISH and
 `SKILL.md` drops to ~410 lines. The phase file carries the merge-authority intro
 too, so a session handling a `finish:` clearance reads it before accepting.

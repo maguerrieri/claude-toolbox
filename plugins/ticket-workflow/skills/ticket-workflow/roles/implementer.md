@@ -93,8 +93,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   rounds:` line, or an `agree, held at the round cap` line), reply `blocked:
   <why>` and don't merge: a stack lands through your spawner's own FINISH,
   EPIC Step 7 or the owner, and
-  the grant covers reviewed work, not held findings. Otherwise run your own
-  FINISH, gate included (a gate failure still stops you), and ping `merged:
+  the grant covers reviewed work, not held findings. Otherwise read the skill's `phases/finish.md`
+  and run your own FINISH, gate included (a gate failure still stops you), and ping `merged:
   #<pr>` or `blocked: <why>`. The clearance ends your `SPAWN_CAP` hold for
   that PR only.
   You're a leaf: clear no one, helpers included. If the harness or a
@@ -152,7 +152,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   (`messaging.md`); with no spawner or no way back (a Routine or `send_later`
   delivery, a cloud edge), post it as a PR comment instead. If the owner
   merges the PR themself and you're then asked to tidy up, skip the merge and
-  run the rest of FINISH, as the FINISH intro's owner-merge paragraph says.
+  run the rest of FINISH, as the owner-merge paragraph of
+  `phases/finish.md`'s intro says.
 
 ## Why the guard
 

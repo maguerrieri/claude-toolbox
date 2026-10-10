@@ -87,7 +87,7 @@ and assemble what comes back up.
   stack, landing every layer in this session, only on an epic-wide grant:
   your own `--finish`, a `finish: epic` clearance, or the owner asking here
   to finish the epic. An owner request here that names one PR lands that PR
-  only, with Step 7's per-layer steps (the FINISH intro's first grant form).
+  only, with Step 7's per-layer steps (the first grant form in `phases/finish.md`'s intro).
   The rule lets you clear your own children instead, but Step 7 doesn't yet
   say how to sequence that (#207 adds it). Until it does, send no child a
   `finish:`, and land what the grant covers yourself. Never clear a grandchild or a sibling, and never pass an approval on
