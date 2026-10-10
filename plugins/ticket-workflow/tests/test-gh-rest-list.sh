@@ -23,6 +23,7 @@ printf '%s\n' "$*" >>"$STUB_ARGS"
 page=1
 for a in "$@"; do case $a in page=*) page=${a#page=} ;; esac; done
 [ "${STUB_FAIL_PAGE:-}" = "$page" ] && { echo 'HTTP 403' >&2; exit 1; }
+[ -n "${STUB_IGNORE_PAGE:-}" ] && page=1
 start=$(( (page - 1) * 100 + 1 ))
 end=$(( page * 100 ))
 [ "$end" -gt "$STUB_TOTAL" ] && end=$STUB_TOTAL
@@ -63,5 +64,6 @@ record '[100,10]' '--pages after a gh argument' "$(run 110 'repos/o/r/issues' -f
 
 record 'exit 1' 'gh failing on page 2 fails the run' "$(STUB_FAIL_PAGE=2 run 150 'repos/o/r/issues')"
 record 'exit 2' 'no endpoint' "$(run 0)"
+record 'exit 3' 'an endpoint that ignores page= stops' "$(STUB_IGNORE_PAGE=1 run 150 'repos/o/r/issues')"
 
 finish
