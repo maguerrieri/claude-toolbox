@@ -76,7 +76,9 @@ the implement/test/docs steps, `/code-review`, FINISH's gate and the issue
 close still run. It also keeps one thread per issue and one PR per thread: a thread files
 out-of-scope follow-ups, found or asked for, as new issues and asks, in its reply, for a thread for each
 (a new ask gets a new thread by default; only one plainly part of the same change may rescope the issue and PR instead),
-and the channel session splits a multi-issue ask into one thread each. The `spawn` skill
+and the channel session splits a multi-issue ask into one thread each. It starts each
+issue's thread on the branch stem `claude/<BRANCH(id)>`, so the branch is named after
+the issue (the harness appends a suffix), and the thread keeps the branch it's given. The `spawn` skill
 launches nothing there either; a thread points at the project chat, and the channel session
 starts threads itself.
 
