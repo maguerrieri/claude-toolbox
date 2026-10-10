@@ -8,7 +8,7 @@ argument-hint: <description> [--spawn | --start]
 ---
 Make a ticket for: **$ARGUMENTS**
 
-**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), file the issue but run neither flag and follow the skill's Step 0 *Projects mode* routing instead of what this command says below.
+**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), file the issue but run neither flag (unless the skill's Step 0 *Projects mode* FILE bullet lets this thread start the issue it files for its own ask) and follow that routing instead of what this command says below.
 
 **Invoke the `ticket-workflow` skill now via the Skill tool** and run its **FILE** mini-phase — do not read its `SKILL.md` directly. Parse "$ARGUMENTS" as the issue description plus at most one routing flag: `--spawn` (file, then hand the new ID to the SPAWN phase — a background `/start-ticket` session) or `--start` (file, then run the START phase on it inline in this session). No flag → file the issue and stop.
 

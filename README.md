@@ -28,13 +28,16 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   `/start-epic`, and `/spawn-epic`. Files an issue from conversation context and
   takes it from open to a reviewed PR and on to merged, with a pluggable
   **tracker** (GitHub Issues or Jira) and **profile**. Builds on `spawn` for its
-  parallel fan-out.
+  parallel fan-out. In a repo that sets a tracker, a plain "fix this bug" or "add
+  this feature" with no issue named also triggers it: it files the issue, then
+  starts it (or spawns it, from a planner).
   Inside a Claude Project it switches to a Projects mode that leaves branch creation,
   PR watching and fan-out to the Projects harness: the spawning commands start
   project threads instead of background sessions, each thread keeps to one issue
   and one PR (follow-ups and new asks outside the issue become new issues with
   their own threads; only an ask plainly part of the same change rescopes the
-  issue instead), an issue's thread starts on a branch named after the issue
+  issue instead; a thread started on an untracked ask files its issue and takes it
+  on), an issue's thread starts on a branch named after the issue
   (`claude/<n>-<slug>`, plus the harness's suffix), and `/role` does nothing.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
