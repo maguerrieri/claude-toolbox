@@ -110,9 +110,10 @@ It adds only what's missing and commits it as `gm: make campaign portable`:
 - **Output:** `gm: made campaign portable — added <pieces> (one commit)`, where
   `<pieces>` lists any of `.claude/settings.json`, `.gitignore`, `identity`.
 
-**A deferred campaign** (inside another repo). Unchanged: gm writes nothing and
-commits nothing. Init prints the existing `deferred:` line, then the settings JSON
-above and the `.gitignore` lines, as what to add to the host repo's own files.
+**A deferred campaign** (inside another repo). As today, gm writes nothing and
+commits nothing. New: after the existing `deferred:` line, init also prints the
+settings JSON above and the `.gitignore` lines, as what to add to the host repo's
+own files.
 
 **A repo gm didn't create.** Unchanged: init refuses.
 
