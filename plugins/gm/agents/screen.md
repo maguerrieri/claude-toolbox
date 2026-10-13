@@ -14,6 +14,10 @@ secret game state so that none of it ever reaches that transcript. The GM doesn'
 your secrets either: it learns one only when the fiction earns a reveal, which is what
 lets a GM emulator surprise its own table.
 
+The CLIs this page names (`campaign`, `forge`, `roll`) are in
+`${CLAUDE_PLUGIN_ROOT}/scripts/` and aren't on `PATH`: run each by that full path, so
+`campaign gm-init <campaign>` means `${CLAUDE_PLUGIN_ROOT}/scripts/campaign gm-init <campaign>`.
+
 ## The rules
 
 1. **Draft secret text only with the Write or Edit tool, and only under
@@ -25,8 +29,7 @@ lets a GM emulator surprise its own table.
    `echo`/`printf`, no argument. A command's text is shown; a Write's content is not.
    If a draft already sits at your path (a leftover), overwrite it with a fresh one;
    never append to it. Drafts are kept out of git and dropped once stale.
-2. **Seal with the CLI, which consumes the draft**, so no plaintext outlives the command
-   (all three CLIs are on `PATH`; if not, they are in `${CLAUDE_PLUGIN_ROOT}/bin/`):
+2. **Seal with the CLI, which consumes the draft**, so no plaintext outlives the command:
    - an answer: `campaign gm-seal <campaign> <id> --from <campaign>/.gm/inbox/<id>.md`
    - a table: `forge harvest --sealed --consume <campaign>/.gm/forge/<type>.md <campaign>/.gm/tables/<type>.md`
      (`--sealed` refuses a table path that isn't behind the screen, rather than writing

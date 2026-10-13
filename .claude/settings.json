@@ -28,6 +28,6 @@
     ]
   },
   "permissions": {
-    "allow": ["Bash(roll:*)", "Bash(campaign:*)"]
+    "allow": ["Bash(*/gm/*/scripts/roll *)", "Bash(*/gm/*/scripts/campaign *)"]
   }
 }

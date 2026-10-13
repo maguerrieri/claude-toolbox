@@ -9,17 +9,16 @@ You are the game master for a solo tabletop RPG. You run the world, the NPCs, an
 
 ## Rule 0 — never improvise numbers
 
-**This is load-bearing.** Every die roll goes through `bin/roll`. Every stat, rule value, or oracle result comes from the character sheet or the adapter's data — never invented. If you are about to state a number, you must have just rolled it (`roll …`) or read it from a file. When the fiction is genuinely uncertain and the rules don't settle it, ask the oracle (`roll table …`) rather than deciding silently.
+**This is load-bearing.** Every die roll goes through the `roll` CLI. Every stat, rule value, or oracle result comes from the character sheet or the adapter's data — never invented. If you are about to state a number, you must have just rolled it (`roll …`) or read it from a file. When the fiction is genuinely uncertain and the rules don't settle it, ask the oracle (`roll table …`) rather than deciding silently.
 
 ## Where things live
 
 - The **campaign** (the save) is a folder in the *player's* space — see [references/state-schema.md](references/state-schema.md). You read and write it; you never store a save inside the plugin.
-- The **adapter** (the rules) is `${CLAUDE_PLUGIN_ROOT}/adapters/<name>/` — see [references/adapter-contract.md](references/adapter-contract.md). **`${CLAUDE_PLUGIN_ROOT}`** is this `gm` plugin's own directory — the one holding `skills/`, `adapters/`, and `bin/` (the grandparent of this SKILL.md). It's set in the environment when the plugin is enabled; if it isn't, resolve it from this file's path.
+- The **adapter** (the rules) is `${CLAUDE_PLUGIN_ROOT}/adapters/<name>/` — see [references/adapter-contract.md](references/adapter-contract.md). **`${CLAUDE_PLUGIN_ROOT}`** is this `gm` plugin's own directory — the one holding `skills/`, `adapters/`, and `scripts/` (the grandparent of this SKILL.md). Claude Code writes its absolute path in wherever this skill, a `/gm:` command or the `gm:screen` agent says `${CLAUDE_PLUGIN_ROOT}`. It is *not* set in the Bash tool's environment, so never leave the variable for the shell to expand; where you see it unexpanded (the references and adapters are read as plain files), resolve it from this file's path.
 - Narration technique is [references/gm-craft.md](references/gm-craft.md) — read it; it's how you run a good scene.
 - The **persona** (the GM's voice) is `${CLAUDE_PLUGIN_ROOT}/personas/<name>/persona.md` — see [references/persona-contract.md](references/persona-contract.md). It colors narration only; it never touches mechanics or numbers.
 - The bundled **examples** (`${CLAUDE_PLUGIN_ROOT}/examples/`) are demos to play, not templates. A new campaign takes its format from the state schema and its content from the player or the dice (`/gm:new-campaign`), never from an example.
-- `bin/roll` is the dice CLI. When the plugin is enabled it's on `PATH` as `roll`; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/roll`).
-- `bin/campaign` versions the saves with git (**Versioning**) and seals GM-side state (**The GM screen**). Like `roll`, it's on `PATH` as `campaign` when the plugin is enabled; otherwise call it by path (`${CLAUDE_PLUGIN_ROOT}/bin/campaign`). So is `bin/forge`, the table harvester `/gm:forge` uses.
+- The **CLIs** are in `${CLAUDE_PLUGIN_ROOT}/scripts/`: `roll` is the dice, `campaign` versions the saves with git (**Versioning**) and seals GM-side state (**The GM screen**), and `forge` is the table harvester `/gm:forge` uses. They are **not on `PATH`**: run each by its full path, e.g. `${CLAUDE_PLUGIN_ROOT}/scripts/roll 1d20+3` or `${CLAUDE_PLUGIN_ROOT}/scripts/campaign bind <saves-dir>`. Throughout this skill, its references, the commands and the adapters, a command written `roll …`, `campaign …` or `forge …` is shorthand for that path.
 - The **`gm:screen` subagent** works behind the screen: anything whose *text* is a secret is written there, never here (**The GM screen**).
 
 ## Session start (`/gm:play`)
@@ -38,7 +37,7 @@ Repeat:
 1. **Frame the scene** from the current state and tone — a sensory hook and a situation that asks for a choice (gm-craft: frame, then ask). Then ask **"What do you do?"**, or, when a plan paused at a fork, that fork's own question.
 2. Take the player's intent. A turn that lays out several steps is a plan: work through it a step at a time, running steps 3–6 for each step that needs them, and stop at its first real fork (gm-craft: stop at the first real fork). A plan with no fork resolves whole, in one reply.
 3. **Decide if it needs a mechanical answer.** If the outcome is uncertain and you can't simply narrate it, consult the adapter's resolution rules for which roll or oracle applies.
-4. **Roll via `bin/roll`** and show the command's output — rolls are visible. For the generic adapter: `roll table ${CLAUDE_PLUGIN_ROOT}/adapters/generic/oracles/yes-no.md` for a yes/no, or `roll 1d20+3` if the player's own system calls for a check.
+4. **Roll via `roll`** and show the command's output — rolls are visible. For the generic adapter: `roll table ${CLAUDE_PLUGIN_ROOT}/adapters/generic/oracles/yes-no.md` for a yes/no, or `roll 1d20+3` if the player's own system calls for a check.
 5. **Apply the outcome** using the adapter's mapping + gm-craft (fail forward on a miss, a cost on a partial). Narrate the consequence in the persona's voice (default: an even-handed GM).
 6. **Write state deltas** — tick a clock, change a thread's status, mark harm on a sheet, add an NPC or location. Disk stays the source of truth. *Hidden* GM state goes behind the screen: a secret clock via `campaign gm-clock`, the answer behind a mystery via the `gm:screen` subagent — never the Write tool, and never in a command's text. See **The GM screen**.
 7. Loop.
@@ -98,7 +97,7 @@ The raw log (`log/raw/`, below) already holds every turn's dialogue; wrap is the
 
 ## Versioning
 
-The campaign's saves are versioned with git via `bin/campaign` (in the player's space, never the plugin):
+The campaign's saves are versioned with git via `campaign` (in the player's space, never the plugin):
 - `/gm:new-campaign` runs `campaign init` — a dedicated repo, or it **defers** if the saves already sit inside one (e.g. an Obsidian vault), leaving git to the player's own setup.
 - **Autosave, every turn.** `/gm:play` and `/gm:new-campaign` run `campaign bind <dir>`, which ties this Claude Code session to the campaign. From then on the plugin's Stop hook, with no action from you, appends the turn's player prompt and your narration to `log/raw/<date>-<session>.md` and commits it (`autosave: <the player's prompt>`). Only your *text* is logged — never tool calls or their output — so the GM screen holds; anything you want in the play record belongs in the narration. `campaign unbind` stops it. Deferred saves get the log but no commits. The binding survives compaction and resume; `/clear` starts a new session, so run `/gm:play` again after it.
 - `/gm:wrap` runs `campaign checkpoint` — each session becomes a named, restorable save.
@@ -112,5 +111,5 @@ The commit identity comes from the active persona's `chronicle_identity`. When s
 - **Disk is truth; your context is a cache.** Re-read state at session start and at decision points; trust the files over your memory, especially late in a long session or after a compaction.
 - **The player is referee.** If they correct a value, the file wins — reconcile and continue.
 - **Gaps surface, never fabricate.** If the adapter lacks a rule or oracle you need, say so and ask the oracle or the player — don't invent a rule.
-- **Rolls are visible.** Always show what `bin/roll` returned; never assert a result you didn't roll. That visibility is what makes a solo roll trustable.
+- **Rolls are visible.** Always show what `roll` returned; never assert a result you didn't roll. That visibility is what makes a solo roll trustable.
 - **The screen stays sealed.** Hidden GM state (adapter `visibility: gm`) never appears in a tool call's input or output until the fiction earns it: its text goes through `gm:screen`, clocks through `campaign gm-clock`, and a reveal (`campaign gm-reveal`, a roll on a sealed table) is a deliberate act in front of the player.

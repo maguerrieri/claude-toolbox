@@ -19,7 +19,7 @@ Front-matter:
 ---
 name: generic
 extends: ironsworn-core   # optional — inherit from a base adapter (see "Composition")
-dice: ["1d100"]           # dice modes this system uses (bin/roll expressions / named modes)
+dice: ["1d100"]           # dice modes this system uses (roll expressions / named modes)
 tone: system-agnostic     # default genre/voice
 sheet: sheet-template.md
 visibility: player        # player | gm — see "Visibility (the GM screen)"

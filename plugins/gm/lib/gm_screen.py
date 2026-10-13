@@ -3,7 +3,7 @@
 Sealing is a light, reversible encoding (zlib + base64 under a one-line header). It
 guards against a glance, not a determined reader: whatever shows a changed file —
 Claude Code's Bash edit-diff view, `cat`, an editor preview, `git diff` — shows noise
-instead of the secret. bin/campaign, bin/forge and bin/roll read sealed and legacy
+instead of the secret. scripts/campaign, scripts/forge and scripts/roll read sealed and legacy
 plaintext files alike, so a campaign written before sealing keeps working; `sweep`
 seals whatever plaintext is left.
 
@@ -12,7 +12,7 @@ The one exception is a draft: the gm:screen subagent writes a secret in plaintex
 it in the same command. A draft is never sealed in place or committed; `sweep` drops
 one only once it is stale, since a fresh one may still be being written.
 
-Standard library only; shared by the bin/ scripts (they put this directory on
+Standard library only; shared by the scripts/ CLIs (they put this directory on
 sys.path).
 """
 import base64
