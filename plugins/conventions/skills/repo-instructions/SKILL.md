@@ -18,9 +18,13 @@ That native reading has one caveat. Under Claude Code's default setting it
 switches off as soon as any `CLAUDE.md`, `.claude/CLAUDE.md` or
 `CLAUDE.local.md` exists in the working directory or above it, and then
 `AGENTS.md` silently stops loading. So keep all three out of the repository,
-and don't clone it under a directory that holds one. Put a contributor's own
-notes in `~/.claude/CLAUDE.md` (it applies to every project) or a gitignored
-`.claude/rules/` file instead, neither of which turns native reading off.
+and don't clone it under a directory that holds one. That includes the main
+checkout when worktrees live inside it (ticket-workflow's default
+`.claude/worktrees/`): a `CLAUDE.local.md` there turns native reading off in
+every worktree too. Put a contributor's own notes in `~/.claude/CLAUDE.md` (it
+applies to every project, and the docs exempt it, *Harness behavior*) or a
+gitignored `.claude/rules/` file instead, neither of which turns native
+reading off.
 
 ### Optional fallback: the `@AGENTS.md` shim
 
@@ -62,7 +66,9 @@ every session behind skill discovery.
 
 ## Migration
 
-When both `CLAUDE.md` and `AGENTS.md` already exist:
+When both `CLAUDE.md` and `AGENTS.md` already exist (when only `CLAUDE.md`
+does, move its shared content into a new root `AGENTS.md` and continue from
+step 3):
 
 1. Compare them and resolve conflicts deliberately; do not concatenate them.
 2. Move shared project guidance into root `AGENTS.md` once.
@@ -71,8 +77,10 @@ When both `CLAUDE.md` and `AGENTS.md` already exist:
    migrate that consumer first or defer this repository's file migration.
 5. Delete root `CLAUDE.md` once its content is in `AGENTS.md`, or reduce it
    to the exact `@AGENTS.md` shim where native reading can't be relied on
-   (*Optional fallback*, above). Verify each supported harness loads the
-   intended context.
+   (*Optional fallback*, above). Without the shim, leave no
+   `.claude/CLAUDE.md` either: Claude-only guidance from step 3 goes in
+   `.claude/rules/`, since that file would turn native reading off too.
+   Verify each supported harness loads the intended context.
 
 User-level settings such as Codex
 `project_doc_fallback_filenames = ["CLAUDE.md"]` can ease a migration, but they
