@@ -13,8 +13,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   one to get the default set. New default plugins added to this repo should
   also be added to its dependencies.
 - **conventions** — cross-repo development conventions: commit-message and
-  PR-title formats, and a portable repository-instruction policy built around canonical root
-  `AGENTS.md` plus a pure `CLAUDE.md` import shim.
+  PR-title formats, and a portable repository-instruction policy built around a canonical root
+  `AGENTS.md`, with a pure `CLAUDE.md` import shim as an optional fallback.
 - **spawn** — generic background-session fan-out: the `spawn` skill plus the
   `/spawn` command, for firing off one or more independent `claude --bg`
   sessions and handing back without blocking.
