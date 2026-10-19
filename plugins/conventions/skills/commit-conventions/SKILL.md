@@ -90,7 +90,7 @@ PR titles follow `conventions:pr-conventions`, not this format.
   new base, not idly mid-review.
 - When rebasing, avoid commands that open interactive editors — pass
   everything via CLI flags.
-- A repo's canonical `AGENTS.md` may extend or override this; its root
-  `CLAUDE.md` should be the pure `@AGENTS.md` compatibility shim described by
-  `conventions:repo-instructions`. Org playbooks (work config) take precedence
+- A repo's canonical `AGENTS.md` may extend or override this; a root
+  `CLAUDE.md`, where the repo keeps one, should be only the optional
+  `@AGENTS.md` shim described by `conventions:repo-instructions`. Org playbooks (work config) take precedence
   in org repos.

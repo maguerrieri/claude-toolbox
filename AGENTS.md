@@ -8,9 +8,11 @@ from another repo (today only `provenance`; see Releasing).
 ## Repository instructions
 
 This root `AGENTS.md` is the canonical source for shared project instructions.
-The root `CLAUDE.md` must contain only `@AGENTS.md`; keep Claude-specific
-behavior in Claude-owned surfaces such as `.claude/rules/`, settings, or skills.
-The policy and migration guidance live in `conventions:repo-instructions`.
+This repo keeps a root `CLAUDE.md` as the optional `@AGENTS.md` shim; if it
+stays, it must contain only `@AGENTS.md`. Keep Claude-specific behavior in
+Claude-owned surfaces such as `.claude/rules/`, settings, or skills. The policy
+(a root `AGENTS.md` alone is the baseline, the shim a fallback) and migration
+guidance live in `conventions:repo-instructions`.
 
 ## Ticket workflow
 
