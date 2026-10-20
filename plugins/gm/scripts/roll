@@ -36,7 +36,7 @@ EXPR = re.compile(
     r"^(?P<n>\d*)d(?P<x>\d+)(?P<kd>k[hl]\d+)?(?P<exp>!)?(?P<mod>[+-]\d+)?$"
 )
 SIMPLE = re.compile(r"^(?P<n>\d*)d(?P<x>\d+)(?P<mod>[+-]\d+)?$")
-# NOTE: duplicated in bin/validate-adapter — keep in sync.
+# NOTE: duplicated in scripts/validate-adapter — keep in sync.
 TABLE_ENTRY = re.compile(r"^- (?:\[(?P<w>\d+)\]\s*)?(?P<text>.*)$")
 
 

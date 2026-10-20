@@ -590,12 +590,13 @@ def post_bash(env, command, sid=SID):
 
 def test_binding_seals_legacy_plaintext_before_the_first_gameplay_write(campaign_path, tmp_path):
     """The first gm-clock on an older campaign would rewrite its plaintext state in view
-    of the diff; the hook right after `campaign bind` seals it first, out of view."""
+    of the diff; the hook right after `campaign bind` seals it first, out of view. The
+    GM runs the CLI by its full path (it isn't on PATH), so that's the form tested."""
     e = gm_env(tmp_path, GM_SESSION_ID=SID)
     d = new_campaign(campaign_path, tmp_path, e)
     plaintext_screen(d)
     run(campaign_path, "bind", d, env=e)
-    p = post_bash(e, f'campaign bind "{d}"')
+    p = post_bash(e, f'"{campaign_path}" bind "{d}"')
     assert p.returncode == 0 and p.stdout == ""
     assert "Legacy plaintext" not in screen_text(d)
     assert "Legacy plaintext twist" in run(campaign_path, "gm-reveal", d, "twist", env=e).stdout
@@ -742,6 +743,12 @@ def test_mark_wrapped_matches_a_tilde_path_to_the_binding(campaign_path, tmp_pat
 
 
 # ---- hooks.json -----------------------------------------------------------
+
+def test_plugin_ships_no_top_level_bin():
+    """claude.ai-hosted marketplaces skip a plugin with a top-level bin/ (it's put on
+    PATH without showing on the admin approval surface); the CLIs live in scripts/."""
+    assert not os.path.exists(os.path.join(HERE, "..", "bin"))
+
 
 def test_hooks_json_registers_fail_safe_commands(campaign_path, tmp_path):
     hooks = json.load(open(HOOKS_JSON))["hooks"]

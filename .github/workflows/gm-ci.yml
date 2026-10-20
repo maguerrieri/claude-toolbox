@@ -20,6 +20,6 @@ jobs:
       - name: Run dice/validator tests
         run: uvx pytest plugins/gm/tests -q
       - name: Validate all adapters
-        run: python3 plugins/gm/bin/validate-adapter --all plugins/gm/adapters
+        run: python3 plugins/gm/scripts/validate-adapter --all plugins/gm/adapters
       - name: Validate all personas
-        run: python3 plugins/gm/bin/validate-adapter --personas --all plugins/gm/personas
+        run: python3 plugins/gm/scripts/validate-adapter --personas --all plugins/gm/personas

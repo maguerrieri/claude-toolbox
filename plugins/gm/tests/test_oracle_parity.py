@@ -14,7 +14,7 @@ import pytest
 HERE = os.path.dirname(__file__)
 FIXTURES_DIR = os.path.abspath(os.path.join(HERE, "fixtures", "oracles"))
 ADAPTERS_DIR = os.path.abspath(os.path.join(HERE, "..", "adapters"))
-ROLL_PATH = os.path.abspath(os.path.join(HERE, "..", "bin", "roll"))
+ROLL_PATH = os.path.abspath(os.path.join(HERE, "..", "scripts", "roll"))
 
 
 def _load_parse_table():

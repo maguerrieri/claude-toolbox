@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-session-start 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/campaign\" hook-session-start 2>/dev/null || true",
             "timeout": 10
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "p=$(cat); case \"$p\" in *bind*) printf '%s' \"$p\" | python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-post-bash 2>/dev/null;; esac; true",
+            "command": "p=$(cat); case \"$p\" in *bind*) printf '%s' \"$p\" | python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/campaign\" hook-post-bash 2>/dev/null;; esac; true",
             "timeout": 10
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-autosave 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/campaign\" hook-autosave 2>/dev/null || true",
             "timeout": 30
           }
         ]
@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/bin/campaign\" hook-autosave 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/campaign\" hook-autosave 2>/dev/null || true",
             "timeout": 30
           }
         ]
