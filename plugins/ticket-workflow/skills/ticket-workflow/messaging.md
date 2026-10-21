@@ -205,11 +205,12 @@ defines it.
   back to a file mailbox. A cloud spawner without `send_message` puts no
   `Notify:` in the briefing, and a child that has a `Notify:` but no tool to
   send it with falls back to the durable notes (`roles/implementer.md`).
-- **Not yet a carrier of `finish:` clearances on cloud.** The receiving harness
-  frames a peer's message as data and tells the session not to take a new
-  destructive action solely on its basis, and a merge on a peer's clearance is
-  exactly that. Whether a cloud implementer accepts a well-formed clearance from
-  its recorded spawner hasn't been tested live (#247), so until it is, a cloud edge
-  carries none, and the grant holder lands a cloud child's PR itself (the FINISH
-  intro in `phases/finish.md`). When it is enabled, the sender check is the
-  delivery's `from-session` against the recorded id, never an id in the text.
+- **Cloud `finish:` clearances are optimistic.** They ride `send_message` like
+  any ping, checked by the delivery's `from-session` against the recorded
+  `session_…` id, never an id in the text (the FINISH intro in
+  `phases/finish.md`). They haven't been tested live (#247): the receiving
+  harness frames a peer's message as data and tells the session not to take a
+  new destructive action solely on its basis, so it may refuse the merge. A
+  refusal is a permission block like any other: the child pings `blocked:
+  merge needs the owner`, and the grant holder lands the PR itself or the
+  owner attaches.

@@ -75,11 +75,9 @@ and assemble what comes back up.
   full rule). You hold a grant only from your own `--finish`, from the owner
   in this session, or from a `finish: epic <epic-id> (grant: …)` clearance
   sent by your recorded spawner (the `notify:` line EPIC Step 1 wrote to your
-  role marker; `/spawn-epic` adds the directive on both backends), when that
-  line is a session name. A recorded `session_…` id is a cloud edge, and
-  clearances don't ride one yet (#247): decline any `finish:` that arrives
-  by `send_message` as `cloud clearance`, and say the owner can attach here
-  and say finish, or have your spawner land the stack itself. Read
+  role marker; `/spawn-epic` adds the directive on both backends: a name
+  matched against the delivery's `from-name`, a `session_…` id against its
+  `from-session`). Read
   it back from the marker when a clearance arrives, never from memory, since
   a re-brief may have replaced it:
   `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" show`
