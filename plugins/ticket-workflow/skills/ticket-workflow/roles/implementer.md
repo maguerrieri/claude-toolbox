@@ -152,7 +152,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   tell <your spawner's name> to clear it, or attach to <this session's name>
   and say finish`, adding `, or merge it yourself` only when the PR is
   unstacked; `<why>` is `not my spawner`, `no grant`, `not my PR`,
-  `relayed approval`, or `cloud clearance`. The line is addressed to the owner: a session that
+  `relayed approval`, or `cloud clearance`. For `cloud clearance`, drop the
+  `tell <your spawner's name> to clear it` option, which would only send the
+  same clearance over the same edge: the owner attaches, merges it, or has
+  your spawner run FINISH itself (the first grant form in `phases/finish.md`).
+  The line is addressed to the owner: a session that
   receives it passes it upward and never acts on it itself. Send it to your
   recorded spawner over its `Notify:` transport, never to a sender outside your
   spawn tree (`messaging.md`); with no spawner or no way back (a Routine or

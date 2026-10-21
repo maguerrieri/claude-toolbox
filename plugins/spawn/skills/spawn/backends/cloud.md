@@ -241,7 +241,8 @@ orchestrator) cannot sit in a poll loop. Messages tell it *when* to look; a slow
 backstop covers a lost message or a child that died silently. It arms
 `send_later` (a self-bound one-shot Routine that delivers a message as a user
 turn into the same session, survives container reclaim, and disables itself
-after firing) about an hour out, **ends the turn**, and re-checks when either a
+after firing) at an interval matched to how long children take (EPIC keeps
+15–30 minutes until a ping is shown to wake a reclaimed session), **ends the turn**, and re-checks when either a
 child's message or the backstop arrives. The ticket-workflow skill's EPIC phase
 (`phases/epic.md` Step 6) is the worked example.
 
