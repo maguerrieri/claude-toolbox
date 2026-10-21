@@ -15,17 +15,17 @@ and assemble what comes back up.
   when each one restacks. Poll them to completion and assemble the stack. A
   restack itself is the child's: you ask, with a `restack:` request, and it
   rebases its own branch (`phases/epic.md` Step 7, *Restack a layer*).
-- **On the local backend only, pass `Notify: <your session name>` on each
-  child's spawn edge** (see the skill's `messaging.md`), so children wake you via
-  SendMessage on `pushed:`/`done:`/`blocked:`/`filed:`/`merged:` instead of leaving you to
-  poll blind — and you can redirect a child mid-run by the name you assigned it
-  at spawn. Pings schedule your re-checks; the PRs stay the ground truth. On the
-  cloud backend there is no cross-session channel: the spawn edge carries no
-  `Notify:`, and a `send_later` wake-up schedules your re-checks instead (the
-  skill's `phases/epic.md` Steps 5–6). A cloud child's `filed:` reaches you the
-  same way — as the "filed #<n>" note the implementer charter's fallback puts
-  in its PR body or, before a PR exists, on its issue — both of which each
-  Step 6 wake reads.
+- **Pass `Notify:` on each child's spawn edge** (see the skill's
+  `messaging.md`): your session name locally, your session id
+  (`$CLAUDE_CODE_REMOTE_SESSION_ID`) on cloud. Children then wake you on
+  `pushed:`/`done:`/`blocked:`/`filed:`/`merged:` (by `SendMessage` locally,
+  `send_message` on cloud) instead of leaving you to poll blind, and you can
+  redirect a child mid-run by the name you assigned it or the id
+  `create_session` returned. Pings schedule your re-checks; the PRs stay the
+  ground truth. On cloud a slow `send_later` backstop still covers a lost
+  ping or a child that died silently (the skill's `phases/epic.md` Step 6),
+  and each wake still reads the "filed #<n>" notes the implementer charter
+  leaves in its PR body or, before a PR exists, on its issue.
 - **Grant more review rounds** when a child stopped at its cap with held
   findings worth another round, by editing its PR's `Review rounds:` line
   and then waking it (the profile's `REVIEW_BOT`, *Raising the cap*). Never
@@ -48,8 +48,8 @@ and assemble what comes back up.
   (`claude --bg --resume`) if it is `stopped` or `done`, and **re-spawn** it only
   when it has no session or its resume fails (the skill's `phases/epic.md`
   Steps 5–6); on cloud, re-spawn it only once its session has ended, and leave a
-  still-running one alone or redirect it with a scheduled one-shot Routine
-  (Step 6), never a second session on its branch. Don't open its worktree and fix it inline. Its branch is its own too: never
+  still-running one alone or redirect it by `send_message` (a scheduled
+  one-shot Routine if the send fails; Step 6), never a second session on its branch. Don't open its worktree and fix it inline. Its branch is its own too: never
   rebase or push it, even to restack it; send the `restack:` request instead.
   A request to fix, change, or build something names an *outcome*, not an *actor*; at this altitude the actor is
   a spawned implementer (use the existing issue or file one, then
@@ -58,7 +58,7 @@ and assemble what comes back up.
   the altitude to steer the rest of the stack.
 - **Plan new epics** or grow scope beyond this epic's children. New epics are the
   planner's call — surface them, don't start them.
-- **Reassign or hand additional issues to a live child via SendMessage** — a
+- **Reassign or hand additional issues to a live child by message** — a
   running child is keyed to the one issue it was spawned for, and it will
   decline. Spawn the new issue instead (`/spawn-tickets`); messages to a child
   are redirects about *its* issue only — see `messaging.md`.
@@ -92,9 +92,9 @@ and assemble what comes back up.
   say how to sequence that (#207 adds it). Until it does, send no child a
   `finish:`, and land what the grant covers yourself. Never clear a grandchild or a sibling, and never pass an approval on
   any other way. Once Step 7 is done, ping `merged: epic <epic-id>` or
-  `blocked: <why>` to your recorded spawner, if you have one. A cloud or
-  interactive coordinator has none, so it reports through its normal
-  aggregate hand-back. Without a grant, report the ready stack as
+  `blocked: <why>` to your recorded spawner, if you have one. An interactive
+  coordinator has none, so it reports through its normal aggregate
+  hand-back. Without a grant, report the ready stack as
   `ready; needs the owner`, with the ways to land it: the owner tells your
   spawner to clear the epic, or attaches to *this* session and says finish
   (Step 7 then lands it bottom-up, gates included, each child restacking its

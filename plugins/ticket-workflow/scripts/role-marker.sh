@@ -2,7 +2,7 @@
 # role-marker.sh — every read and write of this session's role marker that the
 # ticket-workflow docs describe. The marker is one file per session under the
 # roles directory: the role on its first line, then any `issue: <id>` lines a
-# self-pinned implementer recorded, then at most one `notify: <session name>`
+# self-pinned implementer recorded, then at most one `notify: <session name or id>`
 # line. The hooks read it (role-session-start.sh, role-guard.sh); nothing but
 # this script writes it.
 #
