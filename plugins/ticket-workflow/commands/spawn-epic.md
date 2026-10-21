@@ -48,7 +48,7 @@ create_session({
 })
 ```
 
-   Mind `backends/cloud.md`'s slash-command caveat: a prompt that *begins* with `/start-epic` is dispatched as a command before the model runs, and an environment where the plugin isn't installed rejects the launch ("Unknown command"). The child inherits your environment, so if *you* reached this command as a slash command the prompt above is right; if you are following this file because the command wasn't there, open the prompt with prose instead — `Run the epic <epic-id>. Read <path>/plugins/ticket-workflow/skills/ticket-workflow/SKILL.md and its phases/epic.md and follow the EPIC phase for: $ARGUMENTS` — then the `Role: epic-coordinator` line.
+   Mind `backends/cloud.md`'s slash-command caveat: a prompt that *begins* with `/start-epic` is dispatched as a command before the model runs, and an environment where the plugin isn't installed rejects the launch ("Unknown command"). The child inherits your environment, so if *you* reached this command as a slash command the prompt above is right; if you are following this file because the command wasn't there, open the prompt with prose instead — `Run the epic <epic-id>. Read <path>/plugins/ticket-workflow/skills/ticket-workflow/SKILL.md and its phases/epic.md and follow the EPIC phase for: $ARGUMENTS` — then the `Role: epic-coordinator` line and, as step 1 says, the `Notify: <your session id>` line last.
 
    `<quick description>`: an under-5-word summary of the epic, recognizable in the session list. The `epic —` marker distinguishes this orchestrator session from the `<epic-id-lower>-<id-lower>` child sessions it will spawn.
 
