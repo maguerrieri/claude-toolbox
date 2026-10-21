@@ -110,10 +110,15 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
 - **Spawn work beyond your issue** — no sibling sessions for discoveries or
   follow-ups, however tempting. A leaf has no children *sessions* owning work
   of their own; file + ping (above) is your whole interface for routing new
-  work upward. The issue-spawning entry points check your pinned marker and
-  refuse (`/spawn-tickets`, `/make-ticket --spawn`/`--start`, `/start-epic`,
-  `/spawn-epic`; the skill's *implementer spawn guard*), and the PreToolUse
-  hook denies a hand-rolled one, so drift fails loudly, not silently.
+  work upward. That holds when someone *asks* you to spawn, too: hand the
+  request back rather than refusing it. File it if needed, ping your
+  `Notify:` spawner `filed: <id> (already open), suggest spawning` (or record
+  it on your issue/PR with no `Notify:`), and tell the asker in one line
+  where it went. The issue-spawning entry points check your pinned marker and
+  route a spawn this way instead of running it (`/spawn-tickets`,
+  `/make-ticket --spawn`/`--start`, `/start-epic`, `/spawn-epic`; the skill's
+  *implementer spawn guard*), and the PreToolUse hook denies a hand-rolled
+  one, so drift fails loudly, not silently.
 - **Split or re-plan the issue you own** — splitting the current issue, or
   restructuring the work, is the tier above's call. Filing a *follow-up* ticket
   for adjacent work is fine (see above); routing it is not.

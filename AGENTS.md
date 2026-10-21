@@ -49,7 +49,8 @@ coordinator's actor test on every prompt, and gate a pinned planner's edits and
 memory directory: the job directory, `/tmp`, `$TMPDIR`, and
 `<config>/projects/*/memory/`); the lower tiers are injected by
 `/spawn-epic` and the SPAWN/EPIC phases. A pinned implementer can't spawn
-issue work: the issue-spawning entry points check its marker and refuse, and a
+issue work: the issue-spawning entry points check its marker and hand the spawn
+back to its `Notify:` spawner instead of running it, and a
 hook denies a hand-rolled `claude --bg`/`-p` or `create_session` that leads
 with an issue-spawning command (its tests:
 `bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can it start a
@@ -85,7 +86,8 @@ change ask gets an issue first: the channel session files it before starting the
 thread, and a thread started on one with no issue files its own and takes it on. It starts each
 issue's thread on the branch stem `claude/<BRANCH(id)>`, so the branch is named after
 the issue (the harness appends a suffix), and the thread keeps the branch it's given. The `spawn` skill
-launches nothing there either; a thread points at the project chat, and the channel session
+launches nothing there either; a thread hands a spawn ask back to the project chat
+(`message_coordinator`, with the person's message attached), and the channel session
 starts threads itself.
 
 ## Development workflow
