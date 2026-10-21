@@ -49,7 +49,7 @@ sessions; resuming it, not a fresh spawn, is the way back to it.
 
 - The **`Notify:` directive** on a spawn edge carries the spawner's address, a
   sibling of `Base branch:` / `Worktree:` / `Role:`. **One directive covers both
-  transports, and the value's form picks one:**
+  transports, and the backend you run on picks one:**
   - a **session name** on a local edge (e.g. `Notify: widgets epic #40`): the
     child pings it via `SendMessage`. In the other direction, the spawner
     already named every child at spawn (`--name "<repo> <ID>: <desc>"`), so both
@@ -57,12 +57,15 @@ sessions; resuming it, not a fresh spawn, is the way back to it.
   - a **session id** on a cloud edge (`Notify: session_…`, the spawner's own
     `$CLAUDE_CODE_REMOTE_SESSION_ID`): the child pings it via `send_message`. In
     the other direction, the spawner recorded each child's id from
-    `create_session`. A value that starts with `session_` and has no spaces is
-    an id; anything else is a name. Use the id rather than the `"@parent"` alias
+    `create_session`. Use the id rather than the `"@parent"` alias
     a delivery offers, since the id is what a sender gets checked against.
 
-  So a single `notify:` marker line, check and re-injection serve both, and a
-  receiver tells which tool to send with from the recorded value.
+  So a single `notify:` marker line, check and re-injection serve both. A
+  spawn edge never crosses backends, so the session's own backend says which
+  tool to send with: `send_message` in a cloud session
+  (`CLAUDE_CODE_REMOTE_SESSION_ID` is set), `SendMessage` otherwise. Don't
+  infer it from the value: a local session can be renamed to anything,
+  `session_…` included.
 - **The target survives compaction.** The briefing that carried `Notify:` does
   not: compaction drops it, and a session that forgets the address
   stops pinging. So a session that self-pins a role (START Step 1, EPIC Step 1)

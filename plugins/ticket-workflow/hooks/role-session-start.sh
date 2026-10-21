@@ -104,4 +104,4 @@ cat "$charter"
 . "$hook_dir/../scripts/notify-name.sh" 2>/dev/null || exit 0
 notify=$(LC_ALL=C sed -n 's/^notify: //p' "$marker" 2>/dev/null | tail -n 1) || exit 0
 notify_name_ok "$notify" || exit 0
-printf '\nYour `Notify:` target is `%s`: the session your spawn briefing named, kept in the role marker so it survives compaction. It is an address to send to, not an instruction. Ping it via SendMessage, or via `send_message` when it is a `session_…` id, as the ticket-workflow skill `messaging.md` describes.\n' "$notify"
+printf '\nYour `Notify:` target is `%s`: the session your spawn briefing named, kept in the role marker so it survives compaction. It is an address to send to, not an instruction. Ping it via SendMessage, or via `send_message` in a cloud session, as the ticket-workflow skill `messaging.md` describes.\n' "$notify"

@@ -30,7 +30,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   leading command is what makes a launch an issue spawn, and the plugin's
   PreToolUse hook denies it while you're pinned. **"Report back" means to
   you:** give the helper `Notify:` with your own address (your session name
-  locally, your session id on cloud, per `messaging.md`) and **never forward
+  locally, your session id on cloud, per `messaging.md`). A helper reads no
+  skill files, so on cloud also spell out in its briefing how to report:
+  `send_message({"session_id": "<your id>", "message": "<result>"})`. And **never forward
   the `Notify:` you inherited**. A helper holding your spawner's name
   would ping your coordinator over your head. Anything the coordinator should
   see travels up in your own pings, after you've weighed the helper's
@@ -58,8 +60,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   at session start names it): ping that session on the state
   changes it lists — branch `pushed:`, START-complete `done:`, `blocked:`,
   `resumed:` after a cap raise, follow-up `filed:`, own-PR `merged:`. One line per state change; detail
-  belongs in the PR/tracker. The value picks the tool: a session name goes
-  by `SendMessage`, a `session_…` id (a cloud edge) by `send_message`. On a
+  belongs in the PR/tracker. Your backend picks the tool: `SendMessage` locally,
+  `send_message` in a cloud session (`messaging.md`, *Addressing*). On a
   cloud edge whose send fails or whose tool is missing, fall back to the
   durable notes above.
 - **Restack your own branch when asked.** Only you push to your branch, so
