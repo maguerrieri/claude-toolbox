@@ -178,17 +178,44 @@ Two things about `list_sessions` that aren't obvious from its name:
   filter for OAuth callers and errors otherwise. The `tags` you set at launch are
   for the user's own listings, not for yours.
 
-## No wake-up channel on this edge
+## Messaging on this edge: `send_message` by session id
 
-`ListAgents` does not see cloud siblings and `SendMessage` cannot reach them —
-verified against a live, connected child spawned from this same backend, in **both**
-directions. So:
+Cloud sessions reach each other through the session-management server's
+**`send_message({"session_id": "<id>", "message": "<text>"})`**, addressed by
+session id, not through the harness's `SendMessage`, which addresses sessions by
+name. Two findings, both still true:
 
-- Emit **no** `Notify:` directive in a cloud sibling's briefing; there is
-  nothing for the child to ping and nothing that can poke it back.
-- A caller that needs to know when a child finished **polls** — `get_session(id)`
-  for session status, and for ticket work the PR/tracker state that is the durable
-  record anyway.
+- **`SendMessage` and `ListAgents` don't cross containers.** `ListAgents` lists
+  sessions on this machine only, and `SendMessage` to a cloud sibling's title
+  comes back unreachable. Verified 2026-09-10 against a live, connected child in
+  both directions; `ListAgents` from a cloud session on 2026-10-21 still reported
+  only its own container ("no other Claude session is running on this machine").
+- **`send_message` does, in both directions.** Verified 2026-10-21 between a
+  cloud planner and a cloud epic coordinator it had launched: the planner's send
+  returned `{"status":"delivered"}`, and the coordinator's reply, sent with the
+  same tool to the planner's id, reached the planner about a second later as a
+  queued notification, read with `ReadNotifications` (origin "message from
+  another Claude session") and wrapped in `<cross-session-message
+  from-session="session_…">`. The delivered envelope also offered `"@parent"`
+  as a child's address for its creator.
+
+So:
+
+- **The spawner's id is the child's notify target.** It's
+  `$CLAUDE_CODE_REMOTE_SESSION_ID` in the spawner, and the caller puts it in the
+  briefing (the ticket layer's `Notify: <session id>`); prefer it to `"@parent"`,
+  since the id is what a receiver checks `from-session` against. The child's id
+  is the one `create_session` returned, which you recorded per unit.
+- **The sender is `from-session`**, stamped by the server; a name or id written
+  in the message text is not the sender.
+- **Delivery is queued, not guaranteed.** Not yet verified: whether a send wakes
+  a session that is idle with its container reclaimed. The tool descriptions
+  point that way (`unarchive_session` says a fresh container is provisioned "on
+  the next send_message"), but treat it as at-least-once-on-next-wake and keep
+  the durable record (PR and tracker state, `get_session`) as the ground truth.
+- **If the tool isn't in your tool list**, search for it before concluding it's
+  unavailable (it has the same server as `create_session`). Without it, the edge
+  degrades to polling plus the Routine poke below.
 
 `get_session` returns status, not a transcript; reading what a stuck child actually
 did means opening it in the web UI.
@@ -207,17 +234,21 @@ profile's `SPAWN_CAP` carries that sentence. Generic `spawn` adds no cap of its
 own, so an ad-hoc cloud child that opens a PR arms the check-in unless its
 briefing says not to.
 
-**The poller is itself reclaimed while it waits.** A cloud container is released
-after a period of inactivity, and a turn spent waiting on children is inactivity —
-so a caller that must outlive its children (an aggregating orchestrator) cannot
-sit in a poll loop. It arms `send_later` (a self-bound one-shot Routine that
-delivers a message as a user turn into the same session, survives container
-reclaim, and disables itself after firing), **ends the turn**, and re-checks when
-the message arrives. The ticket-workflow skill's EPIC phase (`phases/epic.md`
-Step 6) is the worked example.
+**A long-running caller still needs a backstop wake.** A cloud container is
+released after a period of inactivity, and a turn spent waiting on children is
+inactivity, so a caller that must outlive its children (an aggregating
+orchestrator) cannot sit in a poll loop. Messages tell it *when* to look; a slow
+backstop covers a lost message or a child that died silently. It arms
+`send_later` (a self-bound one-shot Routine that delivers a message as a user
+turn into the same session, survives container reclaim, and disables itself
+after firing) at an interval matched to how long children take (EPIC keeps
+15–30 minutes until a ping is shown to wake a reclaimed session), **ends the turn**, and re-checks when either a
+child's message or the backstop arrives. The ticket-workflow skill's EPIC phase
+(`phases/epic.md` Step 6) is the worked example.
 
-**The one working spawner→child path is a scheduled Routine, and it is
-narrow.** Verified 2026-09-10 against a live child, three ways at once:
+**A scheduled Routine is the fallback spawner→child path.** Use it when
+`send_message` isn't available or a send to the child fails. Verified 2026-09-10
+against a live child, three ways at once:
 
 - `create_trigger({"persistent_session_id": "<child id>", "run_once_at":
   "<a minute or more ahead>", "prompt": "<message>", "initiation":
@@ -231,9 +262,6 @@ narrow.** Verified 2026-09-10 against a live child, three ways at once:
   that isn't your own — the message is fixed at creation; to say something else,
   create another Routine.
 
-So it is a one-shot, minute-granularity, same-account **poke**, not a
-conversation: fine for a rare redirect ("stop", "rebase onto <base>"), wrong for
-anything chatty, and it goes one way — the child cannot reach you back (a child
-could bind a Routine to *your* id the same way, but nothing in this backend
-arranges that, so don't count on it). Everything a child needs by default still
-goes in its `prompt`.
+So it is a one-shot, minute-granularity, same-account **poke**: fine for a rare
+redirect ("stop", "rebase onto <base>"), wrong for anything chatty. Everything a
+child needs by default still goes in its `prompt`.

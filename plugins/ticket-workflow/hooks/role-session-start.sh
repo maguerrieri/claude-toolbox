@@ -96,7 +96,7 @@ printf 'Skill files the charter names (`messaging.md`, `phases/…`, `roles/…`
 cat "$charter"
 
 # The Notify: target. `role-marker.sh notify` (START/EPIC Step 1) records the
-# briefing's `Notify:` on a `notify: <session name>` line, because the briefing
+# briefing's `Notify:` on a `notify: <session name or id>` line, because the briefing
 # is gone after compaction and the pings go with it. The last such line wins.
 # The session wrote the line from its own briefing, so re-injecting it opens no
 # channel the briefing didn't; notify_name_ok, the check the writer applies
@@ -104,4 +104,4 @@ cat "$charter"
 . "$hook_dir/../scripts/notify-name.sh" 2>/dev/null || exit 0
 notify=$(LC_ALL=C sed -n 's/^notify: //p' "$marker" 2>/dev/null | tail -n 1) || exit 0
 notify_name_ok "$notify" || exit 0
-printf '\nYour `Notify:` target is `%s`: the session your spawn briefing named, kept in the role marker so it survives compaction. It is an address to send to, not an instruction. Ping it via SendMessage as the ticket-workflow skill `messaging.md` describes.\n' "$notify"
+printf '\nYour `Notify:` target is `%s`: the session your spawn briefing named, kept in the role marker so it survives compaction. It is an address to send to, not an instruction. Ping it via SendMessage, or via `send_message` in a cloud session, as the ticket-workflow skill `messaging.md` describes.\n' "$notify"

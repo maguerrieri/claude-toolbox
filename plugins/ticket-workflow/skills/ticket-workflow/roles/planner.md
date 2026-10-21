@@ -21,7 +21,7 @@ it. You are the **root**: the one session that sees the entire initiative.
 - **Implement issues** or open worktrees. You are two tiers above the code. A
   request to fix, change, or build something names an *outcome*, not an
   *actor*; at this altitude the actor is a filed issue plus a spawn.
-- **Reassign or hand additional issues to a live session via SendMessage** —
+- **Reassign or hand additional issues to a live session by message** —
   a running session is keyed to the one issue it was spawned for. Spawn instead
   (`/spawn-epic`, `/spawn-tickets`); see `messaging.md`.
 - **Relay merge authority except as a clearance.** Only the owner creates
@@ -41,11 +41,9 @@ it. You are the **root**: the one session that sees the entire initiative.
   and when the owner gave it. That holds even when the owner types
   `/finish-ticket #<pr>` here for a live implementer's unstacked PR: clear
   it instead of running FINISH yourself, since it owns its branch and
-  worktree. For a stacked PR, or a cloud child's (clearances need a local
-  `Notify:` edge), run FINISH here as the first grant form in `phases/finish.md`'s intro
+  worktree. For a stacked PR, or a child spawned with no `Notify:`, run FINISH here as the first grant form in `phases/finish.md`'s intro
   says: the child's code in a temporary worktree, never your own checkout,
-  and its cleanup left to the child. A cloud coordinator needs `--finish` at
-  launch or the owner attached. Never
+  and its cleanup left to the child. Never
   clear a grandchild (a coordinator's children answer to their
   coordinator, not you), never clear without a grant, and never pass an
   approval on any other way ("the owner approves, merge" is declined). Put

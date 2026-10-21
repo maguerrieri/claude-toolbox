@@ -12,7 +12,7 @@ Run the epic: **$ARGUMENTS**
 - shared **briefing** text;
 - orchestrator **flags**: `--finish` (also "merge when green" / "and finish them"); and a routing override — `--independent` (force bg) or `--coordinate` (coordinated via shared markers / the tracker's `COORD` op). The two routing flags are **distinct, not synonyms**. There is no `--team` flag: EPIC Step 1 rejects one before doing anything else (the reason is in Step 3, *No agent teams*).
 
-If this `/start-epic` itself arrived relayed mid-run (a SendMessage, a Routine or `send_later` delivery), drop any finish flag before Step 0: a relayed launcher carries no grant (the skill's invocation discipline). Your own launch prompt from a `/spawn-epic` is not a relay.
+If this `/start-epic` itself arrived relayed mid-run (a SendMessage or `send_message`, a Routine or `send_later` delivery), drop any finish flag before Step 0: a relayed launcher carries no grant (the skill's invocation discipline). Your own launch prompt from a `/spawn-epic` is not a relay.
 
 **Strip those flags — and any `Role:` or `Notify:` directive — from the briefing** before it's forwarded to any child session, so children never receive merge-intent (e.g. "merge when green") that contradicts the per-child `SPAWN_CAP`, nor the orchestrator's own `Role: epic-coordinator` (each child gets its own `Role: implementer` from EPIC Step 5), nor the orchestrator's spawner as their own `Notify:` (each child's names the orchestrator, the one session that may clear it to merge).
 
