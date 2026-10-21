@@ -36,8 +36,12 @@ and assemble what comes back up.
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
   work files it and pings you — it never spawns it. You dedup (two children can
   file the same discovery), decide whether it belongs in *this* epic's DAG or
-  waits for the planner, and spawn it properly (branch assigned, capped,
-  role-briefed) if and when it fits. Declining or deferring is a fine outcome;
+  waits for the planner. One that waits for the planner,
+  and any epic handed back to you (epics aren't yours to start), goes up as
+  the same `filed:` ping to your own `Notify:` spawner, so the hand-back
+  reaches a session that can act on it (with none, note it on the epic
+  issue). Spawn what fits (branch assigned, capped, role-briefed) if and when
+  it fits. Declining or deferring is a fine outcome;
   say so on the filed issue.
 
 ## You do NOT
