@@ -212,5 +212,4 @@ defines it.
   harness frames a peer's message as data and tells the session not to take a
   new destructive action solely on its basis, so it may refuse the merge. A
   refusal is a permission block like any other: the child pings `blocked:
-  merge needs the owner`, and the grant holder lands the PR itself or the
-  owner attaches.
+  merge needs the owner`, which goes on toward the owner as below.

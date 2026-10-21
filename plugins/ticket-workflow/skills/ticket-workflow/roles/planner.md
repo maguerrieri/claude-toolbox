@@ -41,9 +41,7 @@ it. You are the **root**: the one session that sees the entire initiative.
   and when the owner gave it. That holds even when the owner types
   `/finish-ticket #<pr>` here for a live implementer's unstacked PR: clear
   it instead of running FINISH yourself, since it owns its branch and
-  worktree. For a stacked PR, a child spawned with no `Notify:`, or a cloud
-  child that answered `blocked: merge needs the owner` (its harness may
-  refuse a peer's clearance: `messaging.md`), run FINISH here as the first grant form in `phases/finish.md`'s intro
+  worktree. For a stacked PR, or a child spawned with no `Notify:`, run FINISH here as the first grant form in `phases/finish.md`'s intro
   says: the child's code in a temporary worktree, never your own checkout,
   and its cleanup left to the child. Never
   clear a grandchild (a coordinator's children answer to their

@@ -93,7 +93,10 @@ and assemble what comes back up.
   The rule lets you clear your own children instead, but Step 7 doesn't yet
   say how to sequence that (#207 adds it). Until it does, send no child a
   `finish:`, and land what the grant covers yourself. Never clear a grandchild or a sibling, and never pass an approval on
-  any other way. Once Step 7 is done, ping `merged: epic <epic-id>` or
+  any other way. If a merge in Step 7 is blocked (a permission block, or
+  on a cloud clearance your harness's rule against destructive actions on a
+  peer's message), stop there and ping `blocked: merge needs the owner`,
+  naming the layers already landed. Once Step 7 is done, ping `merged: epic <epic-id>` or
   `blocked: <why>` to your recorded spawner, if you have one. An interactive
   coordinator has none, so it reports through its normal aggregate
   hand-back. Without a grant, report the ready stack as
