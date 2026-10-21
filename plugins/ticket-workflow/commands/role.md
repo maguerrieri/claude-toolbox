@@ -105,7 +105,8 @@ the same command with that path in place of
    edit guard — edits and entering a worktree prompt for approval until
    `/role none`; `planner` and `epic-coordinator` get a one-line reminder on
    every prompt; `implementer`
-   arms the spawn guard — issue-spawning entry points refuse and issue-spawn
-   launches are denied until `/role none`), and that it survives
+   arms the spawn guard — issue-spawning entry points hand the spawn back
+   (a `Notify:` ping, or a note on the issue/PR) instead of running it, and issue-spawn launches are
+   denied until `/role none`), and that it survives
    resume/compaction but not `/clear` or a fork, after which `/role` is run
    again.

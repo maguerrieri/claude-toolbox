@@ -268,9 +268,9 @@ Approve to $what anyway, or run '/role none' to drop the charter for the rest of
 implementer:Bash | implementer:create_session | implementer:mcp__*__create_session)
 	printf '%s' "$input" | jq -e -f "$hook_dir/role-guard-launch.jq" >/dev/null 2>&1 || exit 0
 	decision=deny
-	reason="This session is pinned to the implementer charter, which owns exactly one issue. Launching a session that leads with /start-ticket, /start-epic, /spawn-tickets, /spawn-epic, or /make-ticket --spawn or --start spawns work for an issue, and that allocation is your coordinator's call, not yours.
+	reason="This session is pinned to the implementer charter, which owns exactly one issue. Launching a session that leads with /start-ticket, /start-epic, /spawn-tickets, /spawn-epic, or /make-ticket --spawn or --start spawns work for an issue, and that allocation is your coordinator's call, so hand the spawn back to it rather than dropping it.
 
-Instead: file the work (plain /make-ticket, no --spawn or --start), ping your Notify: spawner 'filed: #<n>, suggest spawning' (or 'blocked: ...' if it blocks your acceptance criteria), or note it on your issue/PR when no Notify: is wired, then return to your own issue.
+Hand it back: file the work (plain /make-ticket, no --spawn or --start), ping your Notify: spawner 'filed: #<n>, suggest spawning' ('filed: #<n> (already open), ...' for an issue you didn't just file; 'blocked: ...' if it blocks your acceptance criteria), or note it on your issue/PR when no Notify: is wired. Tell whoever asked where the request went, then return to your own issue.
 
 A helper session for this issue's own work is fine: give it a prompt that leads with the task, not an issue-spawning command. If this command only quotes such a launch (a commit message or PR body), pass that text through a file. A human steering this session can override with '/role none'."
 	;;

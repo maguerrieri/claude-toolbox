@@ -6,7 +6,7 @@ Fan out parallel ticket work: spawn one background session per issue, each runni
 
 ## Step 1 — Parse the request
 
-First run the **implementer spawn guard** (`SKILL.md`, Session roles): a pinned implementer spawns nothing here and pings `filed: <id> (already open), suggest spawning` for each ID instead.
+First run the **implementer spawn guard** (`SKILL.md`, Session roles): a pinned implementer spawns nothing here and hands the spawn back instead: it pings `filed: <id> (already open), suggest spawning` for each ID and tells the asker where the request went.
 
 One or more issue IDs, optionally with briefing text. Common shapes:
 - `ABC-12 ABC-13 ABC-14` — three issues, default briefing each
