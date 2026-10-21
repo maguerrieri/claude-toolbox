@@ -50,7 +50,8 @@ memory directory: the job directory, `/tmp`, `$TMPDIR`, and
 `<config>/projects/*/memory/`); the lower tiers are injected by
 `/spawn-epic` and the SPAWN/EPIC phases. A pinned implementer can't spawn
 issue work: the issue-spawning entry points check its marker and hand the spawn
-back to its `Notify:` spawner instead of running it, and a
+back instead of running it (a `Notify:` ping to its spawner, or a note on its
+issue/PR with none), and a
 hook denies a hand-rolled `claude --bg`/`-p` or `create_session` that leads
 with an issue-spawning command (its tests:
 `bash plugins/ticket-workflow/tests/test-role-guard.sh`). Nor can it start a

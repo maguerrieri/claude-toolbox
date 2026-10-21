@@ -111,10 +111,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   follow-ups, however tempting. A leaf has no children *sessions* owning work
   of their own; file + ping (above) is your whole interface for routing new
   work upward. That holds when someone *asks* you to spawn, too: hand the
-  request back rather than refusing it. File it if needed, ping your
-  `Notify:` spawner `filed: <id> (already open), suggest spawning` (or record
-  it on your issue/PR with no `Notify:`), and tell the asker in one line
-  where it went. The issue-spawning entry points check your pinned marker and
+  request back rather than refusing it, as the skill's *implementer spawn
+  guard* says: file if needed, the `filed:` ping (or a note on your issue/PR
+  with no `Notify:`), and one line telling the asker where it went. The
+  issue-spawning entry points check your pinned marker and
   route a spawn this way instead of running it (`/spawn-tickets`,
   `/make-ticket --spawn`/`--start`, `/start-epic`, `/spawn-epic`; the skill's
   *implementer spawn guard*), and the PreToolUse hook denies a hand-rolled
