@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/influence",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Forsaken — Banished or forgotten"},
+    {"max": 30, "result": "Isolated — Limited influence in a remote location"},
+    {"max": 50, "result": "Localized — Marginal influence in a small area"},
+    {"max": 70, "result": "Established — Strong influence in a small area"},
+    {"max": 85, "result": "Notable — Dispersed influence across a moderate area"},
+    {"max": 95, "result": "Dominant — Far-reaching influence across a large area"},
+    {"max": 100, "result": "Inescapable — Pervasive influence across a vast area"}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/swamp",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Abandoned boat or raft"},
+    {"max": 10, "result": "Ancient tree with sprawling root system"},
+    {"max": 15, "result": "Barricade of rotting logs"},
+    {"max": 20, "result": "Crumbling, moss-covered monument"},
+    {"max": 25, "result": "Dank cave hung with curtains of moss"},
+    {"max": 30, "result": "Decaying, half-sunk homestead"},
+    {"max": 35, "result": "Dense canopy of intertwined branches"},
+    {"max": 40, "result": "Insects swarm above stagnant water"},
+    {"max": 45, "result": "Large sandy island topped by trees"},
+    {"max": 50, "result": "Murky waterway through misty woods"},
+    {"max": 55, "result": "Pond filled with fragrant, floating flowers"},
+    {"max": 60, "result": "Ramshackle bridges connect dry land"},
+    {"max": 65, "result": "Rocky hillock"},
+    {"max": 70, "result": "Slow-moving, muddy channel"},
+    {"max": 75, "result": "Solitary hut on stilts"},
+    {"max": 80, "result": "Stirrings of a large creature"},
+    {"max": 85, "result": "Tangled thicket of tree roots and shrubs"},
+    {"max": 90, "result": "Thick vegetation in mucky soil"},
+    {"max": 95, "result": "Watery maze of towering tree trunks"},
+    {"max": 100, "result": "Wrecked ship or boat"}
+  ]
+}

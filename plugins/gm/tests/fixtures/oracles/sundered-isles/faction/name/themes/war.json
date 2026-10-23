@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/war",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Battleborn · Persona: Arrows"},
+    {"max": 20, "result": "Aspect: Bloodied · Persona: Blades"},
+    {"max": 30, "result": "Aspect: Crimson · Persona: Defenders"},
+    {"max": 40, "result": "Aspect: Flamebringer · Persona: Fighters"},
+    {"max": 50, "result": "Aspect: Hellfire · Persona: Gauntlets"},
+    {"max": 60, "result": "Aspect: Ironclad · Persona: Hounds"},
+    {"max": 70, "result": "Aspect: Scarlet · Persona: Knights"},
+    {"max": 80, "result": "Aspect: Steelheart · Persona: Talons"},
+    {"max": 90, "result": "Aspect: Undaunted · Persona: Vanguards"},
+    {"max": 100, "result": "Aspect: Warforged · Persona: Wolves"}
+  ]
+}

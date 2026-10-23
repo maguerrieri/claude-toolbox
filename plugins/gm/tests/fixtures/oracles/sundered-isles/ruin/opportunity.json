@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/ruin/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Access to an untouched area"},
+    {"max": 10, "result": "Advance warning of a danger"},
+    {"max": 15, "result": "Awe-inspiring architecture"},
+    {"max": 20, "result": "Clue reveals a new aspect of this place"},
+    {"max": 25, "result": "Cooperative fellow explorer"},
+    {"max": 30, "result": "Culturally significant object or artwork"},
+    {"max": 35, "result": "Evidence that others passed this way"},
+    {"max": 40, "result": "Friendly inhabitant"},
+    {"max": 45, "result": "Heartwarming glimpse of past lives"},
+    {"max": 50, "result": "Helpful archive of past events"},
+    {"max": 55, "result": "Key to access a hidden or sealed area"},
+    {"max": 60, "result": "Key to understand a cipher or language"},
+    {"max": 65, "result": "Map or markers point the way"},
+    {"max": 70, "result": "Moment of fellowship or inner peace"},
+    {"max": 75, "result": "Secure area offers a moment of peace"},
+    {"max": 80, "result": "Shortcut or detour along a safe path"},
+    {"max": 85, "result": "Source of fresh water"},
+    {"max": 90, "result": "Useful gear left by another explorer"},
+    {"max": 95, "result": "Useful or interesting artifact or device"},
+    {"max": 100, "result": "Treasure (`oracles/treasure/`)"}
+  ]
+}

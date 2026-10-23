@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/disposition",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Helpful"},
+    {"max": 15, "result": "Friendly"},
+    {"max": 20, "result": "Persuadable"},
+    {"max": 30, "result": "Curious"},
+    {"max": 45, "result": "Indifferent"},
+    {"max": 55, "result": "Suspicious"},
+    {"max": 65, "result": "Wanting"},
+    {"max": 75, "result": "Desperate"},
+    {"max": 80, "result": "Demanding"},
+    {"max": 85, "result": "Unfriendly"},
+    {"max": 95, "result": "Threatening"},
+    {"max": 100, "result": "Hostile"}
+  ]
+}

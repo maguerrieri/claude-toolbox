@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/mission_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Acting to fulfill a dreadful bargain"},
+    {"max": 25, "result": "Bound unwillingly to the service of a cursed power"},
+    {"max": 35, "result": "Corrupted or sickened by the effects of a cursed ship or relic"},
+    {"max": 50, "result": "Desperately working in defiance of a cursed power"},
+    {"max": 60, "result": "Granted unusual abilities or resources by a cursed power"},
+    {"max": 75, "result": "In zealous service of a cursed power"},
+    {"max": 90, "result": "Suffering under the deprivations of a cursed captain"},
+    {"max": 100, "result": "Unwittingly helping or unleashing a cursed power"}
+  ]
+}

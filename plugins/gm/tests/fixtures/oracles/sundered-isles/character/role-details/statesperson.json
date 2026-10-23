@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/statesperson",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aristocrat"},
+    {"max": 20, "result": "Bureaucrat"},
+    {"max": 30, "result": "Commander"},
+    {"max": 40, "result": "Courtesan"},
+    {"max": 50, "result": "Courtier"},
+    {"max": 60, "result": "Diplomat"},
+    {"max": 70, "result": "Interpreter"},
+    {"max": 80, "result": "Lawkeeper"},
+    {"max": 90, "result": "Politician"},
+    {"max": 100, "result": "Tax collector"}
+  ]
+}

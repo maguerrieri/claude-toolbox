@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/rebellion",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Apostate · Persona: Crows"},
+    {"max": 20, "result": "Aspect: Forsworn · Persona: Gulls"},
+    {"max": 30, "result": "Aspect: Free · Persona: Marauders"},
+    {"max": 40, "result": "Aspect: Mutinous · Persona: Outcasts"},
+    {"max": 50, "result": "Aspect: Rebel · Persona: Pirates"},
+    {"max": 60, "result": "Aspect: Sovereign · Persona: Reavers"},
+    {"max": 70, "result": "Aspect: Tidebound · Persona: Drifters"},
+    {"max": 80, "result": "Aspect: Unbound · Persona: Relics"},
+    {"max": 90, "result": "Aspect: Unchained · Persona: Shards"},
+    {"max": 100, "result": "Aspect: Wayward · Persona: Tempests"}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/goals_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 6, "result": "Avert a harrowing prophecy or vision"},
+    {"max": 12, "result": "Awaken an ancient evil"},
+    {"max": 18, "result": "Banish a restless spirit"},
+    {"max": 24, "result": "Bring about an unspeakable prophecy"},
+    {"max": 28, "result": "Control a monstrous beast"},
+    {"max": 32, "result": "Destroy an object of terrifying power"},
+    {"max": 38, "result": "Escape or undo a curse"},
+    {"max": 42, "result": "Find the truth of a nightmarish legend"},
+    {"max": 46, "result": "Gather components of a baleful ritual"},
+    {"max": 50, "result": "Gather supplicants for a dreadful faith"},
+    {"max": 56, "result": "Infiltrate a forsaken location"},
+    {"max": 62, "result": "Inflict a curse or corruption upon others"},
+    {"max": 66, "result": "Resist the call of a malevolent power"},
+    {"max": 72, "result": "Restore own humanity or mortality"},
+    {"max": 76, "result": "Return a lost loved one to life"},
+    {"max": 80, "result": "Serve a black-hearted overlord"},
+    {"max": 86, "result": "Slay a monstrous beast"},
+    {"max": 90, "result": "Unlock the secret of immortality"},
+    {"max": 94, "result": "Wield an object of terrifying power"},
+    {"max": 100, "result": "Wreak bloody vengeance"}
+  ]
+}

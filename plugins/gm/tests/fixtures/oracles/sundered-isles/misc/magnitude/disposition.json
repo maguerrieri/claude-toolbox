@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/disposition",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Friendly"},
+    {"max": 35, "result": "Open"},
+    {"max": 65, "result": "Wary"},
+    {"max": 85, "result": "Threatening"},
+    {"max": 100, "result": "Hostile"}
+  ]
+}

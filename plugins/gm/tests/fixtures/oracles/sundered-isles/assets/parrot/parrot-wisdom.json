@@ -1,0 +1,10 @@
+{
+  "id": "asset.ability.oracle_rollable:sundered_isles/companion/parrot.0.parrot_wisdom",
+  "die": "1d100",
+  "rows": [
+    {"max": 25, "result": "Action (`oracles/action.md`)"},
+    {"max": 50, "result": "Theme (`oracles/theme.md`)"},
+    {"max": 75, "result": "Descriptor (`oracles/descriptor.md`)"},
+    {"max": 100, "result": "Focus (`oracles/focus.md`)"}
+  ]
+}

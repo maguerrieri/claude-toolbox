@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/war/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Battleborn"},
+    {"max": 20, "result": "Bloodied"},
+    {"max": 30, "result": "Crimson"},
+    {"max": 40, "result": "Flamebringer"},
+    {"max": 50, "result": "Hellfire"},
+    {"max": 60, "result": "Ironclad"},
+    {"max": 70, "result": "Scarlet"},
+    {"max": 80, "result": "Steelheart"},
+    {"max": 90, "result": "Undaunted"},
+    {"max": 100, "result": "Warforged"}
+  ]
+}

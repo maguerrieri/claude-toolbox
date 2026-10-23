@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/faith/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Blessed"},
+    {"max": 20, "result": "Dawning"},
+    {"max": 30, "result": "Enduring"},
+    {"max": 40, "result": "Exalted"},
+    {"max": 50, "result": "Fated"},
+    {"max": 60, "result": "Hallowed"},
+    {"max": 70, "result": "Holy"},
+    {"max": 80, "result": "Radiant"},
+    {"max": 90, "result": "Sacred"},
+    {"max": 100, "result": "Shining"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/loyalty/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Bannersworn"},
+    {"max": 20, "result": "Bonded"},
+    {"max": 30, "result": "Branded"},
+    {"max": 40, "result": "Kindred"},
+    {"max": 50, "result": "Resolute"},
+    {"max": 60, "result": "Steadfast"},
+    {"max": 70, "result": "Trueheart"},
+    {"max": 80, "result": "Unbroken"},
+    {"max": 90, "result": "Unified"},
+    {"max": 100, "result": "United"}
+  ]
+}

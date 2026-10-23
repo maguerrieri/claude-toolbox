@@ -1,0 +1,22 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/cargo_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Ancient sarcophagi"},
+    {"max": 12, "result": "Autonomous mechanical constructs"},
+    {"max": 17, "result": "Barrels of foul ichor"},
+    {"max": 24, "result": "Chained beast"},
+    {"max": 31, "result": "Cocooned victims"},
+    {"max": 36, "result": "Human bones"},
+    {"max": 43, "result": "Illusionary treasure"},
+    {"max": 48, "result": "Infernal weapons"},
+    {"max": 53, "result": "Maggot-infested meat"},
+    {"max": 60, "result": "Monstrous hunting trophies"},
+    {"max": 65, "result": "Mutated animals"},
+    {"max": 72, "result": "Poisoned grog"},
+    {"max": 79, "result": "Rotting corpses"},
+    {"max": 86, "result": "Sorcerous tomes"},
+    {"max": 93, "result": "Soul jars"},
+    {"max": 100, "result": "Trapped undead"}
+  ]
+}

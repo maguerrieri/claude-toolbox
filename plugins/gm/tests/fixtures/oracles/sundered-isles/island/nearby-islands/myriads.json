@@ -1,0 +1,9 @@
+{
+  "id": "oracle_rollable:sundered_isles/island/nearby_islands/myriads",
+  "die": "1d100",
+  "rows": [
+    {"max": 50, "result": "Isolated — No other islands in sight"},
+    {"max": 80, "result": "Island pair — One other island in sight"},
+    {"max": 100, "result": "Island group — Several islands in sight"}
+  ]
+}

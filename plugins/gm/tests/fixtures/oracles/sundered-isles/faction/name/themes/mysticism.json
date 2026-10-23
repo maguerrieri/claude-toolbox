@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/mysticism",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Astral · Persona: Adepts"},
+    {"max": 20, "result": "Aspect: Crystal · Persona: Alchemists"},
+    {"max": 30, "result": "Aspect: Gleaming · Persona: Augurs"},
+    {"max": 40, "result": "Aspect: Moonbound · Persona: Enchanters"},
+    {"max": 50, "result": "Aspect: Murmuring · Persona: Mages"},
+    {"max": 60, "result": "Aspect: Obsidian · Persona: Oracles"},
+    {"max": 70, "result": "Aspect: Orbis · Persona: Sages"},
+    {"max": 80, "result": "Aspect: Runemarked · Persona: Seers"},
+    {"max": 90, "result": "Aspect: Shadow · Persona: Sorcerers"},
+    {"max": 100, "result": "Aspect: Spellbound · Persona: Witches"}
+  ]
+}

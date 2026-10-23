@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/loyalty",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Bannersworn · Persona: Allies"},
+    {"max": 20, "result": "Aspect: Bonded · Persona: Bulwarks"},
+    {"max": 30, "result": "Aspect: Branded · Persona: Caretakers"},
+    {"max": 40, "result": "Aspect: Kindred · Persona: Guardians"},
+    {"max": 50, "result": "Aspect: Resolute · Persona: Loyalists"},
+    {"max": 60, "result": "Aspect: Steadfast · Persona: Sentinels"},
+    {"max": 70, "result": "Aspect: Trueheart · Persona: Sentries"},
+    {"max": 80, "result": "Aspect: Unbroken · Persona: Shields"},
+    {"max": 90, "result": "Aspect: Unified · Persona: Wardens"},
+    {"max": 100, "result": "Aspect: United · Persona: Watchers"}
+  ]
+}

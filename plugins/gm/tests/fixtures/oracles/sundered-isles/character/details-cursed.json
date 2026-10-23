@@ -1,0 +1,22 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/details_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Bewitched"},
+    {"max": 10, "result": "Deep-dwelling"},
+    {"max": 15, "result": "Doomed"},
+    {"max": 25, "result": "Drowned"},
+    {"max": 30, "result": "Eldritch"},
+    {"max": 40, "result": "Haunted"},
+    {"max": 45, "result": "Illusory"},
+    {"max": 50, "result": "Inhuman"},
+    {"max": 55, "result": "Jinxed"},
+    {"max": 60, "result": "Lycanthropic"},
+    {"max": 65, "result": "Possessed"},
+    {"max": 70, "result": "Resurrected"},
+    {"max": 80, "result": "Sorcerous"},
+    {"max": 90, "result": "Tormented"},
+    {"max": 95, "result": "Undying"},
+    {"max": 100, "result": "Vampiric"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/inland_cave/heart",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Ancient Tomb"},
+    {"max": 20, "result": "Breathtaking natural environment"},
+    {"max": 30, "result": "Elaborate trap or puzzle"},
+    {"max": 40, "result": "Lair of a beast"},
+    {"max": 50, "result": "Rare or valuable ore"},
+    {"max": 60, "result": "Sacred or fabled artifact"},
+    {"max": 70, "result": "Secret hideout or refuge"},
+    {"max": 80, "result": "Ruin (`oracles/ruin/`)"},
+    {"max": 90, "result": "Treasure (`oracles/treasure/value/large.md`) (large repository)"},
+    {"max": 100, "result": "Treasure (`oracles/treasure/value/vast.md`) (vast repository)"}
+  ]
+}

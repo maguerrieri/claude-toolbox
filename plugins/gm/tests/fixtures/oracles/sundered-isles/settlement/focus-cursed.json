@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/settlement/focus_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Acting to fulfill a dreadful bargain with a cursed power"},
+    {"max": 20, "result": "Bound unwillingly to the service of a cursed power"},
+    {"max": 30, "result": "Corrupted or sickened by the effects of a cursed location or relic"},
+    {"max": 40, "result": "Desperately working in defiance of a cursed power"},
+    {"max": 50, "result": "Enduring dreadful conditions"},
+    {"max": 60, "result": "Granted unusual abilities or resources by a cursed power"},
+    {"max": 70, "result": "In zealous service of a cursed power"},
+    {"max": 80, "result": "Suffering under the deprivations of a cursed power"},
+    {"max": 90, "result": "Targeted by a cursed power"},
+    {"max": 100, "result": "Unwittingly helping or unleashing a cursed power"}
+  ]
+}

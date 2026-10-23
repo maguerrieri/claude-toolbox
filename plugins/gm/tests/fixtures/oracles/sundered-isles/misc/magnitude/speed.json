@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/speed",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Immobile"},
+    {"max": 35, "result": "Slow"},
+    {"max": 65, "result": "Medium"},
+    {"max": 85, "result": "Fast"},
+    {"max": 100, "result": "Very fast"}
+  ]
+}
