@@ -3,42 +3,47 @@ name: starforged
 extends: ironsworn-core
 dice: ["ironsworn-action", "1d100"]
 tone: space-opera frontier
+sheet: sheet-template.md
 ---
 
 # Ironsworn: Starforged
 
-The **Forge** is a perilous expanse of star systems beyond the settled regions of known space — a place of wonder, ruin, and brutal survival. You are an **Ironsworn**: a wanderer bound to your vows, making your way through the dark between stars aboard your ship, forging unlikely connections with those you meet, and fighting to leave your mark on a hostile galaxy.
-
-This is high-stakes sci-fi with mythic weight. Technology is old, strange, and sometimes fails you. Faster-than-light travel exists but carries risk. Ancient precursor vaults hide secrets that may save or doom the Forge. Iron vows are not metaphors — breaking them costs something real.
+The **Forge** is a perilous galaxy where your people fled a cataclysm and settled. You are an **Ironsworn**: a spacer bound to your vows, making your way through the dark between stars aboard your ship, forging connections with those you meet, and leaving your mark on a hostile galaxy.
 
 ## What this adapter provides
 
-- **`oracles/`** — Starforged oracle tables for actions, themes, sector and planet generation, ships, factions, character names, and the Pay the Price table. Pair `action.md` + `theme.md` for an inspiration prompt.
-- **`rules/moves.md`** — the core Starforged move list with triggers, stats, and outcomes.
-- **`rules/assets.md`** — example assets (starships, modules, paths, companions).
+The full Starforged SRD content, generated from Datasworn (see `SOURCE.md`), plus the rulebook's campaign-launch procedures:
+
+- **`rules/moves.md`** — every move (session, adventure, quest, connection, exploration, combat, suffer, recover, threshold, legacy, fate, scene challenge), with the tables they roll on.
+- **`rules/assets.md`** — the asset index; the cards are in `rules/assets/<category>.md` (command vehicle, module, support vehicle, path, companion, deed).
+- **`rules/truths.md`** — the 14 setting truths, each rollable as `oracles/truths/<truth>.md`.
+- **`oracles/`** — every Starforged oracle table, nested by collection (`oracles/settlement/trouble.md`, `oracles/planet/desert/atmosphere.md`, …). **`rules/oracles.md`** indexes them all. The core oracles sit at the top: `oracles/action.md`, `oracles/theme.md`, `oracles/descriptor.md`, `oracles/focus.md`.
+- **`rules/campaign-launch.md`**, **`rules/character-creation.md`**, **`rules/sector-creation.md`** — the rulebook's step-by-step campaign launch (truths, character, starting sector, inciting incident).
+- **`sheet-template.md`** — the Starforged character sheet (stats, meters, impacts, legacy tracks).
 
 ## Resolution
 
-All resolution uses the `ironsworn-core` action roll — see `ironsworn-core/adapter.md` for the full mechanic. In brief:
+All resolution uses the `ironsworn-core` engine — see `ironsworn-core/adapter.md`:
 
 > `roll ironsworn-action --stat <value> --adds <N>`   # <value> is the numeric stat (e.g. `--stat 2` for edge 2)
+>
+> `roll ironsworn-progress --boxes <filled boxes>`     # progress moves, and Continue a Legacy
 
-Beat both challenge dice = **strong hit**. Beat one = **weak hit**. Beat neither = **miss**. Matching challenge dice = **match** (twist: fortune on a hit, deeper trouble on a miss).
+Each move in `rules/moves.md` names its roll and its stat; a move's outcome text is the whole rule. Don't restate or simplify it.
 
-Progress tracks, momentum, vows, and the health/spirit/supply/momentum sheet are all defined in `ironsworn-core`. This adapter extends them with Starforged-specific content only.
+- **Ask the Oracle** (yes/no): pick the odds, then roll its table: `oracles/moves/ask-the-oracle/small-chance.md`, `oracles/moves/ask-the-oracle/unlikely.md`, `oracles/moves/ask-the-oracle/fifty-fifty.md`, `oracles/moves/ask-the-oracle/likely.md`, or `oracles/moves/ask-the-oracle/almost-certain.md`.
+- **A spark:** `oracles/action.md` + `oracles/theme.md` (a goal, situation or event), or `oracles/descriptor.md` + `oracles/focus.md` (a location, discovery or encounter), as each table's summary says.
+- **Pay the Price:** `oracles/pay-the-price.md`, when no more specific consequence fits.
+- **Harm** is the suffer moves: Endure Harm, Endure Stress, Withstand Damage, Companion Takes a Hit, Lose Momentum, Sacrifice Resources. Impacts are marked on the sheet.
 
 ## Genre guidance
 
-- **Your ship** is a character, not just equipment. It has its own integrity track (analogous to health). When your ship Withstands Damage, mark the track; if it reaches 0 the ship is crippled.
-- **Connections** replace classic Ironsworn's bonds. You Make a Connection when you forge a relationship; Develop a Relationship as the fiction deepens it.
-- **Expeditions** replace classic journeys. When you Undertake an Expedition you define waypoints, mark progress at each, and Finish the Expedition when you arrive.
-- **Precursor vaults** are anomalous, alien ruins. Treat them as extreme-or-epic formidable challenges — enter carefully, question what you find.
+- **Your ship** is the STARSHIP command vehicle asset (`rules/assets/command-vehicle.md`), with its own integrity meter. When it takes a hit, Withstand Damage.
+- **Connections** are the people you meet: Make a Connection, Develop Your Relationship, Test Your Relationship, Forge a Bond.
+- **Travel** follows a passage with Set a Course, or charts the unknown with Undertake an Expedition, Explore a Waypoint and Finish an Expedition.
+- **Places** come from the oracles: settlements, planets, derelicts, precursor vaults, creatures, and location themes. Pick the collection in `rules/oracles.md`.
 - **The Forge is dangerous.** Fail forward (see `gm-craft.md`). A miss always moves time forward and changes the situation.
-
-## When to roll oracles
-
-Use the Starforged oracles when the fiction demands a detail you shouldn't decide alone: a planet you're approaching, an NPC's disposition, a complication aboard your ship. Pair `oracles/action.md` + `oracles/theme.md` for a two-word spark and interpret it into the fiction. Roll `oracles/pay-the-price.md` on a miss if nothing more specific fits.
 
 ## Safety
 
-Open a campaign with **lines & veils**: what is off-limits entirely (lines), and what happens off-screen (veils). The Forge contains violence, loss, and despair — calibrate explicitly.
+Use the session moves for safety: **Set a Flag** marks lines and veils (content to omit or keep off-screen) at any point, and **Change Your Fate** adjusts flagged content when it comes up (`rules/moves.md`, Session Moves). The Forge contains violence, loss and despair, so calibrate before play.

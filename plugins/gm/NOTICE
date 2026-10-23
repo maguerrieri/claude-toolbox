@@ -2,20 +2,34 @@ gm — third-party content attribution
 =====================================
 
 The Ironsworn-family adapters bundled with this plugin include game content
-derived from works by Shawn Tomkin, used under the Creative Commons
-Attribution 4.0 International License (CC BY 4.0):
+from works by Shawn Tomkin, under Creative Commons licenses. The repository's
+MIT license does not cover these files.
 
 - adapters/ironsworn/   — derived from the Ironsworn SRD
                           (c) Shawn Tomkin, licensed CC BY 4.0
                           https://www.ironswornrpg.com/
+                          A curated, condensed and reformatted subset;
+                          changes were made.
 
-- adapters/starforged/  — derived from the Ironsworn: Starforged SRD
-                          (c) Shawn Tomkin, licensed CC BY 4.0
+- adapters/starforged/  — the Ironsworn: Starforged SRD
+                          (c) 2022 Shawn Tomkin, licensed CC BY 4.0
                           https://www.ironswornrpg.com/
+                          Converted from Datasworn's JSON edition
+                          (https://github.com/rsek/datasworn, tag
+                          v0.1.0-prerelease, commit e643a75) by
+                          tools/datasworn-import; changes were made
+                          (format conversion and cross-reference paths).
 
-The adapter content here is a curated, condensed, and JSON-reformatted subset
-of those SRDs; changes were made. This plugin is not affiliated with or
-endorsed by Shawn Tomkin. Each adapter also carries a SOURCE.md with its
-specific attribution.
+                          Except: rules/campaign-launch.md,
+                          rules/character-creation.md and
+                          rules/sector-creation.md, adapted from the
+                          Ironsworn: Starforged Rulebook, chapter 2
+                          (c) 2022 Shawn Tomkin, licensed CC BY-NC-SA 4.0;
+                          abridged, changes were made. Those three files
+                          are licensed CC BY-NC-SA 4.0.
 
-CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+This plugin is not affiliated with or endorsed by Shawn Tomkin. Each adapter
+also carries a SOURCE.md with its specific attribution.
+
+CC BY 4.0:       https://creativecommons.org/licenses/by/4.0/
+CC BY-NC-SA 4.0: https://creativecommons.org/licenses/by-nc-sa/4.0/
