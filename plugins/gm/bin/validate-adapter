@@ -2,9 +2,9 @@
 """gm adapter validator — lints adapter folders against the contract.
 
 Checks: adapter.md exists with front-matter + a `name`; any `extends:` resolves
-to a real parent (no cycles); every oracles/*.md has at least one `- ` entry with
-weight >= 1; a named `sheet:` exists; and oracle files referenced in adapter.md
-prose actually exist.
+to a real parent (no cycles); every oracles/**/*.md (subdirectories included) has
+at least one `- ` entry with weight >= 1; a named `sheet:` exists; and every
+oracle file referenced in adapter.md or rules/**/*.md prose actually exists.
 
 Usage:
   validate-adapter <adapter-dir>...
@@ -108,7 +108,7 @@ def validate_adapter(adapter_dir, adapters_root):
         pfm, _ = parse_frontmatter(pmanifest)
         parent = (pfm or {}).get("extends")
 
-    for f in sorted(glob.glob(os.path.join(adapter_dir, "oracles", "*.md"))):
+    for f in sorted(glob.glob(os.path.join(adapter_dir, "oracles", "**", "*.md"), recursive=True)):
         errs += validate_table(f)
 
     for f in sorted(glob.glob(os.path.join(adapter_dir, "frames", "*.md"))):
@@ -118,9 +118,14 @@ def validate_adapter(adapter_dir, adapters_root):
     if sheet and not os.path.isfile(os.path.join(adapter_dir, sheet)):
         errs.append(f"{name}: sheet '{sheet}' not found")
 
-    for ref in sorted(set(re.findall(r"oracles/([\w./-]+\.md)", text))):
-        if not os.path.isfile(os.path.join(adapter_dir, "oracles", ref)):
-            errs.append(f"{name}: adapter.md references oracles/{ref}, which is missing")
+    prose = [("adapter.md", text)]
+    for f in sorted(glob.glob(os.path.join(adapter_dir, "rules", "**", "*.md"), recursive=True)):
+        with open(f) as fh:
+            prose.append((os.path.relpath(f, adapter_dir), fh.read()))
+    for where, body in prose:
+        for ref in sorted(set(re.findall(r"oracles/([\w./-]+\.md)", body))):
+            if not os.path.isfile(os.path.join(adapter_dir, "oracles", ref)):
+                errs.append(f"{name}: {where} references oracles/{ref}, which is missing")
     return errs
 
 
