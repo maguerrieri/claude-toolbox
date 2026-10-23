@@ -1,0 +1,11 @@
+{
+  "id": "move.oracle_rollable:starforged/suffer/endure_harm.endure_harm",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "You suffer mortal harm. Face Death."},
+    {"max": 20, "result": "You are dying. Within an hour or two, you must Heal and raise your health above 0, or Face Death."},
+    {"max": 35, "result": "You are unconscious and out of action. If left alone, you come back to your senses in an hour or two. If you are vulnerable to ongoing harm, Face Death."},
+    {"max": 50, "result": "You are reeling and fighting to stay conscious. If you engage in any vigorous activity before taking a breather for a few minutes, roll on this table again (before resolving the other move)."},
+    {"max": 100, "result": "You are still standing."}
+  ]
+}

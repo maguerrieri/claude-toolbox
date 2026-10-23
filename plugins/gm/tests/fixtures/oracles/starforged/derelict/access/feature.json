@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/derelict/access/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Abandoned gear"},
+    {"max": 10, "result": "Blood trail"},
+    {"max": 15, "result": "Breached door or hatch"},
+    {"max": 20, "result": "Control or terminal station"},
+    {"max": 25, "result": "Corpse"},
+    {"max": 30, "result": "Dismantled equipment"},
+    {"max": 35, "result": "Flashing strobes"},
+    {"max": 40, "result": "Leaking pipes"},
+    {"max": 45, "result": "Makeshift barricade"},
+    {"max": 50, "result": "Opened or missing panels"},
+    {"max": 55, "result": "Organic growths"},
+    {"max": 60, "result": "Ruined bot"},
+    {"max": 65, "result": "Scrawled warning"},
+    {"max": 70, "result": "Sealed breach"},
+    {"max": 75, "result": "Sounds of movement"},
+    {"max": 80, "result": "Steam or smoke"},
+    {"max": 85, "result": "Wandering bot"},
+    {"max": 90, "result": "Windows or viewports"},
+    {"max": 95, "result": "Wrecked passage or debris"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

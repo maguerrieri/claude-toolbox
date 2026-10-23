@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/campaign_launch/backstory_prompts",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "You abandoned your kin after learning a troubling truth"},
+    {"max": 13, "result": "You are guided by a vision or prophecy"},
+    {"max": 20, "result": "You are haunted by past actions or failures"},
+    {"max": 27, "result": "You are running from a criminal past"},
+    {"max": 34, "result": "You are the sole survivor of an attack or calamity"},
+    {"max": 40, "result": "You escaped an abusive or unjust situation"},
+    {"max": 46, "result": "You have no memory of your former life"},
+    {"max": 53, "result": "You rejected a duty or destiny"},
+    {"max": 60, "result": "You were banished from your former home"},
+    {"max": 67, "result": "You were denied a birthright"},
+    {"max": 74, "result": "You were on your own for as long as you can remember"},
+    {"max": 81, "result": "You were sent away on a prolonged mission"},
+    {"max": 87, "result": "You were taken or lured away by someone"},
+    {"max": 94, "result": "Your ambitions outgrew your humble origins"},
+    {"max": 100, "result": "Your wanderlust carried you far away"}
+  ]
+}

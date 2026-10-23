@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/production/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Airlock or staging area"},
+    {"max": 16, "result": "Assembly or processing"},
+    {"max": 24, "result": "Cargo bay"},
+    {"max": 32, "result": "Equipment storage"},
+    {"max": 40, "result": "Exosuit bay"},
+    {"max": 48, "result": "Harvesting or mining platform"},
+    {"max": 56, "result": "Monitoring or control room"},
+    {"max": 64, "result": "Processed goods storage"},
+    {"max": 72, "result": "Raw materials storage"},
+    {"max": 80, "result": "Scrapyard"},
+    {"max": 85, "result": "New zone"},
+    {"max": 100, "result": "New zone via Access (`oracles/derelict/access/`)"}
+  ]
+}

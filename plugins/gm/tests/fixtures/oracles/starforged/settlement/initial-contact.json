@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/settlement/initial_contact",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Welcoming"},
+    {"max": 30, "result": "Neutral / automated"},
+    {"max": 50, "result": "Wary"},
+    {"max": 60, "result": "Uncooperative"},
+    {"max": 70, "result": "Hostile"},
+    {"max": 83, "result": "Asking for help"},
+    {"max": 86, "result": "In battle"},
+    {"max": 89, "result": "Captured"},
+    {"max": 92, "result": "Unresponsive"},
+    {"max": 95, "result": "Destroyed"},
+    {"max": 100, "result": "Derelict (`oracles/derelict/`)"}
+  ]
+}

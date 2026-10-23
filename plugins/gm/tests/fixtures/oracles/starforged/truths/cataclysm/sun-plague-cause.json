@@ -1,0 +1,10 @@
+{
+  "id": "truth.option.oracle_rollable:starforged/cataclysm.0.sun_plague_cause",
+  "die": "1d100",
+  "rows": [
+    {"max": 25, "result": "Temporal distortions from a supermassive black hole"},
+    {"max": 50, "result": "Sudden dark matter decay"},
+    {"max": 75, "result": "Superweapon run amok"},
+    {"max": 100, "result": "Scientific experiment gone awry"}
+  ]
+}

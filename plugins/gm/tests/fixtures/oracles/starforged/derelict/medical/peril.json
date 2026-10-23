@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/medical/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Disgusting sight / smell"},
+    {"max": 20, "result": "Disturbing evidence of medical misconduct"},
+    {"max": 30, "result": "Erratic medical bots"},
+    {"max": 40, "result": "Evidence of a virulent disease"},
+    {"max": 50, "result": "Malfunctioning medical equipment"},
+    {"max": 60, "result": "Repercussions of a medical experiment"},
+    {"max": 70, "result": "Restless dead"},
+    {"max": 80, "result": "Signs of a horrific death"},
+    {"max": 90, "result": "Signs of broken quarantine"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

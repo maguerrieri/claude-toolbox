@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/inhabited/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Intriguing offer from an unexpected source"},
+    {"max": 40, "result": "Lively festival or gathering place provides a chance to socialize"},
+    {"max": 60, "result": "Local gossip proves interesting or helpful"},
+    {"max": 80, "result": "Needed item, resource, or buyer is available"},
+    {"max": 100, "result": "Old friend or connection resurfaces"}
+  ]
+}

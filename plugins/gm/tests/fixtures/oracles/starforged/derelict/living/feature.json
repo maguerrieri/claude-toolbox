@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/living/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Abandoned pet"},
+    {"max": 16, "result": "Audible music"},
+    {"max": 24, "result": "Cherished personal item"},
+    {"max": 32, "result": "Failed barricade"},
+    {"max": 40, "result": "Half-eaten food"},
+    {"max": 48, "result": "Messages from loved ones"},
+    {"max": 56, "result": "Ransacked belongings"},
+    {"max": 64, "result": "Remains of the dead"},
+    {"max": 72, "result": "Scuttling vermin"},
+    {"max": 80, "result": "Shrine or altar"},
+    {"max": 88, "result": "Unusual art"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

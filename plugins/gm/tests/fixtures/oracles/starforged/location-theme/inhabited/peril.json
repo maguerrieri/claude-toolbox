@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/inhabited/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 9, "result": "Announcement or notification brings harrowing news"},
+    {"max": 18, "result": "Arrival of a foe or rival"},
+    {"max": 27, "result": "Blockade or security cordon cuts off needed access"},
+    {"max": 36, "result": "Caught in the crossfire of a dispute"},
+    {"max": 45, "result": "Disturbing evidence of exploitive conditions"},
+    {"max": 54, "result": "Lured into danger"},
+    {"max": 63, "result": "Signs of disease, infestation, or toxic environment"},
+    {"max": 72, "result": "Signs of unrest or rebellion"},
+    {"max": 81, "result": "Signs that you are being watched or followed"},
+    {"max": 90, "result": "Unwanted attention from authority or enemies"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

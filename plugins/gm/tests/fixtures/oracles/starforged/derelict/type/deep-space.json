@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:starforged/derelict/type/deep_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 75, "result": "Starship"},
+    {"max": 100, "result": "Settlement"}
+  ]
+}

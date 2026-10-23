@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/medical/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Autopsied corpse"},
+    {"max": 16, "result": "Biological specimens"},
+    {"max": 24, "result": "Blood spatter or pools"},
+    {"max": 32, "result": "Bloody medical supplies"},
+    {"max": 40, "result": "Broken prosthetics"},
+    {"max": 48, "result": "Corpse of a healer"},
+    {"max": 56, "result": "Dissected specimen"},
+    {"max": 64, "result": "Improvised overflow beds"},
+    {"max": 72, "result": "Medical monitors"},
+    {"max": 80, "result": "Medical records or scans"},
+    {"max": 88, "result": "Stacks of body bags"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

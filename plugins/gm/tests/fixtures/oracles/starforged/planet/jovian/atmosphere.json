@@ -1,0 +1,10 @@
+{
+  "id": "oracle_rollable:starforged/planet/jovian/atmosphere",
+  "die": "1d100",
+  "rows": [
+    {"max": 50, "result": "Toxic"},
+    {"max": 65, "result": "Corrosive"},
+    {"max": 85, "result": "Marginal"},
+    {"max": 100, "result": "Breathable"}
+  ]
+}

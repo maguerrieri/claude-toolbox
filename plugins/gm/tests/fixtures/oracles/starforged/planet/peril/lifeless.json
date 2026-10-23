@@ -1,0 +1,32 @@
+{
+  "id": "oracle_rollable:starforged/planet/peril/lifeless",
+  "die": "1d100",
+  "rows": [
+    {"max": 3, "result": "Life is revealed or takes an unexpected form"},
+    {"max": 7, "result": "Blocked or impassible path"},
+    {"max": 11, "result": "Corrosive substance or environment"},
+    {"max": 15, "result": "Disturbing remains or evidence of death"},
+    {"max": 19, "result": "Drastic environmental change"},
+    {"max": 23, "result": "Enemy holds this area"},
+    {"max": 27, "result": "Entangling or engulfing hazard"},
+    {"max": 31, "result": "Equipment fails or malfunctions"},
+    {"max": 35, "result": "Guarded or patrolled path"},
+    {"max": 39, "result": "Led astray"},
+    {"max": 43, "result": "Lost the path"},
+    {"max": 47, "result": "Meteorites fall from the sky"},
+    {"max": 51, "result": "Irradiated area or object"},
+    {"max": 55, "result": "Realization that something was left behind"},
+    {"max": 59, "result": "Seismic or volcanic upheaval"},
+    {"max": 63, "result": "Signs of a lurking or trailing foe"},
+    {"max": 67, "result": "Storm or atmospheric disruption"},
+    {"max": 71, "result": "Toxic or sickening environment"},
+    {"max": 75, "result": "Trap or alarm"},
+    {"max": 79, "result": "Treacherous or arduous path"},
+    {"max": 83, "result": "Troubling visions or apparitions"},
+    {"max": 87, "result": "Visibility hindered by atmospheric effects"},
+    {"max": 91, "result": "Worrying arrival of a ship or vehicle"},
+    {"max": 95, "result": "Wreckage or ruins portend a new threat"},
+    {"max": 99, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

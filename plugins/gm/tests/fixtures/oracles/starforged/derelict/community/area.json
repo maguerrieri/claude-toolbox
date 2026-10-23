@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/community/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Bar or club"},
+    {"max": 16, "result": "Classroom or education"},
+    {"max": 24, "result": "Concourse or hub"},
+    {"max": 32, "result": "Entertainment"},
+    {"max": 40, "result": "Gym or fitness"},
+    {"max": 48, "result": "Market or trade"},
+    {"max": 56, "result": "Park or garden"},
+    {"max": 64, "result": "Promenade or overlook"},
+    {"max": 72, "result": "Restaurant or dining"},
+    {"max": 80, "result": "Temple or chapel"},
+    {"max": 85, "result": "New zone"},
+    {"max": 100, "result": "New zone via Access (`oracles/derelict/access/`)"}
+  ]
+}

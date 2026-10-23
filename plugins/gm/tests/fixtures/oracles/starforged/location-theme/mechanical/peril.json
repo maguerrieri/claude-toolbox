@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/mechanical/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 9, "result": "Alarm or warning is triggered"},
+    {"max": 18, "result": "Automated weapon or trap is activated"},
+    {"max": 27, "result": "Environment made unsuitable for life"},
+    {"max": 36, "result": "Hostile machines on patrol"},
+    {"max": 45, "result": "Machines transform to reveal new capabilities"},
+    {"max": 54, "result": "Machines with corrupted or hacked programming"},
+    {"max": 63, "result": "Malfunctioning machines or technology"},
+    {"max": 72, "result": "Moving machinery creates a danger or obstacle"},
+    {"max": 81, "result": "Under surveillance by a central machine intelligence"},
+    {"max": 90, "result": "Volatile technology"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

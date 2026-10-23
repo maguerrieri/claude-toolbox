@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/jovian/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Complex ring system"},
+    {"max": 22, "result": "Intense gravity well"},
+    {"max": 33, "result": "Numerous moons"},
+    {"max": 44, "result": "Perpetual superstorm"},
+    {"max": 55, "result": "Powerful magnetic field"},
+    {"max": 66, "result": "Severe electrical storms"},
+    {"max": 77, "result": "Superheated atmosphere"},
+    {"max": 88, "result": "Unusual atmospheric colors"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/ice/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Feeble sunlight"},
+    {"max": 22, "result": "Supersized ice volcano"},
+    {"max": 33, "result": "Frozen oceans"},
+    {"max": 44, "result": "Vibrantly colored ice"},
+    {"max": 55, "result": "Rocky glacial islands"},
+    {"max": 66, "result": "World-spanning ice canyon"},
+    {"max": 77, "result": "Snowbound mountains"},
+    {"max": 88, "result": "Sky-breaching geysers"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

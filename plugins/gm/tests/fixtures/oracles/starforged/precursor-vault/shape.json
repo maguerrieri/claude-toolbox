@@ -1,0 +1,22 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/shape",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Practical or functional"},
+    {"max": 20, "result": "Geometric (complex shape)"},
+    {"max": 25, "result": "Geometric (cube)"},
+    {"max": 30, "result": "Geometric (obelisk)"},
+    {"max": 35, "result": "Geometric (pyramid)"},
+    {"max": 40, "result": "Geometric (ring or torus)"},
+    {"max": 45, "result": "Geometric (sphere)"},
+    {"max": 55, "result": "Organic or curved"},
+    {"max": 60, "result": "Platform or disc"},
+    {"max": 65, "result": "Spires or towers"},
+    {"max": 68, "result": "Domed"},
+    {"max": 73, "result": "Spiky"},
+    {"max": 76, "result": "Sculptural or effigy"},
+    {"max": 79, "result": "Amorphous"},
+    {"max": 85, "result": "Transforming"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

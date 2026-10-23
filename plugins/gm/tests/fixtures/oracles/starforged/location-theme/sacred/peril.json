@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/sacred/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 9, "result": "An aspect of the faith beguiles you or lures you into danger"},
+    {"max": 18, "result": "Dreadful aspects or powers of the faith are revealed"},
+    {"max": 27, "result": "Embodiment of a god or power is given corrupted form or purpose"},
+    {"max": 36, "result": "Guardians seek martyrdom in defense of this place"},
+    {"max": 45, "result": "Leaders corrupt or exploit their followers to oppose you"},
+    {"max": 54, "result": "Prophecies portend a dire threat"},
+    {"max": 63, "result": "Protective ward or enigmatic puzzle blocks the way"},
+    {"max": 72, "result": "Religious artifact evokes unnerving power"},
+    {"max": 81, "result": "Unnatural corruption or decay fouls the environment"},
+    {"max": 90, "result": "Zealots enact a ceremony to unlock forbidden powers"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:starforged/planet/desert/atmosphere",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "None / thin"},
+    {"max": 25, "result": "Toxic"},
+    {"max": 40, "result": "Corrosive"},
+    {"max": 70, "result": "Marginal"},
+    {"max": 95, "result": "Breathable"},
+    {"max": 100, "result": "Ideal"}
+  ]
+}

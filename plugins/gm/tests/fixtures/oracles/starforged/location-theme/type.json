@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/type",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Chaotic (`oracles/location-theme/chaotic/`) — Reality is corrupted or warped in this place."},
+    {"max": 25, "result": "Fortified (`oracles/location-theme/fortified/`) — Enemies defend this place against intruders."},
+    {"max": 35, "result": "Haunted (`oracles/location-theme/haunted/`) — Restless spirits are bound to this place."},
+    {"max": 50, "result": "Infested (`oracles/location-theme/infested/`) — Foul creatures have overrun this place."},
+    {"max": 60, "result": "Inhabited (`oracles/location-theme/inhabited/`) — People have built a community in this place."},
+    {"max": 75, "result": "Mechanical (`oracles/location-theme/mechanical/`) — Machines and technology hold sway in this place."},
+    {"max": 90, "result": "Ruined (`oracles/location-theme/ruined/`) — Time, disaster, or war have ravaged this place."},
+    {"max": 100, "result": "Sacred (`oracles/location-theme/sacred/`) — Worshipers glorify strange powers in this place."}
+  ]
+}

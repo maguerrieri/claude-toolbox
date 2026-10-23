@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/derelict/outer_first_look",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Blocked access"},
+    {"max": 30, "result": "Corpses"},
+    {"max": 45, "result": "Hazardous readings"},
+    {"max": 50, "result": "Mutated structure"},
+    {"max": 60, "result": "Odd orientation"},
+    {"max": 65, "result": "Overgrown or entangled"},
+    {"max": 80, "result": "Sending a signal or message"},
+    {"max": 85, "result": "Signs that others are here"},
+    {"max": 95, "result": "Stripped exterior"},
+    {"max": 100, "result": "Time or reality distortions"}
+  ]
+}

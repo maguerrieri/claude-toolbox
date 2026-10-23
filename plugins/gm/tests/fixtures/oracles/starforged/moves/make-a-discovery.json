@@ -1,0 +1,29 @@
+{
+  "id": "move.oracle_rollable:starforged/exploration/make_a_discovery.make_a_discovery",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Advanced technology waiting to be harnessed or salvaged"},
+    {"max": 8, "result": "Ancient archive or message"},
+    {"max": 10, "result": "Artificial consciousness evolved to a higher state"},
+    {"max": 12, "result": "Clues to a crucial resource or uncharted domain"},
+    {"max": 14, "result": "Envoy from another time or reality"},
+    {"max": 22, "result": "Extraordinary natural phenomenon"},
+    {"max": 24, "result": "First contact with intelligent life"},
+    {"max": 26, "result": "Gateway to another time or alternate reality"},
+    {"max": 28, "result": "Key to unlocking a language or method of communication"},
+    {"max": 34, "result": "Lost or hidden people"},
+    {"max": 42, "result": "Majestic or unusual lifeforms"},
+    {"max": 46, "result": "Marvel of ancient engineering"},
+    {"max": 50, "result": "Miraculously preserved artifact or specimen"},
+    {"max": 56, "result": "Monumental architecture or artistry of an ancient civilization"},
+    {"max": 62, "result": "Mysterious device or artifact of potential value"},
+    {"max": 66, "result": "New understanding of an enduring mystery"},
+    {"max": 68, "result": "Pathway or means of travel to a distant location"},
+    {"max": 70, "result": "Person or lifeform with phenomenal abilities"},
+    {"max": 78, "result": "Place of awe-inspiring beauty"},
+    {"max": 86, "result": "Rare and valuable resource"},
+    {"max": 88, "result": "Safeguarded or idyllic location"},
+    {"max": 90, "result": "Visions or prophesies of the future"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

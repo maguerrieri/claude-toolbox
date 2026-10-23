@@ -1,0 +1,10 @@
+{
+  "id": "oracle_rollable:starforged/planet/jungle/life",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Scarce"},
+    {"max": 35, "result": "Diverse"},
+    {"max": 75, "result": "Bountiful"},
+    {"max": 100, "result": "Overrun"}
+  ]
+}

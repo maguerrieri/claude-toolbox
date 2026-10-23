@@ -1,0 +1,11 @@
+{
+  "id": "truth.option.oracle_rollable:starforged/cataclysm.2.foe",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Artificial intelligence"},
+    {"max": 40, "result": "Religious zealots"},
+    {"max": 60, "result": "Genetically engineered soldiers"},
+    {"max": 80, "result": "Self-replicating nanomachines"},
+    {"max": 100, "result": "A tyrannical faction or leader"}
+  ]
+}

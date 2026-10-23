@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:starforged/derelict/condition",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Functional"},
+    {"max": 30, "result": "Limited power"},
+    {"max": 60, "result": "Cold and dark"},
+    {"max": 90, "result": "Damaged or breached"},
+    {"max": 98, "result": "Heavily damaged"},
+    {"max": 100, "result": "Impending destruction"}
+  ]
+}

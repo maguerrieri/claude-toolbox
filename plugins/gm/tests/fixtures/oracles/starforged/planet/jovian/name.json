@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/jovian/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Aether"},
+    {"max": 2, "result": "Arrokoth"},
+    {"max": 3, "result": "Esen"},
+    {"max": 4, "result": "Hanish"},
+    {"max": 5, "result": "Magnus"},
+    {"max": 6, "result": "Magonia"},
+    {"max": 7, "result": "Mistral"},
+    {"max": 8, "result": "Nephele"},
+    {"max": 9, "result": "Nimbus"},
+    {"max": 10, "result": "Nuada"},
+    {"max": 11, "result": "Nubium"},
+    {"max": 12, "result": "Serein"},
+    {"max": 13, "result": "Stratus"},
+    {"max": 14, "result": "Taranis"},
+    {"max": 15, "result": "Tempest"},
+    {"max": 16, "result": "Tenzin"},
+    {"max": 17, "result": "Tyr"},
+    {"max": 18, "result": "Veil"},
+    {"max": 19, "result": "Velum"},
+    {"max": 20, "result": "Zephyr"}
+  ]
+}

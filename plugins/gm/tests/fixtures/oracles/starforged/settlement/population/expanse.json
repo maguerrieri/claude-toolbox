@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/settlement/population/expanse",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Few"},
+    {"max": 50, "result": "Dozens"},
+    {"max": 80, "result": "Hundreds"},
+    {"max": 95, "result": "Thousands"},
+    {"max": 100, "result": "Tens of thousands"}
+  ]
+}

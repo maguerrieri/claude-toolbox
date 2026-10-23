@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/campaign_launch/inciting_incident",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Aid a starship caught in a spacetime fracture"},
+    {"max": 10, "result": "Broker peace between two feuding settlements"},
+    {"max": 15, "result": "Chart a new passage between isolated settlements"},
+    {"max": 20, "result": "Defend the people of a beleaguered settlement against raiders"},
+    {"max": 25, "result": "Discover who sabotaged a settlement's air processors"},
+    {"max": 30, "result": "Escort a tradeship carrying a prized cargo"},
+    {"max": 35, "result": "Ferry a rescue team to a perilous disaster site"},
+    {"max": 40, "result": "Infiltrate a fortified base to steal crucial data"},
+    {"max": 45, "result": "Investigate terrifying manifestations at a remote settlement"},
+    {"max": 50, "result": "Liberate prisoners at a cruel labor camp"},
+    {"max": 55, "result": "Locate a downed spacer on an uninhabited planet"},
+    {"max": 60, "result": "Protect a fugitive from a relentless bounty hunter"},
+    {"max": 65, "result": "Recover a cherished pre-exodus artifact from an enemy"},
+    {"max": 70, "result": "Rescue a starship crew held captive by mutineers"},
+    {"max": 75, "result": "Retrieve a cache of stolen weapons from a pirate ship"},
+    {"max": 80, "result": "Sabotage an enemy installation"},
+    {"max": 85, "result": "Search for a missing expedition in the depths of a precursor vault"},
+    {"max": 90, "result": "Shield a wondrous lifeform from those who seek to destroy it"},
+    {"max": 95, "result": "Track and slay a marauding beast"},
+    {"max": 100, "result": "Transport a displaced people to their new home"}
+  ]
+}

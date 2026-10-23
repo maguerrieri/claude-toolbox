@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/faction/dominion_leadership",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Anarchist"},
+    {"max": 15, "result": "Disputed leadership"},
+    {"max": 30, "result": "Authoritarian dictatorship"},
+    {"max": 45, "result": "Oligarchical elite"},
+    {"max": 60, "result": "Dynastic lineage"},
+    {"max": 70, "result": "Fated or prophesied leader"},
+    {"max": 80, "result": "Clan chiefs or elders"},
+    {"max": 90, "result": "Elected representatives"},
+    {"max": 95, "result": "Machine intelligence"},
+    {"max": 100, "result": "Varied / decentralized"}
+  ]
+}

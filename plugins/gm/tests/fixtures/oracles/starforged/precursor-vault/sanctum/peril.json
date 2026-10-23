@@ -1,0 +1,27 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/sanctum/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Camouflaged or transforming foe reveals itself"},
+    {"max": 10, "result": "Confounding distortions of the timestream"},
+    {"max": 15, "result": "Destructive environmental disturbance"},
+    {"max": 20, "result": "Horrifying fate for a previous intruder"},
+    {"max": 25, "result": "Important equipment rendered useless"},
+    {"max": 30, "result": "Led astray or lured into danger by a manifestation or illusion"},
+    {"max": 35, "result": "Lost the way or separated from others"},
+    {"max": 40, "result": "Manifestations prey upon your weaknesses or worries"},
+    {"max": 45, "result": "Other intruders have been corrupted or mutated by this place"},
+    {"max": 50, "result": "Paranoia or suspicion takes hold"},
+    {"max": 55, "result": "Path behind you is sealed"},
+    {"max": 60, "result": "Powerful foe strikes without warning"},
+    {"max": 65, "result": "Restless dead awaken"},
+    {"max": 70, "result": "Scene of hideous violence or death"},
+    {"max": 75, "result": "Snared in an unnatural trap"},
+    {"max": 80, "result": "Spawning or swarming foes surround you"},
+    {"max": 85, "result": "Sudden structural collapse or failure"},
+    {"max": 90, "result": "Temptations to linger or remain in this site"},
+    {"max": 95, "result": "You are marked by physical corruption or mutation"},
+    {"max": 99, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

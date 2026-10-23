@@ -1,0 +1,27 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/interior/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Broken path"},
+    {"max": 10, "result": "Change in atmosphere or environment"},
+    {"max": 15, "result": "Corrosive environment"},
+    {"max": 20, "result": "Dire warning left by other explorers"},
+    {"max": 25, "result": "Foes close in"},
+    {"max": 30, "result": "Fragile structural integrity"},
+    {"max": 35, "result": "Hazardous path designed for traversal by other beings"},
+    {"max": 40, "result": "Important gear malfunctions"},
+    {"max": 45, "result": "Isolation or fear presses in"},
+    {"max": 50, "result": "Mechanical trap"},
+    {"max": 55, "result": "Mist or darkness conceals dangers"},
+    {"max": 60, "result": "Puzzling mystery blocks the way"},
+    {"max": 65, "result": "Radioactive hot spot"},
+    {"max": 70, "result": "Rivals seek what lay within"},
+    {"max": 75, "result": "Signs of a contagion"},
+    {"max": 80, "result": "Signs of a lurking foe"},
+    {"max": 85, "result": "Tempting location or object holds hidden dangers"},
+    {"max": 90, "result": "Toxic atmosphere"},
+    {"max": 95, "result": "Unnerving sound or sensation"},
+    {"max": 99, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

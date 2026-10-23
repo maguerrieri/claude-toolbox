@@ -1,0 +1,30 @@
+{
+  "id": "oracle_rollable:starforged/faction/dominion",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Agriculture"},
+    {"max": 9, "result": "Artistry"},
+    {"max": 14, "result": "Commerce"},
+    {"max": 18, "result": "Conquest"},
+    {"max": 22, "result": "Construction"},
+    {"max": 26, "result": "Diplomacy"},
+    {"max": 30, "result": "Education"},
+    {"max": 34, "result": "Environmentalism"},
+    {"max": 38, "result": "Exploration"},
+    {"max": 42, "result": "Faith"},
+    {"max": 46, "result": "History"},
+    {"max": 50, "result": "Honor"},
+    {"max": 55, "result": "Industry"},
+    {"max": 59, "result": "Isolationism"},
+    {"max": 63, "result": "Law"},
+    {"max": 67, "result": "Mysticism"},
+    {"max": 71, "result": "Pacifism"},
+    {"max": 75, "result": "Prophecy"},
+    {"max": 79, "result": "Science"},
+    {"max": 83, "result": "Secrecy"},
+    {"max": 87, "result": "Technology"},
+    {"max": 91, "result": "Treachery"},
+    {"max": 96, "result": "Warfare"},
+    {"max": 100, "result": "Wealth"}
+  ]
+}

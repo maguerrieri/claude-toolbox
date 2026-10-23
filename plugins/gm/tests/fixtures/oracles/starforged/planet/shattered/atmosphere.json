@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/planet/shattered/atmosphere",
+  "die": "1d100",
+  "rows": [
+    {"max": 93, "result": "None / thin"},
+    {"max": 95, "result": "Toxic"},
+    {"max": 97, "result": "Corrosive"},
+    {"max": 99, "result": "Marginal"},
+    {"max": 100, "result": "Breathable"}
+  ]
+}

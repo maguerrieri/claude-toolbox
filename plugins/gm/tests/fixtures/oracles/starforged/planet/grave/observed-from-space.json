@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/grave/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Broken moon"},
+    {"max": 22, "result": "Perpetual overcast"},
+    {"max": 33, "result": "Cratered surface"},
+    {"max": 44, "result": "Sky-breaching ruins"},
+    {"max": 55, "result": "Dry seabeds"},
+    {"max": 66, "result": "Vast wastelands"},
+    {"max": 77, "result": "Irradiated atmosphere"},
+    {"max": 88, "result": "Orbiting ship graveyard"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

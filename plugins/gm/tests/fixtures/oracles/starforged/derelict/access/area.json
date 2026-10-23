@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:starforged/derelict/access/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 50, "result": "Corridor"},
+    {"max": 60, "result": "Stairs"},
+    {"max": 70, "result": "Lift or elevator"},
+    {"max": 80, "result": "Catwalk or bridge"},
+    {"max": 85, "result": "Vertical shaft or ladder"},
+    {"max": 90, "result": "Hub or intersection"},
+    {"max": 95, "result": "Crawl space or duct"},
+    {"max": 100, "result": "Airlock or external"}
+  ]
+}

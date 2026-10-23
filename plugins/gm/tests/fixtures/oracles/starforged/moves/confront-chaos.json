@@ -1,0 +1,29 @@
+{
+  "id": "move.oracle_rollable:starforged/exploration/confront_chaos.confront_chaos",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Baneful weapon of mass destruction"},
+    {"max": 9, "result": "Cataclysmic environmental effects"},
+    {"max": 12, "result": "Dead given unnatural life"},
+    {"max": 17, "result": "Destructive lifeform of monstrous proportion"},
+    {"max": 20, "result": "Dread hallucinations or illusions"},
+    {"max": 24, "result": "Harbingers of an imminent invasion"},
+    {"max": 27, "result": "Horde of insatiable hunger or fury"},
+    {"max": 32, "result": "Horrific lifeforms of inscrutable purpose"},
+    {"max": 36, "result": "Impostors in human form"},
+    {"max": 41, "result": "Machines made enemy"},
+    {"max": 45, "result": "Malignant contagion or parasite"},
+    {"max": 50, "result": "Messenger or signal with a dire warning"},
+    {"max": 53, "result": "Passage to a grim alternate reality"},
+    {"max": 58, "result": "People corrupted by chaos"},
+    {"max": 63, "result": "Powerful distortions of time or space"},
+    {"max": 68, "result": "Signs of an impending catastrophe"},
+    {"max": 72, "result": "Site of a baffling disappearance"},
+    {"max": 77, "result": "Site of a horrible disaster"},
+    {"max": 82, "result": "Site of terrible carnage"},
+    {"max": 87, "result": "Technology nullified or made unstable"},
+    {"max": 92, "result": "Technology warped for dark purpose"},
+    {"max": 96, "result": "Vault of dread technology or power"},
+    {"max": 100, "result": "Worshipers of great and malevolent powers"}
+  ]
+}

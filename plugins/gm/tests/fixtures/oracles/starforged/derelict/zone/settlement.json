@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:starforged/derelict/zone/settlement",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Community (`oracles/derelict/community/`)"},
+    {"max": 30, "result": "Engineering (`oracles/derelict/engineering/`)"},
+    {"max": 50, "result": "Living (`oracles/derelict/living/`)"},
+    {"max": 60, "result": "Medical (`oracles/derelict/medical/`)"},
+    {"max": 70, "result": "Operations (`oracles/derelict/operations/`)"},
+    {"max": 90, "result": "Production (`oracles/derelict/production/`)"},
+    {"max": 100, "result": "Research (`oracles/derelict/research/`)"}
+  ]
+}

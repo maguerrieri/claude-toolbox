@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/planet/grave/atmosphere",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "None / thin"},
+    {"max": 45, "result": "Toxic"},
+    {"max": 70, "result": "Corrosive"},
+    {"max": 90, "result": "Marginal"},
+    {"max": 100, "result": "Breathable"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/derelict/production/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Helpful vehicle or transport"},
+    {"max": 40, "result": "Rare or valuable resource"},
+    {"max": 60, "result": "Salvageable materials"},
+    {"max": 80, "result": "Useful equipment"},
+    {"max": 100, "result": "Valuable cargo"}
+  ]
+}

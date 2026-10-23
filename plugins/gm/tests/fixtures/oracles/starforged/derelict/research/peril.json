@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/research/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Automated containment protocols are activated"},
+    {"max": 20, "result": "Biological infestation"},
+    {"max": 30, "result": "Dangerous specimen"},
+    {"max": 40, "result": "Disturbing outcome of a failed experiment"},
+    {"max": 50, "result": "Evidence of sinister experiments"},
+    {"max": 60, "result": "Fragile vault holds a dire threat"},
+    {"max": 70, "result": "Signs of broken containment"},
+    {"max": 80, "result": "Toxic environment"},
+    {"max": 90, "result": "Unstable technology"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

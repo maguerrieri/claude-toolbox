@@ -1,0 +1,14 @@
+{
+  "id": "move.oracle_rollable:starforged/suffer/withstand_damage.withstand_damage",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Immediate catastrophic destruction. All aboard must Endure Harm or Face Death, as appropriate."},
+    {"max": 25, "result": "Destruction is imminent and unavoidable. If you do not have the means or intention to get clear, Endure Harm or Face Death as appropriate."},
+    {"max": 40, "result": "Destruction is imminent, but can be averted if you Repair your vehicle and raise its integrity above 0. If you fail, see 11-25."},
+    {"max": 55, "result": "You cannot Repair this vehicle until you Resupply and obtain a crucial replacement part. If you roll this result again prior to that, see 11-25."},
+    {"max": 70, "result": "The vehicle is crippled or out of your control. To get it back in action, you must Repair and raise its integrity above 0."},
+    {"max": 85, "result": "It's a rough ride. All aboard must make the Endure Harm, Endure Stress, or Companion Takes a Hit move, suffering a serious (-2) cost."},
+    {"max": 95, "result": "You’ve lost fuel, energy, or cargo. Sacrifice Resources (-2)."},
+    {"max": 100, "result": "Against all odds, the vehicle holds together."}
+  ]
+}

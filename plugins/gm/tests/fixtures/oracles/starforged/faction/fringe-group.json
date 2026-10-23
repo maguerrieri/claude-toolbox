@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/faction/fringe_group",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Cultists"},
+    {"max": 15, "result": "Exiles"},
+    {"max": 25, "result": "Gangsters"},
+    {"max": 35, "result": "Hackers"},
+    {"max": 40, "result": "Monster hunters"},
+    {"max": 50, "result": "Pirates"},
+    {"max": 60, "result": "Raiders"},
+    {"max": 70, "result": "Rebels"},
+    {"max": 75, "result": "Rogue AI"},
+    {"max": 85, "result": "Scavengers"},
+    {"max": 95, "result": "Smugglers"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

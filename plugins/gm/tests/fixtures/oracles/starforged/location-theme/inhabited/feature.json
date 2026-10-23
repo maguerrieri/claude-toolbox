@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/inhabited/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Conspicuous patrols or surveillance"},
+    {"max": 16, "result": "Crews at work"},
+    {"max": 24, "result": "Display or monument honors a notable cultural event"},
+    {"max": 32, "result": "Emergency teams responding to an incident or crisis"},
+    {"max": 40, "result": "Families gathering or children playing"},
+    {"max": 48, "result": "Festival, celebration, or observance"},
+    {"max": 56, "result": "Fight breaks out"},
+    {"max": 64, "result": "Notable figure stands out from the crowd"},
+    {"max": 72, "result": "Protest or strike"},
+    {"max": 80, "result": "Unrepaired damage"},
+    {"max": 88, "result": "Unusually empty or quiet area"},
+    {"max": 96, "result": "Vendor or merchant hawking their wares"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

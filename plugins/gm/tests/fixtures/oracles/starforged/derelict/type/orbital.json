@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:starforged/derelict/type/orbital",
+  "die": "1d100",
+  "rows": [
+    {"max": 40, "result": "Starship"},
+    {"max": 100, "result": "Settlement"}
+  ]
+}

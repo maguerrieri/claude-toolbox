@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/campaign_launch/background_assets",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Battlefield Medic — Healer (path asset); Veteran (path asset)"},
+    {"max": 10, "result": "Delegate — Bannersworn (path asset); Diplomat (path asset)"},
+    {"max": 15, "result": "Exobiologist — Lore Hunter (path asset); Naturalist (path asset)"},
+    {"max": 20, "result": "Far Trader — Navigator (path asset); Trader (path asset)"},
+    {"max": 25, "result": "Fugitive Hunter — Armored (path asset); Bounty Hunter (path asset)"},
+    {"max": 30, "result": "Hacker — Infiltrator (path asset); Tech (path asset)"},
+    {"max": 35, "result": "Hotshot Pilot — Ace (path asset); Navigator (path asset)"},
+    {"max": 40, "result": "Interstellar Scout — Explorer (path asset); Voidborn (path asset)"},
+    {"max": 45, "result": "Monster Hunter — Gunner (path asset); Slayer (path asset)"},
+    {"max": 50, "result": "Occultist — Outcast (path asset); Shade (path asset)"},
+    {"max": 55, "result": "Operative — Infiltrator (path asset); Blademaster (path asset)"},
+    {"max": 60, "result": "Outlaw — Fugitive (path asset); Gunslinger (path asset)"},
+    {"max": 65, "result": "Private Investigator — Brawler (path asset); Sleuth (path asset)"},
+    {"max": 70, "result": "Prophet — Devotant (path asset); Seer (path asset)"},
+    {"max": 75, "result": "Psionicist — Kinetic (path asset); Vestige (path asset)"},
+    {"max": 80, "result": "Smuggler — Courier (path asset); Scoundrel (path asset)"},
+    {"max": 85, "result": "Spiritualist — Haunted (path asset); Empath (path asset)"},
+    {"max": 90, "result": "Starship Engineer — Gearhead (path asset); Tech (path asset)"},
+    {"max": 95, "result": "Supersoldier — Augmented (path asset); Mercenary (path asset)"},
+    {"max": 100, "result": "Tomb Raider — Scavenger (path asset); Scoundrel (path asset)"}
+  ]
+}

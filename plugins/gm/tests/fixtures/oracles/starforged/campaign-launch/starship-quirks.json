@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/campaign_launch/starship_quirks",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Engine room is scorched with old burn marks"},
+    {"max": 10, "result": "Exterior is marred by rust and grime"},
+    {"max": 15, "result": "Faint, phantom music sometimes echoes through the corridors"},
+    {"max": 20, "result": "Gravity generator is notoriously fickle"},
+    {"max": 25, "result": "Hull is fused with organic growths"},
+    {"max": 30, "result": "Hull rattles and groans in atmospheric flight"},
+    {"max": 35, "result": "Interior spaces are crowded with exposed cables and conduits"},
+    {"max": 40, "result": "Looks defenseless, but exterior panels open to reveal weapons"},
+    {"max": 45, "result": "Navigation logs contain coordinates to locations that do not—or should not—exist"},
+    {"max": 50, "result": "Old bloodstain in the airlock reappears even when painted over"},
+    {"max": 55, "result": "Once a beautiful ship, now scarred by a devastating battle"},
+    {"max": 60, "result": "Patched hull covers a recent catastrophic breach"},
+    {"max": 65, "result": "Placards and control labels are in an uncommon language"},
+    {"max": 70, "result": "Removable plate decks provide access to hidden storage"},
+    {"max": 75, "result": "Segmented landing gear unfold like gangly spider legs"},
+    {"max": 80, "result": "Ship is powered by an ancient precursor device"},
+    {"max": 85, "result": "Someone marked the hull with graffiti during a recent layover"},
+    {"max": 90, "result": "Strange symbols are scrawled on the deck and bulkheads in the main corridor"},
+    {"max": 95, "result": "Things tend to go missing for no logical reason"},
+    {"max": 100, "result": "Timers and clocks are always just a bit off"}
+  ]
+}

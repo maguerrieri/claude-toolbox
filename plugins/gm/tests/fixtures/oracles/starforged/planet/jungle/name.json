@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/jungle/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Acacia"},
+    {"max": 2, "result": "Aster"},
+    {"max": 3, "result": "Beryl"},
+    {"max": 4, "result": "Celadon"},
+    {"max": 5, "result": "Ceres"},
+    {"max": 6, "result": "Damu"},
+    {"max": 7, "result": "Dryad"},
+    {"max": 8, "result": "Flora"},
+    {"max": 9, "result": "Iridum"},
+    {"max": 10, "result": "Iris"},
+    {"max": 11, "result": "Kishar"},
+    {"max": 12, "result": "Penumbra"},
+    {"max": 13, "result": "Roris"},
+    {"max": 14, "result": "Sylva"},
+    {"max": 15, "result": "Tangle"},
+    {"max": 16, "result": "Thorn"},
+    {"max": 17, "result": "Venom"},
+    {"max": 18, "result": "Verdure"},
+    {"max": 19, "result": "Veris"},
+    {"max": 20, "result": "Viridian"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/settlement/population/terminus",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Few"},
+    {"max": 25, "result": "Dozens"},
+    {"max": 55, "result": "Hundreds"},
+    {"max": 85, "result": "Thousands"},
+    {"max": 100, "result": "Tens of thousands"}
+  ]
+}

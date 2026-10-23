@@ -1,0 +1,9 @@
+{
+  "id": "oracle_rollable:starforged/planet/grave/settlements/expanse",
+  "die": "1d100",
+  "rows": [
+    {"max": 95, "result": "None"},
+    {"max": 98, "result": "Orbital settlement"},
+    {"max": 100, "result": "Planetside settlement"}
+  ]
+}

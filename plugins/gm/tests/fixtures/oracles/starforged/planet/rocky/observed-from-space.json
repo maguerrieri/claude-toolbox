@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/rocky/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Barren plains"},
+    {"max": 22, "result": "Constant asteroid strikes"},
+    {"max": 33, "result": "Dense ring system"},
+    {"max": 44, "result": "Jagged mountains"},
+    {"max": 55, "result": "Massive impact crater"},
+    {"max": 66, "result": "Misshapen form (low gravity)"},
+    {"max": 77, "result": "Perpetual night"},
+    {"max": 88, "result": "Towering plateaus"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/chaotic/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 9, "result": "Chaos makes its mark upon you"},
+    {"max": 18, "result": "Chaos spreads or intensifies"},
+    {"max": 27, "result": "Chaos tempts or lures you"},
+    {"max": 36, "result": "Chaotic energies block the path or assail you"},
+    {"max": 45, "result": "Disorienting changes in time or location"},
+    {"max": 54, "result": "Dreadful scene of those who fell prey to chaos"},
+    {"max": 63, "result": "Equipment is made unstable or dangerous"},
+    {"max": 72, "result": "Foes harness or wield chaos"},
+    {"max": 81, "result": "Hazardous environmental changes"},
+    {"max": 90, "result": "Lifeforms made hostile by chaos"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}
