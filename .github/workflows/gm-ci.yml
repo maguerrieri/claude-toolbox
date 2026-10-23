@@ -21,7 +21,7 @@ jobs:
         run: uvx pytest plugins/gm/tests -q
       - name: Validate all adapters
         run: python3 plugins/gm/bin/validate-adapter --all plugins/gm/adapters
-      - name: Starforged content matches its pinned Datasworn source
+      - name: Starforged and Sundered Isles content matches its pinned Datasworn source
         run: python3 plugins/gm/tools/datasworn-import --check
       - name: Validate all personas
         run: python3 plugins/gm/bin/validate-adapter --personas --all plugins/gm/personas
