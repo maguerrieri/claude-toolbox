@@ -6,7 +6,7 @@ The full Starforged move list from the SRD. Rolls go through the `ironsworn-core
 `roll ironsworn-action --stat <value> --adds <N>`; a **progress roll** is
 `roll ironsworn-progress --boxes <filled boxes>` on the named track (a legacy-track roll
 uses that track's filled boxes the same way). A table a move rolls on is shown in place,
-with the path to roll it.
+with the path to roll it. Paths are relative to this adapter, so `oracles/<path>` rolls as `roll table ${CLAUDE_PLUGIN_ROOT}/adapters/starforged/oracles/<path>`.
 
 ## Session Moves
 
