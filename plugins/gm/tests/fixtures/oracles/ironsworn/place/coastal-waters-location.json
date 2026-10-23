@@ -1,0 +1,23 @@
+{
+  "id": "oracle_rollable:classic/place/coastal_waters_location",
+  "die": "1d100",
+  "rows": [
+    {"max": 1, "result": "Fleet"},
+    {"max": 2, "result": "Sargassum"},
+    {"max": 3, "result": "Flotsam"},
+    {"max": 4, "result": "Mystical Site"},
+    {"max": 5, "result": "Lair"},
+    {"max": 10, "result": "Wreck"},
+    {"max": 15, "result": "Harbor"},
+    {"max": 23, "result": "Ship/Boat"},
+    {"max": 30, "result": "Rocks"},
+    {"max": 38, "result": "Fjord"},
+    {"max": 46, "result": "Estuary"},
+    {"max": 54, "result": "Cove"},
+    {"max": 62, "result": "Bay"},
+    {"max": 70, "result": "Ice"},
+    {"max": 85, "result": "Island"},
+    {"max": 99, "result": "Open Water"},
+    {"max": 100, "result": "Anomaly"}
+  ]
+}

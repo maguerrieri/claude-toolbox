@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:classic/name/other/giants",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Chony"},
+    {"max": 8, "result": "Banda"},
+    {"max": 12, "result": "Jochu"},
+    {"max": 16, "result": "Kira"},
+    {"max": 20, "result": "Khatir"},
+    {"max": 24, "result": "Chaidu"},
+    {"max": 28, "result": "Atan"},
+    {"max": 32, "result": "Buandu"},
+    {"max": 36, "result": "Javyn"},
+    {"max": 40, "result": "Khashin"},
+    {"max": 44, "result": "Bayara"},
+    {"max": 48, "result": "Temura"},
+    {"max": 52, "result": "Kidha"},
+    {"max": 56, "result": "Kathos"},
+    {"max": 60, "result": "Tanua"},
+    {"max": 64, "result": "Bashtu"},
+    {"max": 68, "result": "Jaran"},
+    {"max": 72, "result": "Othos"},
+    {"max": 76, "result": "Khutan"},
+    {"max": 80, "result": "Otaan"},
+    {"max": 84, "result": "Martu"},
+    {"max": 88, "result": "Baku"},
+    {"max": 92, "result": "Tuban"},
+    {"max": 96, "result": "Qudan"},
+    {"max": 100, "result": "Denua"}
+  ]
+}
