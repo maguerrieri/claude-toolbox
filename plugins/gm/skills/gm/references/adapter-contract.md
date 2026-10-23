@@ -31,12 +31,12 @@ Body (prose the core follows):
 
 ### The yes/no and spark rules (`/gm:oracle`)
 
-Two of the resolution rules are what `/gm:oracle` rolls, so state them where it can find them:
+Two of the resolution rules are what `/gm:oracle` rolls, so state each as a top-level bullet in `adapter.md` that opens with a bold label naming it, in the label itself or in a parenthetical right after it:
 
-- **The yes/no rule** — a bullet whose bold label names it as yes/no (`**Yes/No question.**`, `**Ask the Oracle** (yes/no):`). It names the table or tables to roll by their `oracles/…` paths, how to choose among them (the odds, say), and how to read the result, including anything the roll itself means (a match on Ironsworn's d100).
-- **The spark rule** — the tables to read together for inspiration (`oracles/action.md` + `oracles/theme.md` in every bundled adapter).
+- **The yes/no rule** — labeled yes/no (`**Yes/No question.**`, `**Ask the Oracle** (yes/no):`). It names the table or tables to roll by their `oracles/…` paths, how to choose among them (the odds, say), and how to read the result, including anything the roll itself means (a match on Ironsworn's d100).
+- **The spark rule** — labeled spark or inspiration (`**Inspiration / meaning prompt.**`, `**A spark:**`, `**A spark** (inspiration):`). It names the tables to read together for a prompt by their `oracles/…` paths (`oracles/action.md` + `oracles/theme.md` in every bundled adapter).
 
-Both resolve along `extends:` (see "Composition"): the nearest adapter in the chain that states the rule wins, and its table paths are found anywhere in the chain. If no adapter in the chain states a yes/no rule, or the chain has no `action.md` + `theme.md`, `/gm:oracle` rolls the generic adapter's (`oracles/yes-no.md`, or `oracles/action.md` + `oracles/theme.md`) and says so.
+Both resolve along `extends:` (see "Composition"): the nearest adapter in the chain that states the rule wins, and its table paths are found anywhere in the chain. If no adapter in the chain states one, `/gm:oracle` rolls the generic adapter's tables (`oracles/yes-no.md`, or `oracles/action.md` + `oracles/theme.md`) and says so.
 
 ## Tables (`oracles/**/*.md`)
 
