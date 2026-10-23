@@ -1,0 +1,31 @@
+{
+  "id": "oracle_collection:classic/settlement/quick_name",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Prefix: Bleak · Suffix: moor"},
+    {"max": 8, "result": "Prefix: Green · Suffix: ford"},
+    {"max": 12, "result": "Prefix: Wolf · Suffix: crag"},
+    {"max": 16, "result": "Prefix: Raven · Suffix: watch"},
+    {"max": 20, "result": "Prefix: Gray · Suffix: hope"},
+    {"max": 24, "result": "Prefix: Red · Suffix: wood"},
+    {"max": 28, "result": "Prefix: Axe · Suffix: ridge"},
+    {"max": 32, "result": "Prefix: Great · Suffix: stone"},
+    {"max": 36, "result": "Prefix: Wood · Suffix: haven"},
+    {"max": 40, "result": "Prefix: Low · Suffix: fall(s)"},
+    {"max": 44, "result": "Prefix: White · Suffix: river"},
+    {"max": 48, "result": "Prefix: Storm · Suffix: field"},
+    {"max": 52, "result": "Prefix: Black · Suffix: hill"},
+    {"max": 56, "result": "Prefix: Mourn · Suffix: bridge"},
+    {"max": 60, "result": "Prefix: New · Suffix: mark"},
+    {"max": 64, "result": "Prefix: Stone · Suffix: cairn"},
+    {"max": 68, "result": "Prefix: Grim · Suffix: land"},
+    {"max": 72, "result": "Prefix: Lost · Suffix: hall"},
+    {"max": 76, "result": "Prefix: High · Suffix: mount"},
+    {"max": 80, "result": "Prefix: Rock · Suffix: rock"},
+    {"max": 84, "result": "Prefix: Shield · Suffix: brook"},
+    {"max": 88, "result": "Prefix: Sword · Suffix: barrow"},
+    {"max": 92, "result": "Prefix: Frost · Suffix: stead"},
+    {"max": 96, "result": "Prefix: Thorn · Suffix: home"},
+    {"max": 100, "result": "Prefix: Long · Suffix: wick"}
+  ]
+}

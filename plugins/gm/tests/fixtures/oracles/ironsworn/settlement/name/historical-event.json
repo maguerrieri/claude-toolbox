@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/settlement/name/historical_event",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Swordbreak"},
+    {"max": 20, "result": "Fool's Fall"},
+    {"max": 30, "result": "Firstmeet"},
+    {"max": 40, "result": "Brokenhelm"},
+    {"max": 50, "result": "Mournhaunt"},
+    {"max": 60, "result": "Olgar's Stand"},
+    {"max": 70, "result": "Lostwater"},
+    {"max": 80, "result": "Rojirra's Lament"},
+    {"max": 90, "result": "Lastmarch"},
+    {"max": 100, "result": "Rockfall"}
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "oracle_collection:classic/name/other",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Giants: Chony · Varou: Vata · Trolls: Rattle"},
+    {"max": 8, "result": "Giants: Banda · Varou: Zora · Trolls: Scratch"},
+    {"max": 12, "result": "Giants: Jochu · Varou: Jasna · Trolls: Wallow"},
+    {"max": 16, "result": "Giants: Kira · Varou: Charna · Trolls: Groak"},
+    {"max": 20, "result": "Giants: Khatir · Varou: Tana · Trolls: Gimble"},
+    {"max": 24, "result": "Giants: Chaidu · Varou: Soveen · Trolls: Scar"},
+    {"max": 28, "result": "Giants: Atan · Varou: Radka · Trolls: Cratch"},
+    {"max": 32, "result": "Giants: Buandu · Varou: Zlata · Trolls: Creech"},
+    {"max": 36, "result": "Giants: Javyn · Varou: Leesla · Trolls: Shush"},
+    {"max": 40, "result": "Giants: Khashin · Varou: Byna · Trolls: Glush"},
+    {"max": 44, "result": "Giants: Bayara · Varou: Meeka · Trolls: Slar"},
+    {"max": 48, "result": "Giants: Temura · Varou: Iskra · Trolls: Gnash"},
+    {"max": 52, "result": "Giants: Kidha · Varou: Jarek · Trolls: Stoad"},
+    {"max": 56, "result": "Giants: Kathos · Varou: Darva · Trolls: Grig"},
+    {"max": 60, "result": "Giants: Tanua · Varou: Neda · Trolls: Bleat"},
+    {"max": 64, "result": "Giants: Bashtu · Varou: Keha · Trolls: Chortle"},
+    {"max": 68, "result": "Giants: Jaran · Varou: Zhivka · Trolls: Cluck"},
+    {"max": 72, "result": "Giants: Othos · Varou: Kvata · Trolls: Slith"},
+    {"max": 76, "result": "Giants: Khutan · Varou: Staysa · Trolls: Mongo"},
+    {"max": 80, "result": "Giants: Otaan · Varou: Evka · Trolls: Creak"},
+    {"max": 84, "result": "Giants: Martu · Varou: Vuksha · Trolls: Burble"},
+    {"max": 88, "result": "Giants: Baku · Varou: Muko · Trolls: Vrusk"},
+    {"max": 92, "result": "Giants: Tuban · Varou: Dreko · Trolls: Snuffle"},
+    {"max": 96, "result": "Giants: Qudan · Varou: Aleko · Trolls: Leech"},
+    {"max": 100, "result": "Giants: Denua · Varou: Vojan · Trolls: Herk"}
+  ]
+}

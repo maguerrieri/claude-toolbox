@@ -1,0 +1,10 @@
+{
+  "id": "move.oracle_rollable:classic/suffer/endure_stress.endure_stress",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "You are overwhelmed. Face Desolation."},
+    {"max": 25, "result": "You give up. Forsake Your Vow (if possible, one relevant to your current crisis)."},
+    {"max": 50, "result": "You give in to a fear or compulsion, and act against your better instincts."},
+    {"max": 100, "result": "You persevere."}
+  ]
+}
