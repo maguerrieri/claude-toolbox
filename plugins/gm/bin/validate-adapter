@@ -95,7 +95,7 @@ def validate_adapter(adapter_dir, adapters_root):
     if not fm.get("name"):
         errs.append(f"{name}: front-matter missing 'name'")
 
-    parent, seen = fm.get("extends"), {name}
+    parent, seen, chain = fm.get("extends"), {name}, [adapter_dir]
     while parent:
         if parent in seen:
             errs.append(f"{name}: extends cycle involving '{parent}'")
@@ -105,6 +105,7 @@ def validate_adapter(adapter_dir, adapters_root):
         if not os.path.isfile(pmanifest):
             errs.append(f"{name}: extends '{parent}', which has no adapter.md")
             break
+        chain.append(os.path.dirname(pmanifest))
         pfm, _ = parse_frontmatter(pmanifest)
         parent = (pfm or {}).get("extends")
 
@@ -122,9 +123,10 @@ def validate_adapter(adapter_dir, adapters_root):
     for f in sorted(glob.glob(os.path.join(adapter_dir, "rules", "**", "*.md"), recursive=True)):
         with open(f) as fh:
             prose.append((os.path.relpath(f, adapter_dir), fh.read()))
+    # Data files union along the extends: chain, so a parent's table counts.
     for where, body in prose:
         for ref in sorted(set(re.findall(r"oracles/([\w./-]+\.md)", body))):
-            if not os.path.isfile(os.path.join(adapter_dir, "oracles", ref)):
+            if not any(os.path.isfile(os.path.join(d, "oracles", ref)) for d in chain):
                 errs.append(f"{name}: {where} references oracles/{ref}, which is missing")
     return errs
 

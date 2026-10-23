@@ -87,6 +87,39 @@ def test_table_empty_fails(validate_path, tmp_path):
     assert p.returncode == 1 and "no entries" in p.stdout
 
 
+def test_nested_tables_are_linted(validate_path, tmp_path):
+    d = _adapter(tmp_path, "nested")
+    os.makedirs(os.path.join(d, "oracles", "planet", "ice"))
+    with open(os.path.join(d, "oracles", "planet", "ice", "feature.md"), "w") as f:
+        f.write("# header only\n")
+    p = run(validate_path, d)
+    assert p.returncode == 1 and "planet/ice/feature.md" in p.stdout
+
+
+def _child_citing(tmp_path, ref):
+    child = _adapter(tmp_path, "child")
+    with open(os.path.join(child, "adapter.md"), "w") as f:
+        f.write("---\nname: child\nextends: parent\n---\n\n# child\n")
+    os.makedirs(os.path.join(child, "rules"))
+    with open(os.path.join(child, "rules", "steps.md"), "w") as f:
+        f.write(f"Roll `oracles/{ref}`.\n")
+    return child
+
+
+def test_rules_reference_to_a_parent_table_passes(validate_path, tmp_path):
+    _adapter(tmp_path, "parent", oracle_md="- [1] Yes\n")   # parent ships oracles/x.md
+    child = _child_citing(tmp_path, "x.md")
+    p = run(validate_path, child)
+    assert p.returncode == 0, p.stdout
+
+
+def test_rules_reference_to_a_missing_table_fails(validate_path, tmp_path):
+    _adapter(tmp_path, "parent", oracle_md="- [1] Yes\n")
+    child = _child_citing(tmp_path, "nowhere/y.md")
+    p = run(validate_path, child)
+    assert p.returncode == 1 and "rules/steps.md references oracles/nowhere/y.md" in p.stdout
+
+
 # --- frames ---
 
 def _frame(tmp_path, name, body):
