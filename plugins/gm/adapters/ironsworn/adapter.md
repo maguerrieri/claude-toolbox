@@ -18,6 +18,7 @@ When the fiction demands a mechanical answer, follow the base engine (`ironsworn
 - **Action moves** resolve with `roll ironsworn-action --stat <value> --adds <N>` (action die + stat + adds vs. two challenge dice). Pass the **numeric value** of the relevant stat (edge / heart / iron / shadow / wits), e.g. `roll ironsworn-action --stat 2 --adds 0`  # using your wits value of 2.
 - **Progress moves** (fulfil a vow, reach a milestone, journey's end, fight resolution) roll only the challenge dice against the filled progress boxes.
 - **Momentum burns** improve outcomes as the base describes.
+- **Ask the Oracle** (yes/no): decide the odds of a yes, then roll that table: `oracles/moves/ask-the-oracle/almost-certain.md`, `oracles/moves/ask-the-oracle/likely.md`, `oracles/moves/ask-the-oracle/fifty-fifty.md`, `oracles/moves/ask-the-oracle/unlikely.md`, or `oracles/moves/ask-the-oracle/small-chance.md`. The yes comes on a high roll (11 or greater on Almost Certain, up to 91 or greater on Small Chance). On a **match** (both digits the same: 11, 22 … 99, or 100), an extreme result or twist has occurred.
 
 ### The Ironsworn move list
 
@@ -29,6 +30,7 @@ Use the oracles in `oracles/` to answer open questions and spark the fiction:
 
 | When you need… | Roll |
 |---|---|
+| A yes/no answer | the Ask the Oracle table for your odds (above) |
 | A complication or unexpected action | `oracles/action.md` + `oracles/theme.md` together |
 | A region or terrain | `oracles/region.md` |
 | A place or landmark | `oracles/location.md` |
