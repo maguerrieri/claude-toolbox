@@ -475,11 +475,52 @@ def test_two_expansion_categories_can_enhance_one(mini_pins):
     assert "(`rules/assets/sundered-isles/boats.md`): Sloop." in index
 
 
-def test_a_table_cant_take_two_paths(mini_pins):
+@pytest.mark.parametrize("own_id", ["given", "given_name"])   # its own path differs from both, or is one
+@pytest.mark.parametrize("order", [1, -1])
+def test_a_table_cant_take_two_paths(mini_pins, own_id, order):
     exp = mini_expansion()
-    exp["oracles"]["character"]["collections"]["name"]["contents"]["given"]["replaces"].append(
-        "oracle_rollable:starforged/character/name/family_name")
+    given = exp["oracles"]["character"]["collections"]["name"]["contents"]["given"]
+    given["_id"] = f"oracle_rollable:sundered_isles/character/name/{own_id}"
+    given["replaces"] = ["oracle_rollable:starforged/character/name/given_name",
+                         "oracle_rollable:starforged/character/name/family_name"][::order]
     with pytest.raises(ValueError, match="two paths"):
+        imp.generate(exp, mini_base())
+
+
+def test_a_move_replaces_one_move(mini_pins):
+    base = mini_base()
+    base["moves"]["fate"]["contents"]["ask"] = {"_id": "move:starforged/fate/ask", "name": "Ask",
+                                                 "roll_type": "no_roll", "text": "Ask."}
+    exp = mini_expansion()
+    exp["moves"]["fate"]["contents"]["pay_the_price"]["replaces"].append("move:starforged/fate/ask")
+    with pytest.raises(ValueError, match="one place"):
+        imp.generate(exp, base)
+
+
+def test_cursed_links_read_from_either_end(mini_pins):
+    exp = mini_expansion()
+    ship = exp["oracles"]["ship"]["contents"]
+    # the link only on the cursed side, by exact id and by wildcard; a self-reference is ignored
+    del ship["look"]["tags"]
+    ship["look_cursed"]["tags"]["sundered_isles"]["cursed_version_of"] = [
+        "oracle_rollable:sundered_isles/ship/look", "oracle_rollable:sundered_isles/ship/look_cursed"]
+    ship["wake"] = _table("oracle_rollable:sundered_isles/ship/wakes/foam", "Wake", [_row(1, 10, "Foam")])
+    ship["wake_cursed"] = _table("oracle_rollable:sundered_isles/ship/wake_cursed", "Cursed Wake",
+                                 [_row(1, 10, "Blood")], tags={"sundered_isles": {
+                                     "cursed_version_of": ["oracle_rollable:sundered_isles/ship/wakes/*"],
+                                     "curse_behavior": "add_result"}})
+    files = imp.generate(exp, mini_base())
+    o = "adapters/sundered-isles/oracles/"
+    assert "Cursed die: on a 10, read the same roll on `oracles/ship/look-cursed.md` instead." in files[o + "ship/look.md"]
+    assert "Cursed die: on a 10, also roll `oracles/ship/wake-cursed.md` and combine the two." in files[o + "ship/wakes/foam.md"]
+    assert "Cursed die" not in files[o + "ship/look-cursed.md"]
+
+
+def test_cursed_version_of_an_unknown_table_fails(mini_pins):
+    exp = mini_expansion()
+    exp["oracles"]["ship"]["contents"]["look_cursed"]["tags"]["sundered_isles"]["cursed_version_of"] = [
+        "oracle_rollable:sundered_isles/ship/gone"]
+    with pytest.raises(ValueError, match="isn't a table here"):
         imp.generate(exp, mini_base())
 
 

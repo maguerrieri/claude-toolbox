@@ -5,7 +5,7 @@
 This is the adapter's starting-location exercise, in place of Starforged's starting sector: a **navigation chart** of your local waters, with a few islands, a seaside settlement, some notable places and a local connection (the book allows 30–45 minutes). The chart keeps early journeys to a manageable scope; you'll chart new waters as you go. Keep things moving and don't get stuck on details. Ignore or revise any result that contradicts the established facts.
 
 - **The player may skip it** and discover the starting area in play, or start from a place they already have in mind.
-- **Skyfaring realm:** the exercise works with a little reimagining. **Starfaring realm:** use Starforged's sector creation instead, `${CLAUDE_PLUGIN_ROOT}/adapters/starforged/rules/sector-creation.md`. Its tables resolve through this adapter, so its settlement location, first look and name tables are this adapter's; roll Starforged's from the starforged adapter.
+- **Skyfaring realm:** the exercise works with a little reimagining. **Starfaring realm:** use Starforged's sector creation instead, `${CLAUDE_PLUGIN_ROOT}/adapters/starforged/rules/sector-creation.md`. Its paths resolve through this adapter: its settlement location, first look and name tables are this adapter's (roll Starforged's from the starforged adapter), and its closing pointer to *Begin Your Adventure* in `rules/campaign-launch.md` means this adapter's *Set the scene*.
 
 Record what you make: islands, the settlement and notable places in `locations.md` (with where each lies on the chart), the connection in `npcs.md` and on the sheet, and the region, the faction influence and the area's name under `campaign.md`'s truths.
 

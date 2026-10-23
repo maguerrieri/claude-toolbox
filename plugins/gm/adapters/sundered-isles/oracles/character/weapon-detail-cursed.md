@@ -3,6 +3,8 @@
 
 > If you roll a Trademark Weapon (`oracles/character/trademark-weapons.md`) curse, take your result and give that weapon a cursed aspect from the table below.
 >
+> The cursed version of `oracles/character/trademark-weapons.md`.
+>
 > Datasworn `oracle_rollable:sundered_isles/character/weapon_detail_cursed` · 1d100
 
 - [5] Adorned with bone or skull motifs

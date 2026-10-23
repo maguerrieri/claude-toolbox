@@ -2,9 +2,10 @@
 # Sundered Isles Assets
 
 Every asset card for a Sundered Isles campaign: the Sundered Isles cards, one file per category
-under `rules/assets/sundered-isles/`, and the Starforged cards, which still apply, under `rules/assets/`
+under `rules/assets/sundered-isles/`, and the Starforged cards, which remain available, under `rules/assets/`
 (from the starforged adapter). On each card, `[x]` marks an ability you start with and
 `[ ]` one you unlock with experience (Advance, `rules/moves.md`).
+The Guidebook recommends a curated deck mixing the two; `rules/character-creation.md` lists the Starforged cards it includes.
 
 ## Command Vehicle Assets
 

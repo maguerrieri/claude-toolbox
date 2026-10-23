@@ -66,7 +66,7 @@ UPSTREAM_REF = "e643a75263c1cb3e845a0c0789879ff4e8b49532"
 class Package:
     """One pinned Datasworn file and the adapter generated from it."""
 
-    def __init__(self, key, file, sha256, adapter, title, sheet, base=None):
+    def __init__(self, key, file, sha256, adapter, title, sheet, base=None, deck=None):
         self.key = key              # the file's Datasworn _id, which its ids also carry
         self.file = file
         self.sha256 = sha256
@@ -76,6 +76,7 @@ class Package:
         self.title = title
         self.base = base            # the ruleset an expansion extends
         self.sheet = sheet          # what its character sheet says differently (render_sheet)
+        self.deck = deck            # where an expansion's own docs say which ruleset cards to use
         self.url = f"https://raw.githubusercontent.com/{UPSTREAM_REPO}/{UPSTREAM_REF}/{file}"
 
 
@@ -98,7 +99,9 @@ PACKAGES = {p.key: p for p in [
                                "keep the line that applies:",
                                "  - SAILING SHIP integrity {{5 heavy | 4 medium | 3 light}} · hold {{up to 5}} "
                                "(an incidental vehicle, not an asset card)"],
-                "ship_prefix": "  - ", "ship_join": True}),
+                "ship_prefix": "  - ", "ship_join": True},
+            deck="The Guidebook recommends a curated deck mixing the two; `rules/character-creation.md` "
+                 "lists the Starforged cards it includes."),
 ]}
 
 # Expansion tables that take over a ruleset table's path although Datasworn doesn't mark
@@ -504,14 +507,37 @@ def table_files(doc):
 
 
 def cursed_versions(doc):
-    """{table ref: its cursed table's ref}, from the `cursed_by` tags. They're read from
-    the uncursed side because the cursed tables' own `cursed_version_of` tags are
-    unreliable in this pin (one names its own table), and a `cursed_by` naming its own
-    table (ship/details_cursed) is dropped."""
-    if doc.curses is None:
-        doc.curses = {ref: _tag(doc, t, "cursed_by") for ref, (t, _p) in doc.tables.items()
-                      if _tag(doc, t, "cursed_by") and _tag(doc, t, "cursed_by") != ref}
-    return doc.curses
+    """{table ref: its cursed table's ref}, read from both ends of the link: an uncursed
+    table's `cursed_by`, and a cursed table's `cursed_version_of`, whose ids may end in a
+    `*` wildcard. Each end alone misses tables in this pin (Trademark Weapons has only the
+    second). A link from a table to itself is dropped (ship/details_cursed's `cursed_by`,
+    and the `cursed_version_of` of inland_cave/feature_cursed and ship/first_look_cursed),
+    and so, as the tag's definition says, is a wildcard match on a table with its own
+    `cursed_version_of`."""
+    if doc.curses is not None:
+        return doc.curses
+    links = {}
+
+    def link(ref, cursed):
+        if ref != cursed and links.setdefault(ref, cursed) != cursed:
+            raise ValueError(f"{ref} has two cursed versions, {links[ref]} and {cursed}")
+
+    for ref, (t, _p) in doc.tables.items():
+        if target := _tag(doc, t, "cursed_by"):
+            link(ref, target)
+    for cursed, (t, _p) in doc.tables.items():
+        patterns = _tag(doc, t, "cursed_version_of") or []
+        for pattern in [patterns] if isinstance(patterns, str) else patterns:
+            if pattern.endswith("*"):
+                for ref, (u, _q) in doc.tables.items():
+                    if ref.startswith(pattern[:-1]) and not _tag(doc, u, "cursed_version_of"):
+                        link(ref, cursed)
+            elif pattern in doc.tables:
+                link(pattern, cursed)
+            else:
+                raise ValueError(f"{cursed} is the cursed version of {pattern}, which isn't a table here")
+    doc.curses = links
+    return links
 
 
 def curse_notes(doc):
@@ -601,20 +627,25 @@ def link_expansion(doc):
     base = doc.base
     known = {o["_id"] for o in _objects(base.data)}
     for obj in _objects(doc.data):
-        for ref in obj.get("replaces") or []:
+        refs, kind = obj.get("replaces") or [], obj["_id"].partition(":")[0]
+        if kind == "move" and len(refs) > 1:
+            raise ValueError(f"{obj['_id']} replaces {len(refs)} moves, but rules/moves.md can show it in one place")
+        took = {}                               # path -> the ruleset table there
+        for ref in refs:
             if ref not in known:
                 raise ValueError(f"{obj['_id']} replaces {ref}, which {base.pkg.key} doesn't have")
             if ref in doc.replaced:
                 raise ValueError(f"{ref} is replaced by both {doc.replaced[ref]['_id']} and {obj['_id']}")
             doc.replaced[ref] = obj
-            if ref in base.tables and obj["_id"].partition(":")[0] in TABLE_KINDS:
-                path = base.tables[ref][1]
-                if obj["_id"] in doc.in_place_of and doc.path(obj["_id"]) != path:
-                    raise ValueError(f"{obj['_id']} replaces tables at two paths, "
-                                     f"oracles/{doc.path(obj['_id'])} and oracles/{path}")
-                if path != oracle_path(obj["_id"]):
-                    doc.paths[obj["_id"]] = path
-                    doc.in_place_of[obj["_id"]] = ref
+            if ref in base.tables and kind in TABLE_KINDS:
+                took[base.tables[ref][1]] = ref
+        if len(took) > 1:
+            raise ValueError(f"{obj['_id']} replaces tables at two paths: "
+                             + ", ".join(f"oracles/{p}" for p in sorted(took)))
+        for path, ref in took.items():
+            if path != oracle_path(obj["_id"]):
+                doc.paths[obj["_id"]] = path
+                doc.in_place_of[obj["_id"]] = ref
 
 
 def _replacement(doc, ref):
@@ -870,9 +901,10 @@ def render_expansion_assets(doc, files):
     sub = f"rules/assets/{pkg.name}"
     index = [GENERATED, f"# {pkg.title} Assets", "",
              f"Every asset card for a {pkg.title} campaign: the {pkg.title} cards, one file per category",
-             f"under `{sub}/`, and the {base.title} cards, which still apply, under `rules/assets/`",
+             f"under `{sub}/`, and the {base.title} cards, which remain available, under `rules/assets/`",
              f"(from the {base.name} adapter). On each card, `[x]` marks an ability you start with and",
-             "`[ ]` one you unlock with experience (Advance, `rules/moves.md`).", ""]
+             "`[ ]` one you unlock with experience (Advance, `rules/moves.md`)."]
+    index += ([pkg.deck] if pkg.deck else []) + [""]
     ours = {}
     for key, cat in doc.data["assets"].items():
         for a in cat["contents"].values():

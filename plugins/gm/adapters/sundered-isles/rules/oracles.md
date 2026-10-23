@@ -61,7 +61,7 @@ When encountering a character, focus on what you learn or perceive as a first im
 - `oracles/character/initial-disposition.md` — Character Disposition (in place of Starforged's Initial Disposition)
 - `oracles/character/role.md` — Character Roles (in place of Starforged's Character Role)
 - `oracles/character/trademark-accessories.md` — Trademark Accessories
-- `oracles/character/trademark-weapons.md` — Trademark Weapons
+- `oracles/character/trademark-weapons.md` — Trademark Weapons · cursed: `oracles/character/weapon-detail-cursed.md`
 - `oracles/character/weapon-detail-cursed.md` — Cursed Weapon Detail
 - `oracles/character/revealed-aspect.md` — Character Details (in place of Starforged's Revealed Character Aspect) · cursed: `oracles/character/details-cursed.md`
 - `oracles/character/details-cursed.md` — Cursed Character Details
