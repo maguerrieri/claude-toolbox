@@ -17,9 +17,9 @@ converts one pinned copy of it into the gm adapter's formats:
 The tool owns its output: a run deletes every file it generated before (each .md
 starts with the GENERATED marker; the fixture dir is all its own) and writes the
 new set, so edit this tool or its pin, never the output. Hand-written adapter files
-(adapter.md, SOURCE.md, frames/, rules/character-creation.md,
-rules/sector-creation.md) have no marker and are never touched; a generated path
-that would overwrite one is an error.
+(adapter.md, SOURCE.md, frames/, rules/campaign-launch.md,
+rules/character-creation.md, rules/sector-creation.md) have no marker and are never
+touched; a generated path that would overwrite one is an error.
 
 Usage:
   datasworn-import                  fetch the pinned upstream, verify it, regenerate
@@ -36,6 +36,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 
 UPSTREAM_REPO = "rsek/datasworn"
@@ -54,6 +55,8 @@ GENERATED = (f"{MARKER} from {UPSTREAM_REPO}@{UPSTREAM_REF[:7]} ({UPSTREAM_TAG})
 
 LINK = re.compile(r"\[([^\]]*)\]\(datasworn:([^)\s]+)\)")
 TABLE_TEMPLATE = re.compile(r"\{\{table>([^}]+)\}\}")
+PATHS_NOTE = ("Paths are relative to this adapter, so `oracles/<path>` rolls as "
+              "`roll table ${CLAUDE_PLUGIN_ROOT}/adapters/starforged/oracles/<path>`.")
 ROLL_TYPES = {
     "action_roll": "action roll",
     "progress_roll": "progress roll",
@@ -113,12 +116,6 @@ def collection_dir(ref):
     return p + "/" if p else ""
 
 
-def asset_file(ref):
-    """'asset:starforged/path/ace' -> 'path.md' (the category file under rules/assets/)."""
-    _kind, path = _split(ref)
-    return _slug(path.split("/")[0]) + ".md"
-
-
 def asset_category(ref):
     _kind, path = _split(ref)
     return path.split("/")[0].replace("_", " ")
@@ -159,8 +156,8 @@ def convert_links(text):
         raise ValueError(f"unknown datasworn link type: {ref!r}")
 
     out = LINK.sub(sub, text)
-    if "datasworn:" in out:
-        raise ValueError(f"unconverted datasworn reference in: {text!r}")
+    if "datasworn:" in out or "{{" in out:     # a link we didn't parse, or a template
+        raise ValueError(f"unconverted datasworn reference or template in: {text!r}")
     return out
 
 
@@ -195,20 +192,12 @@ def md_table(doc, ref):
 
 def rules_text(doc, text):
     """Datasworn prose for a rules file: links converted, embedded tables expanded."""
-    out = TABLE_TEMPLATE.sub(lambda m: md_table(doc, m.group(1)), text)
-    out = convert_links(out)
-    if "{{" in out:
-        raise ValueError(f"unconverted template in: {text!r}")
-    return out
+    return convert_links(TABLE_TEMPLATE.sub(lambda m: md_table(doc, m.group(1)), text))
 
 
 def entry_text(doc, text):
     """Datasworn prose inside a table entry: an embedded table becomes a pointer."""
-    out = TABLE_TEMPLATE.sub(lambda m: f"→ Roll `oracles/{doc.table(m.group(1))[1]}`.", text)
-    out = convert_links(out)
-    if "{{" in out:
-        raise ValueError(f"unconverted template in: {text!r}")
-    return out
+    return convert_links(TABLE_TEMPLATE.sub(lambda m: f"→ Roll `oracles/{doc.table(m.group(1))[1]}`.", text))
 
 
 def quote(text):
@@ -259,19 +248,27 @@ def row_lines(row):
     return lines
 
 
-def table_file(title, ref, dice, summary, entries):
-    """entries: [(weight, [line, …])]. Returns (md text, fixture rows)."""
+def put(files, rel, text):
+    if rel in files:
+        raise ValueError(f"two generated files map to {rel}")
+    files[rel] = text
+
+
+def emit_table(files, path, title, ref, dice, summary, entries):
+    """Write a rollable table and its golden fixture. entries: [(roll, [line, …])], with
+    roll the upstream {min, max}. The table weighs each entry max - min + 1, while the
+    fixture keeps the upstream max, so a weight the table gets wrong fails the parity test."""
     out = [GENERATED, f"# {title}", ""]
     meta = f"Datasworn `{ref}` · {dice}"
     out += [quote(f"{summary}\n\n{meta}" if summary else meta), ""]
-    fixture, acc = [], 0
-    for weight, lines in entries:
+    fixture = []
+    for roll, lines in entries:
         lines = [ln.strip() for ln in lines if ln.strip()]
-        out.append(f"- [{weight}] {lines[0]}")
+        out.append(f"- [{roll['max'] - roll['min'] + 1}] {lines[0]}")
         out += [f"  {ln}" for ln in lines[1:]]
-        acc += weight
-        fixture.append({"max": acc, "result": "\n".join(lines)})
-    return "\n".join(out) + "\n", fixture
+        fixture.append({"max": roll["max"], "result": "\n".join(lines)})
+    put(files, f"{ADAPTER}/oracles/{path}", "\n".join(out) + "\n")
+    put(files, f"{FIXTURES}/{path[:-3]}.json", fixture_json(ref, dice, fixture))
 
 
 def fixture_json(ref, dice, rows):
@@ -337,11 +334,11 @@ def shared_roll_collections(doc):
 def render_oracles(doc, files):
     for ref, path, title, t, parent in collect_tables(doc):
         rows = checked_rows(t["rows"], t["dice"], ref)
-        summary = t.get("summary") or (parent or {}).get("summary") if t.get("oracle_type") == "column_text" else t.get("summary")
-        md, fixture = table_file(title, ref, t["dice"], convert_links(summary) if summary else "",
-                                 [(r["roll"]["max"] - r["roll"]["min"] + 1, row_lines(r)) for r in rows])
-        files[f"{ADAPTER}/oracles/{path}"] = md
-        files[f"{FIXTURES}/{path[:-3]}.json"] = fixture_json(ref, t["dice"], fixture)
+        summary = t.get("summary")
+        if not summary and t.get("oracle_type") == "column_text":
+            summary = (parent or {}).get("summary")   # a column shares its collection's summary
+        emit_table(files, path, title, ref, t["dice"], convert_links(summary) if summary else "",
+                   [(r["roll"], row_lines(r)) for r in rows])
 
     for coll, title in shared_roll_collections(doc):
         ref = coll["_id"]
@@ -349,18 +346,15 @@ def render_oracles(doc, files):
         rows = [checked_rows(c["rows"], c["dice"], c["_id"]) for c in cols]
         if len({c["dice"] for c in cols}) != 1 or len({tuple((r["roll"]["min"], r["roll"]["max"]) for r in rs) for rs in rows}) != 1:
             raise ValueError(f"{ref}: shared-roll columns don't share their rolls")
-        entries = []
-        for i, r in enumerate(rows[0]):
-            entries.append((r["roll"]["max"] - r["roll"]["min"] + 1,
-                            [" · ".join(f"{c['name']}: {convert_links(rs[i]['text'])}" for c, rs in zip(cols, rows))]))
+        entries = [(r["roll"], [" · ".join(f"{c['name']}: {convert_links(rs[i]['text'])}"
+                                           for c, rs in zip(cols, rows))])
+                   for i, r in enumerate(rows[0])]
         path = collection_dir(ref)[:-1] + ".md"
         summary = convert_links(coll.get("summary") or "")
         summary = (summary + "\n\n" if summary else "") + (
             "This table reads every column off one roll. To roll a column on its own: "
             + ", ".join(f"`oracles/{oracle_path(c['_id'])}`" for c in cols) + ".")
-        md, fixture = table_file(title, ref, cols[0]["dice"], summary, entries)
-        files[f"{ADAPTER}/oracles/{path}"] = md
-        files[f"{FIXTURES}/{path[:-3]}.json"] = fixture_json(ref, cols[0]["dice"], fixture)
+        emit_table(files, path, title, ref, cols[0]["dice"], summary, entries)
 
 
 # --- truths -----------------------------------------------------------------
@@ -368,29 +362,26 @@ def render_oracles(doc, files):
 def render_truths(doc, files):
     out = [GENERATED, "# Setting Truths", "",
            "The Forge's 14 setting truths from the Starforged SRD. For each one, pick an option or",
-           "roll its table (`roll table <adapter>/oracles/truths/<truth>.md`), then roll any",
-           "sub-table the chosen option names. Each option carries a quest starter.", ""]
-    for key, truth in doc.data["truths"].items():
+           "roll its table, then roll any sub-table the chosen option names. Each option carries a",
+           f"quest starter. {PATHS_NOTE}", ""]
+    for truth in doc.data["truths"].values():
         ref = truth["_id"]
         path = oracle_path(ref)
         entries = []
         out += [f"## {truth['name']}", "", f"Roll `oracles/{path}` ({truth['dice']}), or choose.", ""]
-        rows = checked_rows(truth["options"], truth["dice"], ref)
-        for opt in rows:
+        for opt in checked_rows(truth["options"], truth["dice"], ref):
             lines = [opt["summary"]] + entry_text(doc, opt["description"]).split("\n")
             if opt.get("quest_starter"):
                 lines.append(f"Quest starter: {convert_links(opt['quest_starter'])}")
-            entries.append((opt["roll"]["max"] - opt["roll"]["min"] + 1, lines))
+            entries.append((opt["roll"], lines))
             out += [f"### {_range(opt['roll'])}: {opt['summary']}", "", rules_text(doc, opt["description"]), ""]
             if opt.get("quest_starter"):
                 out += [f"*Quest starter:* {convert_links(opt['quest_starter'])}", ""]
         if truth.get("your_character"):
             out += [f"*Your character:* {convert_links(truth['your_character'])}", ""]
-        md, fixture = table_file(f"Truth › {truth['name']}", ref, truth["dice"],
-                                 "Each option: its summary, the truth, then its quest starter.", entries)
-        files[f"{ADAPTER}/oracles/{path}"] = md
-        files[f"{FIXTURES}/{path[:-3]}.json"] = fixture_json(ref, truth["dice"], fixture)
-    files[f"{ADAPTER}/rules/truths.md"] = "\n".join(out).rstrip() + "\n"
+        emit_table(files, path, f"Truth › {truth['name']}", ref, truth["dice"],
+                   "Each option: its summary, the truth, then its quest starter.", entries)
+    put(files, f"{ADAPTER}/rules/truths.md", "\n".join(out).rstrip() + "\n")
 
 
 # --- moves ------------------------------------------------------------------
@@ -408,12 +399,12 @@ def render_moves(doc, files):
            "`roll ironsworn-action --stat <value> --adds <N>`; a **progress roll** is",
            "`roll ironsworn-progress --boxes <filled boxes>` on the named track (a legacy-track roll",
            "uses that track's filled boxes the same way). A table a move rolls on is shown in place,",
-           "with the path to roll it.", ""]
+           f"with the path to roll it. {PATHS_NOTE}", ""]
     for cat in doc.data["moves"].values():
         out += [f"## {cat['name']}", ""]
         for move in cat["contents"].values():
             out += [f"### {move['name']}", "", roll_note(move), "", rules_text(doc, move["text"]), ""]
-    files[f"{ADAPTER}/rules/moves.md"] = "\n".join(out).rstrip() + "\n"
+    put(files, f"{ADAPTER}/rules/moves.md", "\n".join(out).rstrip() + "\n")
 
 
 # --- assets -----------------------------------------------------------------
@@ -486,7 +477,7 @@ def render_assets(doc, files):
              "`rules/assets/`. On each card, `[x]` marks an ability you start with and `[ ]` one you",
              "unlock with experience (Advance, `rules/moves.md`).", ""]
     for key, cat in doc.data["assets"].items():
-        fname = asset_file(f"asset:starforged/{key}/x")
+        fname = _slug(key) + ".md"
         out = [GENERATED, f"# {cat['name']}", ""]
         if cat.get("description"):
             out += [convert_links(cat["description"]), ""]
@@ -498,16 +489,16 @@ def render_assets(doc, files):
             out.append(render_asset(doc, a))
             names.append(a["name"])
         index += [", ".join(names) + ".", ""]
-        files[f"{ADAPTER}/rules/assets/{fname}"] = "\n".join(out).rstrip() + "\n"
-    files[f"{ADAPTER}/rules/assets.md"] = "\n".join(index).rstrip() + "\n"
+        put(files, f"{ADAPTER}/rules/assets/{fname}", "\n".join(out).rstrip() + "\n")
+    put(files, f"{ADAPTER}/rules/assets.md", "\n".join(index).rstrip() + "\n")
 
 
 # --- oracle index -----------------------------------------------------------
 
 def render_oracle_index(doc, files):
     out = [GENERATED, "# Starforged Oracles", "",
-           "Every rollable table this adapter ships, by collection. Roll one with",
-           "`roll table <adapter>/oracles/<path>`; a table's file also carries its summary.", ""]
+           "Every rollable table this adapter ships, by collection; a table's file also carries",
+           f"its summary. {PATHS_NOTE}", ""]
 
     def walk(coll, depth):
         out.append("#" * depth + f" {coll['name']}")
@@ -537,15 +528,20 @@ def render_oracle_index(doc, files):
         for opt in truth["options"]:
             for t in (opt.get("oracles") or {}).values():
                 out.append(f"  - `oracles/{oracle_path(t['_id'])}` — {t['name']} ({opt['summary']})")
-    files[f"{ADAPTER}/rules/oracles.md"] = "\n".join(out).rstrip() + "\n"
+    put(files, f"{ADAPTER}/rules/oracles.md", "\n".join(out).rstrip() + "\n")
 
 
 # --- sheet ------------------------------------------------------------------
+
+def _meter(m):
+    return f"[{'▰' * m['value'] + '▱' * (m['max'] - m['value'])}] {m['value']}/{m['max']}"
+
 
 def render_sheet(doc, files):
     rules = doc.data["rules"]
     stats = rules["stats"]
     meters = rules["condition_meters"]
+    starship = doc.data["assets"]["command_vehicle"]["contents"]["starship"]
     out = [GENERATED, "# {{name}}", "",
            "**Pronouns:** {{}} · **Callsign:** {{}}  ",
            "**Look / act / wear:** {{}}", "",
@@ -554,9 +550,8 @@ def render_sheet(doc, files):
            "- " + " · ".join(f"{k} {{{{}}}}" for k in stats), ""]
     out += [f"  - *{k}:* {v['description']}" for k, v in stats.items()]
     out += ["", "**Condition meters:**"]
-    for k, m in meters.items():
-        filled = "▰" * m["value"] + "▱" * (m["max"] - m["value"])
-        out.append(f"- {m['label'].capitalize():<8} [{filled}] {m['value']}/{m['max']}")
+    for m in meters.values():
+        out.append(f"- {m['label'].capitalize():<8} {_meter(m)}")
     out += ["- Momentum  +2     (max +10; reset +2; impacts lower both: `rules/character-creation.md`, step 8)", "",
             "**Impacts** (mark as the fiction demands):"]
     for group in rules["impacts"].values():
@@ -571,9 +566,13 @@ def render_sheet(doc, files):
             "**Connections** (progress tracks):",
             "- {{name, role}} — {{rank}} [▱▱▱▱▱▱▱▱▱▱] 0/10", "",
             "**Assets** (`rules/assets.md`): STARSHIP {{name}} · {{two paths}} · {{one more}}", "",
+            "**Asset tracks** (each card's meters, clocks and counters, at their starting values):"]
+    for c in starship["controls"].values():
+        out.append(f"- STARSHIP {c['label']} {_meter(c)}")
+    out += ["- {{asset}} {{track}} {{value}} (a companion's health, a support vehicle's integrity, …)", "",
             "**Experience:** {{earned}} / {{spent}}", "",
             "**Notes / Inventory:** {{freeform}}"]
-    files[f"{ADAPTER}/sheet-template.md"] = "\n".join(out) + "\n"
+    put(files, f"{ADAPTER}/sheet-template.md", "\n".join(out) + "\n")
 
 
 # --- driver -----------------------------------------------------------------
@@ -606,10 +605,22 @@ def owned_files(root):
     fixtures = os.path.join(root, FIXTURES)
     for dirpath, _dirs, names in os.walk(fixtures):
         for n in names:
-            p = os.path.join(dirpath, n)
-            with open(p, encoding="utf-8") as fh:
-                found[os.path.relpath(p, root)] = fh.read()
+            if n.endswith(".json"):    # not .DS_Store and the like
+                p = os.path.join(dirpath, n)
+                with open(p, encoding="utf-8") as fh:
+                    found[os.path.relpath(p, root)] = fh.read()
     return found
+
+
+def fetch(url, attempts=3):
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as resp:
+                return resp.read()
+        except OSError as e:           # URLError, HTTPError, timeouts
+            if attempt == attempts:
+                sys.exit(f"datasworn-import: couldn't fetch {url}: {e}")
+            time.sleep(5 * attempt)
 
 
 def load(json_path):
@@ -617,8 +628,7 @@ def load(json_path):
         with open(json_path, "rb") as fh:
             raw = fh.read()
     else:
-        with urllib.request.urlopen(UPSTREAM_URL, timeout=120) as resp:
-            raw = resp.read()
+        raw = fetch(UPSTREAM_URL)
     digest = hashlib.sha256(raw).hexdigest()
     if digest != UPSTREAM_SHA256:
         sys.exit(f"datasworn-import: sha256 {digest} doesn't match the pin {UPSTREAM_SHA256} "
@@ -639,13 +649,14 @@ def write(root, files):
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(text)
-    for base in (ADAPTER, FIXTURES):
-        for dirpath, dirs, names in os.walk(os.path.join(root, base), topdown=False):
-            if not dirs and not names:
-                os.rmdir(dirpath)
-            elif not os.listdir(dirpath):
-                os.rmdir(dirpath)
     removed = sorted(set(old) - set(files))
+    # Prune only directories a removed file leaves empty, up to (not including) its base.
+    for rel in removed:
+        base = os.path.join(root, FIXTURES if rel.startswith(FIXTURES + "/") else ADAPTER)
+        d = os.path.dirname(os.path.join(root, rel))
+        while d != base and os.path.isdir(d) and not os.listdir(d):
+            os.rmdir(d)
+            d = os.path.dirname(d)
     print(f"datasworn-import: wrote {len(files)} files" + (f", removed {len(removed)}" if removed else ""))
 
 

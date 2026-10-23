@@ -42,6 +42,10 @@ Fill it in with `rules/character-creation.md`.
 
 **Assets** (`rules/assets.md`): STARSHIP {{name}} · {{two paths}} · {{one more}}
 
+**Asset tracks** (each card's meters, clocks and counters, at their starting values):
+- STARSHIP integrity [▰▰▰▰▰] 5/5
+- {{asset}} {{track}} {{value}} (a companion's health, a support vehicle's integrity, …)
+
 **Experience:** {{earned}} / {{spent}}
 
 **Notes / Inventory:** {{freeform}}

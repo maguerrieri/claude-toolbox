@@ -2,8 +2,8 @@
 # Setting Truths
 
 The Forge's 14 setting truths from the Starforged SRD. For each one, pick an option or
-roll its table (`roll table <adapter>/oracles/truths/<truth>.md`), then roll any
-sub-table the chosen option names. Each option carries a quest starter.
+roll its table, then roll any sub-table the chosen option names. Each option carries a
+quest starter. Paths are relative to this adapter, so `oracles/<path>` rolls as `roll table ${CLAUDE_PLUGIN_ROOT}/adapters/starforged/oracles/<path>`.
 
 ## Cataclysm
 

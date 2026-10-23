@@ -87,7 +87,12 @@ def mini_doc():
                                       "quest_starter": "Find the last star.", "oracles": {"cause": cause}},
                                      {"roll": {"min": 4, "max": 10}, "summary": "A war.",
                                       "description": "We fled.", "quest_starter": "Face the foe."}]}},
-        "assets": {"path": {"name": "Path Assets", "description": "Pick at least two.", "contents": {"ace": {
+        "assets": {"command_vehicle": {"name": "Command Vehicle Assets", "contents": {"starship": {
+            "_id": "asset:starforged/command_vehicle/starship", "name": "Starship", "options": {},
+            "controls": {"integrity": {"label": "integrity", "field_type": "condition_meter",
+                                       "max": 5, "value": 5}},
+            "abilities": [{"text": "Your ship.", "enabled": True}]}}},
+                   "path": {"name": "Path Assets", "description": "Pick at least two.", "contents": {"ace": {
             "_id": "asset:starforged/path/ace", "name": "Ace", "options": {}, "controls": {},
             "abilities": [{"text": "When you [Face Danger](datasworn:move:starforged/adventure/face_danger), add +1.",
                            "enabled": True},
@@ -133,6 +138,27 @@ def test_convert_links():
 def test_convert_links_rejects_unknown_link_types():
     with pytest.raises(ValueError):
         imp.convert_links("[x](datasworn:npc:starforged/x)")
+
+
+def test_convert_links_rejects_leftover_templates():
+    # an embedded table outside rules_text/entry_text must fail, not leak into a table
+    with pytest.raises(ValueError, match="template"):
+        imp.convert_links("Roll: {{table>move.oracle_rollable:starforged/suffer/endure_harm.endure_harm}}")
+
+
+def test_two_tables_on_one_path_fail():
+    doc = mini_doc()
+    # a rollable at the shared-roll collection's own path would overwrite its combined table
+    doc["oracles"]["character"]["contents"]["name"] = _table(
+        "oracle_rollable:starforged/character/name", "Name", [_row(1, 10, "Ash")])
+    with pytest.raises(ValueError, match="character/name.md"):
+        imp.generate(doc)
+
+
+def test_fixture_max_is_upstream_not_the_weight_sum():
+    files = imp.generate(mini_doc())
+    fx = json.loads(files["tests/fixtures/oracles/starforged/character/name/given-name.json"])
+    assert [r["max"] for r in fx["rows"]] == [6, 10]
 
 
 def test_rows_must_tile_the_die():
@@ -182,7 +208,8 @@ def test_generate_mini_doc():
     assert "- [x] When you Face Danger, add +1." in assets and "- [ ] Take +1 momentum." in assets
     assert "`rules/assets/path.md`" in files["adapters/starforged/rules/assets.md"]
     assert "Vestige (path asset)" in files["adapters/starforged/rules/truths.md"]
-    assert "[ ] wounded" in files["adapters/starforged/sheet-template.md"]
+    sheet = files["adapters/starforged/sheet-template.md"]
+    assert "[ ] wounded" in sheet and "- STARSHIP integrity [▰▰▰▰▰] 5/5" in sheet
     for rel, text in files.items():
         if rel.endswith(".md"):
             assert text.startswith(imp.MARKER), rel
@@ -197,10 +224,15 @@ def test_write_owns_only_marked_files(tmp_path):
     stale = tmp_path / "adapters" / "starforged" / "oracles" / "gone.md"
     stale.write_text(imp.GENERATED + "\n- [1] old\n")
 
+    empty = tmp_path / "adapters" / "starforged" / "frames"
+    empty.mkdir()                   # a hand-made dir, still empty
+    (tmp_path / "tests" / "fixtures" / "oracles" / "starforged" / ".DS_Store").write_bytes(b"\x00\x05\x16\x07\xff")
+
     imp.write(root, files)          # regenerating removes stale output, keeps hand-written files
     assert hand.read_text() == "# hand-written\n"
     assert not stale.exists()
-    imp.check(root, files)          # in sync: returns quietly
+    assert empty.is_dir()
+    imp.check(root, files)          # in sync (and the .DS_Store isn't ours): returns quietly
 
     (tmp_path / "adapters" / "starforged" / "oracles" / "action.md").write_text(imp.GENERATED + "\n- [1] edited\n")
     with pytest.raises(SystemExit):
