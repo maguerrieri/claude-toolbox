@@ -18,7 +18,7 @@ If you play in a permission mode that asks before file writes, also allow the `g
 
 ## Play
 
-- `/gm:new-campaign` — pick a **system**, choose a saves folder, then bring your own premise or say *surprise me* to have it rolled from the oracle; asks your lines & veils; sets up the world + a character (following the system's own truths and creation steps when it ships them, as Starforged does); starts a git repo for the saves. The persona starts as `house`; change `persona:` in the campaign's `campaign.md` to switch voices (the save's commit identity stays the one `campaign init` set).
+- `/gm:new-campaign` — pick a **system**, choose a saves folder, then bring your own premise or say *surprise me* to have it rolled from the oracle; asks your lines & veils; sets up the world + a character (following the system's own truths and creation steps when it ships them, as Ironsworn and Starforged do); starts a git repo for the saves. The persona starts as `house`; change `persona:` in the campaign's `campaign.md` to switch voices (the save's commit identity stays the one `campaign init` set).
 - `/gm:play` — start or continue a session. It turns on **autosave**: after every turn, the plugin's Stop hook appends your prompt and the GM's narration to the campaign's `log/raw/` and checkpoints it — no `/gm:wrap` needed to keep the play record.
 - `/gm:wrap` — end a session (summarizes the raw log into the session log + recap, checkpoints the save).
 - `/gm:oracle` — a quick yes/no or inspiration pull.
@@ -29,7 +29,7 @@ If you play in a permission mode that asks before file writes, also allow the `g
 
 Declarative data that composes via `extends:`. Shipped:
 - **generic** — a Mythic-style yes/no + meaning oracle; bring any rules.
-- **ironsworn** / **starforged** — the Ironsworn family (action roll, vows, progress, momentum) over a shared **ironsworn-core** base. `ironsworn` is a condensed sample of its SRD. `starforged` ships the **full Starforged SRD** (every move, asset, oracle table and setting truth, plus the rulebook's character and sector creation steps), generated from [Datasworn](https://github.com/rsek/datasworn) by `tools/datasworn-import` at a pinned ref. (Content by Shawn Tomkin: the SRDs are CC BY 4.0, the rulebook's launch procedures CC BY-NC-SA 4.0. See `NOTICE`.)
+- **ironsworn** / **starforged** — the Ironsworn family (action roll, vows, progress, momentum) over a shared **ironsworn-core** base. Each ships its **full SRD** (every move, asset, oracle table and setting truth), generated from [Datasworn](https://github.com/rsek/datasworn) by `tools/datasworn-import` at a pinned ref, with its rulebook's campaign-launch steps: `ironsworn` adds the Ironlands' regions and foes, character creation and campaign setup; `starforged` adds character and sector creation. (Content by Shawn Tomkin: the SRDs are CC BY 4.0; the rulebooks' text, including the launch procedures and Ironsworn's truths, regions and foes, is CC BY-NC-SA 4.0. See `NOTICE`.)
 
 Add your own: an adapter is a folder (`adapter.md` + `oracles/` + a sheet) — see `skills/gm/references/adapter-contract.md`; `bin/validate-adapter` lints them.
 
