@@ -893,6 +893,8 @@ Almost Certain | 90 or less
 
 On a match, envision an extreme result or twist.
 
+Roll its tables: Almost Certain `oracles/moves/ask-the-oracle/almost-certain.md`, Likely `oracles/moves/ask-the-oracle/likely.md`, 50/50 `oracles/moves/ask-the-oracle/fifty-fifty.md`, Unlikely `oracles/moves/ask-the-oracle/unlikely.md`, Small Chance `oracles/moves/ask-the-oracle/small-chance.md`.
+
 ### Pay the Price
 
 *Roll:* no roll

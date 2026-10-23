@@ -4,4 +4,8 @@
 > Datasworn `oracle_rollable:starforged/derelict/type/deep_space` · 1d100
 
 - [75] Starship
+  → Next, consider `oracles/derelict/zone/starship.md`
+  → Next, consider `oracles/starship/`
 - [25] Settlement
+  → Next, consider `oracles/derelict/zone/settlement.md`
+  → Next, consider `oracles/settlement/`

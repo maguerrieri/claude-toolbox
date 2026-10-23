@@ -2,7 +2,7 @@
   "id": "oracle_rollable:starforged/derelict/type/orbital",
   "die": "1d100",
   "rows": [
-    {"max": 40, "result": "Starship"},
-    {"max": 100, "result": "Settlement"}
+    {"max": 40, "result": "Starship\n→ Next, consider `oracles/derelict/zone/starship.md`"},
+    {"max": 100, "result": "Settlement\n→ Next, consider `oracles/derelict/zone/settlement.md`"}
   ]
 }

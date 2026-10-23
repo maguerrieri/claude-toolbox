@@ -11,6 +11,7 @@ converts one pinned copy of it into the gm adapter's formats:
   adapters/starforged/rules/assets.md           the asset index, and
   adapters/starforged/rules/assets/<cat>.md     every asset card, by category
   adapters/starforged/rules/truths.md           the 14 setting truths
+  adapters/starforged/rules/encounters.md       the sample NPCs and foes
   adapters/starforged/sheet-template.md         the character sheet
   tests/fixtures/oracles/starforged/**/*.json   golden ranges for tests/test_oracle_parity.py
 
@@ -24,6 +25,7 @@ touched; a generated path that would overwrite one is an error.
 Usage:
   datasworn-import                  fetch the pinned upstream, verify it, regenerate
   datasworn-import --json FILE      use a local copy of the pinned file instead
+  datasworn-import --cache DIR      fetch once into DIR, reuse it after (CI caches DIR)
   datasworn-import --check          regenerate in memory and diff against the tree
                                     (exit 1 on any drift; CI runs this)
 
@@ -32,6 +34,7 @@ re-run, review the diff, and update adapters/starforged/SOURCE.md and NOTICE.
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -234,7 +237,7 @@ def checked_rows(rows, dice, ref):
 
 def row_lines(row):
     """One table row as entry lines: its text (+ second column), then any rolls on
-    other tables that the text doesn't already link."""
+    other tables, and any tables it suggests next, that the text doesn't already link."""
     text = convert_links(row["text"])
     if row.get("text2"):
         text = f"{text} — {convert_links(row['text2'])}"
@@ -245,6 +248,12 @@ def row_lines(row):
         if ref and ref not in linked:
             times = roll.get("number_of_rolls") or 1
             lines.append(f"→ Roll `oracles/{oracle_path(ref)}`" + (f" ×{times}" if times > 1 else ""))
+            linked.add(ref)
+    for ref in row.get("suggestions") or []:
+        if ref not in linked:
+            where = collection_dir(ref) if ref.startswith("oracle_collection:") else oracle_path(ref)
+            lines.append(f"→ Next, consider `oracles/{where}`")
+            linked.add(ref)
     return lines
 
 
@@ -370,11 +379,12 @@ def render_truths(doc, files):
         entries = []
         out += [f"## {truth['name']}", "", f"Roll `oracles/{path}` ({truth['dice']}), or choose.", ""]
         for opt in checked_rows(truth["options"], truth["dice"], ref):
-            lines = [opt["summary"]] + entry_text(doc, opt["description"]).split("\n")
+            summary = convert_links(opt["summary"])
+            lines = [summary] + entry_text(doc, opt["description"]).split("\n")
             if opt.get("quest_starter"):
                 lines.append(f"Quest starter: {convert_links(opt['quest_starter'])}")
             entries.append((opt["roll"], lines))
-            out += [f"### {_range(opt['roll'])}: {opt['summary']}", "", rules_text(doc, opt["description"]), ""]
+            out += [f"### {_range(opt['roll'])}: {summary}", "", rules_text(doc, opt["description"]), ""]
             if opt.get("quest_starter"):
                 out += [f"*Quest starter:* {convert_links(opt['quest_starter'])}", ""]
         if truth.get("your_character"):
@@ -404,6 +414,11 @@ def render_moves(doc, files):
         out += [f"## {cat['name']}", ""]
         for move in cat["contents"].values():
             out += [f"### {move['name']}", "", roll_note(move), "", rules_text(doc, move["text"]), ""]
+            # tables the move carries but its text doesn't embed (Ask the Oracle's odds)
+            loose = [t for t in move.get("oracles", {}).values() if t["_id"] not in move["text"]]
+            if loose:
+                out += ["Roll its tables: " + ", ".join(
+                    f"{t['name']} `oracles/{oracle_path(t['_id'])}`" for t in loose) + ".", ""]
     put(files, f"{ADAPTER}/rules/moves.md", "\n".join(out).rstrip() + "\n")
 
 
@@ -527,7 +542,7 @@ def render_oracle_index(doc, files):
         out.append(f"- `oracles/{oracle_path(truth['_id'])}` — {truth['name']}")
         for opt in truth["options"]:
             for t in (opt.get("oracles") or {}).values():
-                out.append(f"  - `oracles/{oracle_path(t['_id'])}` — {t['name']} ({opt['summary']})")
+                out.append(f"  - `oracles/{oracle_path(t['_id'])}` — {t['name']} ({convert_links(opt['summary'])})")
     put(files, f"{ADAPTER}/rules/oracles.md", "\n".join(out).rstrip() + "\n")
 
 
@@ -542,7 +557,10 @@ def render_sheet(doc, files):
     stats = rules["stats"]
     meters = rules["condition_meters"]
     starship = doc.data["assets"]["command_vehicle"]["contents"]["starship"]
-    out = [GENERATED, "# {{name}}", "",
+    # A character's sheet is copied from this template, so the marker says to drop it there.
+    marker = (f"{MARKER} from {UPSTREAM_REPO}@{UPSTREAM_REF[:7]} ({UPSTREAM_TAG}): the sheet "
+              "template. Leave this line out of a character's sheet. -->")
+    out = [marker, "# {{name}}", "",
            "**Pronouns:** {{}} · **Callsign:** {{}}  ",
            "**Look / act / wear:** {{}}", "",
            "Fill it in with `rules/character-creation.md`.", "",
@@ -575,16 +593,56 @@ def render_sheet(doc, files):
     put(files, f"{ADAPTER}/sheet-template.md", "\n".join(out) + "\n")
 
 
+# --- npcs -------------------------------------------------------------------
+
+# Datasworn's ChallengeRank: 1..5 in the core's rank order.
+RANKS = ["troublesome", "dangerous", "formidable", "extreme", "epic"]
+
+
+def _rank(n):
+    return f"{RANKS[n - 1]} ({n})"
+
+
+def render_npcs(doc, files):
+    out = [GENERATED, "# Starforged Encounters", "",
+           "The SRD's sample NPCs and foes, with each one's rank (it sets the progress per mark on a",
+           "fight or other challenge against them), its variants, and a quest starter.", ""]
+    for coll in doc.data.get("npcs", {}).values():
+        out += [f"## {coll['name']}", ""]
+        for npc in coll["contents"].values():
+            out += [f"### {npc['name']}", "",
+                    f"*{npc['nature']}* · {convert_links(npc['summary'])} · **Rank:** {_rank(npc['rank'])}", ""]
+            for label in ("features", "drives", "tactics"):
+                if npc.get(label):
+                    out += [f"**{label.capitalize()}:** " + "; ".join(convert_links(x) for x in npc[label]), ""]
+            out += [convert_links(npc["description"]), ""]
+            for v in (npc.get("variants") or {}).values():
+                out += [f"- **{v['name']}** (*{v['nature']}*, {_rank(v['rank'])}): {convert_links(v['description'])}"]
+            if npc.get("variants"):
+                out.append("")
+            if npc.get("quest_starter"):
+                out += [f"*Quest starter:* {convert_links(npc['quest_starter'])}", ""]
+    put(files, f"{ADAPTER}/rules/encounters.md", "\n".join(out).rstrip() + "\n")
+
+
 # --- driver -----------------------------------------------------------------
+
+CONVERTED = {"oracles", "moves", "assets", "truths", "rules", "npcs"}
+METADATA = {"_id", "type", "datasworn_version", "title", "license", "authors", "date", "url"}
+
 
 def generate(data):
     """The whole generated tree: {path relative to the plugin root: content}."""
+    for key, value in data.items():
+        if key not in CONVERTED | METADATA and value:
+            raise ValueError(f"upstream section {key!r} has content this tool doesn't convert")
     doc = Doc(data)
     files = {}
     render_oracles(doc, files)
     render_truths(doc, files)
     render_moves(doc, files)
     render_assets(doc, files)
+    render_npcs(doc, files)
     render_oracle_index(doc, files)
     render_sheet(doc, files)
     return files
@@ -617,15 +675,18 @@ def fetch(url, attempts=3):
         try:
             with urllib.request.urlopen(url, timeout=120) as resp:
                 return resp.read()
-        except OSError as e:           # URLError, HTTPError, timeouts
+        except (OSError, http.client.HTTPException) as e:   # URLError, timeouts, IncompleteRead
             if attempt == attempts:
                 sys.exit(f"datasworn-import: couldn't fetch {url}: {e}")
             time.sleep(5 * attempt)
 
 
-def load(json_path):
-    if json_path:
-        with open(json_path, "rb") as fh:
+def load(json_path, cache_dir=None):
+    """The pinned upstream document: from --json, else from the cache dir, else fetched
+    (and then cached). Whatever the source, it must hash to the pin."""
+    cached = os.path.join(cache_dir, f"{UPSTREAM_SHA256}.json") if cache_dir else None
+    if json_path or (cached and os.path.isfile(cached)):
+        with open(json_path or cached, "rb") as fh:
             raw = fh.read()
     else:
         raw = fetch(UPSTREAM_URL)
@@ -633,6 +694,10 @@ def load(json_path):
     if digest != UPSTREAM_SHA256:
         sys.exit(f"datasworn-import: sha256 {digest} doesn't match the pin {UPSTREAM_SHA256} "
                  f"({UPSTREAM_REPO}@{UPSTREAM_REF}); move the pin deliberately (see --help)")
+    if cached and not os.path.isfile(cached):
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cached, "wb") as fh:
+            fh.write(raw)
     return json.loads(raw)
 
 
@@ -676,9 +741,11 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--json", help="a local copy of the pinned starforged.json (default: fetch it)")
     ap.add_argument("--check", action="store_true", help="diff instead of writing; exit 1 on drift")
+    ap.add_argument("--cache", metavar="DIR",
+                    help="keep the fetched file in DIR (by its sha256) and reuse it next time")
     ap.add_argument("--root", default=PLUGIN, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
-    files = generate(load(a.json))
+    files = generate(load(a.json, a.cache))
     (check if a.check else write)(a.root, files)
 
 
