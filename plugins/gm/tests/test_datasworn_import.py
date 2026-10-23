@@ -72,6 +72,16 @@ def mini_doc():
             "core": {"name": "Core Oracles", "contents": {"action": action}},
             "planet": {"name": "Planet Oracles", "contents": {"class": klass},
                        "collections": {"ice": {"name": "Ice World", "contents": {"feature": feature}}}},
+            "space": {"name": "Space Oracles", "contents": {}, "collections": {
+                "sector_name": {"_id": "oracle_collection:starforged/space/sector_name", "name": "Sector Name",
+                                "oracle_type": "table_shared_rolls",
+                                "summary": "Roll once for the first word and once for the second word.",
+                                "contents": {"prefix": _table("oracle_rollable:starforged/space/sector_name/prefix",
+                                                              "Prefix", [_row(1, 10, "Devil's")],
+                                                              oracle_type="column_text"),
+                                             "suffix": _table("oracle_rollable:starforged/space/sector_name/suffix",
+                                                              "Suffix", [_row(1, 10, "Maw")],
+                                                              oracle_type="column_text")}}}},
             "character": {"name": "Character Oracles", "contents": {}, "collections": {
                 "name": {"_id": "oracle_collection:starforged/character/name", "name": "Character Name",
                          "oracle_type": "table_shared_rolls", "summary": "Roll once for both.",
@@ -232,10 +242,12 @@ def test_generate_mini_doc():
         (4, "Desert World (`oracles/planet/desert/`)"),
         (6, "Ice World\n→ Roll `oracles/planet/ice/feature.md` ×2"),
     ]
-    # a shared-roll collection also reads all its columns off one roll
+    # a shared-roll collection meant to be read together also gets a one-roll table...
     names = roll.parse_table(files[o + "character/name.md"])
     assert [e["entry"] for e in names] == ["Given Name: Akim · Family Name: Kuzmin",
                                            "Given Name: Alex · Family Name: Durant"]
+    # ...but one whose columns are rolled separately keeps only its columns
+    assert o + "space/sector-name/prefix.md" in files and o + "space/sector-name.md" not in files
     # truth options roll at their ranges and point at their sub-tables
     truth = roll.parse_table(files[o + "truths/cataclysm.md"])
     assert [e["weight"] for e in truth] == [3, 7]
@@ -320,8 +332,10 @@ def test_every_starforged_table_has_golden_ranges():
 
 
 def test_starforged_ships_the_full_set():
-    # counts from the pinned upstream: 267 tables + 2 shared-roll tables + 14 truths
-    assert len(_tables(STARFORGED)) == 283
+    # counts from the pinned upstream: 267 tables + the one-roll Character Name table + 14 truths
+    assert len(_tables(STARFORGED)) == 282
+    # Sector Name's words are rolled separately, so it gets no one-roll table
+    assert not os.path.exists(os.path.join(STARFORGED, "oracles", "space", "sector-name.md"))
     assert len(glob.glob(os.path.join(STARFORGED, "oracles", "truths", "*.md"))) == 14
     moves = open(os.path.join(STARFORGED, "rules", "moves.md")).read()
     assert moves.count("\n### ") == 56

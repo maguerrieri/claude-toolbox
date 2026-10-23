@@ -507,7 +507,6 @@ Use the Space Sightings oracle to introduce a location or encounter on a spacebo
 
 To give a sector or region of space a random name, roll once for the first word and once for the second word. Or just roll once choose a suitable pairing from anywhere in that row.
 
-- `oracles/space/sector-name.md` — all columns, one roll
 - `oracles/space/sector-name/prefix.md` — Prefix
 - `oracles/space/sector-name/suffix.md` — Suffix
 

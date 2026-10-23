@@ -324,13 +324,19 @@ def collect_tables(doc):
     return out
 
 
+# "Given and family names are presented as a pair, so you may roll once for both."
+ONE_ROLL = {"oracle_collection:starforged/character/name"}
+
+
 def shared_roll_collections(doc):
-    """table_shared_rolls collections: columns read off one roll (a character's given
-    name, family name and callsign). Each also gets a combined table, one row per roll."""
+    """The table_shared_rolls collections meant to be read off one roll, each of which
+    gets a combined table with one row per roll. Sharing rolls only aligns the columns'
+    ranges; whether to read them together is in each collection's summary, so it's listed
+    in ONE_ROLL rather than inferred (Sector Name says to roll each word separately)."""
     found = []
 
     def walk(coll, trail):
-        if coll.get("oracle_type") == "table_shared_rolls":
+        if coll.get("oracle_type") == "table_shared_rolls" and coll["_id"] in ONE_ROLL:
             found.append((coll, " › ".join(trail)))
         for sub in coll.get("collections", {}).values():
             walk(sub, trail + [sub["name"]])
@@ -520,7 +526,7 @@ def render_oracle_index(doc, files):
         out.append("")
         if coll.get("summary") or coll.get("description"):
             out.extend([convert_links(coll.get("description") or coll["summary"]), ""])
-        if coll.get("oracle_type") == "table_shared_rolls":
+        if coll.get("_id") in ONE_ROLL:
             out.append(f"- `oracles/{collection_dir(coll['_id'])[:-1]}.md` — all columns, one roll")
         for t in coll.get("contents", {}).values():
             out.append(f"- `oracles/{oracle_path(t['_id'])}` — {t['name']}")

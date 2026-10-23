@@ -88,6 +88,6 @@ You start with a single connection in this sector, made with the Make a Connecti
 
 ## 11. Finalize the starting sector (p. 126)
 
-Name the sector, or roll `oracles/space/sector-name.md` (or its prefix and suffix on their own, `oracles/space/sector-name/`). Set a controlling power if a faction came to the forefront in your truths; if not, keep it ambiguous ("Sectors can be isolated, chaotic, or home to many insignificant factions"). For faction details in play, use the faction oracles (`oracles/faction/`).
+Name the sector, or roll for a suggestion: once for the first word on `oracles/space/sector-name/prefix.md` and once for the second on `oracles/space/sector-name/suffix.md`. Set a controlling power if a faction came to the forefront in your truths; if not, keep it ambiguous ("Sectors can be isolated, chaotic, or home to many insignificant factions"). For faction details in play, use the faction oracles (`oracles/faction/`).
 
 Next: begin your adventure (`rules/campaign-launch.md`, *Begin Your Adventure*).
