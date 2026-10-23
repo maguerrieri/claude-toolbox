@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:starforged/planet/ice/life",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "None"},
+    {"max": 40, "result": "Extinct"},
+    {"max": 70, "result": "Scarce"},
+    {"max": 90, "result": "Diverse"},
+    {"max": 97, "result": "Bountiful"},
+    {"max": 100, "result": "Overrun"}
+  ]
+}

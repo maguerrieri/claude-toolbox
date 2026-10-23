@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:starforged/planet/rocky/life",
+  "die": "1d100",
+  "rows": [
+    {"max": 65, "result": "None"},
+    {"max": 80, "result": "Extinct"},
+    {"max": 90, "result": "Scarce"},
+    {"max": 95, "result": "Diverse"},
+    {"max": 98, "result": "Bountiful"},
+    {"max": 100, "result": "Overrun"}
+  ]
+}

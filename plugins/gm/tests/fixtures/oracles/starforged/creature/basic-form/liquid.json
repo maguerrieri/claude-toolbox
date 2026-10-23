@@ -1,0 +1,24 @@
+{
+  "id": "oracle_rollable:starforged/creature/basic_form/liquid",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Amoeba / pseudopods"},
+    {"max": 8, "result": "Amorphous / elemental"},
+    {"max": 11, "result": "Avian / winged"},
+    {"max": 17, "result": "Beast / mammal"},
+    {"max": 24, "result": "Crustacean / shelled"},
+    {"max": 39, "result": "Fish / torpedo-shaped"},
+    {"max": 42, "result": "Humanoid / bipedal"},
+    {"max": 45, "result": "Insectoid / exoskeletal"},
+    {"max": 53, "result": "Jellyfish / gasbag"},
+    {"max": 56, "result": "Lizard / reptilian"},
+    {"max": 63, "result": "Octopoid / tentacled"},
+    {"max": 68, "result": "Plant / fungus"},
+    {"max": 75, "result": "Ray / flat-bodied"},
+    {"max": 80, "result": "Snake / eel"},
+    {"max": 82, "result": "Spider / web-weaver"},
+    {"max": 87, "result": "Starfish / symmetrical"},
+    {"max": 90, "result": "Worm / slug / larva"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

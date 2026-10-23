@@ -1,0 +1,28 @@
+{
+  "id": "oracle_rollable:starforged/starship/first_look",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Abnormal sensor readings"},
+    {"max": 8, "result": "Brightly painted"},
+    {"max": 13, "result": "Bristling with weapons"},
+    {"max": 18, "result": "Dark or stealthy"},
+    {"max": 23, "result": "Heavy armor"},
+    {"max": 28, "result": "Immobile"},
+    {"max": 33, "result": "Intimidating profile"},
+    {"max": 37, "result": "Large sensor arrays"},
+    {"max": 41, "result": "Leaking radiation"},
+    {"max": 45, "result": "Low-profile or disguised"},
+    {"max": 49, "result": "Modern or advanced design"},
+    {"max": 54, "result": "Obsolete design"},
+    {"max": 59, "result": "Obvious damage"},
+    {"max": 63, "result": "Biological components"},
+    {"max": 67, "result": "Ornate markings"},
+    {"max": 71, "result": "Oversized engines"},
+    {"max": 75, "result": "Prominent guild emblem"},
+    {"max": 80, "result": "Refitted or repurposed hull"},
+    {"max": 85, "result": "Scarred hull"},
+    {"max": 90, "result": "Built from scrap"},
+    {"max": 94, "result": "Towing or linked"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "oracle_rollable:starforged/starship/type",
+  "die": "1d100",
+  "rows": [
+    {"max": 2, "result": "Carrier — Launches fighters"},
+    {"max": 6, "result": "Corvette — Light attack ship"},
+    {"max": 11, "result": "Courier — Fast transport"},
+    {"max": 14, "result": "Cruiser — Medium attack ship"},
+    {"max": 16, "result": "Dreadnought — Heavy attack ship"},
+    {"max": 19, "result": "Escape pod — Survival craft"},
+    {"max": 22, "result": "Foundry — Mobile construction platform"},
+    {"max": 27, "result": "Harvester — Fuel or energy excavator"},
+    {"max": 33, "result": "Hauler — Heavy transport"},
+    {"max": 36, "result": "Hunter — Stealthy attack ship"},
+    {"max": 38, "result": "Ironhome — Habitat"},
+    {"max": 42, "result": "Mender — Utility or repair"},
+    {"max": 47, "result": "Outbounder — Remote survey or research"},
+    {"max": 50, "result": "Pennant — Command ship"},
+    {"max": 56, "result": "Prospector — Mineral excavator"},
+    {"max": 61, "result": "Reclaimer — Salvage or rescue"},
+    {"max": 64, "result": "Shuttle — Short-range transport"},
+    {"max": 67, "result": "Snub fighter — Small attack craft"},
+    {"max": 82, "result": "Multipurpose — Starship Mission (`oracles/starship/mission/`)"},
+    {"max": 84, "result": "Unusual or unknown"},
+    {"max": 94, "result": "Fleet (`oracles/starship/fleet.md`)"},
+    {"max": 100, "result": "Ships in conflict (roll twice)"}
+  ]
+}

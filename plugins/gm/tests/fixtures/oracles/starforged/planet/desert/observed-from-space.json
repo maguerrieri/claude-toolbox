@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/desert/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Dry seabeds"},
+    {"max": 22, "result": "Expansive dune seas"},
+    {"max": 33, "result": "Massive canyons"},
+    {"max": 44, "result": "Perpetual daylight"},
+    {"max": 55, "result": "Rugged mountains"},
+    {"max": 66, "result": "Sprawling salt flats"},
+    {"max": 77, "result": "Vast plateaus"},
+    {"max": 88, "result": "Vibrant terrain colors"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

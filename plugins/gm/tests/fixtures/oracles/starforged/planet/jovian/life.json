@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:starforged/planet/jovian/life",
+  "die": "1d100",
+  "rows": [
+    {"max": 35, "result": "None"},
+    {"max": 60, "result": "Extinct"},
+    {"max": 85, "result": "Scarce"},
+    {"max": 95, "result": "Diverse"},
+    {"max": 98, "result": "Bountiful"},
+    {"max": 100, "result": "Overrun"}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/infested/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 9, "result": "Creatures attack without warning"},
+    {"max": 18, "result": "Creatures guided or controlled by a greater threat"},
+    {"max": 27, "result": "Creatures reveal new aspects or abilities"},
+    {"max": 36, "result": "Creatures reveal surprising cleverness"},
+    {"max": 45, "result": "Creatures take or destroy something important"},
+    {"max": 54, "result": "Discovery of a live but threatened victim"},
+    {"max": 63, "result": "Hazardous architecture or terrain"},
+    {"max": 72, "result": "Lured or driven into a trap or dead-end"},
+    {"max": 81, "result": "Powerful or dominant creature reveals itself"},
+    {"max": 90, "result": "Toxic or sickening environment"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

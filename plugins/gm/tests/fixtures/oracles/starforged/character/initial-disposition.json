@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/character/initial_disposition",
+  "die": "1d100",
+  "rows": [
+    {"max": 6, "result": "Helpful"},
+    {"max": 14, "result": "Friendly"},
+    {"max": 22, "result": "Cooperative"},
+    {"max": 30, "result": "Curious"},
+    {"max": 40, "result": "Indifferent"},
+    {"max": 50, "result": "Suspicious"},
+    {"max": 60, "result": "Wanting"},
+    {"max": 70, "result": "Desperate"},
+    {"max": 78, "result": "Demanding"},
+    {"max": 86, "result": "Unfriendly"},
+    {"max": 94, "result": "Threatening"},
+    {"max": 100, "result": "Hostile"}
+  ]
+}

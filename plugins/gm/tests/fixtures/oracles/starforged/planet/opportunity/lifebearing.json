@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:starforged/planet/opportunity/lifebearing",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Clue to a lifeform's nature or vulnerabilities"},
+    {"max": 8, "result": "Friendly interaction with a benign lifeform"},
+    {"max": 12, "result": "Hunting or foraging opportunities are plentiful"},
+    {"max": 16, "result": "Interesting or helpful aspect of benign creatures"},
+    {"max": 20, "result": "Interesting or helpful aspect of local plant life"},
+    {"max": 24, "result": "Encounter reveals unexpected benign lifeforms"},
+    {"max": 28, "result": "Abandoned camp or vehicle"},
+    {"max": 32, "result": "Advance warning of an environmental threat"},
+    {"max": 36, "result": "Clear path through otherwise perilous terrain"},
+    {"max": 40, "result": "Clue offers insight into a current quest or mystery"},
+    {"max": 44, "result": "Clue to the history or nature of this place"},
+    {"max": 48, "result": "Evidence that others have passed this way"},
+    {"max": 52, "result": "Foe reveals themselves or tips their hand"},
+    {"max": 56, "result": "Fortuitous change in the weather or atmosphere"},
+    {"max": 60, "result": "Friendly traveler crosses your path"},
+    {"max": 64, "result": "Helpful resource is in ample supply"},
+    {"max": 68, "result": "Impressive vista offers comfort or inspiration"},
+    {"max": 72, "result": "Interesting artifact or device"},
+    {"max": 76, "result": "Interesting site offers opportunities for exploration"},
+    {"max": 80, "result": "Moment of fellowship or inner peace"},
+    {"max": 84, "result": "Opening to distract, escape, or avoid foes"},
+    {"max": 88, "result": "Opening to get the drop on a foe"},
+    {"max": 92, "result": "Plea for help from a potential benefactor"},
+    {"max": 96, "result": "Refuge offers a place to hide, plan, or recover"},
+    {"max": 100, "result": "Vantage point reveals the lay of the land"}
+  ]
+}

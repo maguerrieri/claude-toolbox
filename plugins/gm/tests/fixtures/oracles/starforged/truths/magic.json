@@ -1,0 +1,9 @@
+{
+  "id": "truth:starforged/magic",
+  "die": "1d100",
+  "rows": [
+    {"max": 33, "result": "Magic does not exist.\nSome look to superstition and age-old traditions for comfort in this unforgiving galaxy. But that is foolishness. What some call magic is simply a product of technologies or natural forces we aren’t yet equipped to understand.\nQuest starter: An ancient technological relic unleashes a power indistinguishable from magic. What is the origin of this artifact? What ability does it grant? Are you sworn to protect or destroy it?"},
+    {"max": 67, "result": "Supernatural powers are wielded by those rare people we call paragons.\nWhile not magic in the truest sense, the abilities of the paragons are as close to magic as we can conjure.\nThese powers are born of:\n→ Roll `oracles/truths/magic/power-source.md`.\nQuest starter: A young paragon wields incredible power, but cannot control it. They have been shunned by family and friends. They are also hunted by a person or organization who seeks to use them as a weapon. Why are you sworn to protect the paragon? What fabled location might offer a new home for them?"},
+    {"max": 100, "result": "Unnatural energies flow through the Forge. Magic and science are two sides of the same coin.\nSoon after our arrival, some displayed the ability to harness the Forge's energies. Today, mystics invoke this power to manipulate matter or see beyond the veils of our own universe. But this can be a corrupting force, and the most powerful mystics are respected and feared in equal measure.\nQuest starter: Someone you love has been corrupted by the powers of the Forge. Why did they fall into darkness? Where are they now? Do you seek to save them or defeat them?"}
+  ]
+}

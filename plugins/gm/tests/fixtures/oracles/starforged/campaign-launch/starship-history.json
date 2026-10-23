@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/campaign_launch/starship_history",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Acquired in trade for a precious family heirloom"},
+    {"max": 17, "result": "Built out of repurposed scrap"},
+    {"max": 25, "result": "Claimed as spoils of war"},
+    {"max": 34, "result": "Discovered as a derelict, and patched back together"},
+    {"max": 42, "result": "Earned in exchange for a promise or vow"},
+    {"max": 50, "result": "Found abandoned in perfect condition"},
+    {"max": 58, "result": "Granted by an organization or community"},
+    {"max": 67, "result": "Inherited from a relative or mentor"},
+    {"max": 75, "result": "Purchased at a suspiciously cheap price"},
+    {"max": 84, "result": "Stolen from a notorious crime boss or criminal organization"},
+    {"max": 92, "result": "Taken while fleeing an attack or disaster"},
+    {"max": 100, "result": "Won in a bet"}
+  ]
+}

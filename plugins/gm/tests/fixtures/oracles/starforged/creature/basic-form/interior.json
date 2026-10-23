@@ -1,0 +1,24 @@
+{
+  "id": "oracle_rollable:starforged/creature/basic_form/interior",
+  "die": "1d100",
+  "rows": [
+    {"max": 3, "result": "Amoeba / pseudopods"},
+    {"max": 6, "result": "Amorphous / elemental"},
+    {"max": 12, "result": "Avian / winged"},
+    {"max": 19, "result": "Beast / mammal"},
+    {"max": 22, "result": "Crustacean / shelled"},
+    {"max": 24, "result": "Fish / torpedo-shaped"},
+    {"max": 37, "result": "Humanoid / bipedal"},
+    {"max": 49, "result": "Insectoid / exoskeletal"},
+    {"max": 51, "result": "Jellyfish / gasbag"},
+    {"max": 56, "result": "Lizard / reptilian"},
+    {"max": 58, "result": "Octopoid / tentacled"},
+    {"max": 63, "result": "Plant / fungus"},
+    {"max": 65, "result": "Ray / flat-bodied"},
+    {"max": 68, "result": "Snake / eel"},
+    {"max": 83, "result": "Spider / web-weaver"},
+    {"max": 85, "result": "Starfish / symmetrical"},
+    {"max": 90, "result": "Worm / slug / larva"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

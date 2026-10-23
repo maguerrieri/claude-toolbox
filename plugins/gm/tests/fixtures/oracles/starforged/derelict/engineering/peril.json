@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/engineering/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Corrosive leak"},
+    {"max": 20, "result": "Erratic utility bots"},
+    {"max": 30, "result": "Failing equipment requires a specific part or skill"},
+    {"max": 40, "result": "Fire or energy surge"},
+    {"max": 50, "result": "Precarious or broken path"},
+    {"max": 60, "result": "Radioactive hotspot"},
+    {"max": 70, "result": "Sabotaged equipment"},
+    {"max": 80, "result": "Shrouded atmosphere conceals a lurking foe"},
+    {"max": 90, "result": "Unstable or failing power core"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

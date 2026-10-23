@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/haunted/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Disembodied voices"},
+    {"max": 16, "result": "Eerie cold"},
+    {"max": 24, "result": "Foreboding omen or message"},
+    {"max": 32, "result": "Ghostly visions of this place in another time"},
+    {"max": 40, "result": "Glimpses of shadowy movement"},
+    {"max": 48, "result": "Objects move of their own accord"},
+    {"max": 56, "result": "Sensation of being watched"},
+    {"max": 64, "result": "Signs of death or violence"},
+    {"max": 72, "result": "Spectral sounds"},
+    {"max": 80, "result": "Twisted or altered architecture or terrain"},
+    {"max": 88, "result": "Unnatural blight, decay, or ruin"},
+    {"max": 96, "result": "Unnatural mists or darkness"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

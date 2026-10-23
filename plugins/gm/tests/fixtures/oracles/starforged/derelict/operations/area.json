@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/operations/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Admin or command offices"},
+    {"max": 16, "result": "Armory"},
+    {"max": 24, "result": "Bridge or command center"},
+    {"max": 32, "result": "Brig or cells"},
+    {"max": 40, "result": "Comms center"},
+    {"max": 48, "result": "Computer core"},
+    {"max": 56, "result": "Conference or briefing room"},
+    {"max": 64, "result": "Landing bay or hangar"},
+    {"max": 72, "result": "Lounge"},
+    {"max": 80, "result": "Security"},
+    {"max": 85, "result": "New zone"},
+    {"max": 100, "result": "New zone via Access (`oracles/derelict/access/`)"}
+  ]
+}

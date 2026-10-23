@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/vital/biomes",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Caves"},
+    {"max": 10, "result": "Cold forest"},
+    {"max": 15, "result": "Fungal"},
+    {"max": 20, "result": "Glacial or snow"},
+    {"max": 25, "result": "Grassland"},
+    {"max": 30, "result": "Islands"},
+    {"max": 35, "result": "Jungle"},
+    {"max": 40, "result": "Mountainous"},
+    {"max": 45, "result": "Ocean"},
+    {"max": 50, "result": "Rocky desert"},
+    {"max": 55, "result": "Sandy desert"},
+    {"max": 60, "result": "Savanna"},
+    {"max": 65, "result": "Shallow seas"},
+    {"max": 70, "result": "Shrubland"},
+    {"max": 75, "result": "Temperate rainforest"},
+    {"max": 80, "result": "Temperate forest"},
+    {"max": 85, "result": "Tundra"},
+    {"max": 90, "result": "Volcanic"},
+    {"max": 95, "result": "Waterways"},
+    {"max": 100, "result": "Wetland"}
+  ]
+}

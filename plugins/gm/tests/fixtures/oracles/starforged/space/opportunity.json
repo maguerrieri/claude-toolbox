@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:starforged/space/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Advance warning of an environmental threat"},
+    {"max": 8, "result": "Automated signal offers a helpful message or warning"},
+    {"max": 12, "result": "Cache of cargo or supplies"},
+    {"max": 16, "result": "Chance for fellowship or a moment of inner peace"},
+    {"max": 20, "result": "Clear path through otherwise perilous space"},
+    {"max": 24, "result": "Clue offers insight into a current quest or mystery"},
+    {"max": 28, "result": "Clue to a lifeform's nature or vulnerabilities"},
+    {"max": 32, "result": "Derelict ripe for the picking"},
+    {"max": 36, "result": "Foe inadvertently reveals themselves or tips their hand"},
+    {"max": 40, "result": "Friendly interaction with a benign lifeform"},
+    {"max": 44, "result": "Friendly settlement in range"},
+    {"max": 48, "result": "Friendly spacers at work here"},
+    {"max": 52, "result": "Friendly starship crosses your path"},
+    {"max": 56, "result": "Helpful or encouraging message from an acquaintance"},
+    {"max": 60, "result": "Impressive vista offers comfort or inspiration"},
+    {"max": 64, "result": "Interesting site offers opportunities for exploration"},
+    {"max": 68, "result": "Mineral or energy resource detected"},
+    {"max": 72, "result": "Navigational or environmental hazard is left behind"},
+    {"max": 76, "result": "Opening to escape or avoid foes"},
+    {"max": 80, "result": "Plea for help from a potential benefactor"},
+    {"max": 84, "result": "Probe or beacon with useful data"},
+    {"max": 88, "result": "Refuge offers a place to hide, plan, or recover"},
+    {"max": 92, "result": "Sensors pinpoint a lurking foe"},
+    {"max": 96, "result": "Sensors reveal helpful or interesting environmental data"},
+    {"max": 100, "result": "Vehicle or equipment performs beyond expectations"}
+  ]
+}

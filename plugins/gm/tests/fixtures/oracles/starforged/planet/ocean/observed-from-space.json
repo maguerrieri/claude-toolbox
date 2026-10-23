@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/ocean/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Complex reef systems"},
+    {"max": 22, "result": "Emerging volcanoes"},
+    {"max": 33, "result": "Floating forests"},
+    {"max": 44, "result": "Global hurricanes"},
+    {"max": 55, "result": "Large moon and strong tides"},
+    {"max": 66, "result": "Scattered islands"},
+    {"max": 77, "result": "Semi-frozen oceans"},
+    {"max": 88, "result": "Unusual water color"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

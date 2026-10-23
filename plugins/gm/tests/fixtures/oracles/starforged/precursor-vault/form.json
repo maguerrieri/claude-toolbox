@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/form",
+  "die": "1d100",
+  "rows": [
+    {"max": 35, "result": "Structure"},
+    {"max": 60, "result": "Vessel"},
+    {"max": 80, "result": "Monument"},
+    {"max": 95, "result": "Machine"},
+    {"max": 100, "result": "Incomprehensible"}
+  ]
+}

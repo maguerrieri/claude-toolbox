@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:starforged/faction/name/affiliation",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Accord"},
+    {"max": 8, "result": "Alliance"},
+    {"max": 12, "result": "Ascendancy"},
+    {"max": 16, "result": "Circle"},
+    {"max": 20, "result": "Coalition"},
+    {"max": 24, "result": "Collective"},
+    {"max": 28, "result": "Commonwealth"},
+    {"max": 32, "result": "Confederation"},
+    {"max": 36, "result": "Consortium"},
+    {"max": 40, "result": "Council"},
+    {"max": 44, "result": "Court"},
+    {"max": 48, "result": "Covenant"},
+    {"max": 52, "result": "Dominion"},
+    {"max": 56, "result": "Empire"},
+    {"max": 60, "result": "Federation"},
+    {"max": 64, "result": "Imperium"},
+    {"max": 68, "result": "League"},
+    {"max": 72, "result": "Legion"},
+    {"max": 76, "result": "Order"},
+    {"max": 80, "result": "Pact"},
+    {"max": 84, "result": "Regiment"},
+    {"max": 88, "result": "Republic"},
+    {"max": 92, "result": "Sphere"},
+    {"max": 96, "result": "Syndicate"},
+    {"max": 100, "result": "Union"}
+  ]
+}

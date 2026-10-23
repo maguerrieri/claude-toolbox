@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/space/stellar_object",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Smoldering red star"},
+    {"max": 30, "result": "Glowing orange star"},
+    {"max": 45, "result": "Burning yellow star"},
+    {"max": 50, "result": "Blazing blue star"},
+    {"max": 60, "result": "Young star incubating in a molecular cloud"},
+    {"max": 70, "result": "White dwarf shining with spectral light"},
+    {"max": 75, "result": "Corrupted star radiating with unnatural light"},
+    {"max": 80, "result": "Neutron star surrounded by intense magnetic fields"},
+    {"max": 85, "result": "Two stars in close orbit connected by fiery tendrils of energy"},
+    {"max": 90, "result": "Black hole allows nothing to escape—not even light"},
+    {"max": 98, "result": "Hypergiant star generating turbulent solar winds"},
+    {"max": 99, "result": "Artificial star constructed by a long-dead civilization"},
+    {"max": 100, "result": "Unstable star showing signs of impending supernova"}
+  ]
+}

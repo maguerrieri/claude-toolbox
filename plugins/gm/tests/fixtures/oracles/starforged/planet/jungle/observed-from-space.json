@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/jungle/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Cloud-breaching trees"},
+    {"max": 22, "result": "Towering mountains"},
+    {"max": 33, "result": "Expansive rivers or wetlands"},
+    {"max": 44, "result": "Unbroken canopy"},
+    {"max": 55, "result": "Inland seas"},
+    {"max": 66, "result": "Unusual vegetation color"},
+    {"max": 77, "result": "Massive canyons"},
+    {"max": 88, "result": "Persistent cloud cover"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

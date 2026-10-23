@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/infested/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Corpse of an unfortunate victim"},
+    {"max": 16, "result": "Eggs, cocoons, or nest"},
+    {"max": 24, "result": "Environment corrupted by the infestation"},
+    {"max": 32, "result": "Evidence of a lurking creature"},
+    {"max": 40, "result": "Evidence of an ill-fated victim"},
+    {"max": 48, "result": "Hoarded food"},
+    {"max": 56, "result": "Indistinct movement or sounds"},
+    {"max": 64, "result": "Lair of lesser creatures"},
+    {"max": 72, "result": "Ravaged supplies or equipment"},
+    {"max": 80, "result": "Remains of a creature or remnants of a previous form"},
+    {"max": 88, "result": "Territorial markings"},
+    {"max": 96, "result": "Trail or evidence of a creature's passage"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

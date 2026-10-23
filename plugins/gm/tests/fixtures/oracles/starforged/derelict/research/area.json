@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/research/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Clean room"},
+    {"max": 16, "result": "Cold storage"},
+    {"max": 24, "result": "Creature or animal pens"},
+    {"max": 32, "result": "Decontamination room"},
+    {"max": 40, "result": "Hazardous material storage"},
+    {"max": 48, "result": "Hydroponics or agriculture"},
+    {"max": 56, "result": "Isolation or containment"},
+    {"max": 64, "result": "Lab"},
+    {"max": 72, "result": "Library or records"},
+    {"max": 80, "result": "Secure vault"},
+    {"max": 85, "result": "New zone"},
+    {"max": 100, "result": "New zone via Access (`oracles/derelict/access/`)"}
+  ]
+}

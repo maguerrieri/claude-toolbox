@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/tainted/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Expansive fungal plains"},
+    {"max": 22, "result": "Stagnant cloud cover"},
+    {"max": 33, "result": "Fungal forests"},
+    {"max": 44, "result": "Thick, murky atmosphere"},
+    {"max": 55, "result": "Scabrous, infected terrain"},
+    {"max": 66, "result": "Toxic seas"},
+    {"max": 77, "result": "Sky-breaching fungus"},
+    {"max": 88, "result": "Sludge-filled river networks"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

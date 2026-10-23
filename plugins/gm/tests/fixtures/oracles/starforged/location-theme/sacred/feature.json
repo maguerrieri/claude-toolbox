@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/sacred/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Adherents performing worship or enacting rituals"},
+    {"max": 16, "result": "Altar or temple"},
+    {"max": 24, "result": "Dwellings for the faithful"},
+    {"max": 32, "result": "Enigmatic symbols"},
+    {"max": 40, "result": "Graves or remains of glorified disciples"},
+    {"max": 48, "result": "Holy text or archives"},
+    {"max": 56, "result": "Offerings or atonements"},
+    {"max": 64, "result": "Pilgrims arriving to pay homage"},
+    {"max": 72, "result": "Protected reliquary of an artifact or token"},
+    {"max": 80, "result": "Religious art or idols"},
+    {"max": 88, "result": "Subtle manifestations of mystical power or visions"},
+    {"max": 96, "result": "Tokens or motifs representing the faith's domain"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

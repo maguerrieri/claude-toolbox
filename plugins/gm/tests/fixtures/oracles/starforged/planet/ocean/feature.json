@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/ocean/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Abyssal trenches"},
+    {"max": 14, "result": "Living islands"},
+    {"max": 21, "result": "Luminescent seas"},
+    {"max": 28, "result": "Roaming icebergs"},
+    {"max": 35, "result": "Shallow-water plains"},
+    {"max": 42, "result": "Subsurface volcanoes"},
+    {"max": 49, "result": "Titanic waves"},
+    {"max": 56, "result": "Undersea air pockets"},
+    {"max": 63, "result": "Undersea caves"},
+    {"max": 70, "result": "Undersea forests"},
+    {"max": 77, "result": "Unrelenting rainfall"},
+    {"max": 84, "result": "Violent currents"},
+    {"max": 91, "result": "Windborne waterspouts"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

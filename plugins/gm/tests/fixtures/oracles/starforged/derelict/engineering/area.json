@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/engineering/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Control room"},
+    {"max": 16, "result": "Engine room or power core"},
+    {"max": 24, "result": "Engineering offices"},
+    {"max": 32, "result": "Equipment storage"},
+    {"max": 40, "result": "Fuel or coolant tanks"},
+    {"max": 48, "result": "Life support"},
+    {"max": 56, "result": "Maintenance tube"},
+    {"max": 64, "result": "Vehicle bay or garage"},
+    {"max": 72, "result": "Water processing"},
+    {"max": 80, "result": "Workshop"},
+    {"max": 85, "result": "New zone"},
+    {"max": 100, "result": "New zone via Access (`oracles/derelict/access/`)"}
+  ]
+}

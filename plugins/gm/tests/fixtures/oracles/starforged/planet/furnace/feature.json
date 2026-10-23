@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/furnace/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Blinding ash storms"},
+    {"max": 14, "result": "Catastrophic earthquakes"},
+    {"max": 21, "result": "Colorful geothermal springs"},
+    {"max": 28, "result": "Intricate volcanic rock formations"},
+    {"max": 35, "result": "Lava tube tunnel networks"},
+    {"max": 42, "result": "Masses of scorched bones"},
+    {"max": 49, "result": "Plains of volcanic glass"},
+    {"max": 56, "result": "Pools of liquid metal"},
+    {"max": 63, "result": "Rocky islands adrift on magma"},
+    {"max": 70, "result": "Roiling clouds of superheated gas"},
+    {"max": 77, "result": "Scalding geysers"},
+    {"max": 84, "result": "Silica or metal storms"},
+    {"max": 91, "result": "Steaming mudflats"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

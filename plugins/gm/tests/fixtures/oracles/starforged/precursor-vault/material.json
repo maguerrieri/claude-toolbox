@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/material",
+  "die": "1d100",
+  "rows": [
+    {"max": 30, "result": "Metallic (industrial)"},
+    {"max": 60, "result": "Metallic (smooth)"},
+    {"max": 70, "result": "Rocky or stone-like"},
+    {"max": 74, "result": "Crystalline or glass-like"},
+    {"max": 78, "result": "Bone-like"},
+    {"max": 82, "result": "Flesh-like"},
+    {"max": 86, "result": "Plant-like"},
+    {"max": 88, "result": "Energy"},
+    {"max": 90, "result": "Liquid"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

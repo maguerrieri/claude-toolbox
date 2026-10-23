@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/jovian/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Clouds of metal particles"},
+    {"max": 14, "result": "Crystalline rains"},
+    {"max": 21, "result": "Floating glaciers"},
+    {"max": 28, "result": "Floating islands"},
+    {"max": 35, "result": "Layer of suspended liquid"},
+    {"max": 42, "result": "Pockets of explosive gases"},
+    {"max": 49, "result": "Powerful vortexes"},
+    {"max": 56, "result": "Radiation fields"},
+    {"max": 63, "result": "Storm-swept rocky debris"},
+    {"max": 70, "result": "Torrential rain"},
+    {"max": 77, "result": "Towering thunderheads"},
+    {"max": 84, "result": "Violent turbulence"},
+    {"max": 91, "result": "Zones of localized atmosphere"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

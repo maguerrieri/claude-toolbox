@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/production/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Claustrophobic spaces"},
+    {"max": 20, "result": "Dangerous machinery"},
+    {"max": 30, "result": "Disturbing evidence of exploited labor"},
+    {"max": 40, "result": "Extreme temperatures"},
+    {"max": 50, "result": "Hazardous materials"},
+    {"max": 60, "result": "Impending industrial disaster"},
+    {"max": 70, "result": "Malfunctioning automation"},
+    {"max": 80, "result": "Rivals seek to secure these resources"},
+    {"max": 90, "result": "Signs of an unearthed or manufactured threat"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

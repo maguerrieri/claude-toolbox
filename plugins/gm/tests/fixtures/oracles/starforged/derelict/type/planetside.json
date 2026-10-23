@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:starforged/derelict/type/planetside",
+  "die": "1d100",
+  "rows": [
+    {"max": 25, "result": "Starship"},
+    {"max": 100, "result": "Settlement"}
+  ]
+}

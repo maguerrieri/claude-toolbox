@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/access/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Alarm or failsafe is triggered"},
+    {"max": 20, "result": "Automated defenses"},
+    {"max": 30, "result": "Blocked or sealed path"},
+    {"max": 40, "result": "Dreadful scene of death or violence"},
+    {"max": 50, "result": "Foe closes in"},
+    {"max": 60, "result": "Gear is failing or broken"},
+    {"max": 70, "result": "Hazardous environmental change"},
+    {"max": 80, "result": "Path is trapped"},
+    {"max": 90, "result": "Unsettling sound or disturbance"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

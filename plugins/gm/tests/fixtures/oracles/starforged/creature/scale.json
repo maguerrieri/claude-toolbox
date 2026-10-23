@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:starforged/creature/scale",
+  "die": "1d100",
+  "rows": [
+    {"max": 3, "result": "Minuscule (bug-sized)"},
+    {"max": 10, "result": "Tiny (rodent-sized)"},
+    {"max": 25, "result": "Small (dog-sized)"},
+    {"max": 60, "result": "Medium (person-sized)"},
+    {"max": 90, "result": "Large (vehicle-sized)"},
+    {"max": 99, "result": "Huge (whale-sized)"},
+    {"max": 100, "result": "Ultra-scale (`oracles/creature/ultra-scale.md`)"}
+  ]
+}

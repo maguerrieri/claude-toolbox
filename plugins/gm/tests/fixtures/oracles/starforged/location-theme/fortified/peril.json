@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/fortified/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 9, "result": "Alarm is triggered"},
+    {"max": 18, "result": "Automated security or weapons target you"},
+    {"max": 27, "result": "Checkpoint or path with restricted access"},
+    {"max": 36, "result": "Enemies converge on this area"},
+    {"max": 45, "result": "Enemies reveal new capabilities or technology"},
+    {"max": 54, "result": "Enemies trick you or lure you into a trap"},
+    {"max": 63, "result": "Powerful enemy appears"},
+    {"max": 72, "result": "Problematic alliance or affiliation is revealed"},
+    {"max": 81, "result": "Revealed schemes of an enemy leader create new urgency"},
+    {"max": 90, "result": "Your plan is undone by an unexpected complication"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

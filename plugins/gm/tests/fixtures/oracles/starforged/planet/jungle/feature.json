@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/jungle/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Bioluminescent flora"},
+    {"max": 14, "result": "Deep river gorges"},
+    {"max": 21, "result": "Extensive exposed root systems"},
+    {"max": 28, "result": "Immense tiered waterfalls"},
+    {"max": 35, "result": "Languid rivers"},
+    {"max": 42, "result": "Low-lying fog"},
+    {"max": 49, "result": "Plunging sinkholes"},
+    {"max": 56, "result": "Scarred clearings"},
+    {"max": 63, "result": "Sinking quagmires"},
+    {"max": 70, "result": "Surging rivers"},
+    {"max": 77, "result": "Torrential rainstorms"},
+    {"max": 84, "result": "Violent electrical storms"},
+    {"max": 91, "result": "Waterlogged caves"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

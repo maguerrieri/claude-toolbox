@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/ruined/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Collapsed or broken structures or terrain"},
+    {"max": 16, "result": "Device or artifact with residual power or function"},
+    {"max": 24, "result": "Focal point or nexus of the destruction"},
+    {"max": 32, "result": "Graves or corpses"},
+    {"max": 40, "result": "Innermost or hidden spaces laid bare by the destruction"},
+    {"max": 48, "result": "Message or recording from before the fall"},
+    {"max": 56, "result": "Overgrown or entombed spaces"},
+    {"max": 64, "result": "Rubble-strewn paths"},
+    {"max": 72, "result": "Sad memento of a lost life"},
+    {"max": 80, "result": "Sights or sounds of structural instability"},
+    {"max": 88, "result": "Signs of looting or scavenging"},
+    {"max": 96, "result": "Survivors or guardians dwell among the ruins"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

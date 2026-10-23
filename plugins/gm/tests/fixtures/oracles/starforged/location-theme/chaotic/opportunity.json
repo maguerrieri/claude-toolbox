@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/chaotic/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Chaos ebbs or withdraws for a time"},
+    {"max": 40, "result": "Chaos empowers you with strange but useful abilities"},
+    {"max": 60, "result": "Chaos manifests as comforting or inspiring visions"},
+    {"max": 80, "result": "Chaotic changes hamper your foes"},
+    {"max": 100, "result": "Insight into the source or nature of the chaos"}
+  ]
+}

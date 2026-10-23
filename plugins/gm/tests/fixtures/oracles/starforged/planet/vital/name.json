@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/vital/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Chiron"},
+    {"max": 2, "result": "Demeter"},
+    {"max": 3, "result": "Erebos"},
+    {"max": 4, "result": "Erembour"},
+    {"max": 5, "result": "Feronia"},
+    {"max": 6, "result": "Fortuna"},
+    {"max": 7, "result": "Gaia"},
+    {"max": 8, "result": "Harbinger"},
+    {"max": 9, "result": "Haven"},
+    {"max": 10, "result": "Hope"},
+    {"max": 11, "result": "Morpheus"},
+    {"max": 12, "result": "Nemus"},
+    {"max": 13, "result": "Sapphire"},
+    {"max": 14, "result": "Serenity"},
+    {"max": 15, "result": "Sif"},
+    {"max": 16, "result": "Silva"},
+    {"max": 17, "result": "Sirona"},
+    {"max": 18, "result": "Solstice"},
+    {"max": 19, "result": "Vale"},
+    {"max": 20, "result": "Valinor"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/interior/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Clue points the way to your destination or target"},
+    {"max": 20, "result": "Clue to a lifeform's nature or vulnerabilities"},
+    {"max": 30, "result": "Helpful gear left by another explorer"},
+    {"max": 40, "result": "Insight into the nature or history of this site"},
+    {"max": 50, "result": "Intriguing device or artifact"},
+    {"max": 60, "result": "Opening to get the drop on a foe"},
+    {"max": 70, "result": "Opening to outmaneuver or escape a threat or foe"},
+    {"max": 80, "result": "Salvageable resource"},
+    {"max": 90, "result": "Secure area offers a moment of peace"},
+    {"max": 100, "result": "Shortcut or less perilous path speeds your way"}
+  ]
+}

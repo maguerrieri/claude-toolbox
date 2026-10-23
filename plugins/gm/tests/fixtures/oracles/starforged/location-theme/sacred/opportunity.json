@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/sacred/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Access to a hidden or sealed area"},
+    {"max": 40, "result": "Encounter with a helpful adherent or heretic"},
+    {"max": 60, "result": "Insight into the nature or history of the faith"},
+    {"max": 80, "result": "Insight into the schemes or methods of religious zealots"},
+    {"max": 100, "result": "Interesting or valuable artifact or device"}
+  ]
+}

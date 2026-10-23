@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/desert/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Abalos"},
+    {"max": 2, "result": "Audun"},
+    {"max": 3, "result": "Bishop"},
+    {"max": 4, "result": "Desolation"},
+    {"max": 5, "result": "Dykuma"},
+    {"max": 6, "result": "Fallow"},
+    {"max": 7, "result": "Helios"},
+    {"max": 8, "result": "Mirage"},
+    {"max": 9, "result": "Morricone"},
+    {"max": 10, "result": "Nux"},
+    {"max": 11, "result": "Ordos"},
+    {"max": 12, "result": "Petra"},
+    {"max": 13, "result": "Pyla"},
+    {"max": 14, "result": "Sabulo"},
+    {"max": 15, "result": "Saffron"},
+    {"max": 16, "result": "Sirocco"},
+    {"max": 17, "result": "Sulis"},
+    {"max": 18, "result": "Torrid"},
+    {"max": 19, "result": "Umber"},
+    {"max": 20, "result": "Vermillion"}
+  ]
+}

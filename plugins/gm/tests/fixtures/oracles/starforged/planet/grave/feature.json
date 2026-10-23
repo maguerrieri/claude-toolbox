@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/grave/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Acid pools"},
+    {"max": 14, "result": "Ash dunes"},
+    {"max": 21, "result": "Corrosive rains"},
+    {"max": 28, "result": "Dead forests"},
+    {"max": 35, "result": "Fetid mudflats"},
+    {"max": 42, "result": "Mass graves"},
+    {"max": 49, "result": "Moldering bones"},
+    {"max": 56, "result": "Noxious fog"},
+    {"max": 63, "result": "Radioactive hotspots"},
+    {"max": 70, "result": "Ravaged cities"},
+    {"max": 77, "result": "Scarred battlefields"},
+    {"max": 84, "result": "Ship graveyards"},
+    {"max": 91, "result": "Whispers of the dead"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}
