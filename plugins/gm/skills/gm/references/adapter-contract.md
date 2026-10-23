@@ -29,6 +29,15 @@ Body (prose the core follows):
 - **Resolution rules** — when the fiction needs a mechanical answer, which oracle/roll applies and how its result maps to an outcome. Written as instructions, e.g. *"For a yes/no question, roll `oracles/yes-no.md`; on a 'Yes, and' grant a bonus, on a 'No, and' add a complication."*
 - **Safety defaults** — lines & veils prompts, tone guardrails.
 
+### The yes/no and spark rules (`/gm:oracle`)
+
+Two of the resolution rules are what `/gm:oracle` rolls, so state them where it can find them:
+
+- **The yes/no rule** — a bullet whose bold label names it as yes/no (`**Yes/No question.**`, `**Ask the Oracle** (yes/no):`). It names the table or tables to roll by their `oracles/…` paths, how to choose among them (the odds, say), and how to read the result, including anything the roll itself means (a match on Ironsworn's d100).
+- **The spark rule** — the tables to read together for inspiration (`oracles/action.md` + `oracles/theme.md` in every bundled adapter).
+
+Both resolve along `extends:` (see "Composition"): the nearest adapter in the chain that states the rule wins, and its table paths are found anywhere in the chain. If no adapter in the chain states a yes/no rule, or the chain has no `action.md` + `theme.md`, `/gm:oracle` rolls the generic adapter's (`oracles/yes-no.md`, or `oracles/action.md` + `oracles/theme.md`) and says so.
+
 ## Tables (`oracles/**/*.md`)
 
 Oracle and inspiration tables are **Markdown files** (`roll table <path>` reads them; `roll oracle` is a deprecated alias). Adapters ship tables under `oracles/`, in subdirectories when there are many (`oracles/planet/desert/atmosphere.md`); a table's id is its path under `oracles/`. Player campaigns keep hand-authored or forged tables in `tables/` (and sealed GM tables in `.gm/tables/`). All three share the same format. Lines that aren't entries (a `# ` title, `> ` notes, an HTML comment) are ignored, so a table file can carry its own heading and source note.
