@@ -21,7 +21,7 @@ It comes from the machine-readable edition published by **Datasworn** (https://g
 
 The rest is from the **Ironsworn Rulebook**, © 2018 Shawn Tomkin, whose text is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)** license: https://creativecommons.org/licenses/by-nc-sa/4.0/ (its copyright page says so). These files are licensed **CC BY-NC-SA 4.0**:
 
-- Generated from the same Datasworn file, which tags this content CC BY-NC-SA 4.0: `rules/truths.md` and `oracles/truths/*.md` (chapter 4, "Your Truths", pp. 122–129), `rules/regions.md` (chapter 4, "Regions of the Ironlands", pp. 112–121), and `rules/foes.md` (chapter 5, "Foes and Encounters", pp. 133–162).
+- Generated from the same Datasworn file, which tags this content CC BY-NC-SA 4.0: `rules/truths.md` and `oracles/truths/*.md` (chapter 4, "Your Truths", pp. 122–129), with their golden test fixtures in `plugins/gm/tests/fixtures/oracles/ironsworn/truths/`, `rules/regions.md` (chapter 4, "Regions of the Ironlands", pp. 112–121), and `rules/foes.md` (chapter 5, "Foes and Encounters", pp. 133–162).
 - Hand-written, adapted from the rulebook and abridged for solo play, with the book's page references replaced by this adapter's file paths: `rules/campaign-launch.md` (chapter 7, "Starting Your Campaign", pp. 193–202, with chapter 4) and `rules/character-creation.md` (chapter 2, "Your Character", pp. 31–47, with chapter 7).
 
 ## Changes made
@@ -30,6 +30,6 @@ To the generated files: the JSON is converted to Markdown tables and rules files
 
 ## Original content
 
-`adapter.md` and `frames/` are written for this plugin. They describe and point at the content above. `adapter.md` paraphrases two rules the SRD data doesn't carry, with the rulebook's page numbers: the harm a weapon inflicts (p. 19) and journey ranks by distance (p. 111).
+`adapter.md` and `frames/` are written for this plugin. They describe and point at the content above. `adapter.md` paraphrases three points of the rulebook the SRD data doesn't carry, with its page numbers: the harm a weapon inflicts (p. 19), journey ranks by distance (p. 111), and the Mystic Backlash table's use when a ritual fails (p. 44).
 
 This adapter is not affiliated with or endorsed by Shawn Tomkin. Ironsworn: https://ironswornrpg.com

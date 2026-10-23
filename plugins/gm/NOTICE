@@ -17,7 +17,8 @@ MIT license does not cover these files.
 
                           Except: rules/truths.md, oracles/truths/,
                           rules/regions.md and rules/foes.md (from the
-                          same Datasworn file), and
+                          same Datasworn file, as are the test fixtures
+                          in tests/fixtures/oracles/ironsworn/truths/), and
                           rules/campaign-launch.md and
                           rules/character-creation.md (adapted by hand),
                           all from the Ironsworn Rulebook, chapters 2, 4,

@@ -91,13 +91,13 @@ RULESETS = {
     "starforged": Ruleset(
         "starforged", "starforged", "Starforged",
         "6246ed6da109cf1586f80ae3b8238feffca2ebaa00a37e3437e1b9f7b7e313c9", flat="core",
-        licenses={s: CC_BY for s in ("oracles", "moves", "assets", "truths")},
+        licenses={s: CC_BY for s in ("oracles", "moves", "assets", "truths", "rules")},
         special_track="progress roll on your legacy tracks",
         epilogue=("a legacy-track roll", "uses that track's filled boxes")),
     "classic": Ruleset(
         "classic", "ironsworn", "Ironsworn",
         "7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc", flat="action_and_theme",
-        licenses={"oracles": CC_BY, "moves": CC_BY, "assets": CC_BY,
+        licenses={"oracles": CC_BY, "moves": CC_BY, "assets": CC_BY, "rules": CC_BY,
                   "truths": CC_BY_NC_SA, "npcs": CC_BY_NC_SA, "atlas": CC_BY_NC_SA},
         special_track="progress roll on your bonds track",
         epilogue=("Write Your Epilogue rolls", "your bonds track's filled boxes"),
@@ -131,10 +131,17 @@ def _slug(seg):
     return seg.replace("_", "-")
 
 
-def _split(ref):
-    """'oracle_rollable:starforged/core/action' -> ('oracle_rollable', ruleset, 'core/action')."""
+def _split_any(ref):
+    """'oracle_rollable:starforged/core/action' -> ('oracle_rollable', 'starforged', 'core/action'),
+    for any ruleset (a link may point outside the ones this tool reads)."""
     kind, _, rest = ref.partition(":")
     ruleset, _, path = rest.partition("/")
+    return kind, ruleset, path
+
+
+def _split(ref):
+    """Like _split_any, for a ruleset this tool reads: the ruleset comes back as its Ruleset."""
+    kind, ruleset, path = _split_any(ref)
     if ruleset not in RULESETS or not path:
         raise ValueError(f"not a starforged or classic id: {ref!r}")
     return kind, RULESETS[ruleset], path
@@ -211,7 +218,7 @@ def convert_links(text, rs):
         kind, other, _path = _split_any(ref)
         if other != rs.key:
             if kind == "move":
-                return f"{label} ({other.capitalize()} move)"
+                return f"{label} ({other.replace('_', ' ').title()} move)"
             raise ValueError(f"link into another ruleset: {ref!r}")
         if kind in ("oracle_rollable", "move.oracle_rollable", "truth.option.oracle_rollable"):
             return f"{label} (`oracles/{oracle_path(ref)}`)"
@@ -227,13 +234,6 @@ def convert_links(text, rs):
     if "datasworn:" in out or "{{" in out:     # a link we didn't parse, or a template
         raise ValueError(f"unconverted datasworn reference or template in: {text!r}")
     return out
-
-
-def _split_any(ref):
-    """Like _split, for any ruleset (a link may point outside the ones this tool reads)."""
-    kind, _, rest = ref.partition(":")
-    ruleset, _, path = rest.partition("/")
-    return kind, ruleset, path
 
 
 def _range(roll):
@@ -670,10 +670,11 @@ def render_foes(doc, files):
 
 def render_regions(doc, files):
     rs = doc.rs
+    region = doc.table(f"oracle_rollable:{rs.key}/place/region")[1]
     out = [GENERATED, "# Regions of the Ironlands", ""]
     for atlas in doc.data["atlas"].values():
         out += [convert_links(atlas["summary"], rs), "",
-                "Roll a region with `oracles/place/region.md`; the Undertake a Journey move",
+                f"Roll a region with `oracles/{region}`; the Undertake a Journey move",
                 "(`rules/moves.md`) covers travel between them.", ""]
         if atlas.get("collections"):
             raise ValueError(f"{atlas['_id']}: nested atlas collections aren't rendered yet")
@@ -767,7 +768,8 @@ def render_classic_sheet(doc, files):
 
 def check_licenses(data, rs):
     """No object in a section this tool renders carries a license other than the one
-    rs.licenses (and so the adapter's SOURCE.md) records for that section."""
+    rs.licenses (and so the adapter's SOURCE.md) records for that section. A section
+    with no tagged objects falls under the file's own license."""
     for section in rs.licenses:
         found = set()
 
@@ -781,7 +783,9 @@ def check_licenses(data, rs):
                 for v in node:
                     walk(v)
 
-        walk(data[section])
+        walk(data.get(section) or {})
+        if not found and data.get("license"):
+            found = {data["license"]}
         if found - {rs.licenses[section]}:
             raise ValueError(f"{rs.key} {section}: licensed {sorted(map(str, found))}, "
                              f"expected {rs.licenses[section]}; update RULESETS and SOURCE.md")
@@ -900,16 +904,18 @@ def write(root, files, rs):
 
 
 def check(root, files, rs):
+    """Print how the tree differs from files for rs, and return the problems ([] when in sync)."""
     old = owned_files(root, rs)
     problems = [f"missing   {rel}" for rel in sorted(set(files) - set(old))]
     problems += [f"stale     {rel}" for rel in sorted(set(old) - set(files))]
     problems += [f"differs   {rel}" for rel in sorted(set(files) & set(old)) if files[rel] != old[rel]]
     if problems:
         print("\n".join(problems))
-        sys.exit(f"datasworn-import --check: {rs.key}: {len(problems)} generated file(s) out of date; "
-                 "re-run datasworn-import")
-    print(f"datasworn-import --check: {rs.key}: {len(files)} generated files match "
-          f"{UPSTREAM_REPO}@{UPSTREAM_REF[:7]}")
+        print(f"datasworn-import --check: {rs.key}: {len(problems)} generated file(s) out of date")
+    else:
+        print(f"datasworn-import --check: {rs.key}: {len(files)} generated files match "
+              f"{UPSTREAM_REPO}@{UPSTREAM_REF[:7]}")
+    return problems
 
 
 def main(argv=None):
@@ -922,10 +928,15 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.json and not a.ruleset:
         ap.error("--json needs --ruleset")
-    for key in [a.ruleset] if a.ruleset else sorted(RULESETS):
-        rs = RULESETS[key]
-        files = generate(load(a.json, rs), rs)
-        (check if a.check else write)(a.root, files, rs)
+    # Load and generate every ruleset first, so a bad pin or fetch writes nothing.
+    trees = [(RULESETS[k], generate(load(a.json, RULESETS[k]), RULESETS[k]))
+             for k in ([a.ruleset] if a.ruleset else sorted(RULESETS))]
+    if a.check:
+        if sum(len(check(a.root, files, rs)) for rs, files in trees):
+            sys.exit("datasworn-import --check: generated files are out of date; re-run datasworn-import")
+    else:
+        for rs, files in trees:
+            write(a.root, files, rs)
 
 
 if __name__ == "__main__":

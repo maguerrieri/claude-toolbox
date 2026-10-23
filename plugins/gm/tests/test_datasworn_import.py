@@ -158,6 +158,7 @@ def test_convert_links_classic_kinds():
             "[Check Your Gear](datasworn:move:delve/delve/check_your_gear)")
     assert imp.convert_links(text, CLASSIC) == ("Havens, raiders, horrors, Old World, combat moves, "
                                                 "Check Your Gear (Delve move)")
+    assert imp.convert_links("[Sail](datasworn:move:sundered_isles/x/sail)", CLASSIC) == "Sail (Sundered Isles move)"
 
 
 def test_convert_links_rejects_other_rulesets_tables():
@@ -250,10 +251,12 @@ def mini_classic():
     src = {"license": imp.CC_BY_NC_SA}
     action = _table("oracle_rollable:classic/action_and_theme/action", "Action",
                     [_row(1, 10, "Scheme")], dice="1d10")
+    region = _table("oracle_rollable:classic/place/region", "Region", [_row(1, 10, "Havens")])
     harm = _table("move.oracle_rollable:classic/suffer/endure_harm.endure_harm", "Endure Harm",
                   [_row(1, 10, "You are battered but still standing.")])
     return {
-        "oracles": {"action_and_theme": {"name": "Action and Theme Oracles", "contents": {"action": action}}},
+        "oracles": {"action_and_theme": {"name": "Action and Theme Oracles", "contents": {"action": action}},
+                    "place": {"name": "Place Oracles", "contents": {"region": region}}},
         "moves": {"suffer": {"name": "Suffer Moves", "contents": {"endure_harm": {
             "_id": "move:classic/suffer/endure_harm", "name": "Endure Harm", "roll_type": "action_roll",
             "text": "Roll +iron.\n\n{{table>move.oracle_rollable:classic/suffer/endure_harm.endure_harm}}",
@@ -340,6 +343,22 @@ def test_classic_licenses_are_checked():
     doc["npcs"]["beasts"]["contents"]["wyvern"]["_source"] = {"license": imp.CC_BY}
     with pytest.raises(ValueError, match="npcs"):
         imp.generate(doc, CLASSIC)
+    # untagged content (like the sheet's rules) falls under the file's own license
+    doc = mini_classic()
+    doc["license"] = imp.CC_BY_NC_SA
+    with pytest.raises(ValueError, match="classic oracles: licensed"):
+        imp.generate(doc, CLASSIC)
+
+
+@pytest.mark.parametrize("adapter", ["starforged", "ironsworn"])
+def test_sheet_points_at_the_momentum_step(adapter):
+    # the generated sheet names a step of the hand-written procedure, which --check can't see
+    import re
+    sheet = open(os.path.join(ADAPTERS, adapter, "sheet-template.md")).read()
+    step = re.search(r"`rules/character-creation\.md`, step (\d+)", sheet).group(1)
+    proc = open(os.path.join(ADAPTERS, adapter, "rules", "character-creation.md")).read()
+    section = re.search(rf"^## {step}\. .*?(?=^## |\Z)", proc, re.M | re.S).group(0)
+    assert "momentum" in section.lower()
 
 
 def test_errata_fix_the_value_they_name():
@@ -378,11 +397,10 @@ def test_write_owns_only_marked_files(tmp_path):
     assert hand.read_text() == "# hand-written\n"
     assert not stale.exists()
     assert empty.is_dir()
-    imp.check(root, files, SF)      # in sync (and the .DS_Store isn't ours): returns quietly
+    assert imp.check(root, files, SF) == []    # in sync (and the .DS_Store isn't ours)
 
     (tmp_path / "adapters" / "starforged" / "oracles" / "action.md").write_text(imp.GENERATED + "\n- [1] edited\n")
-    with pytest.raises(SystemExit):
-        imp.check(root, files, SF)
+    assert imp.check(root, files, SF) == ["differs   adapters/starforged/oracles/action.md"]
 
     clash = dict(files)
     clash["adapters/starforged/rules/character-creation.md"] = imp.GENERATED + "\n"
