@@ -29,6 +29,15 @@ Body (prose the core follows):
 - **Resolution rules** — when the fiction needs a mechanical answer, which oracle/roll applies and how its result maps to an outcome. Written as instructions, e.g. *"For a yes/no question, roll `oracles/yes-no.md`; on a 'Yes, and' grant a bonus, on a 'No, and' add a complication."*
 - **Safety defaults** — lines & veils prompts, tone guardrails.
 
+### The yes/no and spark rules (`/gm:oracle`)
+
+Two of the resolution rules are what `/gm:oracle` rolls, so state each as a top-level bullet in `adapter.md` that opens with a bold label naming it, in the label itself or in a parenthetical right after it:
+
+- **The yes/no rule** — labeled yes/no (`**Yes/No question.**`, `**Ask the Oracle** (yes/no):`). It names the table or tables to roll by their `oracles/…` paths, how to choose among them (the odds, say), and how to read the result, including anything the roll itself means (a match on Ironsworn's d100).
+- **The spark rule** — labeled spark or inspiration (`**Inspiration / meaning prompt.**`, `**A spark:**`, `**A spark** (inspiration):`). It names the tables to read together for a prompt by their `oracles/…` paths (`oracles/action.md` + `oracles/theme.md` in every bundled adapter).
+
+Both resolve along `extends:` (see "Composition"): the nearest adapter in the chain that states the rule wins, and its table paths are found anywhere in the chain. If no adapter in the chain states one, `/gm:oracle` rolls the generic adapter's tables (`oracles/yes-no.md`, or `oracles/action.md` + `oracles/theme.md`) and says so.
+
 ## Tables (`oracles/**/*.md`)
 
 Oracle and inspiration tables are **Markdown files** (`roll table <path>` reads them; `roll oracle` is a deprecated alias). Adapters ship tables under `oracles/`, in subdirectories when there are many (`oracles/planet/desert/atmosphere.md`); a table's id is its path under `oracles/`. Player campaigns keep hand-authored or forged tables in `tables/` (and sealed GM tables in `.gm/tables/`). All three share the same format. Lines that aren't entries (a `# ` title, `> ` notes, an HTML comment) are ignored, so a table file can carry its own heading and source note.

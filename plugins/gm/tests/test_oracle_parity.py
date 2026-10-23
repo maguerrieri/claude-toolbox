@@ -2,9 +2,11 @@
 
 These fixtures are the *golden reference*, not live adapter data. The generic and
 ironsworn ones are the original JSON oracles as they existed before commit 485eed1
-(migrated to MD). The starforged ones are the upstream SRD's own roll ranges, written
-by tools/datasworn-import from the pinned Datasworn file alongside the tables, and
-nested like the tables (fixtures/oracles/<adapter>/<path>.json -> oracles/<path>.md).
+(migrated to MD), except ironsworn's moves/ask-the-oracle/, which are the Ironsworn
+SRD's own roll ranges from the pinned Datasworn classic.json (test_oracle_command
+checks them against it). The starforged ones are the upstream SRD's own roll ranges,
+written by tools/datasworn-import from the pinned Datasworn file alongside the tables.
+All are nested like the tables (fixtures/oracles/<adapter>/<path>.json -> oracles/<path>.md).
 A weight typo, row-ordering mistake, or entry `roll table` would misparse in any live
 .md file fails this test.
 """
