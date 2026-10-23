@@ -55,7 +55,10 @@ def mini_doc():
                                                 "number_of_rolls": 2}]),
     ])
     feature = _table("oracle_rollable:starforged/planet/ice/feature", "Feature",
-                     [_row(1, 10, "Frozen sea")])
+                     [_row(1, 5, "Frozen sea"),
+                      _row(6, 10, "Ice caves", suggestions=["oracle_collection:starforged/planet/ice"])])
+    likely = _table("move.oracle_rollable:starforged/fate/ask_the_oracle.likely", "Likely",
+                    [_row(1, 7, "Yes"), _row(8, 10, "No")])
     given = _table("oracle_rollable:starforged/character/name/given_name", "Given Name",
                    [_row(1, 6, "Akim"), _row(7, 10, "Alex")], oracle_type="column_text")
     family = _table("oracle_rollable:starforged/character/name/family_name", "Family Name",
@@ -74,7 +77,10 @@ def mini_doc():
                          "oracle_type": "table_shared_rolls", "summary": "Roll once for both.",
                          "contents": {"given_name": given, "family_name": family}}}},
         },
-        "moves": {"fate": {"name": "Fate Moves", "contents": {"pay_the_price": {
+        "moves": {"fate": {"name": "Fate Moves", "contents": {"ask_the_oracle": {
+            "_id": "move:starforged/fate/ask_the_oracle", "name": "Ask the Oracle", "roll_type": "no_roll",
+            "text": "Decide the odds and roll on the table below.",
+            "oracles": {"likely": likely}}, "pay_the_price": {
             "_id": "move:starforged/fate/pay_the_price", "name": "Pay the Price", "roll_type": "no_roll",
             "text": "__When you suffer__, [Face Danger](datasworn:move:starforged/adventure/face_danger) "
                     "or roll:\n\n{{table>move.oracle_rollable:starforged/fate/pay_the_price.pay_the_price}}",
@@ -97,6 +103,13 @@ def mini_doc():
             "abilities": [{"text": "When you [Face Danger](datasworn:move:starforged/adventure/face_danger), add +1.",
                            "enabled": True},
                           {"text": "Take +1 momentum.", "enabled": False}]}}}},
+        "npcs": {"sample_npcs": {"name": "Sample NPCs", "contents": {"chiton": {
+            "_id": "npc:starforged/sample_npcs/chiton", "name": "Chiton", "nature": "Monster",
+            "summary": "Insectoid horde", "rank": 2, "features": ["Plated exoskeleton"],
+            "drives": ["Feed the queen"], "tactics": ["Impale"], "description": "Not native anywhere.",
+            "variants": {"queen": {"name": "Chiton queen", "nature": "Monster", "rank": 4,
+                                   "description": "Massive."}},
+            "quest_starter": "A larva wakes."}}}},
         "rules": {"stats": {"edge": {"description": "Quick."}},
                   "condition_meters": {"health": {"label": "health", "max": 5, "value": 5}},
                   "impacts": {"misfortunes": {"label": "misfortunes",
@@ -153,6 +166,40 @@ def test_two_tables_on_one_path_fail():
         "oracle_rollable:starforged/character/name", "Name", [_row(1, 10, "Ash")])
     with pytest.raises(ValueError, match="character/name.md"):
         imp.generate(doc)
+
+
+def test_unconverted_upstream_sections_fail():
+    doc = mini_doc()
+    doc["delve_sites"] = {"some_site": {"name": "A site"}}
+    with pytest.raises(ValueError, match="delve_sites"):
+        imp.generate(doc)
+    doc["delve_sites"] = {}         # empty sections (as at the pin) are fine
+    imp.generate(doc)
+
+
+def test_followups_moves_tables_and_npcs_are_rendered():
+    files = imp.generate(mini_doc())
+    feature = roll.parse_table(files["adapters/starforged/oracles/planet/ice/feature.md"])
+    assert feature[1]["entry"] == "Ice caves\n→ Next, consider `oracles/planet/ice/`"
+    moves = files["adapters/starforged/rules/moves.md"]
+    assert "Roll its tables: Likely `oracles/moves/ask-the-oracle/likely.md`." in moves
+    enc = files["adapters/starforged/rules/encounters.md"]
+    assert "### Chiton" in enc and "**Rank:** dangerous (2)" in enc
+    assert "- **Chiton queen** (*Monster*, extreme (4)): Massive." in enc
+    assert "*Quest starter:* A larva wakes." in enc
+    sheet = files["adapters/starforged/sheet-template.md"]
+    assert sheet.startswith(imp.MARKER) and "Leave this line out of a character's sheet" in sheet.split("\n")[0]
+
+
+def test_load_caches_the_pinned_file(tmp_path, monkeypatch):
+    raw = b'{"pinned": true}'
+    monkeypatch.setattr(imp, "UPSTREAM_SHA256", __import__("hashlib").sha256(raw).hexdigest())
+    fetched = []
+    monkeypatch.setattr(imp, "fetch", lambda url: fetched.append(url) or raw)
+    cache = tmp_path / "cache"
+    assert imp.load(None, str(cache)) == {"pinned": True}
+    assert imp.load(None, str(cache)) == {"pinned": True}
+    assert len(fetched) == 1        # the second load read the cache
 
 
 def test_fixture_max_is_upstream_not_the_weight_sum():

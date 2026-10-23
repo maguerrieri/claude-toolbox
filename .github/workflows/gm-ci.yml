@@ -21,7 +21,12 @@ jobs:
         run: uvx pytest plugins/gm/tests -q
       - name: Validate all adapters
         run: python3 plugins/gm/bin/validate-adapter --all plugins/gm/adapters
+      - name: Cache the pinned Datasworn file
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gm-datasworn
+          key: gm-datasworn-${{ hashFiles('plugins/gm/tools/datasworn-import') }}
       - name: Starforged content matches its pinned Datasworn source
-        run: python3 plugins/gm/tools/datasworn-import --check
+        run: python3 plugins/gm/tools/datasworn-import --check --cache ~/.cache/gm-datasworn
       - name: Validate all personas
         run: python3 plugins/gm/bin/validate-adapter --personas --all plugins/gm/personas

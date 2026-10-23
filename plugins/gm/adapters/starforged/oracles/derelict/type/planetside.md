@@ -4,4 +4,6 @@
 > Datasworn `oracle_rollable:starforged/derelict/type/planetside` · 1d100
 
 - [25] Starship
+  → Next, consider `oracles/derelict/zone/starship.md`
 - [75] Settlement
+  → Next, consider `oracles/derelict/zone/settlement.md`

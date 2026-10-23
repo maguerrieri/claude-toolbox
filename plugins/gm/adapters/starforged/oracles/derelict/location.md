@@ -4,5 +4,8 @@
 > Datasworn `oracle_rollable:starforged/derelict/location` · 1d100
 
 - [40] Planetside
+  → Next, consider `oracles/derelict/type/planetside.md`
 - [20] Orbital
+  → Next, consider `oracles/derelict/type/orbital.md`
 - [40] Deep Space
+  → Next, consider `oracles/derelict/type/deep-space.md`

@@ -17,6 +17,7 @@ The full Starforged SRD content, generated from Datasworn (see `SOURCE.md`), plu
 - **`rules/moves.md`** — every move (session, adventure, quest, connection, exploration, combat, suffer, recover, threshold, legacy, fate, scene challenge), with the tables they roll on.
 - **`rules/assets.md`** — the asset index; the cards are in `rules/assets/<category>.md` (command vehicle, module, support vehicle, path, companion, deed).
 - **`rules/truths.md`** — the 14 setting truths, each rollable as `oracles/truths/<truth>.md`.
+- **`rules/encounters.md`** — the SRD's sample NPCs and foes: rank, features, drives, tactics, variants, quest starter. A foe's rank comes from here, never improvised.
 - **`oracles/`** — every Starforged oracle table, nested by collection (`oracles/settlement/trouble.md`, `oracles/planet/desert/atmosphere.md`, …). **`rules/oracles.md`** indexes them all. The core oracles sit at the top: `oracles/action.md`, `oracles/theme.md`, `oracles/descriptor.md`, `oracles/focus.md`.
 - **`rules/campaign-launch.md`**, **`rules/character-creation.md`**, **`rules/sector-creation.md`** — the rulebook's step-by-step campaign launch (truths, character, starting sector, inciting incident).
 - **`sheet-template.md`** — the Starforged character sheet (stats, meters, impacts, legacy tracks).
