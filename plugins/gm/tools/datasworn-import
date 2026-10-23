@@ -66,7 +66,7 @@ class Ruleset:
     """One Datasworn ruleset and the adapter it generates."""
 
     def __init__(self, key, adapter, title, sha256, flat, licenses, special_track, epilogue,
-                 unmarked_note=""):
+                 truths_intro, unmarked_note="", named_kinds=()):
         self.key = key                    # the ruleset segment of every Datasworn id
         self.adapter = adapter            # the adapter dir under adapters/
         self.title = title                # how the generated files name the game
@@ -77,6 +77,8 @@ class Ruleset:
         self.special_track = special_track  # how a move rolling on the special tracks reads
         self.epilogue = epilogue          # the moves intro's note on that roll, as two wrapped lines
         self.unmarked_note = unmarked_note  # the assets index's note on a card with no ability marked
+        self.truths_intro = truths_intro  # (title, intro lines with {n} and {paths_note}, table note)
+        self.named_kinds = named_kinds    # link kinds rendered as a bare name, for the rules files it ships
         self.adapter_dir = f"adapters/{adapter}"
         self.fixtures_dir = f"tests/fixtures/oracles/{adapter}"
         self.paths_note = ("Paths are relative to this adapter, so `oracles/<path>` rolls as "
@@ -93,7 +95,11 @@ RULESETS = {
         "6246ed6da109cf1586f80ae3b8238feffca2ebaa00a37e3437e1b9f7b7e313c9", flat="core",
         licenses={s: CC_BY for s in ("oracles", "moves", "assets", "truths", "rules")},
         special_track="progress roll on your legacy tracks",
-        epilogue=("a legacy-track roll", "uses that track's filled boxes")),
+        epilogue=("a legacy-track roll", "uses that track's filled boxes"),
+        truths_intro=("Setting Truths", [
+            "The Forge's {n} setting truths from the Starforged SRD. For each one, pick an option or",
+            "roll its table, then roll any sub-table the chosen option names. Each option carries a",
+            "quest starter. {paths_note}"], "Each option: its summary, the truth, then its quest starter.")),
     "classic": Ruleset(
         "classic", "ironsworn", "Ironsworn",
         "7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc", flat="action_and_theme",
@@ -101,6 +107,11 @@ RULESETS = {
                   "truths": CC_BY_NC_SA, "npcs": CC_BY_NC_SA, "atlas": CC_BY_NC_SA},
         special_track="progress roll on your bonds track",
         epilogue=("Write Your Epilogue rolls", "your bonds track's filled boxes"),
+        truths_intro=("Your Truths", [
+            "The Ironlands' {n} world truths, from the Ironsworn Rulebook's \"Your Truths\". For",
+            "each one, pick an option or roll its table. Each option carries a quest starter.",
+            "{paths_note}"], "Each option: the truth, then its quest starter."),
+        named_kinds=("atlas_entry", "npc", "npc_collection"),
         unmarked_note=" A card with none marked\nlets you pick one of its three to start (Rulebook p. 42)."),
 }
 
@@ -207,11 +218,12 @@ class Doc:
 def convert_links(text, rs):
     """Datasworn markdown links -> plain text the GM can act on.
 
-    A table or collection keeps its path so the GM can roll it; a move, a region or
-    an NPC is just its name (each lives in one rules file: moves.md, regions.md,
-    foes.md); an asset names its category. A truth or move category named in prose
-    is just its name too. A link into another ruleset is an error, except a move,
-    which names its game (an asset can point at an expansion's move).
+    A table or collection keeps its path so the GM can roll it; a move is just its
+    name (they all live in rules/moves.md), and so is a region or an NPC for a ruleset
+    that ships them (rs.named_kinds: rules/regions.md, rules/foes.md); an asset names
+    its category. A truth or move category named in prose is just its name too. A link
+    into another ruleset is an error, except a move, which names its game (an asset
+    can point at an expansion's move).
     """
     def sub(m):
         label, ref = m.group(1), m.group(2)
@@ -224,7 +236,7 @@ def convert_links(text, rs):
             return f"{label} (`oracles/{oracle_path(ref)}`)"
         if kind == "oracle_collection":
             return f"{label} (`oracles/{collection_dir(ref)}`)"
-        if kind in ("move", "move_category", "atlas_entry", "npc", "npc_collection", "truth"):
+        if kind in ("move", "move_category", "truth") or kind in rs.named_kinds:
             return label
         if kind == "asset":
             return f"{label} ({asset_category(ref)} asset)"
@@ -308,9 +320,10 @@ def checked_rows(rows, dice, ref):
     return live
 
 
-def row_lines(row, rs):
+def row_lines(row, doc):
     """One table row as entry lines: its text (+ second column), then any rolls on
     other tables that the text doesn't already link."""
+    rs = doc.rs
     text = convert_links(row["text"], rs)
     if row.get("text2"):
         text = f"{text} — {convert_links(row['text2'], rs)}"
@@ -320,7 +333,7 @@ def row_lines(row, rs):
         ref = roll.get("oracle")
         if ref and ref not in linked:
             times = roll.get("number_of_rolls") or 1
-            lines.append(f"→ Roll `oracles/{oracle_path(ref)}`" + (f" ×{times}" if times > 1 else ""))
+            lines.append(f"→ Roll `oracles/{doc.table(ref)[1]}`" + (f" ×{times}" if times > 1 else ""))
     return lines
 
 
@@ -415,7 +428,7 @@ def render_oracles(doc, files):
         if not summary and t.get("oracle_type") == "column_text":
             summary = (parent or {}).get("summary")   # a column shares its collection's summary
         emit_table(doc, files, path, title, ref, t["dice"], convert_links(summary, rs) if summary else "",
-                   [(r["roll"], row_lines(r, rs)) for r in rows])
+                   [(r["roll"], row_lines(r, doc)) for r in rows])
 
     for coll, title in shared_roll_collections(doc):
         ref = coll["_id"]
@@ -440,18 +453,9 @@ def render_oracles(doc, files):
 def render_truths(doc, files):
     rs = doc.rs
     truths = doc.data["truths"]
-    if rs.key == "starforged":
-        out = [GENERATED, "# Setting Truths", "",
-               f"The Forge's {len(truths)} setting truths from the Starforged SRD. For each one, pick an option or",
-               "roll its table, then roll any sub-table the chosen option names. Each option carries a",
-               f"quest starter. {rs.paths_note}", ""]
-        entry_note = "Each option: its summary, the truth, then its quest starter."
-    else:
-        out = [GENERATED, "# Your Truths", "",
-               f"The Ironlands' {len(truths)} world truths, from the Ironsworn Rulebook's \"Your Truths\". For",
-               "each one, pick an option or roll its table. Each option carries a quest starter.",
-               rs.paths_note, ""]
-        entry_note = "Each option: the truth, then its quest starter."
+    title, intro, entry_note = rs.truths_intro
+    out = [GENERATED, f"# {title}", ""]
+    out += [line.format(n=len(truths), paths_note=rs.paths_note) for line in intro] + [""]
     for truth in truths.values():
         ref = truth["_id"]
         path = oracle_path(ref)
@@ -649,6 +653,8 @@ def render_foes(doc, files):
            "rank is the rank you set when you Enter the Fray, which gives the progress you mark per harm",
            "you inflict and the harm it inflicts (`rules/moves.md`).", ""]
     for coll in doc.data["npcs"].values():
+        if coll.get("collections"):
+            raise ValueError(f"{coll['_id']}: nested NPC collections aren't rendered yet")
         out += [f"## {coll['name']}", ""]
         if coll.get("description"):
             out += [convert_links(coll["description"], rs), ""]
@@ -693,26 +699,35 @@ def _meter(m):
     return f"[{'▰' * m['value'] + '▱' * (m['max'] - m['value'])}] {m['value']}/{m['max']}"
 
 
+def _stats_and_meters(rules, note_shared=False):
+    """The sheet's stats (with what each covers) and condition meters, as both games share them."""
+    stats = rules["stats"]
+    out = ["**Stats** (assign the array 3, 2, 2, 1, 1, as in `ironsworn-core/sheet-template.md`):",
+           "- " + " · ".join(f"{k} {{{{}}}}" for k in stats), ""]
+    out += [f"  - *{k}:* {v['description']}" for k, v in stats.items()]
+    out += ["", "**Condition meters:**"]
+    for m in rules["condition_meters"].values():
+        shared = "  (shared with your allies)" if note_shared and m.get("shared") else ""
+        out.append(f"- {m['label'].capitalize():<8} {_meter(m)}{shared}")
+    return out
+
+
+def _impact_lines(rules):
+    return [f"- *{group['label']}:* " + " ".join(f"[ ] {i['label']}" for i in group["contents"].values())
+            for group in rules["impacts"].values()]
+
+
 def render_starforged_sheet(doc, files):
     rules = doc.data["rules"]
-    stats = rules["stats"]
-    meters = rules["condition_meters"]
     starship = doc.data["assets"]["command_vehicle"]["contents"]["starship"]
     out = [GENERATED, "# {{name}}", "",
            "**Pronouns:** {{}} · **Callsign:** {{}}  ",
            "**Look / act / wear:** {{}}", "",
-           "Fill it in with `rules/character-creation.md`.", "",
-           "**Stats** (assign the array 3, 2, 2, 1, 1, as in `ironsworn-core/sheet-template.md`):",
-           "- " + " · ".join(f"{k} {{{{}}}}" for k in stats), ""]
-    out += [f"  - *{k}:* {v['description']}" for k, v in stats.items()]
-    out += ["", "**Condition meters:**"]
-    for m in meters.values():
-        out.append(f"- {m['label'].capitalize():<8} {_meter(m)}")
+           "Fill it in with `rules/character-creation.md`.", ""]
+    out += _stats_and_meters(rules)
     out += ["- Momentum  +2     (max +10; reset +2; impacts lower both: `rules/character-creation.md`, step 8)", "",
             "**Impacts** (mark as the fiction demands):"]
-    for group in rules["impacts"].values():
-        boxes = " ".join(f"[ ] {i['label']}" for i in group["contents"].values())
-        out.append(f"- *{group['label']}:* {boxes}")
+    out += _impact_lines(rules)
     out += ["", "**Legacy tracks** (progress tracks; see Earn Experience in `rules/moves.md`):"]
     for t in rules["special_tracks"].values():
         out.append(f"- {t['label'].capitalize():<11} [▱▱▱▱▱▱▱▱▱▱] 0/10 — {t['description']}")
@@ -733,21 +748,12 @@ def render_starforged_sheet(doc, files):
 
 def render_classic_sheet(doc, files):
     rules = doc.data["rules"]
-    stats = rules["stats"]
-    meters = rules["condition_meters"]
     out = [GENERATED, "# {{name}}", "",
-           "Fill it in with `rules/character-creation.md`.", "",
-           "**Stats** (assign the array 3, 2, 2, 1, 1, as in `ironsworn-core/sheet-template.md`):",
-           "- " + " · ".join(f"{k} {{{{}}}}" for k in stats), ""]
-    out += [f"  - *{k}:* {v['description']}" for k, v in stats.items()]
-    out += ["", "**Condition meters:**"]
-    for m in meters.values():
-        out.append(f"- {m['label'].capitalize():<8} {_meter(m)}" + ("  (shared with your allies)" if m.get("shared") else ""))
+           "Fill it in with `rules/character-creation.md`.", ""]
+    out += _stats_and_meters(rules, note_shared=True)
     out += ["- Momentum  +2     (max +10; reset +2; debilities lower both: `rules/character-creation.md`, step 5)", "",
             "**Debilities** (all unmarked to start; mark as moves direct):"]
-    for group in rules["impacts"].values():
-        boxes = " ".join(f"[ ] {i['label']}" for i in group["contents"].values())
-        out.append(f"- *{group['label']}:* {boxes}")
+    out += _impact_lines(rules)
     out += [""]
     for t in rules["special_tracks"].values():
         out += [f"**{t['label'].capitalize()}** (a progress track; one tick per bond): [▱▱▱▱▱▱▱▱▱▱] 0/10  ",
@@ -792,6 +798,8 @@ def check_licenses(data, rs):
 
 
 def apply_errata(data, rs):
+    if not ERRATA.get(rs.key):
+        return data
     data = copy.deepcopy(data)
     for path, old, new, _why in ERRATA.get(rs.key, []):
         node = data
@@ -809,6 +817,13 @@ def apply_errata(data, rs):
     return data
 
 
+# What each ruleset renders beyond the oracles, truths, moves, assets and index.
+RENDERERS = {
+    "starforged": [render_starforged_sheet],
+    "classic": [render_foes, render_regions, render_classic_sheet],
+}
+
+
 def generate(data, rs):
     """The whole generated tree for one ruleset: {path relative to the plugin root: content}."""
     check_licenses(data, rs)
@@ -819,12 +834,8 @@ def generate(data, rs):
     render_moves(doc, files)
     render_assets(doc, files)
     render_oracle_index(doc, files)
-    if rs.key == "classic":
-        render_foes(doc, files)
-        render_regions(doc, files)
-        render_classic_sheet(doc, files)
-    else:
-        render_starforged_sheet(doc, files)
+    for render in RENDERERS[rs.key]:
+        render(doc, files)
     for rel, text in files.items():
         if not rel.startswith((rs.adapter_dir + "/", rs.fixtures_dir + "/")):
             raise ValueError(f"{rel} is outside {rs.adapter_dir} and {rs.fixtures_dir}")
@@ -879,12 +890,16 @@ def load(json_path, rs):
     return json.loads(raw)
 
 
+def clashes(root, files, rs):
+    """The generated paths that would overwrite a file the tool didn't write."""
+    old = owned_files(root, rs)
+    return [rel for rel in sorted(files) if os.path.exists(os.path.join(root, rel)) and rel not in old]
+
+
 def write(root, files, rs):
     old = owned_files(root, rs)
-    for rel in files:
-        p = os.path.join(root, rel)
-        if os.path.exists(p) and rel not in old:
-            sys.exit(f"datasworn-import: {rel} exists and isn't generated; move it before regenerating")
+    for rel in clashes(root, files, rs):
+        sys.exit(f"datasworn-import: {rel} exists and isn't generated; move it before regenerating")
     for rel in old:
         os.remove(os.path.join(root, rel))
     for rel, text in sorted(files.items()):
@@ -935,6 +950,9 @@ def main(argv=None):
         if sum(len(check(a.root, files, rs)) for rs, files in trees):
             sys.exit("datasworn-import --check: generated files are out of date; re-run datasworn-import")
     else:
+        for rs, files in trees:      # every clash first, so one ruleset's can't stop a half-done write
+            for rel in clashes(a.root, files, rs):
+                sys.exit(f"datasworn-import: {rel} exists and isn't generated; move it before regenerating")
         for rs, files in trees:
             write(a.root, files, rs)
 

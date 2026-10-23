@@ -170,6 +170,10 @@ def test_convert_links_rejects_other_rulesets_tables():
 def test_convert_links_rejects_unknown_link_types():
     with pytest.raises(ValueError):
         imp.convert_links("[x](datasworn:delve_site:starforged/x)", SF)
+    # starforged ships no foes or regions file for an NPC or a region to point at
+    for kind in ("npc", "npc_collection", "atlas_entry"):
+        with pytest.raises(ValueError):
+            imp.convert_links(f"[x](datasworn:{kind}:starforged/x)", SF)
 
 
 def test_convert_links_rejects_leftover_templates():
@@ -284,7 +288,7 @@ def mini_classic():
                 "light": {"label": "lightly armored"}, "war": {"label": "geared for war"}}}},
             "abilities": [{"text": "When you [Check Your Gear](datasworn:move:delve/delve/check_your_gear), "
                                    "add +1.", "enabled": True}]}}}},
-        "npcs": {"beasts": {"name": "Beasts", "description": "Unknown in the [Old World](datasworn:truth:classic/old_world).",
+        "npcs": {"beasts": {"_id": "npc_collection:classic/beasts", "name": "Beasts", "description": "Unknown in the [Old World](datasworn:truth:classic/old_world).",
                             "contents": {"wyvern": {
             "_id": "npc:classic/beasts/wyvern", "name": "Wyvern", "nature": "Beast", "rank": 4, "_source": src,
             "features": ["Huge wings"], "drives": ["Feed"], "tactics": ["Swoop down"],
@@ -373,6 +377,21 @@ def test_errata_fix_the_value_they_name():
         imp.apply_errata({"truths": {}}, CLASSIC)
 
 
+def test_row_oracle_rolls_must_name_a_table_of_the_ruleset():
+    doc = mini_doc()
+    doc["oracles"]["planet"]["contents"]["class"]["rows"][1]["oracle_rolls"] = [
+        {"oracle": "oracle_rollable:classic/action_and_theme/action"}]
+    with pytest.raises(ValueError, match="unknown table"):
+        imp.generate(doc, SF)
+
+
+def test_nested_npc_collections_fail_loudly():
+    doc = mini_classic()
+    doc["npcs"]["beasts"]["collections"] = {"wyrms": {"_id": "npc_collection:classic/beasts/wyrms"}}
+    with pytest.raises(ValueError, match="nested NPC"):
+        imp.generate(doc, CLASSIC)
+
+
 def test_generated_text_never_leaks_a_datasworn_link():
     doc = mini_classic()
     doc["npcs"]["beasts"]["contents"]["wyvern"]["nature"] = "[Beast](datasworn:npc_collection:classic/beasts)"
@@ -404,6 +423,7 @@ def test_write_owns_only_marked_files(tmp_path):
 
     clash = dict(files)
     clash["adapters/starforged/rules/character-creation.md"] = imp.GENERATED + "\n"
+    assert imp.clashes(root, clash, SF) == ["adapters/starforged/rules/character-creation.md"]
     with pytest.raises(SystemExit, match="isn't generated"):
         imp.write(root, clash, SF)
 

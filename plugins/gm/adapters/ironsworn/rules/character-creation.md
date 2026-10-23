@@ -51,4 +51,4 @@ Envision a background vow to represent a primary motivation or ultimate goal: pa
 
 Experience starts unmarked (p. 45).
 
-Next: create your world, then begin your adventure with an inciting incident and Swear an Iron Vow (`rules/campaign-launch.md`).
+Next, in `rules/campaign-launch.md`: create your world if it isn't set yet, then begin your adventure with an inciting incident and Swear an Iron Vow.
