@@ -33,7 +33,7 @@ Use the oracles in `oracles/` to answer open questions and spark the fiction:
 | When you need… | Roll |
 |---|---|
 | A yes/no answer | the Ask the Oracle table for your odds (above) |
-| A complication or unexpected action | `oracles/action.md` + `oracles/theme.md` together |
+| A complication or unexpected action | a spark (above) |
 | A region or terrain | `oracles/region.md` |
 | A place or landmark | `oracles/location.md` |
 | An Ironlander NPC name | `oracles/character-name.md` |

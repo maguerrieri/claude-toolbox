@@ -17,28 +17,35 @@ from importlib.machinery import SourceFileLoader
 import pytest
 
 HERE = os.path.dirname(__file__)
-ADAPTERS = os.path.abspath(os.path.join(HERE, "..", "adapters"))
-FIXTURES = os.path.abspath(os.path.join(HERE, "fixtures", "oracles"))
+PLUGIN = os.path.abspath(os.path.join(HERE, ".."))
+ADAPTERS = os.path.join(PLUGIN, "adapters")
+FIXTURES = os.path.join(HERE, "fixtures", "oracles")
+CI = os.path.abspath(os.path.join(PLUGIN, "..", "..", ".github", "workflows", "gm-ci.yml"))
 
 
-def _load(name, script):
-    loader = SourceFileLoader(name, os.path.abspath(os.path.join(HERE, "..", "bin", script)))
+def _load(name, path):
+    loader = SourceFileLoader(name, os.path.join(PLUGIN, path))
     mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
     loader.exec_module(mod)
     return mod
 
 
-roll = _load("roll", "roll")
-validate = _load("validate_adapter", "validate-adapter")
+roll = _load("roll", "bin/roll")
+validate = _load("validate_adapter", "bin/validate-adapter")
+importer = _load("datasworn_import", "tools/datasworn-import")
 
 # A top-level bullet's bold label plus the parenthetical right after it, if any:
 # `- **Yes/No question.** …`, `- **Ask the Oracle** (yes/no): …`.
 RULE_BULLET = re.compile(r"^- \*\*([^*\n]+)\*\*[ \t]*(\([^)\n]*\))?")
-TABLE_REF = re.compile(r"oracles/([\w./-]+\.md)")
 ASK_THE_ORACLE = ["almost-certain", "likely", "fifty-fifty", "unlikely", "small-chance"]
 
-# The pin tools/datasworn-import uses for starforged, on the classic (Ironsworn) file.
+# classic.json at the importer's pin (UPSTREAM_REF; test_classic_pin_follows_the_importer).
 CLASSIC_SHA256 = "7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc"
+
+
+def _read(path):
+    with open(path) as fh:
+        return fh.read()
 
 
 def _frontmatter(adapter_dir):
@@ -47,13 +54,8 @@ def _frontmatter(adapter_dir):
 
 
 def _chain(name):
-    """The adapter's dir and its extends: ancestors, child first."""
-    chain, seen = [], set()
-    while name:
-        assert name not in seen, f"extends cycle at {name!r}"
-        seen.add(name)
-        chain.append(os.path.join(ADAPTERS, name))
-        name = _frontmatter(chain[-1]).get("extends")
+    chain, errs = validate.extends_chain(os.path.join(ADAPTERS, name), ADAPTERS)
+    assert not errs, errs
     return chain
 
 
@@ -64,16 +66,16 @@ def _playable():
 
 
 def _rule(chain, words):
-    """The nearest bullet along the chain whose label names one of `words`,
-    with its indented continuation lines."""
+    """The nearest bullet along the chain whose label names one of `words`, with its
+    continuation: indented lines, blank lines between them included."""
     for d in chain:
-        lines = open(os.path.join(d, "adapter.md")).read().splitlines()
+        lines = _read(os.path.join(d, "adapter.md")).splitlines()
         for i, line in enumerate(lines):
             m = RULE_BULLET.match(line)
             if m and any(w in (m.group(1) + (m.group(2) or "")).lower() for w in words):
                 block = [line]
                 for nxt in lines[i + 1:]:
-                    if not nxt.startswith((" ", "\t")):
+                    if nxt.strip() and not nxt.startswith((" ", "\t")):
                         break
                     block.append(nxt)
                 return "\n".join(block)
@@ -111,7 +113,7 @@ def test_rule_names_the_adapters_own_tables(name, kind, words, expected):
     chain = _chain(name)
     rule = _rule(chain, words)
     assert rule, f"{name}: no adapter in its extends: chain states a {kind} rule"
-    refs = sorted(set(TABLE_REF.findall(rule)))
+    refs = sorted(set(validate.ORACLE_REF.findall(rule)))
     assert refs == sorted(expected[name])
     for ref in refs:
         table = _resolve(chain, ref)
@@ -119,16 +121,34 @@ def test_rule_names_the_adapters_own_tables(name, kind, words, expected):
         assert roll.roll_table(table, seed=1)["picks"][0].strip()
 
 
+def test_rule_continuation_spans_blank_lines(tmp_path):
+    (tmp_path / "adapter.md").write_text(
+        "---\nname: x\n---\n\n- **Ask the Oracle** (yes/no): pick the odds.\n\n"
+        "  - `oracles/a.md`\n  - `oracles/b.md`\n\nNext paragraph `oracles/c.md`.\n")
+    rule = _rule([str(tmp_path)], ("yes/no",))
+    assert validate.ORACLE_REF.findall(rule) == ["a.md", "b.md"]
+
+
+def test_classic_pin_follows_the_importer():
+    # Ironsworn's tables share the importer's Datasworn pin; moving it moves this one too.
+    assert f"/{importer.UPSTREAM_REF}/datasworn/classic/classic.json" in _read(CI)
+    source = _read(os.path.join(ADAPTERS, "ironsworn", "SOURCE.md"))
+    assert importer.UPSTREAM_REF in source and importer.UPSTREAM_TAG in source
+    assert CLASSIC_SHA256 in source
+
+
 @pytest.mark.skipif(not os.environ.get("DATASWORN_CLASSIC_JSON"),
                     reason="set DATASWORN_CLASSIC_JSON to a copy of the pinned classic.json (CI does)")
 def test_ironsworn_ask_the_oracle_matches_upstream():
-    raw = open(os.environ["DATASWORN_CLASSIC_JSON"], "rb").read()
+    with open(os.environ["DATASWORN_CLASSIC_JSON"], "rb") as fh:
+        raw = fh.read()
     assert hashlib.sha256(raw).hexdigest() == CLASSIC_SHA256, "not the pinned classic.json"
-    move = json.loads(raw)["moves"]["fate"]["contents"]["ask_the_oracle"]
+    oracles = json.loads(raw)["moves"]["fate"]["contents"]["ask_the_oracle"]["oracles"]
+    assert sorted(oracles) == sorted(o.replace("-", "_") for o in ASK_THE_ORACLE)
     for odds in ASK_THE_ORACLE:
-        upstream = move["oracles"][odds.replace("-", "_")]
-        with open(os.path.join(FIXTURES, "ironsworn", "moves", "ask-the-oracle", odds + ".json")) as fh:
-            fixture = json.load(fh)
+        upstream = oracles[odds.replace("-", "_")]
+        fixture = json.loads(_read(os.path.join(FIXTURES, "ironsworn", "moves", "ask-the-oracle",
+                                                odds + ".json")))
         assert fixture["id"] == upstream["_id"]
         assert fixture["die"] == upstream["dice"]
         assert fixture["rows"] == [{"max": r["roll"]["max"], "result": r["text"]}

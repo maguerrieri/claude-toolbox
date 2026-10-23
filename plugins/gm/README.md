@@ -48,7 +48,7 @@ roll 1d20 --adv             # advantage
 roll 3d6!                   # exploding
 roll ironsworn-action --stat 2 --adds 1
 roll ironsworn-progress --boxes 7
-roll table ${CLAUDE_PLUGIN_ROOT}/adapters/generic/oracles/yes-no.md   # generic's yes/no; each system names its own
+roll table <plugin>/adapters/generic/oracles/yes-no.md   # generic's yes/no; each system names its own
 roll table <campaign>/tables/rumors.md   # campaign table (hand-authored or forged)
 ```
 
