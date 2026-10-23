@@ -23,5 +23,10 @@ jobs:
         run: python3 plugins/gm/bin/validate-adapter --all plugins/gm/adapters
       - name: Starforged content matches its pinned Datasworn source
         run: python3 plugins/gm/tools/datasworn-import --check
+      - name: Ironsworn's Ask the Oracle tables match their pinned Datasworn source
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/classic.json" \
+            https://raw.githubusercontent.com/rsek/datasworn/e643a75263c1cb3e845a0c0789879ff4e8b49532/datasworn/classic/classic.json
+          DATASWORN_CLASSIC_JSON="$RUNNER_TEMP/classic.json" uvx pytest plugins/gm/tests/test_oracle_command.py -q -k upstream
       - name: Validate all personas
         run: python3 plugins/gm/bin/validate-adapter --personas --all plugins/gm/personas

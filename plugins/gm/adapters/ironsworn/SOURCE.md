@@ -20,4 +20,4 @@ The five odds tables in `oracles/moves/ask-the-oracle/` (Almost Certain, Likely,
 - file `datasworn/classic/classic.json`, sha256 `7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc`
 - objects `move.oracle_rollable:classic/fate/ask_the_oracle.<odds>`
 
-Each table's golden ranges are in `plugins/gm/tests/fixtures/oracles/ironsworn/moves/ask-the-oracle/`. To check them against the pinned file, run the gm tests with `DATASWORN_CLASSIC_JSON` set to a copy of it.
+Each table's golden ranges are in `plugins/gm/tests/fixtures/oracles/ironsworn/moves/ask-the-oracle/`. CI checks them against the pinned file; to do it locally, run the gm tests with `DATASWORN_CLASSIC_JSON` set to a copy of it.
