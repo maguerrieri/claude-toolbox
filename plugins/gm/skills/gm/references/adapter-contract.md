@@ -7,8 +7,8 @@ An **adapter** teaches the gm core one game's *rules* — its dice, oracles, mov
 ```
 adapters/<name>/
   adapter.md          # manifest (front-matter) + resolution rules (prose)
-  oracles/*.md        # oracle tables the core rolls on (see "Tables")
-  rules/*             # optional: moves, assets, other content
+  oracles/**/*.md     # oracle tables the core rolls on, nested as deep as you like (see "Tables")
+  rules/*             # optional: moves, assets, other content (see "Campaign launch" for the files new-campaign uses)
   sheet-template.md   # the sheet schema (optional — a variant may inherit its base's via extends:)
 ```
 
@@ -29,9 +29,9 @@ Body (prose the core follows):
 - **Resolution rules** — when the fiction needs a mechanical answer, which oracle/roll applies and how its result maps to an outcome. Written as instructions, e.g. *"For a yes/no question, roll `oracles/yes-no.md`; on a 'Yes, and' grant a bonus, on a 'No, and' add a complication."*
 - **Safety defaults** — lines & veils prompts, tone guardrails.
 
-## Tables (`oracles/*.md`)
+## Tables (`oracles/**/*.md`)
 
-Oracle and inspiration tables are **Markdown files** (`roll table <path>` reads them; `roll oracle` is a deprecated alias). Adapters ship tables under `oracles/`; player campaigns keep hand-authored or forged tables in `tables/` (and sealed GM tables in `.gm/tables/`). All three share the same format.
+Oracle and inspiration tables are **Markdown files** (`roll table <path>` reads them; `roll oracle` is a deprecated alias). Adapters ship tables under `oracles/`, in subdirectories when there are many (`oracles/planet/desert/atmosphere.md`); a table's id is its path under `oracles/`. Player campaigns keep hand-authored or forged tables in `tables/` (and sealed GM tables in `.gm/tables/`). All three share the same format. Lines that aren't entries (a `# ` title, `> ` notes, an HTML comment) are ignored, so a table file can carry its own heading and source note.
 
 **Entry format — the block rule:**
 
@@ -56,9 +56,22 @@ A meaning/inspiration oracle may be **split across tables read together** (e.g. 
 
 An adapter may `extends:` a base adapter (e.g. `ironsworn` and `starforged` both extend `ironsworn-core`). The core resolves the chain **parent → child**:
 - **Manifest keys:** the child overrides the parent on collision (child wins).
-- **Data files** (`oracles/`, `rules/`): unioned **by id / filename** — the child adds new entries and overrides any the parent defined under the same id.
+- **Data files** (`oracles/`, `rules/`): unioned **by path** under those dirs — the child adds new files and overrides any the parent defined at the same path.
 
 A base adapter may be marked `abstract: true` in its front-matter (not playable on its own — a campaign must name a concrete variant that extends it); a variant supplies the genre data. The `generic` adapter uses no `extends`.
+
+## Campaign launch (optional files)
+
+`/gm:new-campaign` asks the adapter how to set a campaign up, and falls back to its generic flow (a few rolled or chosen truths, a concept, a name) for whatever the adapter doesn't ship. Each of these files is optional and independent:
+
+| File | When present, new-campaign… |
+|---|---|
+| `rules/campaign-launch.md` | follows its order of exercises and its setup guidance, and opens play with its "begin your adventure" steps |
+| `rules/truths.md`, with `oracles/truths/<truth>.md` | offers each truth category (choose an option, roll its table, or customize) instead of improvising truths |
+| `rules/character-creation.md` | walks its steps to build the character, instead of the generic concept-and-name flow |
+| `rules/sector-creation.md` | walks its steps to build the starting location, writing what it makes to the campaign's state files |
+
+`starforged` ships all four; `generic` and `ironsworn` ship none and keep the generic flow. The files are prose the core follows, like the rest of an adapter: steps, and the tables to roll for each.
 
 ## Visibility (the GM screen)
 
