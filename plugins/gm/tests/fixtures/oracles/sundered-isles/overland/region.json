@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Highlands (`oracles/overland/region-landmarks/highlands.md`) — Hilly or mountainous terrain"},
+    {"max": 45, "result": "Jungle (`oracles/overland/region-landmarks/jungle.md`) — Dense tropical rainforest"},
+    {"max": 50, "result": "Lava Field (`oracles/overland/region-landmarks/lava-field.md`) — Lands scarred by volcanic eruptions"},
+    {"max": 55, "result": "Marsh (`oracles/overland/region-landmarks/marsh.md`) — Waterlogged region with grasses and reeds"},
+    {"max": 60, "result": "River (`oracles/overland/region-landmarks/river.md`) — Major inland waterway"},
+    {"max": 65, "result": "Scrub (`oracles/overland/region-landmarks/scrub.md`) — Open landscape dominated by grass or shrubs"},
+    {"max": 75, "result": "Shore (`oracles/overland/region-landmarks/shore.md`) — Where the land meets the sea"},
+    {"max": 85, "result": "Swamp (`oracles/overland/region-landmarks/swamp.md`) — Flooded forest with thick vegetation"},
+    {"max": 90, "result": "Wastes (`oracles/overland/region-landmarks/wastes.md`) — Arid, rocky terrain"},
+    {"max": 100, "result": "Woodland (`oracles/overland/region-landmarks/woodland.md`) — Forested lands"}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/lava_field",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Boiling lake"},
+    {"max": 10, "result": "Bubbling lava pool"},
+    {"max": 15, "result": "Columns of volcanic rock"},
+    {"max": 20, "result": "Deep crevice churning with magma"},
+    {"max": 25, "result": "Devastated structures"},
+    {"max": 30, "result": "Dunes of volcanic ash"},
+    {"max": 35, "result": "Erupting lava fissure"},
+    {"max": 40, "result": "Expanse of glassy lava rock"},
+    {"max": 45, "result": "Fast-moving river of lava"},
+    {"max": 50, "result": "Field of cracked, partially solidified lava"},
+    {"max": 55, "result": "Gouts of steam as lava meets water"},
+    {"max": 60, "result": "Landscape set ablaze"},
+    {"max": 65, "result": "Lava tube plunges into darkness"},
+    {"max": 70, "result": "Roiling ash clouds"},
+    {"max": 75, "result": "Scorched trees amid an ashy plain"},
+    {"max": 80, "result": "Smoldering crater"},
+    {"max": 85, "result": "Steaming hot springs"},
+    {"max": 90, "result": "Stubborn plantlife emerges from ruin"},
+    {"max": 95, "result": "Towering cinder cone"},
+    {"max": 100, "result": "Vents spewing steam and volcanic gases"}
+  ]
+}

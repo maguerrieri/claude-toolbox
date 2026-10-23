@@ -1,0 +1,15 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/lurking_threat",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Threat: Chilling cold\nWhen the clock advances...: Creeping numbness; teeth- chattering shivers\nWhen the clock is filled...: You are chilled to the bone!"},
+    {"max": 25, "result": "Threat: Devious trap\nWhen the clock advances...: Minor puzzle; portentous clues\nWhen the clock is filled...: You face a confounding trap!"},
+    {"max": 35, "result": "Threat: Flash flood\nWhen the clock advances...: Dripping water; distant rumbles\nWhen the clock is filled...: A torrent of water floods in!"},
+    {"max": 50, "result": "Threat: Oppressive  confinement\nWhen the clock advances...: Suffocating passages; deepening darkness\nWhen the clock is filled...: You face confusion or panic!"},
+    {"max": 60, "result": "Threat: Restless magma\nWhen the clock advances...: Stifling heat; venting steam\nWhen the clock is filled...: Magma causes destruction!"},
+    {"max": 70, "result": "Threat: Rising water\nWhen the clock advances...: Surging current; flooding\nWhen the clock is filled...: The path is submerged!"},
+    {"max": 80, "result": "Threat: Rival explorers\nWhen the clock advances...: Echoing sounds; signs they passed this way\nWhen the clock is filled...: Your rivals make their move!"},
+    {"max": 90, "result": "Threat: Stalking predator\nWhen the clock advances...: Glimpses of the creature; remains of previous kills\nWhen the clock is filled...: The predator attacks!"},
+    {"max": 100, "result": "Threat: Unstable caves\nWhen the clock advances...: Tremors; minor rockfalls\nWhen the clock is filled...: The cave collapses!"}
+  ]
+}

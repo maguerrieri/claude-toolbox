@@ -1,0 +1,26 @@
+{
+  "id": "move.oracle_rollable:sundered_isles/exploration/confront_chaos.confront_chaos",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Archive or map bearing a dire warning"},
+    {"max": 10, "result": "Baneful spells or wards"},
+    {"max": 15, "result": "Blighted or corrupted habitat"},
+    {"max": 20, "result": "Cataclysmic natural phenomenon"},
+    {"max": 25, "result": "Cursed treasure of irresistible lure"},
+    {"max": 30, "result": "Dead given unnatural life"},
+    {"max": 35, "result": "Fanatical followers of a dreadful power"},
+    {"max": 40, "result": "Fearsome creature of monstrous size"},
+    {"max": 45, "result": "Harrowing visions or prophesies"},
+    {"max": 50, "result": "Malevolent being of dreadful power"},
+    {"max": 55, "result": "Malignant affliction or parasite"},
+    {"max": 60, "result": "People of monstrous form"},
+    {"max": 65, "result": "Relic of accursed power"},
+    {"max": 70, "result": "Ruinous machine or technology"},
+    {"max": 75, "result": "Signs of an awakened evil"},
+    {"max": 80, "result": "Site of a baffling disappearance"},
+    {"max": 85, "result": "Site of great destruction"},
+    {"max": 90, "result": "Site of terrible carnage"},
+    {"max": 95, "result": "Swarming creatures of insatiable fury"},
+    {"max": 100, "result": "Wrathful spirit or apparition"}
+  ]
+}

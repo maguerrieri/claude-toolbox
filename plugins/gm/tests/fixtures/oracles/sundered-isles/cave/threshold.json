@@ -1,0 +1,22 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/threshold",
+  "die": "1d100",
+  "rows": [
+    {"max": 6, "result": "Archway of carved stone"},
+    {"max": 12, "result": "Barricaded or blocked"},
+    {"max": 19, "result": "Behind a waterfall"},
+    {"max": 25, "result": "Flanked by statues or monuments"},
+    {"max": 31, "result": "Fronted by carved stairs"},
+    {"max": 38, "result": "Immense entrance"},
+    {"max": 44, "result": "Marked with a message or warning"},
+    {"max": 50, "result": "Nearby camp, ship, or landed boat"},
+    {"max": 56, "result": "Overgrown with plants"},
+    {"max": 62, "result": "Perched high on a cliff face"},
+    {"max": 68, "result": "Sealed with a door or gate"},
+    {"max": 75, "result": "Swarming with bats"},
+    {"max": 81, "result": "Tight squeeze"},
+    {"max": 88, "result": "Vertical shaft"},
+    {"max": 94, "result": "Well-used path"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

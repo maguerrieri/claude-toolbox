@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/secrecy",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Ashen · Persona: Cloaks"},
+    {"max": 20, "result": "Aspect: Gossamer · Persona: Daggers"},
+    {"max": 30, "result": "Aspect: Gray · Persona: Eyes"},
+    {"max": 40, "result": "Aspect: Hidden · Persona: Masks"},
+    {"max": 50, "result": "Aspect: Shrouded · Persona: Phantoms"},
+    {"max": 60, "result": "Aspect: Silent · Persona: Ravens"},
+    {"max": 70, "result": "Aspect: Umbral · Persona: Serpents"},
+    {"max": 80, "result": "Aspect: Unseen · Persona: Shadows"},
+    {"max": 90, "result": "Aspect: Veiled · Persona: Specters"},
+    {"max": 100, "result": "Aspect: Whispering · Persona: Spiders"}
+  ]
+}

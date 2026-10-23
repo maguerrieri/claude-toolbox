@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/craft",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Adamantine · Persona: Anvils"},
+    {"max": 20, "result": "Aspect: Brass · Persona: Artificers"},
+    {"max": 30, "result": "Aspect: Copper · Persona: Artisans"},
+    {"max": 40, "result": "Aspect: Anchored · Persona: Hammers"},
+    {"max": 50, "result": "Aspect: Ember · Persona: Hands"},
+    {"max": 60, "result": "Aspect: Forgeborn · Persona: Machinists"},
+    {"max": 70, "result": "Aspect: Iron · Persona: Menders"},
+    {"max": 80, "result": "Aspect: Ironwrought · Persona: Riggers"},
+    {"max": 90, "result": "Aspect: Quicksilver · Persona: Sparks"},
+    {"max": 100, "result": "Aspect: Tempered · Persona: Tinkers"}
+  ]
+}

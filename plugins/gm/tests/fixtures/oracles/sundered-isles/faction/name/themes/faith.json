@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/faith",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Blessed · Persona: Acolytes"},
+    {"max": 20, "result": "Aspect: Dawning · Persona: Disciples"},
+    {"max": 30, "result": "Aspect: Enduring · Persona: Flames"},
+    {"max": 40, "result": "Aspect: Exalted · Persona: Harbingers"},
+    {"max": 50, "result": "Aspect: Fated · Persona: Heralds"},
+    {"max": 60, "result": "Aspect: Hallowed · Persona: Inquisitors"},
+    {"max": 70, "result": "Aspect: Holy · Persona: Lightbringers"},
+    {"max": 80, "result": "Aspect: Radiant · Persona: Martyrs"},
+    {"max": 90, "result": "Aspect: Sacred · Persona: Redeemers"},
+    {"max": 100, "result": "Aspect: Shining · Persona: Servants"}
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/mission/flotilla",
+  "die": "1d100",
+  "rows": [
+    {"max": 6, "result": "Blockade a location"},
+    {"max": 12, "result": "Break a blockade"},
+    {"max": 16, "result": "Attack a Location"},
+    {"max": 20, "result": "Evacuate a location"},
+    {"max": 24, "result": "Transport people"},
+    {"max": 30, "result": "Transport cargo"},
+    {"max": 38, "result": "Conduct trade"},
+    {"max": 44, "result": "Hunt creatures"},
+    {"max": 52, "result": "Patrol an area"},
+    {"max": 56, "result": "Explore or travel to an area"},
+    {"max": 68, "result": "Engage an enemy"},
+    {"max": 74, "result": "Conduct piracy"},
+    {"max": 76, "result": "Conduct diplomacy"},
+    {"max": 78, "result": "Conduct espionage"},
+    {"max": 80, "result": "Conduct research"},
+    {"max": 82, "result": "Deliver item or message"},
+    {"max": 84, "result": "Smuggle contraband"},
+    {"max": 94, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

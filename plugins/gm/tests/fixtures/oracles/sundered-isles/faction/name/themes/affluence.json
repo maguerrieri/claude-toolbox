@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/affluence",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Emerald · Persona: Brokers"},
+    {"max": 20, "result": "Aspect: Gilded · Persona: Crowns"},
+    {"max": 30, "result": "Aspect: Golden · Persona: Lords"},
+    {"max": 40, "result": "Aspect: Illustrious · Persona: Merchants"},
+    {"max": 50, "result": "Aspect: Jade · Persona: Monarchs"},
+    {"max": 60, "result": "Aspect: Sapphire · Persona: Mongers"},
+    {"max": 70, "result": "Aspect: Silver · Persona: Patrons"},
+    {"max": 80, "result": "Aspect: Sovereign · Persona: Princes"},
+    {"max": 90, "result": "Aspect: Supreme · Persona: Scions"},
+    {"max": 100, "result": "Aspect: Trueborn · Persona: Regents"}
+  ]
+}

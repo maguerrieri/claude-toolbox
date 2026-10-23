@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:sundered_isles/island/visible_habitation/myriads",
+  "die": "1d100",
+  "rows": [
+    {"max": 35, "result": "No signs of habitation"},
+    {"max": 40, "result": "Inland smoke"},
+    {"max": 45, "result": "Coastal boats"},
+    {"max": 50, "result": "Seaside camp"},
+    {"max": 85, "result": "Seaside settlement"},
+    {"max": 100, "result": "Multiple visible communities or extensive cultivation"}
+  ]
+}

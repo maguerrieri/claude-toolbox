@@ -1,0 +1,30 @@
+{
+  "id": "oracle_rollable:sundered_isles/treasure/precious_items",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Cache of coins, gems, and jewels"},
+    {"max": 24, "result": "Aged rum"},
+    {"max": 28, "result": "Ancient artifacts"},
+    {"max": 30, "result": "Fine art"},
+    {"max": 32, "result": "Fine wine"},
+    {"max": 36, "result": "Gilded imperial regalia"},
+    {"max": 40, "result": "Glittering gemstones"},
+    {"max": 44, "result": "Gold coins"},
+    {"max": 46, "result": "Intricate mechanical devices"},
+    {"max": 50, "result": "Lustrous pearls"},
+    {"max": 54, "result": "Masterwork weapons"},
+    {"max": 58, "result": "Precious metal ingots"},
+    {"max": 60, "result": "Rare books"},
+    {"max": 62, "result": "Rare fossils"},
+    {"max": 64, "result": "Rare hides or furs"},
+    {"max": 66, "result": "Rare maps"},
+    {"max": 68, "result": "Rare medicinal herbs or compounds"},
+    {"max": 72, "result": "Rare spices"},
+    {"max": 74, "result": "Rare toxins or poisons"},
+    {"max": 76, "result": "Sacred relics"},
+    {"max": 80, "result": "Secret documents"},
+    {"max": 84, "result": "Unworked gemstones"},
+    {"max": 88, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Token (`oracles/treasure/tokens.md`)"}
+  ]
+}

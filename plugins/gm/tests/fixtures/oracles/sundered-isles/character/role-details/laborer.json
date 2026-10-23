@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/laborer",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Bricklayer"},
+    {"max": 40, "result": "Farmer"},
+    {"max": 60, "result": "Lumberer"},
+    {"max": 80, "result": "Miner"},
+    {"max": 100, "result": "Servant"}
+  ]
+}

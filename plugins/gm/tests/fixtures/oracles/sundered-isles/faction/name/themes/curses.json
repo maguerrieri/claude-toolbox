@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/curses",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Cursed · Persona: Bones"},
+    {"max": 20, "result": "Aspect: Bloodless · Persona: Jackals"},
+    {"max": 30, "result": "Aspect: Bloody · Persona: Revenants"},
+    {"max": 40, "result": "Aspect: Broken · Persona: Shades"},
+    {"max": 50, "result": "Aspect: Fallen · Persona: Skulls"},
+    {"max": 60, "result": "Aspect: Haunted · Persona: Slayers"},
+    {"max": 70, "result": "Aspect: Infernal · Persona: Souls"},
+    {"max": 80, "result": "Aspect: Risen · Persona: Swarm"},
+    {"max": 90, "result": "Aspect: Shattered · Persona: Wraiths"},
+    {"max": 100, "result": "Aspect: Undying · Persona: Wretches"}
+  ]
+}

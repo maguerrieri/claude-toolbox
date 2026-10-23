@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/getting_underway/chart_your_course/details_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Area of endless dead calm — What ship is trapped in these waters?"},
+    {"max": 10, "result": "Colossal bones — Who lives in the shadow of this age-old corpse?"},
+    {"max": 15, "result": "Corrupted cave — What cult is said to practice foul rites here?"},
+    {"max": 20, "result": "Eldritch monument — What forsaken god or entity does this monument honor?"},
+    {"max": 25, "result": "Forsaken settlement — What foul creatures now dwell here?"},
+    {"max": 30, "result": "Frozen wastes — What long-lost ship lies trapped here?"},
+    {"max": 35, "result": "Ghost-haunted waters — What infamous cursed ship sails these waters?"},
+    {"max": 40, "result": "Ghost-plagued ruins — What sad fate befell these people?"},
+    {"max": 45, "result": "Haunted battlefield — What force or faction was defeated in this battle?"},
+    {"max": 50, "result": "Hidden island — On what rare event does this mystical island reappear?"},
+    {"max": 55, "result": "Inscrutable iron pillars — What faction worships these mysterious relics?"},
+    {"max": 60, "result": "Lair of a beast — What beast is reputed to dwell here?"},
+    {"max": 65, "result": "Perpetual fog bank — What is said to lie on the other side of this mist?"},
+    {"max": 70, "result": "Powerful maelstrom — Who do you know that was lost to this swirling vortex?"},
+    {"max": 75, "result": "Ship graveyard — What monstrous creature lurks here?"},
+    {"max": 80, "result": "Shipwreck on high ground — To which faction did this ship belong?"},
+    {"max": 85, "result": "Skull-shaped outcrop — Why does this place haunt your dreams?"},
+    {"max": 90, "result": "Sorcerous nexus — Who has gathered to reap the chaotic energy of this place?"},
+    {"max": 95, "result": "Titanic machinery — Who seeks to reactivate this ancient machine?"},
+    {"max": 100, "result": "Unending cyclonic storm — What is said to lie at this storm's center?"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_collection:sundered_isles/faction/name/themes/discovery",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Aspect: Ancient · Persona: Adepts"},
+    {"max": 20, "result": "Aspect: Awakened · Persona: Archivists"},
+    {"max": 30, "result": "Aspect: Azure · Persona: Beacons"},
+    {"max": 40, "result": "Aspect: Elder · Persona: Couriers"},
+    {"max": 50, "result": "Aspect: Emblazoned · Persona: Guides"},
+    {"max": 60, "result": "Aspect: Enlightened · Persona: Keepers"},
+    {"max": 70, "result": "Aspect: First · Persona: Outlanders"},
+    {"max": 80, "result": "Aspect: Roaming · Persona: Seekers"},
+    {"max": 90, "result": "Aspect: Starmarked · Persona: Venturers"},
+    {"max": 100, "result": "Aspect: Wandering · Persona: Wayfinders"}
+  ]
+}

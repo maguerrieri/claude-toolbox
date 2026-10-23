@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/ruin/mystery_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Corrupted religion — What does an eldritch cult seek to accomplish in this place?"},
+    {"max": 20, "result": "Cursed artifact — What eldritch relic or treasure is held here?"},
+    {"max": 30, "result": "Eternal defenders — What beings or creatures are cursed to forever guard this place?"},
+    {"max": 40, "result": "Grim portent — What new calamity does this place forebode?"},
+    {"max": 50, "result": "Imprisoned entity — What eldritch being or beast is bound to this site?"},
+    {"max": 60, "result": "Infernal machines — What strange technology did these people unleash?"},
+    {"max": 70, "result": "Lingering curse — What is the secret to breaking this site's curse?"},
+    {"max": 80, "result": "Mystic gateway — What otherworldly realm does this place connect to?"},
+    {"max": 90, "result": "Sorcerous nexus — What dangerous arcane powers are harnessed here?"},
+    {"max": 100, "result": "Tormented undead — What is the key to putting these souls to rest?"}
+  ]
+}

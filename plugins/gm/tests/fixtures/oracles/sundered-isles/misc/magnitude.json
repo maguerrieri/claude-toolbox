@@ -1,0 +1,11 @@
+{
+  "id": "oracle_collection:sundered_isles/misc/magnitude",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Size: Undersized · Number: None / one · Distance: Very close · Speed: Immobile · Power: Weak · Complexity: Simple · Quality: Broken · Value: Worthless · Disposition: Friendly · Rank: Troublesome"},
+    {"max": 35, "result": "Size: Small · Number: Few · Distance: Near · Speed: Slow · Power: Minor · Complexity: Basic · Quality: Fragile · Value: Cheap · Disposition: Open · Rank: Dangerous"},
+    {"max": 65, "result": "Size: Medium · Number: Several · Distance: Far · Speed: Medium · Power: Moderate · Complexity: Manageable · Quality: Reliable · Value: Common · Disposition: Wary · Rank: Formidable"},
+    {"max": 85, "result": "Size: Large · Number: Many · Distance: Remote · Speed: Fast · Power: Strong · Complexity: Complicated · Quality: Durable · Value: Valuable · Disposition: Threatening · Rank: Extreme"},
+    {"max": 100, "result": "Size: Huge · Number: Countless · Distance: Inaccessible · Speed: Very fast · Power: Overwhelming · Complexity: Bewildering · Quality: Indestructible · Value: Priceless · Disposition: Hostile · Rank: Epic"}
+  ]
+}
