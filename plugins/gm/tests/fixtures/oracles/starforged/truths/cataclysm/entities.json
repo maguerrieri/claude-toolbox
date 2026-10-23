@@ -1,0 +1,13 @@
+{
+  "id": "truth.option.oracle_rollable:starforged/cataclysm.1.entities",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Corrupting biological scourges"},
+    {"max": 30, "result": "Swarming, animalistic creatures"},
+    {"max": 44, "result": "Monstrous humanoids"},
+    {"max": 58, "result": "Spirits of alluring, divine form"},
+    {"max": 72, "result": "Beings of chaotic energy"},
+    {"max": 86, "result": "Titanic creatures of horrific power"},
+    {"max": 100, "result": "World-eating abominations of unimaginable scale"}
+  ]
+}

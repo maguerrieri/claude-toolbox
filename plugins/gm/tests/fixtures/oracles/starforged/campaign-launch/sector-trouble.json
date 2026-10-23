@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/campaign_launch/sector_trouble",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Blockade prevents trade with other sectors"},
+    {"max": 10, "result": "Bounty hunters search for an infamous fugitive"},
+    {"max": 15, "result": "Chaotic breaches in spacetime spread like wildfire"},
+    {"max": 20, "result": "Criminal faction corrupts local authorities"},
+    {"max": 25, "result": "Devastating superweapon has fallen into the wrong hands"},
+    {"max": 30, "result": "Energy storms are rampant"},
+    {"max": 35, "result": "Magnetic disturbances disrupt communication"},
+    {"max": 40, "result": "Newly found resource lures greedy fortune hunters to the sector"},
+    {"max": 45, "result": "Notorious pirate clan preys on starships"},
+    {"max": 50, "result": "Parasitic lifeforms spread like a plague"},
+    {"max": 55, "result": "Precursor sites throughout the sector emit strange signals"},
+    {"max": 60, "result": "Prophecies foretell an imminent awakening of a dreadful power"},
+    {"max": 65, "result": "Raider clan emerges as a dominant threat under a new leader"},
+    {"max": 70, "result": "Religious zealots overrun the sector"},
+    {"max": 75, "result": "Rogue AI infiltrates systems throughout the sector"},
+    {"max": 80, "result": "Settlements or factions are on the brink of war"},
+    {"max": 85, "result": "Ships regularly go missing"},
+    {"max": 90, "result": "Sickness spreads among ships and settlements"},
+    {"max": 95, "result": "Supernova is imminent"},
+    {"max": 100, "result": "Titanic spaceborne lifeform stalks the spaceways"}
+  ]
+}

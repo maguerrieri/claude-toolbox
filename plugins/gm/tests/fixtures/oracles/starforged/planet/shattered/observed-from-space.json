@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/shattered/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Demolished space fleet"},
+    {"max": 22, "result": "Preserved planetary fragment"},
+    {"max": 33, "result": "Dense ring system"},
+    {"max": 44, "result": "Swirling debris field"},
+    {"max": 55, "result": "Fiery planetary core"},
+    {"max": 66, "result": "Unbroken moon"},
+    {"max": 77, "result": "Geomagnetic storms"},
+    {"max": 88, "result": "Intense solar radiation"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

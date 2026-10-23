@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/vital/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Complex ring system"},
+    {"max": 22, "result": "Numerous small moons"},
+    {"max": 33, "result": "Dramatic seasonal variation"},
+    {"max": 44, "result": "Unusual day or night cycle"},
+    {"max": 55, "result": "High gravity"},
+    {"max": 66, "result": "Vibrantly colored landscapes"},
+    {"max": 77, "result": "Large moon"},
+    {"max": 88, "result": "Narrow livable band"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

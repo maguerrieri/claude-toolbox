@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/community/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Biological infestation"},
+    {"max": 20, "result": "Breached or broken structure"},
+    {"max": 30, "result": "Distressing signs of mass violence or death"},
+    {"max": 40, "result": "Flooded environment"},
+    {"max": 50, "result": "Foe lurks within concealment"},
+    {"max": 60, "result": "Fragile structural integrity"},
+    {"max": 70, "result": "Haunting vision of life here before the fall"},
+    {"max": 80, "result": "Hazardous environmental change"},
+    {"max": 90, "result": "Heartbreaking memento of lost lives"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

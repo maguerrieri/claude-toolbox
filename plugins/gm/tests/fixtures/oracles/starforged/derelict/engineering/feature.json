@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/engineering/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Cluttered workbench"},
+    {"max": 16, "result": "Control terminal"},
+    {"max": 24, "result": "Crane or lift"},
+    {"max": 32, "result": "Disassembled equipment"},
+    {"max": 40, "result": "Flickering status monitors"},
+    {"max": 48, "result": "Jury-rigged equipment"},
+    {"max": 56, "result": "Multilevel layout"},
+    {"max": 64, "result": "Pipes and valves"},
+    {"max": 72, "result": "Sharp ozone smell"},
+    {"max": 80, "result": "Unfinished project"},
+    {"max": 88, "result": "Utility bots"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

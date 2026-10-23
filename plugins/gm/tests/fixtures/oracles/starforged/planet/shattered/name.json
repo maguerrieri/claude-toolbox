@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/shattered/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Cavus"},
+    {"max": 2, "result": "Chrysalis"},
+    {"max": 3, "result": "Fragment"},
+    {"max": 4, "result": "Havoc"},
+    {"max": 5, "result": "Keres"},
+    {"max": 6, "result": "Lux"},
+    {"max": 7, "result": "Nemain"},
+    {"max": 8, "result": "Praxis"},
+    {"max": 9, "result": "Riven"},
+    {"max": 10, "result": "Schism"},
+    {"max": 11, "result": "Shell"},
+    {"max": 12, "result": "Slag"},
+    {"max": 13, "result": "Sliver"},
+    {"max": 14, "result": "Sunder"},
+    {"max": 15, "result": "Torment"},
+    {"max": 16, "result": "Vestige"},
+    {"max": 17, "result": "Vigrid"},
+    {"max": 18, "result": "Vortex"},
+    {"max": 19, "result": "Wrath"},
+    {"max": 20, "result": "Zix"}
+  ]
+}

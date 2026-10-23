@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/planet/class",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Desert World (`oracles/planet/desert/`)"},
+    {"max": 30, "result": "Furnace World (`oracles/planet/furnace/`)"},
+    {"max": 35, "result": "Grave World (`oracles/planet/grave/`)"},
+    {"max": 50, "result": "Ice World (`oracles/planet/ice/`)"},
+    {"max": 65, "result": "Jovian World (`oracles/planet/jovian/`)"},
+    {"max": 70, "result": "Jungle World (`oracles/planet/jungle/`)"},
+    {"max": 75, "result": "Ocean World (`oracles/planet/ocean/`)"},
+    {"max": 90, "result": "Rocky World (`oracles/planet/rocky/`)"},
+    {"max": 92, "result": "Shattered World (`oracles/planet/shattered/`)"},
+    {"max": 98, "result": "Tainted World (`oracles/planet/tainted/`)"},
+    {"max": 100, "result": "Vital World (`oracles/planet/vital/`)"}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/research/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Aquarium or tank"},
+    {"max": 16, "result": "Biological specimens"},
+    {"max": 24, "result": "Bones or fossils"},
+    {"max": 32, "result": "Broken equipment"},
+    {"max": 40, "result": "Cryptic research notes"},
+    {"max": 48, "result": "Hastily destroyed data"},
+    {"max": 56, "result": "Hazmat suits"},
+    {"max": 64, "result": "Inscrutable artifact"},
+    {"max": 72, "result": "Invasive plant growth"},
+    {"max": 80, "result": "Recorded research log"},
+    {"max": 88, "result": "Spilled chemicals"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

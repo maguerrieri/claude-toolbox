@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/derelict/access/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Directions, shortcut, or alternate path"},
+    {"max": 40, "result": "Encounter with a friendly survivor, explorer, or denizen"},
+    {"max": 60, "result": "Hopeful signs of life"},
+    {"max": 80, "result": "Opening to outmaneuver or escape a threat or foe"},
+    {"max": 100, "result": "Useful equipment"}
+  ]
+}

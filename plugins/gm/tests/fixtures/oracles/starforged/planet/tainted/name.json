@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/tainted/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Achlys"},
+    {"max": 2, "result": "Animus"},
+    {"max": 3, "result": "Bane"},
+    {"max": 4, "result": "Blight"},
+    {"max": 5, "result": "Carrion"},
+    {"max": 6, "result": "Chitin"},
+    {"max": 7, "result": "Datura"},
+    {"max": 8, "result": "Dreck"},
+    {"max": 9, "result": "Erra"},
+    {"max": 10, "result": "Febris"},
+    {"max": 11, "result": "Malacia"},
+    {"max": 12, "result": "Miasma"},
+    {"max": 13, "result": "Morbus"},
+    {"max": 14, "result": "Pathosis"},
+    {"max": 15, "result": "Pestis"},
+    {"max": 16, "result": "Scourge"},
+    {"max": 17, "result": "Telium"},
+    {"max": 18, "result": "Timoris"},
+    {"max": 19, "result": "Verus"},
+    {"max": 20, "result": "Xanthous"}
+  ]
+}

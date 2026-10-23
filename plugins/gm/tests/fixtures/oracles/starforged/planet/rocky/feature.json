@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/rocky/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Crystalline formations"},
+    {"max": 14, "result": "Crystalline caves"},
+    {"max": 21, "result": "Exposed mineral deposits"},
+    {"max": 28, "result": "Geometric terrain features"},
+    {"max": 35, "result": "Geothermal vents"},
+    {"max": 42, "result": "Glassy impact craters"},
+    {"max": 49, "result": "Massive dust dunes"},
+    {"max": 56, "result": "Powerful magnetic fields"},
+    {"max": 63, "result": "Rubble-strewn lava fields"},
+    {"max": 70, "result": "Steam-heated caves"},
+    {"max": 77, "result": "Subsurface magma flows"},
+    {"max": 84, "result": "Swirling low-lying gases"},
+    {"max": 91, "result": "Towering rocky spires"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

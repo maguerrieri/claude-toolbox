@@ -1,8 +1,12 @@
-"""Migration parity test for MD oracle tables.
+"""Parity test for MD oracle tables against their golden JSON ranges.
 
-These fixtures are the *golden reference* for migration parity, not live adapter data.
-Each is the original JSON oracle as it existed before commit 485eed1 (migrated to MD).
-A weight typo or row-ordering mistake in any live .md file will fail this test.
+These fixtures are the *golden reference*, not live adapter data. The generic and
+ironsworn ones are the original JSON oracles as they existed before commit 485eed1
+(migrated to MD). The starforged ones are the upstream SRD's own roll ranges, written
+by tools/datasworn-import from the pinned Datasworn file alongside the tables, and
+nested like the tables (fixtures/oracles/<adapter>/<path>.json -> oracles/<path>.md).
+A weight typo, row-ordering mistake, or entry `roll table` would misparse in any live
+.md file fails this test.
 """
 import glob
 import importlib.util
@@ -31,9 +35,9 @@ parse_table = _load_parse_table()
 
 def _collect_params():
     params = []
-    for json_path in sorted(glob.glob(os.path.join(FIXTURES_DIR, "*", "*.json"))):
-        adapter = os.path.basename(os.path.dirname(json_path))
-        name = os.path.splitext(os.path.basename(json_path))[0]
+    for json_path in sorted(glob.glob(os.path.join(FIXTURES_DIR, "*", "**", "*.json"), recursive=True)):
+        adapter, rel = os.path.relpath(json_path, FIXTURES_DIR).split(os.sep, 1)
+        name = os.path.splitext(rel)[0]
         md_path = os.path.join(ADAPTERS_DIR, adapter, "oracles", name + ".md")
         params.append(pytest.param(json_path, md_path, id=f"{adapter}/{name}"))
     return params

@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/ice/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Beira"},
+    {"max": 2, "result": "Boreas"},
+    {"max": 3, "result": "Caradhras"},
+    {"max": 4, "result": "Cicero"},
+    {"max": 5, "result": "Demetria"},
+    {"max": 6, "result": "Enten"},
+    {"max": 7, "result": "Fissure"},
+    {"max": 8, "result": "Frost"},
+    {"max": 9, "result": "Gelida"},
+    {"max": 10, "result": "Jotunn"},
+    {"max": 11, "result": "Kanna"},
+    {"max": 12, "result": "Karn"},
+    {"max": 13, "result": "Kheimon"},
+    {"max": 14, "result": "Moroz"},
+    {"max": 15, "result": "Nix"},
+    {"max": 16, "result": "Olwen"},
+    {"max": 17, "result": "Osolok"},
+    {"max": 18, "result": "Taiga"},
+    {"max": 19, "result": "Thule"},
+    {"max": 20, "result": "Varnholme"}
+  ]
+}

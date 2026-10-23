@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/haunted/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Encounter with a benign spirit or being"},
+    {"max": 40, "result": "Helpful vision of past events"},
+    {"max": 60, "result": "Message or clue offers insight into the nature of this haunting"},
+    {"max": 80, "result": "Secret area or path is revealed"},
+    {"max": 100, "result": "Useful or interesting artifact or device"}
+  ]
+}

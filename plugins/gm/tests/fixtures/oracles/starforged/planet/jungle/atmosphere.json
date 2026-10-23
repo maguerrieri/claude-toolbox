@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/planet/jungle/atmosphere",
+  "die": "1d100",
+  "rows": [
+    {"max": 25, "result": "Toxic"},
+    {"max": 30, "result": "Corrosive"},
+    {"max": 60, "result": "Marginal"},
+    {"max": 90, "result": "Breathable"},
+    {"max": 100, "result": "Ideal"}
+  ]
+}

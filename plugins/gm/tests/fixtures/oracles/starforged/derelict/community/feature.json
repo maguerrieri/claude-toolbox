@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/community/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Ad-hoc memorials"},
+    {"max": 16, "result": "Art depicting historic event"},
+    {"max": 24, "result": "Artificial environment"},
+    {"max": 32, "result": "Automated announcements"},
+    {"max": 40, "result": "Barricaded area"},
+    {"max": 48, "result": "Gaming devices or interfaces"},
+    {"max": 56, "result": "Graffiti or vandalization"},
+    {"max": 64, "result": "Guard post or surveillance"},
+    {"max": 72, "result": "Mass grave or corpses"},
+    {"max": 80, "result": "Panoramic viewport"},
+    {"max": 88, "result": "Rubble or debris"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

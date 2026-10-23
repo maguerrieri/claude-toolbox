@@ -1,0 +1,11 @@
+{
+  "id": "truth.option.oracle_rollable:starforged/magic.1.power_source",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Genetic engineering"},
+    {"max": 40, "result": "Psychic experimentation"},
+    {"max": 60, "result": "Evolutionary mutations"},
+    {"max": 80, "result": "Magitech augmentations"},
+    {"max": 100, "result": "Ancient knowledge held by secretive orders"}
+  ]
+}

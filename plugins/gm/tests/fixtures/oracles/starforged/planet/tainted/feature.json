@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/tainted/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Caustic gas storms"},
+    {"max": 14, "result": "Corrosive, low-lying fog"},
+    {"max": 21, "result": "Fungus-encrusted caves"},
+    {"max": 28, "result": "Gelatinous ponds"},
+    {"max": 35, "result": "Hallucinogenic toxins"},
+    {"max": 42, "result": "Layers of fast-growing lichen"},
+    {"max": 49, "result": "Moldering bones"},
+    {"max": 56, "result": "Mutated flora"},
+    {"max": 63, "result": "Poisonous gas vents"},
+    {"max": 70, "result": "Spore clouds"},
+    {"max": 77, "result": "Terrain marred by fleshy pustules"},
+    {"max": 84, "result": "Toxic rain"},
+    {"max": 91, "result": "Virulent fungal infestations"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

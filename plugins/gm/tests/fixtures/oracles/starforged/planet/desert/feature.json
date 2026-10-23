@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/desert/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Cavernous sinkholes"},
+    {"max": 14, "result": "Engulfing sandstorms"},
+    {"max": 21, "result": "Fleeting rainstorms and flash floods"},
+    {"max": 28, "result": "Flooded grottos"},
+    {"max": 35, "result": "Petrified forest"},
+    {"max": 42, "result": "Rampaging whirlwinds"},
+    {"max": 49, "result": "Scorched glass plains"},
+    {"max": 56, "result": "Severe temperature fluctuations"},
+    {"max": 63, "result": "Sunbaked bones of titanic creatures"},
+    {"max": 70, "result": "Timeworn cliffside caves"},
+    {"max": 77, "result": "Towering rock formations"},
+    {"max": 84, "result": "Violent electrical storms"},
+    {"max": 91, "result": "Windborne metallic sand"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

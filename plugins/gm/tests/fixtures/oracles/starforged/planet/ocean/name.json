@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/ocean/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Aegir"},
+    {"max": 2, "result": "Alon"},
+    {"max": 3, "result": "Clarion"},
+    {"max": 4, "result": "Darya"},
+    {"max": 5, "result": "Eldoris"},
+    {"max": 6, "result": "Horizon"},
+    {"max": 7, "result": "Hydra"},
+    {"max": 8, "result": "Kai"},
+    {"max": 9, "result": "Larimar"},
+    {"max": 10, "result": "Lotan"},
+    {"max": 11, "result": "Mira"},
+    {"max": 12, "result": "Navini"},
+    {"max": 13, "result": "Nerida"},
+    {"max": 14, "result": "Oceanus"},
+    {"max": 15, "result": "Pelagic"},
+    {"max": 16, "result": "Proteus"},
+    {"max": 17, "result": "Russalka"},
+    {"max": 18, "result": "Siren"},
+    {"max": 19, "result": "Thalassa"},
+    {"max": 20, "result": "Triton"}
+  ]
+}

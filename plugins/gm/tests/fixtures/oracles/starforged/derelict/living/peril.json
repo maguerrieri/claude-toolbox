@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/living/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Booby trap"},
+    {"max": 20, "result": "Distressing written message"},
+    {"max": 30, "result": "Disturbing evidence of exploitive living conditions"},
+    {"max": 40, "result": "Dreadful scene of death or violence"},
+    {"max": 50, "result": "Lured into danger by signs of life"},
+    {"max": 60, "result": "Recorded message reveals a threat or complication"},
+    {"max": 70, "result": "Sealed door or hatch blocks access"},
+    {"max": 80, "result": "Signs of unwelcome invaders"},
+    {"max": 90, "result": "Unsettling sound or disturbance"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

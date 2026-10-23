@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/haunted/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 9, "result": "Assailed by an angry or vengeful being"},
+    {"max": 18, "result": "Beguiling illusions tempt you to linger or stay"},
+    {"max": 27, "result": "Besieged by frightening sensations"},
+    {"max": 36, "result": "Equipment is plagued by unexplainable malfunctions"},
+    {"max": 45, "result": "Plunged into disorienting darkness or illusionary surroundings"},
+    {"max": 54, "result": "Spectral manifestations of your fears"},
+    {"max": 63, "result": "Spirits or undead reveal surprising abilities or motivations"},
+    {"max": 72, "result": "Sudden, shocking reveal of a ghostly manifestation or undead form"},
+    {"max": 81, "result": "Trickery leads you into danger"},
+    {"max": 90, "result": "Visions reveal a horrifying aspect of this place"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

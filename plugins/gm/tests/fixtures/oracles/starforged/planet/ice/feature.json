@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/ice/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Abyssal ice fissures"},
+    {"max": 14, "result": "Blinding snow storms"},
+    {"max": 21, "result": "Clusters of ice spikes"},
+    {"max": 28, "result": "Colossal ice caves"},
+    {"max": 35, "result": "Glistening ice spires"},
+    {"max": 42, "result": "Massive snow drifts"},
+    {"max": 49, "result": "Preserved carcasses"},
+    {"max": 56, "result": "Rocky islands amid icy wastes"},
+    {"max": 63, "result": "Shattered plains of pack ice"},
+    {"max": 70, "result": "Steaming hot springs"},
+    {"max": 77, "result": "Subsurface liquid oceans"},
+    {"max": 84, "result": "Vibrant auroras"},
+    {"max": 91, "result": "Wind-carved ice formations"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

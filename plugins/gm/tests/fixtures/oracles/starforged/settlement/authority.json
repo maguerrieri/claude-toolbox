@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:starforged/settlement/authority",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "None / lawless"},
+    {"max": 30, "result": "Ineffectual"},
+    {"max": 45, "result": "Tolerant"},
+    {"max": 55, "result": "Fair"},
+    {"max": 70, "result": "Unyielding"},
+    {"max": 85, "result": "Corrupt"},
+    {"max": 100, "result": "Oppressive"}
+  ]
+}

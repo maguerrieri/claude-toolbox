@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/shattered/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Broken cities"},
+    {"max": 14, "result": "Colliding fragments"},
+    {"max": 21, "result": "Energy storms"},
+    {"max": 28, "result": "Exposed caverns"},
+    {"max": 35, "result": "Fluctuating gravity"},
+    {"max": 42, "result": "Magnetic disturbances"},
+    {"max": 49, "result": "Molten fissures"},
+    {"max": 56, "result": "Phantom visions of the past"},
+    {"max": 63, "result": "Pocket atmosphere"},
+    {"max": 70, "result": "Residual energy storms"},
+    {"max": 77, "result": "Swirling corrosive gases"},
+    {"max": 84, "result": "Unstable and fracturing terrain"},
+    {"max": 91, "result": "Venting magma"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

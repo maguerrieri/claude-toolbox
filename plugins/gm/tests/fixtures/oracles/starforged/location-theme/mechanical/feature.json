@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/mechanical/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Control station or terminal"},
+    {"max": 16, "result": "Device or technology with a mysterious function"},
+    {"max": 24, "result": "Disassembled machinery or parts"},
+    {"max": 32, "result": "Heavy machinery at work"},
+    {"max": 40, "result": "Machine fabrication or repair"},
+    {"max": 48, "result": "Machines emulating or fusing with biological life"},
+    {"max": 56, "result": "Machines in stasis or powered down"},
+    {"max": 64, "result": "Machines single-mindedly executing a function or program"},
+    {"max": 72, "result": "Major project under construction"},
+    {"max": 80, "result": "Mechanical environment in motion or transforming"},
+    {"max": 88, "result": "Mechanical wreckage or destruction"},
+    {"max": 96, "result": "Power source for the machines"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/sanctum/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Access to a secret or protected area"},
+    {"max": 20, "result": "Clue points the way to your destination or target"},
+    {"max": 30, "result": "Comforting illusion or vision"},
+    {"max": 40, "result": "Control or terminal adjusts to accept your input"},
+    {"max": 50, "result": "Deeper insight into the history or nature of this site"},
+    {"max": 60, "result": "Device or artifact reveals its purpose"},
+    {"max": 70, "result": "Environment adjusts to better suit you"},
+    {"max": 80, "result": "Foes stand down or give way"},
+    {"max": 90, "result": "Key offers control of a function or aspect of this site"},
+    {"max": 100, "result": "Shortcut or less perilous path speeds your way"}
+  ]
+}

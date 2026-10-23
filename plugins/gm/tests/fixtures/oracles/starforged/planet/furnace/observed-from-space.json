@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/planet/furnace/observed_from_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 11, "result": "Fiery world-spanning chasms"},
+    {"max": 22, "result": "Glowing rivers of lava"},
+    {"max": 33, "result": "Lightning-wracked ash clouds"},
+    {"max": 44, "result": "Magma seas"},
+    {"max": 55, "result": "Massive supervolcano"},
+    {"max": 66, "result": "Once verdant terrain"},
+    {"max": 77, "result": "Towering mountain ranges"},
+    {"max": 88, "result": "World-spanning fissures"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (orbital)"}
+  ]
+}

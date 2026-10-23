@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/medical/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Crematorium"},
+    {"max": 16, "result": "Emergency or triage"},
+    {"max": 24, "result": "Isolation or containment"},
+    {"max": 32, "result": "Medical lab"},
+    {"max": 40, "result": "Medical offices"},
+    {"max": 48, "result": "Morgue"},
+    {"max": 56, "result": "Operating room"},
+    {"max": 64, "result": "Pharmacy or drug locker"},
+    {"max": 72, "result": "Prosthetics workshop"},
+    {"max": 80, "result": "Ward or clinic"},
+    {"max": 85, "result": "New zone"},
+    {"max": 100, "result": "New zone via Access (`oracles/derelict/access/`)"}
+  ]
+}

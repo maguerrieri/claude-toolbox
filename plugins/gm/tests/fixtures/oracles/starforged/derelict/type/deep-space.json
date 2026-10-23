@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:starforged/derelict/type/deep_space",
+  "die": "1d100",
+  "rows": [
+    {"max": 75, "result": "Starship\n→ Next, consider `oracles/derelict/zone/starship.md`\n→ Next, consider `oracles/starship/`"},
+    {"max": 100, "result": "Settlement\n→ Next, consider `oracles/derelict/zone/settlement.md`\n→ Next, consider `oracles/settlement/`"}
+  ]
+}

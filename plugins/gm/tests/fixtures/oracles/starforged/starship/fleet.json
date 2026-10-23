@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:starforged/starship/fleet",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Battle fleet"},
+    {"max": 25, "result": "Pirate wing"},
+    {"max": 35, "result": "Raider horde"},
+    {"max": 50, "result": "Salvager hive"},
+    {"max": 60, "result": "Settler caravan"},
+    {"max": 70, "result": "Trade caravan"},
+    {"max": 90, "result": "Transport and escorts"},
+    {"max": 100, "result": "Starship Mission (`oracles/starship/mission/`)"}
+  ]
+}

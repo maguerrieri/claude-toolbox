@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:starforged/faction/influence",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Forsaken — Banished or forgotten"},
+    {"max": 30, "result": "Isolated — Limited influence in a remote location"},
+    {"max": 50, "result": "Localized — Marginal influence in a single sector"},
+    {"max": 70, "result": "Established — Strong influence in a single sector"},
+    {"max": 85, "result": "Notable — Dispersed influence across a few sectors"},
+    {"max": 95, "result": "Dominant — Far-reaching influence across many sectors"},
+    {"max": 100, "result": "Inescapable — Pervasive influence across inhabited space"}
+  ]
+}

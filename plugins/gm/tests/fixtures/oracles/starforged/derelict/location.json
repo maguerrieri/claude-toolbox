@@ -1,0 +1,9 @@
+{
+  "id": "oracle_rollable:starforged/derelict/location",
+  "die": "1d100",
+  "rows": [
+    {"max": 40, "result": "Planetside\n→ Next, consider `oracles/derelict/type/planetside.md`"},
+    {"max": 60, "result": "Orbital\n→ Next, consider `oracles/derelict/type/orbital.md`"},
+    {"max": 100, "result": "Deep Space\n→ Next, consider `oracles/derelict/type/deep-space.md`"}
+  ]
+}

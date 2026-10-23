@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/chaotic/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Alterations in the flow of time"},
+    {"max": 16, "result": "Chaotic portal, focus, or conduit"},
+    {"max": 24, "result": "Corrupted or warped architecture or terrain"},
+    {"max": 32, "result": "Corrupted or warped environment or ecosystem"},
+    {"max": 40, "result": "Corrupted or warped technology"},
+    {"max": 48, "result": "Cryptic device harnesses or powers chaos"},
+    {"max": 56, "result": "Distortions of gravity or other natural forces"},
+    {"max": 64, "result": "Energy field or barrier"},
+    {"max": 72, "result": "Glimpses of alternate realities"},
+    {"max": 80, "result": "Lifeforms mutated or altered by chaos"},
+    {"max": 88, "result": "Lifeforms spawned from chaos"},
+    {"max": 96, "result": "Visions of your past or future"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

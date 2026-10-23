@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/grave/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Anubis"},
+    {"max": 2, "result": "Banshee"},
+    {"max": 3, "result": "Barrow"},
+    {"max": 4, "result": "Cairn"},
+    {"max": 5, "result": "Cerberus"},
+    {"max": 6, "result": "Charon"},
+    {"max": 7, "result": "Elysia"},
+    {"max": 8, "result": "Keen"},
+    {"max": 9, "result": "Kur"},
+    {"max": 10, "result": "Lament"},
+    {"max": 11, "result": "Mantus"},
+    {"max": 12, "result": "Morrigan"},
+    {"max": 13, "result": "Mourn"},
+    {"max": 14, "result": "Necropolis"},
+    {"max": 15, "result": "Orcus"},
+    {"max": 16, "result": "Osiris"},
+    {"max": 17, "result": "Requiem"},
+    {"max": 18, "result": "Stygia"},
+    {"max": 19, "result": "Tartarus"},
+    {"max": 20, "result": "Thrace"}
+  ]
+}

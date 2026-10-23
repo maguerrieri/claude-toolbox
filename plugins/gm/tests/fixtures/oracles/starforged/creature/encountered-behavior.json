@@ -1,0 +1,27 @@
+{
+  "id": "oracle_rollable:starforged/creature/encountered_behavior",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Ambusher"},
+    {"max": 10, "result": "Apex predator"},
+    {"max": 14, "result": "Builder"},
+    {"max": 19, "result": "Camouflager"},
+    {"max": 24, "result": "Forager"},
+    {"max": 29, "result": "Grazer"},
+    {"max": 33, "result": "Herder"},
+    {"max": 37, "result": "Hibernator"},
+    {"max": 41, "result": "Hoarder"},
+    {"max": 46, "result": "Hunter"},
+    {"max": 51, "result": "Lurer"},
+    {"max": 55, "result": "Migratory"},
+    {"max": 60, "result": "Mimic"},
+    {"max": 65, "result": "Nester"},
+    {"max": 70, "result": "Pack hunter"},
+    {"max": 75, "result": "Prey"},
+    {"max": 80, "result": "Protector"},
+    {"max": 85, "result": "Scavenger"},
+    {"max": 90, "result": "Tracker"},
+    {"max": 95, "result": "Trapper"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

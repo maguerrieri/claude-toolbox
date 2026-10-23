@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/planet/jungle/settlements/expanse",
+  "die": "1d100",
+  "rows": [
+    {"max": 85, "result": "None"},
+    {"max": 90, "result": "Orbital settlement"},
+    {"max": 97, "result": "Planetside settlement"},
+    {"max": 99, "result": "Multiple settlements"},
+    {"max": 100, "result": "Settlements in conflict"}
+  ]
+}

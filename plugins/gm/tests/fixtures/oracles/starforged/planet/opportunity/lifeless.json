@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/opportunity/lifeless",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Encounter reveals unexpected benign lifeforms"},
+    {"max": 10, "result": "Abandoned camp or vehicle"},
+    {"max": 15, "result": "Advance warning of an environmental threat"},
+    {"max": 20, "result": "Clear path through otherwise perilous terrain"},
+    {"max": 25, "result": "Clue offers insight into a current quest or mystery"},
+    {"max": 30, "result": "Clue to the history or nature of this place"},
+    {"max": 35, "result": "Evidence that others have passed this way"},
+    {"max": 40, "result": "Foe reveals themselves or tips their hand"},
+    {"max": 45, "result": "Fortuitous change in the weather or atmosphere"},
+    {"max": 50, "result": "Friendly traveler crosses your path"},
+    {"max": 55, "result": "Helpful resource is in ample supply"},
+    {"max": 60, "result": "Impressive vista offers comfort or inspiration"},
+    {"max": 65, "result": "Interesting artifact or device"},
+    {"max": 70, "result": "Interesting site offers opportunities for exploration"},
+    {"max": 75, "result": "Moment of fellowship or inner peace"},
+    {"max": 80, "result": "Opening to distract, escape, or avoid foes"},
+    {"max": 85, "result": "Opening to get the drop on a foe"},
+    {"max": 90, "result": "Plea for help from a potential benefactor"},
+    {"max": 95, "result": "Refuge offers a place to hide, plan, or recover"},
+    {"max": 100, "result": "Vantage point reveals the lay of the land"}
+  ]
+}

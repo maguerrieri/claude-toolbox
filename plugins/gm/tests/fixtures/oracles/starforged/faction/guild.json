@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/faction/guild",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Assassins"},
+    {"max": 10, "result": "Bounty Hunters"},
+    {"max": 15, "result": "Couriers"},
+    {"max": 20, "result": "Courtesans"},
+    {"max": 25, "result": "Engineers"},
+    {"max": 30, "result": "Healers"},
+    {"max": 40, "result": "Industrialists"},
+    {"max": 50, "result": "Mercenaries"},
+    {"max": 60, "result": "Merchants"},
+    {"max": 65, "result": "Mystics"},
+    {"max": 75, "result": "Navigators"},
+    {"max": 80, "result": "Peacekeepers"},
+    {"max": 85, "result": "Researchers"},
+    {"max": 90, "result": "Spies"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

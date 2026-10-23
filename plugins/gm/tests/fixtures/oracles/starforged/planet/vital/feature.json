@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:starforged/planet/vital/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Background radiation"},
+    {"max": 14, "result": "Chaotically juxtaposed biomes"},
+    {"max": 21, "result": "Creature boneyards"},
+    {"max": 28, "result": "Creature lairs or watering holes"},
+    {"max": 35, "result": "Crystalline formations"},
+    {"max": 42, "result": "Fierce electrical storms"},
+    {"max": 49, "result": "Floating terrain"},
+    {"max": 56, "result": "Frequent seismic activity"},
+    {"max": 63, "result": "Magnetic disturbances"},
+    {"max": 70, "result": "Scarred or excavated terrain"},
+    {"max": 77, "result": "Signs of an engineered biosphere"},
+    {"max": 84, "result": "Sudden weather fluctuations"},
+    {"max": 91, "result": "Towering geological formations"},
+    {"max": 98, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Precursor Vault (`oracles/precursor-vault/`) (planetside)"}
+  ]
+}

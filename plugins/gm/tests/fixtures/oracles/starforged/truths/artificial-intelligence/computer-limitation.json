@@ -1,0 +1,9 @@
+{
+  "id": "truth.option.oracle_rollable:starforged/artificial_intelligence.0.computer_limitation",
+  "die": "1d100",
+  "rows": [
+    {"max": 33, "result": "The energies of the Forge corrupt advanced systems"},
+    {"max": 67, "result": "AI was outlawed in the aftermath of the machine wars"},
+    {"max": 100, "result": "We have lost the knowledge to create and maintain AI"}
+  ]
+}

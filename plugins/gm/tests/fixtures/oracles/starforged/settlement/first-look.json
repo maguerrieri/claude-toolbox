@@ -1,0 +1,27 @@
+{
+  "id": "oracle_rollable:starforged/settlement/first_look",
+  "die": "1d100",
+  "rows": [
+    {"max": 3, "result": "Beautiful architecture"},
+    {"max": 9, "result": "Built from organic materials"},
+    {"max": 15, "result": "Built from random scrap"},
+    {"max": 21, "result": "Built within repurposed ship"},
+    {"max": 26, "result": "Built within terrain or asteroid"},
+    {"max": 31, "result": "Defensible location"},
+    {"max": 35, "result": "Elevated or multi-level construction"},
+    {"max": 40, "result": "Hidden or subsurface location"},
+    {"max": 43, "result": "High-tech construction"},
+    {"max": 49, "result": "Industrial architecture"},
+    {"max": 53, "result": "Intimidating defenses"},
+    {"max": 56, "result": "Moving or transforming"},
+    {"max": 61, "result": "Obvious social stratification"},
+    {"max": 66, "result": "Precarious location"},
+    {"max": 72, "result": "Rustic architecture"},
+    {"max": 76, "result": "Significant structural damage"},
+    {"max": 80, "result": "Sprawling or dispersed structures"},
+    {"max": 83, "result": "Temporary or seasonal location"},
+    {"max": 87, "result": "Toxic or polluted habitat"},
+    {"max": 90, "result": "Within or near Precursor Vault (`oracles/precursor-vault/`)"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

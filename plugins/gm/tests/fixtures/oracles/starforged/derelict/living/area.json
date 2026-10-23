@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:starforged/derelict/living/area",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Food storage"},
+    {"max": 16, "result": "Galley or kitchen"},
+    {"max": 24, "result": "Laundry"},
+    {"max": 32, "result": "Locker room or storage"},
+    {"max": 40, "result": "Mess hall or dining"},
+    {"max": 48, "result": "Observation lounge"},
+    {"max": 56, "result": "Quarters (communal)"},
+    {"max": 64, "result": "Quarters (individual)"},
+    {"max": 72, "result": "Restroom or showers"},
+    {"max": 80, "result": "Sleeping pods"},
+    {"max": 85, "result": "New zone"},
+    {"max": 100, "result": "New zone via Access (`oracles/derelict/access/`)"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/precursor_vault/scale",
+  "die": "1d100",
+  "rows": [
+    {"max": 30, "result": "Minor, confined site"},
+    {"max": 65, "result": "Typical site of limited scope"},
+    {"max": 90, "result": "Large, elaborate site"},
+    {"max": 99, "result": "Vast site of unfathomable complexity"},
+    {"max": 100, "result": "World-spanning site or megastructure"}
+  ]
+}

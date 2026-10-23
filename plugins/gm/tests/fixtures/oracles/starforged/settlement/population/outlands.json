@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/settlement/population/outlands",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Few"},
+    {"max": 35, "result": "Dozens"},
+    {"max": 65, "result": "Hundreds"},
+    {"max": 90, "result": "Thousands"},
+    {"max": 100, "result": "Tens of thousands"}
+  ]
+}

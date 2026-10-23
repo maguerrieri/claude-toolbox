@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/rocky/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Aphelion"},
+    {"max": 2, "result": "Artemis"},
+    {"max": 3, "result": "Capella"},
+    {"max": 4, "result": "Cobalt"},
+    {"max": 5, "result": "Crag"},
+    {"max": 6, "result": "Dusk"},
+    {"max": 7, "result": "Eos"},
+    {"max": 8, "result": "Hecate"},
+    {"max": 9, "result": "Imbrium"},
+    {"max": 10, "result": "Latona"},
+    {"max": 11, "result": "Losna"},
+    {"max": 12, "result": "Orpheus"},
+    {"max": 13, "result": "Ory"},
+    {"max": 14, "result": "Quietus"},
+    {"max": 15, "result": "Selene"},
+    {"max": 16, "result": "Silas"},
+    {"max": 17, "result": "Silex"},
+    {"max": 18, "result": "Slate"},
+    {"max": 19, "result": "Themis"},
+    {"max": 20, "result": "Umbra"}
+  ]
+}

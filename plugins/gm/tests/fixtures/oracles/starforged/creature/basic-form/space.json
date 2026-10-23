@@ -1,0 +1,24 @@
+{
+  "id": "oracle_rollable:starforged/creature/basic_form/space",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Amoeba / pseudopods"},
+    {"max": 20, "result": "Amorphous / elemental"},
+    {"max": 30, "result": "Avian / winged"},
+    {"max": 32, "result": "Beast / mammal"},
+    {"max": 34, "result": "Crustacean / shelled"},
+    {"max": 37, "result": "Fish / torpedo-shaped"},
+    {"max": 39, "result": "Humanoid / bipedal"},
+    {"max": 41, "result": "Insectoid / exoskeletal"},
+    {"max": 60, "result": "Jellyfish / gasbag"},
+    {"max": 62, "result": "Lizard / reptilian"},
+    {"max": 67, "result": "Octopoid / tentacled"},
+    {"max": 72, "result": "Plant / fungus"},
+    {"max": 82, "result": "Ray / flat-bodied"},
+    {"max": 84, "result": "Snake / eel"},
+    {"max": 86, "result": "Spider / web-weaver"},
+    {"max": 88, "result": "Starfish / symmetrical"},
+    {"max": 90, "result": "Worm / slug / larva"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

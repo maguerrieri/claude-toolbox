@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:starforged/location_theme/fortified/feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Captives or prisoners"},
+    {"max": 16, "result": "Control area or terminal"},
+    {"max": 24, "result": "Empty or inactive area"},
+    {"max": 32, "result": "Enemy forces assembled for an event"},
+    {"max": 40, "result": "Enemy forces off-duty or at leisure"},
+    {"max": 48, "result": "Enemy forces on guard"},
+    {"max": 56, "result": "Enemy forces on patrol"},
+    {"max": 64, "result": "Enemy forces transporting supplies or equipment"},
+    {"max": 72, "result": "Enemy leader makes an inspection"},
+    {"max": 80, "result": "Prototype technology or equipment"},
+    {"max": 88, "result": "Robotic assistant or watchful AI"},
+    {"max": 96, "result": "Support personnel at work"},
+    {"max": 100, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

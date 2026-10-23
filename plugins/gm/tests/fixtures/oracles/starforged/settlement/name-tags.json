@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:starforged/settlement/name_tags",
+  "die": "1d10",
+  "rows": [
+    {"max": 1, "result": "Base"},
+    {"max": 2, "result": "Citadel"},
+    {"max": 3, "result": "Depot"},
+    {"max": 4, "result": "Fortress"},
+    {"max": 5, "result": "Hold"},
+    {"max": 6, "result": "Landing"},
+    {"max": 7, "result": "Outpost"},
+    {"max": 8, "result": "Port"},
+    {"max": 9, "result": "Station"},
+    {"max": 10, "result": "Terminal"}
+  ]
+}

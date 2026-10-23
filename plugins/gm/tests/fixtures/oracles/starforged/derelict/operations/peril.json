@@ -1,0 +1,17 @@
+{
+  "id": "oracle_rollable:starforged/derelict/operations/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Automated defenses target you"},
+    {"max": 20, "result": "Broken equipment limits control"},
+    {"max": 30, "result": "Coded message or puzzling security device"},
+    {"max": 40, "result": "Discouraging evidence of failed plans or defenses"},
+    {"max": 50, "result": "Displays reveal a new threat elsewhere in this site"},
+    {"max": 60, "result": "Failing power"},
+    {"max": 70, "result": "Hostile AI"},
+    {"max": 80, "result": "Sealed blast doors block access"},
+    {"max": 90, "result": "Sensors indicate the arrival of an external threat"},
+    {"max": 98, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

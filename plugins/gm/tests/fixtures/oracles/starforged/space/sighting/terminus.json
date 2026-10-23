@@ -1,0 +1,27 @@
+{
+  "id": "oracle_rollable:starforged/space/sighting/terminus",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Stellar Object (`oracles/space/stellar-object.md`)"},
+    {"max": 35, "result": "Planet (`oracles/planet/`)"},
+    {"max": 40, "result": "Settlement (`oracles/settlement/`)"},
+    {"max": 47, "result": "Starship (`oracles/starship/`)"},
+    {"max": 51, "result": "Derelict (`oracles/derelict/`)"},
+    {"max": 53, "result": "Precursor Vault (`oracles/precursor-vault/`)"},
+    {"max": 55, "result": "Creature (`oracles/creature/`)"},
+    {"max": 60, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 65, "result": "Debris field: Mineral asteroids"},
+    {"max": 68, "result": "Debris field: Frozen asteroids"},
+    {"max": 70, "result": "Debris field: Crystalline asteroids"},
+    {"max": 72, "result": "Debris field: Creature boneyard"},
+    {"max": 74, "result": "Debris field: Metallic wreckage"},
+    {"max": 76, "result": "Large rogue asteroid"},
+    {"max": 78, "result": "Comet with a tail of ionized gas"},
+    {"max": 81, "result": "Fiery energy storm"},
+    {"max": 83, "result": "Chaotic meteoroid storm"},
+    {"max": 85, "result": "Turbulent gravitational wave"},
+    {"max": 93, "result": "Dense nebula cloud"},
+    {"max": 98, "result": "Roll twice"},
+    {"max": 100, "result": "Roll three times"}
+  ]
+}

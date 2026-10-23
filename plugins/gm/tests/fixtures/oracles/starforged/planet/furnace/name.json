@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:starforged/planet/furnace/name",
+  "die": "1d20",
+  "rows": [
+    {"max": 1, "result": "Ash"},
+    {"max": 2, "result": "Azula"},
+    {"max": 3, "result": "Cinder"},
+    {"max": 4, "result": "Cyrus"},
+    {"max": 5, "result": "Draconus"},
+    {"max": 6, "result": "Effigy"},
+    {"max": 7, "result": "Ember"},
+    {"max": 8, "result": "Flint"},
+    {"max": 9, "result": "Hades"},
+    {"max": 10, "result": "Hera"},
+    {"max": 11, "result": "Ignis"},
+    {"max": 12, "result": "Inferno"},
+    {"max": 13, "result": "Ishum"},
+    {"max": 14, "result": "Kresnik"},
+    {"max": 15, "result": "Nemesis"},
+    {"max": 16, "result": "Obsidian"},
+    {"max": 17, "result": "Scorch"},
+    {"max": 18, "result": "Tana"},
+    {"max": 19, "result": "Vesta"},
+    {"max": 20, "result": "Vesuvius"}
+  ]
+}

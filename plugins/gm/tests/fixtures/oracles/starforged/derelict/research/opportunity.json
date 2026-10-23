@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:starforged/derelict/research/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Helpful research data"},
+    {"max": 40, "result": "Records of a notable discovery"},
+    {"max": 60, "result": "Specialized research tools"},
+    {"max": 80, "result": "Unique prototype"},
+    {"max": 100, "result": "Useful navigational data"}
+  ]
+}
