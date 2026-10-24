@@ -9,7 +9,8 @@
 #   decision folded into a fix push costs only the round the fixes cost;
 # - a Decision head: marker frees its head only when it cites an
 #   Owner decision: record posted before it, each record frees one head, a
-#   head the bot first reviewed before the record stays a round, and both
+#   head the bot first reviewed before the record stays a round, a marker that
+#   frees nothing uses nothing up (so a corrected marker works), and both
 #   comments must come from the owner's login (anyone can comment on a public
 #   repo's PR);
 # - a failed read of the login or the comments skips nothing, so the count
@@ -28,7 +29,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 . "$here/lib.sh"
 
-snippet=$(extract_block "$profile" 'decision_heads=$(gh api' |
+snippet=$(extract_block "$profile" 'decisions=$(gh api' |
 	sed -e 's/<pr>/35/g' -e 's/<bot login>/copilot-pull-request-reviewer/g')
 record yes "count snippet found in the profile" "$([ -n "$snippet" ] && echo yes || echo no)"
 
@@ -150,6 +151,14 @@ for sh in "${shells[@]}"; do
 	record 2 "$sh: a head reviewed before its record stays a round" "$(count "$sh")"
 	base; review 3; decision 101 'one'; marker 102 3 101; review 3
 	record 3 "$sh: a head first reviewed before its record stays a round" "$(count "$sh")"
+	base; decision 101 'one'; marker 102 9 101; marker 103 3 101; review 3
+	record 2 "$sh: a marker with a wrong sha uses nothing up" "$(count "$sh")"
+	base; decision 101 'one'; marker 102 1 101; marker 103 3 101; review 3
+	record 2 "$sh: a marker naming an old head uses nothing up" "$(count "$sh")"
+	base; decision 101 'one'; marker 102 3 101
+	record 2 "$sh: a marker for a head not yet reviewed frees it once reviewed (before)" "$(count "$sh")"
+	review 3
+	record 2 "$sh: a marker for a head not yet reviewed frees it once reviewed (after)" "$(count "$sh")"
 	base; comment 101 drive-by 'Owner decision: add a step (owner: me)'; marker 102 3 101; review 3
 	record 3 "$sh: a record from another login is no record" "$(count "$sh")"
 	base; decision 101 'one'; comment 102 drive-by "Decision head: $(sha 3) lands ${url}101"; review 3
