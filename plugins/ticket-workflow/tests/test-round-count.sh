@@ -8,9 +8,10 @@
 #   setting, account and hostname decisions don't move the count, and a
 #   decision folded into a fix push costs only the round the fixes cost;
 # - a Decision head: marker frees its head only when it cites an
-#   Owner decision: record posted before it, each record frees one head, and
-#   both comments must come from the owner's login (anyone can comment on a
-#   public repo's PR);
+#   Owner decision: record posted before it, each record frees one head, a
+#   head the bot first reviewed before the record stays a round, and both
+#   comments must come from the owner's login (anyone can comment on a public
+#   repo's PR);
 # - a failed read of the login or the comments skips nothing, so the count
 #   errs high.
 #
@@ -50,15 +51,20 @@ export STUB_DIR="$tmp"
 url='https://github.com/OWNER/REPO/pull/35#issuecomment-'
 sha() { printf '%040x' "$1"; } # a deterministic full-length head sha
 
-# Fixture builders. Each call appends to the current fixture; reset starts over.
-reset() { reviews='[]' comments='[]'; }
+# Fixture builders. Each call appends to the current fixture, stamped one
+# second after the call before it, so the calls' order is the timeline; reset
+# starts over.
+reset() { reviews='[]' comments='[]' clock=0; }
+tick() { clock=$((clock + 1)); now=$(printf '2026-10-22T10:%02d:%02dZ' $((clock / 60)) $((clock % 60))); }
 review() { # review <head n> [body]
-	reviews=$(jq -c --arg s "$(sha "$1")" --arg b "${2:-### 🟡 Changes recommended}" \
-		'. + [{user: {login: "copilot-pull-request-reviewer[bot]"}, commit_id: $s, body: $b}]' <<<"$reviews")
+	tick
+	reviews=$(jq -c --arg s "$(sha "$1")" --arg b "${2:-### 🟡 Changes recommended}" --arg t "$now" \
+		'. + [{user: {login: "copilot-pull-request-reviewer[bot]"}, commit_id: $s, body: $b, submitted_at: $t}]' <<<"$reviews")
 }
-comment() { # comment <id> <login> <body>
-	comments=$(jq -c --argjson i "$1" --arg l "$2" --arg b "$3" \
-		'. + [{id: $i, user: {login: $l, type: "User"}, body: $b}]' <<<"$comments")
+comment() { # comment <id> <login> <body>; a body of - is null
+	tick
+	comments=$(jq -c --argjson i "$1" --arg l "$2" --arg b "$3" --arg t "$now" \
+		'. + [{id: $i, user: {login: $l, type: "User"}, body: (if $b == "-" then null else $b end), created_at: $t}]' <<<"$comments")
 }
 decision() { comment "$1" owner "Owner decision: $2 (owner: in the planner session, 2026-10-22)"; }
 marker() { # marker <id> <head n> <cited comment id>...
@@ -124,36 +130,48 @@ for sh in "${shells[@]}"; do
 	record 9 "$sh: no decision comments, every head counts" "$(count "$sh")"
 
 	# --- What a marker needs --------------------------------------------------
-	base() { reset; for h in 1 2 3; do review "$h"; done; }
+	# Two ordinary rounds, then each case's comments, then head 3's review
+	# (and head 4's) after them.
+	base() { reset; review 1; review 2; }
 
-	base; marker 101 3; record 3 "$sh: a marker that cites nothing frees nothing" "$(count "$sh")"
-	base; marker 101 3 102; decision 102 'later'
-	record 3 "$sh: a marker citing a record posted after it frees nothing" "$(count "$sh")"
-	base; decision 101 'one'; marker 102 2 101; marker 103 3 101
-	record 2 "$sh: one record frees one head, the first marker's" "$(count "$sh")"
-	base; decision 101 'one'; decision 102 'two'; marker 103 3 101 102
-	record 2 "$sh: one head may land several records" "$(count "$sh")"
-	base; decision 101 'one'; decision 102 'two'; marker 103 2 101 102; marker 104 3 102
-	record 2 "$sh: a record a head already used frees no second head" "$(count "$sh")"
-	base; comment 101 drive-by 'Owner decision: add a step (owner: me)'; marker 102 3 101
-	record 3 "$sh: a record from another login is no record" "$(count "$sh")"
-	base; decision 101 'one'; comment 102 drive-by "Decision head: $(sha 3) lands ${url}101"
-	record 3 "$sh: a marker from another login is no marker" "$(count "$sh")"
-	base; comment 101 owner 'Quoting it: Owner decision: one (owner: x)'; marker 102 3 101
-	record 3 "$sh: a record must open its comment" "$(count "$sh")"
-	base; decision 101 'one'; comment 102 owner "Decision head: $(sha 3 | cut -c1-7) lands ${url}101"
-	record 3 "$sh: a marker needs the full sha" "$(count "$sh")"
-	base; decision 101 'one'; marker 102 3 101
+	base; decision 101 'one'; marker 102 3 101; review 3
 	record 2 "$sh: a valid marker frees its head" "$(count "$sh")"
+	base; marker 101 3; review 3
+	record 3 "$sh: a marker that cites nothing frees nothing" "$(count "$sh")"
+	base; marker 101 3 102; decision 102 'later'; review 3
+	record 3 "$sh: a marker citing a record posted after it frees nothing" "$(count "$sh")"
+	base; decision 101 'one'; marker 102 3 101; review 3; marker 103 4 101; review 4
+	record 3 "$sh: one record frees one head, the first marker's" "$(count "$sh")"
+	base; decision 101 'one'; decision 102 'two'; marker 103 3 101 102; review 3
+	record 2 "$sh: one head may land several records" "$(count "$sh")"
+	base; decision 101 'one'; decision 102 'two'; marker 103 3 101 102; review 3; marker 104 4 102; review 4
+	record 3 "$sh: a record a head already used frees no second head" "$(count "$sh")"
+	base; decision 101 'one'; marker 102 1 101
+	record 2 "$sh: a head reviewed before its record stays a round" "$(count "$sh")"
+	base; review 3; decision 101 'one'; marker 102 3 101; review 3
+	record 3 "$sh: a head first reviewed before its record stays a round" "$(count "$sh")"
+	base; comment 101 drive-by 'Owner decision: add a step (owner: me)'; marker 102 3 101; review 3
+	record 3 "$sh: a record from another login is no record" "$(count "$sh")"
+	base; decision 101 'one'; comment 102 drive-by "Decision head: $(sha 3) lands ${url}101"; review 3
+	record 3 "$sh: a marker from another login is no marker" "$(count "$sh")"
+	base; comment 101 owner 'Quoting it: Owner decision: one (owner: x)'; marker 102 3 101; review 3
+	record 3 "$sh: a record must open its comment" "$(count "$sh")"
+	base; comment 101 owner "$(printf '\n  Owner decision: one (owner: x)')"; marker 102 3 101; review 3
+	record 2 "$sh: a record may open with whitespace" "$(count "$sh")"
+	base; decision 101 'one'; comment 102 owner "Decision head: $(sha 3 | cut -c1-7) lands ${url}101"; review 3
+	record 3 "$sh: a marker needs the full sha" "$(count "$sh")"
+	base; comment 100 owner -; decision 101 'one'; marker 102 3 101; review 3
+	record 2 "$sh: a comment with a null body breaks nothing" "$(count "$sh")"
 
 	# --- Failed reads skip nothing ---------------------------------------------
+	base; decision 101 'one'; marker 102 3 101; review 3
 	record 3 "$sh: a failed login read skips nothing" "$(STUB_LOGIN='' count "$sh")"
 	record 3 "$sh: a failed comments read skips nothing" "$(STUB_FAIL_COMMENTS=1 count "$sh")"
 
 	# --- The rest of the count is unchanged ------------------------------------
-	base; review 3; record 3 "$sh: a re-review of the same head isn't a round" "$(count "$sh")"
-	base; review 4 'Copilot was unable to review this pull request because of a quota.'
-	record 3 "$sh: an unable body isn't a round" "$(count "$sh")"
+	base; review 2; record 2 "$sh: a re-review of the same head isn't a round" "$(count "$sh")"
+	base; review 3 'Copilot was unable to review this pull request because of a quota.'
+	record 2 "$sh: an unable body isn't a round" "$(count "$sh")"
 done
 
 finish
