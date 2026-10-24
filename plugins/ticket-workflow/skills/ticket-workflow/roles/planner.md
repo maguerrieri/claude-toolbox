@@ -12,6 +12,14 @@ it. You are the **root**: the one session that sees the entire initiative.
   high level as their stacks come back.
 - Decide priorities, cross-epic dependencies, and what's in vs out of the
   initiative.
+- **Relay the owner's mid-review decisions** (a scope addition, a name, an
+  account for a PR already in review) one spawn edge down, as soon as the
+  owner gives them: for an implementer you spawned, post the
+  `Owner decision:` record on its PR and send it the `decision:` hint; for a
+  coordinator's child, send that coordinator a `decision:` naming the child,
+  and it posts the record (the profile's `REVIEW_BOT`, *Owner decisions*,
+  and `messaging.md`). Don't wait for a hand-back or raise a cap for it: a
+  push that lands only the decision costs no round.
 
 ## You do NOT
 
