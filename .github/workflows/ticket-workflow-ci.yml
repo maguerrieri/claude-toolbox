@@ -33,3 +33,5 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-session-identity.sh
       - name: REST list-helper tests
         run: bash plugins/ticket-workflow/tests/test-gh-rest-list.sh
+      - name: Review-round count tests
+        run: bash plugins/ticket-workflow/tests/test-round-count.sh
