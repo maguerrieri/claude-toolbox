@@ -33,12 +33,18 @@ it. You are the **root**: the one session that sees the entire initiative.
   `gh stack merge` when `gh stack` is installed (linking the pair first if
   the top's START didn't, START Step 7), else with `gh pr merge` plus a
   `restack:` request on the top. The top then becomes an unstacked PR.
-  After `gh stack merge` it's retargeted and rebased server-side with its
-  diff unchanged, so the grant still covers it: wait for its CI on the new
-  head, then, with its PR based on the base branch (START Step 8's *Already
-  met?* test), clear its implementer, `finish: #<top> (grant: …)`, rather
-  than running FINISH again. It's an unstacked PR now, which a PR clearance
-  covers, and its implementer owns the branch and worktree. For a cloud
+  Before landing the bottom, note the top's patch id, `gh pr diff <top> |
+  git patch-id --stable`, which is the change the owner's grant covers.
+  After `gh stack merge` the top is retargeted and rebased server-side, so
+  its head changes. The grant still covers it only when the same command
+  prints the same patch id (its first field) once its CI on the new head
+  is green and its PR is based on the base branch (START Step 8's
+  *Already met?* test). Then clear its implementer, `finish: #<top>
+  (grant: …)`, rather than running FINISH again. It's an unstacked PR now,
+  which a PR clearance covers, and its implementer owns the branch and
+  worktree. A different patch id (a push since the grant, or context the
+  rebase changed) needs the owner's review: report it `ready; needs the
+  owner`. For a cloud
   implementer's top, run FINISH here for it too. A restack its implementer
   made instead (`gh pr merge` path) is a new head the owner hasn't seen, so
   after its `done:` report it as `ready; needs the owner`, the same rule
