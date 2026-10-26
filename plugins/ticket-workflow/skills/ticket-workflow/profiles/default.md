@@ -277,13 +277,14 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
            | [.[][] | select((.user.login | sub("\\[bot\\]$"; "")) == $b)
                     | select($b != "copilot-pull-request-reviewer"
                              or ((.body // "") | test("^\\s*(<!--[^>]*-->\\s*)?(## Copilot review overview\\s*)?Copilot was unable to review") | not))]
-           | group_by(.commit_id) | map({sha: .[0].commit_id, first: (map(.submitted_at) | min)}) as $heads
+           | group_by(.commit_id) | map({sha: .[0].commit_id, first: (map(.submitted_at) | min)})
+           | sort_by(.first) as $heads
            | reduce $d.markers[] as $m ({used: [], free: []};
                . as $s | (first($heads[] | select(.sha == $m.sha)) // null) as $h
                | if $h == null or any($s.free[]; . == $m.sha) then $s
                  else [$d.records[] | select(.id as $i | any($m.cites[]; . == $i) and $i < $m.id
                                                 and (any($s.used[]; . == $i) | not))
-                                    | select(.created_at < $h.first)] as $new
+                                    | select(.created_at as $t | first($heads[] | select(.first > $t)).sha == $m.sha)] as $new
                    | if $new == [] then $s else {used: ($s.used + [$new[].id]), free: ($s.free + [$m.sha])} end
                  end)
            | ($heads | length) - (.free | length)'
@@ -293,7 +294,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   says for every paginated read. Where only the GitHub MCP tools are loaded, the login is
   `get_me`'s and the comments are `get_comments`' (EPIC Step 6's MCP path). Without standalone
   `jq` the request comments can't be joined in (`gh --jq` takes no `--arg`), so run the intro's
-  one-page fallback on the reviews alone, which counts every owner head and so errs high too.
+  one-page fallback on the reviews alone: the bot login written into the filter, the `reduce`
+  dropped, and `$heads | length` as the count. It counts every owner head, so it errs high too.
   `<bot login>` is the engaged bot as the detect step found it among the PR's reviews
   (`copilot-pull-request-reviewer`, `coderabbitai`, a CI action's app login), with or without the
   `[bot]` suffix: the detect step's `gh pr view` prints the bare login while REST adds `[bot]`, so
@@ -316,14 +318,17 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     (owner: <where and when>)`, which the child posts **before** the push that lands it. The words
     come from one of three places:
     - the owner in the child's own session;
-    - a comment or line comment of the owner's on the PR, which the record links. The child tells
-      the owner's comments from sessions' by elimination: it knows its own, and other sessions post
-      only this skill's prefixed lines;
+    - a comment of the owner's on the PR, top-level or opening a line thread (never a reply in a
+      bot's thread), which the record links. Sessions post as the owner's login too, so the child
+      counts one as the owner's only when it is none of this skill's forms and isn't automated
+      output (a `/code-review --comment` finding, say). One it can't place, which may be an
+      earlier session's, is review feedback whose push counts. The owner can always say it in the
+      child's session or through its spawner instead;
     - a `request:` message from the child's recorded spawner, accepted only from the sender a
       `finish:` clearance must come from (its marker's `notify:` line, matched as
       `phases/finish.md`'s intro says). A spawner relays only the owner's own words, from its own
       session or its own recorded spawner. On a cloud edge, where no message reaches the child,
-      the spawner posts the record itself.
+      the spawner posts the record itself (`messaging.md`'s `request:` has the cloud forms).
 
     The child never records a change of its own choosing. A fix for a bot or self-review finding
     is never an owner request, even when the owner agrees with it, or every finding could be routed
@@ -339,10 +344,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     land nothing but owner requests, so an unreviewed CI fix or restack in between makes it an
     ordinary round. After pushing one, the child posts
     `Owner head: <the full 40-character sha> lands <each record's comment URL>`, and the round
-    count skips the bot's reviews of that head. The count checks the pairing itself: a marker
-    frees its head only when it cites a record posted before the marker and before the bot's first
-    review of that head, and each record frees one head. A marker that frees nothing (a wrong sha,
-    a head already reviewed) uses nothing up, so a corrected marker still works.
+    count skips the bot's reviews of that head. The count checks the pairing itself: a record
+    frees only the first head the bot reviews after the record was posted, and only when a marker
+    posted after the record names that head; each record frees one head. So a record whose request
+    rode a fix push is spent on that push and frees nothing later. A marker that frees nothing (a
+    wrong sha, another head) uses nothing up, so a corrected marker still works, and a marker
+    posted late lowers the count, after which the child rewrites its `Review rounds:` line.
   - **A head that carries anything else as well** (a fix for a bot or self-review finding, a CI
     fix, a restack, a conflict merge) is an ordinary round and gets no marker. The request rides in
     the round those fixes cost anyway, so a request never hides a fix and never costs a round
@@ -560,10 +567,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   handed back at the reviewed stopping point, stop — the coordinator or a human wakes you if
   needed. When woken after handing back at your review-round cap, re-read the Review rounds line
   in your PR body: a cap there above your round count is a raise, whoever wrote it, so resume the
-  review loop. Only automated review rounds count against that cap: a push that lands nothing but
-  what the owner asked for, in this session, on your PR or through your spawner, is not a round
-  once you record it as the review rules say, and no such request lifts these holds.
-  Budget: rounds=5" Keeps an unattended background session from over-reaching, while
+  review loop. Land what the owner asks for on your PR, whether in this session, on the PR, or
+  relayed by your spawner, without waiting to hand back. No such request lifts these holds, and
+  only automated review rounds count against your cap, so a push that lands nothing but such
+  requests is not a round once you record it as the review rules say. Budget: rounds=5" Keeps an unattended background session from over-reaching, while
   making the hold's expiry explicit — so a later /finish-ticket in the same session reads as the
   sanctioned merge phase, not a violation of this cap.
 - The **raise sentence** puts `REVIEW_BOT`'s *Raising the cap* into the child's own user turn, so

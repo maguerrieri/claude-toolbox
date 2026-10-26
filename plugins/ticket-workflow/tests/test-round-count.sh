@@ -11,8 +11,9 @@
 #   iterating in the child's session costs nothing, while a bot-finding fix
 #   between the iterations still counts;
 # - an Owner head: marker frees its head only when it cites an
-#   Owner request: record posted before it, each record frees one head, a
-#   head the bot first reviewed before the record stays a round, a marker that
+#   Owner request: record posted before it, each record frees one head, and
+#   only the first head the bot reviews after the record (so a record that
+#   rode a fix push, or one from before round 1, frees nothing later), a marker that
 #   frees nothing uses nothing up (so a corrected marker works), and both
 #   comments must come from the owner's login (anyone can comment on a public
 #   repo's PR);
@@ -175,6 +176,12 @@ for sh in "${shells[@]}"; do
 	record 2 "$sh: a head reviewed before its record stays a round" "$(count "$sh")"
 	base; review 3; request 101 'one'; marker 102 3 101; review 3
 	record 3 "$sh: a head first reviewed before its record stays a round" "$(count "$sh")"
+	base; request 101 'one'; review 3; review 4; marker 102 4 101
+	record 4 "$sh: a record that rode a fix push frees no later head" "$(count "$sh")"
+	reset; request 101 'one'; review 1; review 2; review 3; marker 102 3 101
+	record 3 "$sh: a record from before round 1 frees only head 1, so not head 3" "$(count "$sh")"
+	base; request 101 'one'; review 3; marker 102 3 101
+	record 2 "$sh: a late marker still frees the head right after its record" "$(count "$sh")"
 	base; request 101 'one'; marker 102 9 101; marker 103 3 101; review 3
 	record 2 "$sh: a marker with a wrong sha uses nothing up" "$(count "$sh")"
 	base; request 101 'one'; marker 102 1 101; marker 103 3 101; review 3

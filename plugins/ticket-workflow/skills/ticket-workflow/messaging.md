@@ -135,7 +135,10 @@ receivers and greps treat the two channels uniformly:
   the `Owner request:` record itself and lands the request. On a cloud edge
   the spawner posts the record on the child's PR and the Routine carries only
   `request: PR #<pr> <record URL>`, which, like `raise:`, **authorizes
-  nothing**: the child acts on the record. A child woken by a request after
+  nothing**: the child acts on the record. A planner with a cloud coordinator
+  posts the `<child-id>` form on the epic as a `COORD` marker, which the
+  coordinator's next wake reads (EPIC Step 6) and relays to the child as its
+  spawner. A child woken by a request after
   handing back answers `resumed: request on PR #<pr>` on a local edge.
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
