@@ -54,7 +54,8 @@ if [ -n "$repo" ] && ! [[ $repo =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
 	exit 2
 fi
 
-title=$(cat)
+# A title is one line; anything after the first is not part of it.
+IFS= read -r title || true
 scope=${title%%:*}
 # Trim the scope's surrounding whitespace, then keep only a plain directory
 # name: no spaces, slashes or leading dot. Anything else names no project.
