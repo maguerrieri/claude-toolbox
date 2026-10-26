@@ -131,7 +131,9 @@ def test_rule_continuation_spans_blank_lines(tmp_path):
 
 def test_classic_pin_follows_the_importer():
     # Ironsworn's tables share the importer's Datasworn pin; moving it moves this one too.
-    assert f"/{importer.UPSTREAM_REF}/datasworn/classic/classic.json" in _read(CI)
+    ci = _read(CI)
+    assert f"/{importer.UPSTREAM_REF}/datasworn/classic/classic.json" in ci
+    assert f"CLASSIC_SHA256: {CLASSIC_SHA256}\n" in ci, "CI caches and fetches classic.json by this sha"
     source = _read(os.path.join(ADAPTERS, "ironsworn", "SOURCE.md"))
     assert importer.UPSTREAM_REF in source and importer.UPSTREAM_TAG in source
     assert CLASSIC_SHA256 in source

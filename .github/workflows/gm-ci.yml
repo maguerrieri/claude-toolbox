@@ -13,6 +13,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Ironsworn's Ask the Oracle check reads classic.json at the importer's Datasworn pin,
+      # cached as <sha256>.json beside the importer's starforged file (test_oracle_command checks both values).
+      CLASSIC_SHA256: 7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc
+      CLASSIC_URL: https://raw.githubusercontent.com/rsek/datasworn/e643a75263c1cb3e845a0c0789879ff4e8b49532/datasworn/classic/classic.json
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -21,18 +26,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/gm-datasworn
-          key: gm-datasworn-${{ hashFiles('plugins/gm/tools/datasworn-import') }}
-      # classic.json (Ironsworn's Ask the Oracle check) is named by its sha256, as the importer names starforged.json.
+          key: gm-datasworn-${{ hashFiles('plugins/gm/tools/datasworn-import') }}-${{ env.CLASSIC_SHA256 }}
       - name: Fetch the pinned Datasworn classic.json
         run: >-
-          test -f "$HOME/.cache/gm-datasworn/7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc.json" ||
-          curl -fsSL --retry 3 --create-dirs
-          -o "$HOME/.cache/gm-datasworn/7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc.json"
-          https://raw.githubusercontent.com/rsek/datasworn/e643a75263c1cb3e845a0c0789879ff4e8b49532/datasworn/classic/classic.json
+          test -f "$HOME/.cache/gm-datasworn/$CLASSIC_SHA256.json" ||
+          curl -fsSL --retry 3 --create-dirs -o "$HOME/.cache/gm-datasworn/$CLASSIC_SHA256.json" "$CLASSIC_URL"
       - name: Run dice/validator tests
-        run: >-
-          DATASWORN_CLASSIC_JSON="$HOME/.cache/gm-datasworn/7c669d602cf05576d74a966d3eac0657bc55ddbdab2829507362f00004ef52fc.json"
-          uvx pytest plugins/gm/tests -q
+        run: DATASWORN_CLASSIC_JSON="$HOME/.cache/gm-datasworn/$CLASSIC_SHA256.json" uvx pytest plugins/gm/tests -q
       - name: Validate all adapters
         run: python3 plugins/gm/bin/validate-adapter --all plugins/gm/adapters
       - name: Starforged content matches its pinned Datasworn source
