@@ -24,33 +24,23 @@ it. You are the **root**: the one session that sees the entire initiative.
   report. Stacking a standalone issue is a filing
   decision, not epic coordination; a stack that branches, or one inside an
   epic, stays a coordinator's.
-- **Land a stacked pair bottom first** (a PR and the one stacked on it, both
-  from implementers you spawned), on the owner's grant only (the
-  merge-authority bullet below). The grant has to cover both PRs to land
-  both, since FINISH Step 2 won't merge the top while its base is the
-  bottom's open branch. Land the bottom with your own FINISH, in a temporary
-  worktree as that bullet says. Its Step 2 merges that layer only: with
-  `gh stack merge` when `gh stack` is installed (linking the pair first if
-  the top's START didn't, START Step 7), else with `gh pr merge` plus a
-  `restack:` request on the top. The top then becomes an unstacked PR.
-  Before landing the bottom, note the top's patch id, `gh pr diff <top> |
-  git patch-id --stable`, which is the change the owner's grant covers.
-  After `gh stack merge` the top is retargeted and rebased server-side, so
-  its head changes. The grant still covers it only when the same command
-  prints the same patch id (its first field) once its CI on the new head
-  is green and its PR is based on the base branch (START Step 8's
-  *Already met?* test). Then clear its implementer, `finish: #<top>
-  (grant: …)`, rather than running FINISH again. It's an unstacked PR now,
-  which a PR clearance covers, and its implementer owns the branch and
-  worktree. A different patch id (a push since the grant, or context the
-  rebase changed) needs the owner's review: report it `ready; needs the
-  owner`. For a cloud
-  implementer's top, run FINISH here for it too. A restack its implementer
-  made instead (`gh pr merge` path) is a new head the owner hasn't seen, so
-  after its `done:` report it as `ready; needs the owner`, the same rule
-  FINISH Step 2 applies to a restacked head. A grant that names only the
-  bottom lands only the bottom; report the top the same way once it's
-  unstacked.
+- **Land a stacked pair in one merge** (a PR and the one stacked on it,
+  both from implementers you spawned), on the owner's grant only (the
+  merge-authority bullet below). The grant has to name both PRs: FINISH
+  Step 2 won't merge the top while its base is the bottom's open branch,
+  and a grant for the bottom alone lands the bottom alone. With `gh stack`
+  installed, run your own FINISH once over the pair. Step 1's gate runs on
+  each PR at its current head, in its own temporary worktree as that bullet
+  says. Step 2 links the pair if the top's START didn't (START Step 7) and
+  lands both with one `gh stack merge <top-pr> --rebase --yes`, which merges
+  every layer up to the top or none of them (FINISH Step 2). The heads that
+  land are the ones the owner reviewed and the gate checked, with no
+  rebased head in between to re-approve. Both implementers clean up their
+  own worktrees. Without `gh stack`, land the bottom alone; FINISH Step 2
+  posts a `restack:` request on the top, and the restack its implementer
+  makes is a new head the owner hasn't seen. After its `done:`, report the
+  top `ready; needs the owner`, the same rule FINISH Step 2 applies to any
+  restacked head.
 
 ## You do NOT
 
