@@ -67,9 +67,10 @@ Return the set of child keys this child is blocked by, **keeping only those that
 ## DEPENDENCY_PR(id)  — find the open PR for a dependency (START phase)
 Jira PRs reference the ticket key rather than using GitHub closing keywords. Search open PR titles and bodies for the key, then require an exact token match (so `ABC-12` doesn't match `ABC-123`):
 ```bash
-gh pr list --state open -L 500 --search "<ID> in:title,body" --json number,headRefName,title,body --jq '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number,headRefName}'
+gh pr list --state open -L 500 --author @me --search "<ID> in:title,body" --json number,headRefName,title,body --jq '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number,headRefName}'
 ```
 In a cloud session, use `github-rest.md`'s Jira spelling of this call instead (SKILL.md Step 0).
+`--author @me` keeps only PRs the account `gh` runs as opened, as the GitHub adapter's `DEPENDENCY_PR` explains.
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)

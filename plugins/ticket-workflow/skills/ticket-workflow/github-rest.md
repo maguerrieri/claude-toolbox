@@ -119,12 +119,13 @@ bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{
 
 **`DEPENDENCY_PR`**
 ```bash
-bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls' -f state=open | jq -c '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number, headRefName: .head.ref}'
+me=$(gh api user -q .login) && bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls' -f state=open | jq -c --arg me "$me" '.[] | select(.user.login == $me) | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number, headRefName: .head.ref}'
 ```
 The Jira adapter's `DEPENDENCY_PR` matches the ticket key in the title or body instead:
 ```bash
-bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls' -f state=open | jq -c '.[] | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number, headRefName: .head.ref}'
+me=$(gh api user -q .login) && bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/pulls' -f state=open | jq -c --arg me "$me" '.[] | select(.user.login == $me) | select((((.title // "") + "\n" + (.body // "")) | test("(^|[^A-Z0-9])<ID>([^A-Z0-9]|$)"; "i"))) | {number, headRefName: .head.ref}'
 ```
+Both keep only PRs the account `gh` runs as opened, as `gh pr list --author @me` does in the adapters.
 
 **`COORD`**
 ```bash

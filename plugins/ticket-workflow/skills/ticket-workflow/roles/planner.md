@@ -14,9 +14,10 @@ it. You are the **root**: the one session that sees the entire initiative.
   initiative.
 - **Stack new work on in-flight PRs by default.** When an issue you file or
   spawn builds on, or touches the same code as, an open PR whose design is
-  settled, don't hold it back until that PR merges. File it (or edit it) with
-  a single `Depends on #<n>` naming that PR's issue, then spawn it, and its
-  START bases it on the open PR. `phases/spawn.md` Step 1, *Stack on in-flight
+  settled, don't hold it back until that PR merges. File it (or edit it) so
+  that PR's issue is its one declared dependency (`Depends on #<n>` on
+  GitHub; the tracker's `DEPS` form elsewhere), then spawn it, and its START
+  bases it on the open PR. `phases/spawn.md` Step 1, *Stack on in-flight
   work*, says when to wait instead (the design still moving, a stack that
   would branch, more than one in-flight parent, an epic's PR). Waiting is
   your call: leave such an issue out of the spawn and say why, since SPAWN
@@ -36,7 +37,9 @@ it. You are the **root**: the one session that sees the entire initiative.
   every layer up to the top or none of them (FINISH Step 2). The heads that
   land are the ones the owner reviewed and the gate checked, with no
   rebased head in between to re-approve. Both implementers clean up their
-  own worktrees. Without `gh stack`, land the bottom alone; FINISH Step 2
+  own worktrees. Without `gh stack` on an unregistered pair (a registered
+  one needs a session with the extension, FINISH Step 2), land the bottom
+  alone; FINISH Step 2
   posts a `restack:` request on the top, and the restack its implementer
   makes is a new head the owner hasn't seen. After its `done:`, report the
   top `ready; needs the owner`, the same rule FINISH Step 2 applies to any
