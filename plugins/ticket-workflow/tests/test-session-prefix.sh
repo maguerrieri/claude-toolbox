@@ -46,6 +46,9 @@ record 'toolbox' 'a scope with more words' "$(local_prefix 'spotify-curator scri
 record 'toolbox' 'case must match' "$(local_prefix 'Voter-Guide: Fix')"
 record 'sunset' 'surrounding whitespace is trimmed' "$(local_prefix '  sunset : Fix')"
 record 'toolbox' 'no colon, no scope' "$(local_prefix 'voter-guide fix the page')"
+record 'toolbox' 'only the first line is the title' "$(local_prefix $'ci fix\nvoter-guide: later line')"
+record 'voter-guide' 'a title with no trailing newline' \
+	"$(printf 'voter-guide: Fix' | bash "$script" toolbox --root "$root" --projects "$projects")"
 record 'toolbox' 'a file is not a project' "$(local_prefix 'README.md: Reword')"
 record 'toolbox' 'a hidden dir is not a project' "$(local_prefix '.cache: Clear')"
 record 'toolbox' 'a symlinked dir is not a project' "$(local_prefix 'shared: Fix')"
