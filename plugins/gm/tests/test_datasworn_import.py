@@ -1,4 +1,4 @@
-"""tools/datasworn-import and the starforged content it generates.
+"""tools/datasworn-import and the starforged and ironsworn content it generates.
 
 The generated tree itself is checked against the pinned upstream by CI
 (`datasworn-import --check`, which fetches it). These tests cover what runs
@@ -20,7 +20,8 @@ PLUGIN = os.path.abspath(os.path.join(HERE, ".."))
 TOOL = os.path.join(PLUGIN, "tools", "datasworn-import")
 ADAPTERS = os.path.join(PLUGIN, "adapters")
 STARFORGED = os.path.join(ADAPTERS, "starforged")
-FIXTURES = os.path.join(HERE, "fixtures", "oracles", "starforged")
+IRONSWORN = os.path.join(ADAPTERS, "ironsworn")
+FIXTURE_ROOT = os.path.join(HERE, "fixtures", "oracles")
 
 
 def _load(name, path):
@@ -33,6 +34,8 @@ def _load(name, path):
 
 imp = _load("datasworn_import", TOOL)
 roll = _load("roll", os.path.join(PLUGIN, "bin", "roll"))
+SF = imp.RULESETS["starforged"]
+CLASSIC = imp.RULESETS["classic"]
 
 
 # --- a minimal Datasworn document -------------------------------------------
@@ -144,9 +147,20 @@ def test_oracle_path(ref, path):
     assert imp.oracle_path(ref) == path
 
 
+@pytest.mark.parametrize("ref,path", [
+    ("oracle_rollable:classic/action_and_theme/action", "action.md"),
+    ("oracle_rollable:classic/name/ironlander/a", "name/ironlander/a.md"),
+    ("oracle_collection:classic/settlement/quick_name", "settlement/quick-name.md"),
+    ("move.oracle_rollable:classic/fate/pay_the_price.pay_the_price", "moves/pay-the-price.md"),
+    ("truth:classic/old_world", "truths/old-world.md"),
+])
+def test_classic_oracle_path(ref, path):
+    assert imp.oracle_path(ref) == path
+
+
 def test_oracle_path_rejects_other_rulesets():
     with pytest.raises(ValueError):
-        imp.oracle_path("oracle_rollable:classic/action")
+        imp.oracle_path("oracle_rollable:sundered_isles/core/action")
 
 
 def test_convert_links():
@@ -154,19 +168,41 @@ def test_convert_links():
             "[Derelict](datasworn:oracle_collection:starforged/derelict), "
             "[Strike](datasworn:move:starforged/combat/strike), "
             "[Vestige](datasworn:asset:starforged/path/vestige)")
-    assert imp.convert_links(text) == ("Action (`oracles/action.md`), Derelict (`oracles/derelict/`), "
-                                       "Strike, Vestige (path asset)")
+    assert imp.convert_links(text, SF) == ("Action (`oracles/action.md`), Derelict (`oracles/derelict/`), "
+                                           "Strike, Vestige (path asset)")
+
+
+def test_convert_links_classic_kinds():
+    text = ("[Havens](datasworn:atlas_entry:classic/ironlands/havens), "
+            "[raiders](datasworn:npc:classic/ironlanders/raider), "
+            "[horrors](datasworn:npc_collection:classic/horrors), "
+            "[Old World](datasworn:truth:classic/old_world), "
+            "[combat moves](datasworn:move_category:classic/combat), "
+            "[Check Your Gear](datasworn:move:delve/delve/check_your_gear)")
+    assert imp.convert_links(text, CLASSIC) == ("Havens, raiders, horrors, Old World, combat moves, "
+                                                "Check Your Gear (Delve move)")
+    assert imp.convert_links("[Sail](datasworn:move:sundered_isles/x/sail)", CLASSIC) == "Sail (Sundered Isles move)"
+
+
+def test_convert_links_rejects_other_rulesets_tables():
+    # a table in another ruleset lives in another adapter, so its path here would be wrong
+    with pytest.raises(ValueError, match="another ruleset"):
+        imp.convert_links("[Action](datasworn:oracle_rollable:starforged/core/action)", CLASSIC)
 
 
 def test_convert_links_rejects_unknown_link_types():
     with pytest.raises(ValueError):
-        imp.convert_links("[x](datasworn:npc:starforged/x)")
+        imp.convert_links("[x](datasworn:delve_site:starforged/x)", SF)
+    # starforged ships no foes or regions file for an NPC or a region to point at
+    for kind in ("npc", "npc_collection", "atlas_entry"):
+        with pytest.raises(ValueError):
+            imp.convert_links(f"[x](datasworn:{kind}:starforged/x)", SF)
 
 
 def test_convert_links_rejects_leftover_templates():
     # an embedded table outside rules_text/entry_text must fail, not leak into a table
     with pytest.raises(ValueError, match="template"):
-        imp.convert_links("Roll: {{table>move.oracle_rollable:starforged/suffer/endure_harm.endure_harm}}")
+        imp.convert_links("Roll: {{table>move.oracle_rollable:starforged/suffer/endure_harm.endure_harm}}", SF)
 
 
 def test_two_tables_on_one_path_fail():
@@ -175,20 +211,23 @@ def test_two_tables_on_one_path_fail():
     doc["oracles"]["character"]["contents"]["name"] = _table(
         "oracle_rollable:starforged/character/name", "Name", [_row(1, 10, "Ash")])
     with pytest.raises(ValueError, match="character/name.md"):
-        imp.generate(doc)
+        imp.generate(doc, SF)
 
 
 def test_unconverted_upstream_sections_fail():
     doc = mini_doc()
     doc["delve_sites"] = {"some_site": {"name": "A site"}}
     with pytest.raises(ValueError, match="delve_sites"):
-        imp.generate(doc)
+        imp.generate(doc, SF)
     doc["delve_sites"] = {}         # empty sections (as at the pin) are fine
-    imp.generate(doc)
+    imp.generate(doc, SF)
+    doc["atlas"] = {"forge": {"name": "The Forge"}}   # classic renders an atlas; starforged doesn't
+    with pytest.raises(ValueError, match="atlas"):
+        imp.generate(doc, SF)
 
 
 def test_followups_moves_tables_and_npcs_are_rendered():
-    files = imp.generate(mini_doc())
+    files = imp.generate(mini_doc(), SF)
     feature = roll.parse_table(files["adapters/starforged/oracles/planet/ice/feature.md"])
     assert feature[1]["entry"] == "Ice caves\n→ Next, consider `oracles/planet/ice/`"
     moves = files["adapters/starforged/rules/moves.md"]
@@ -201,38 +240,39 @@ def test_followups_moves_tables_and_npcs_are_rendered():
 
 def test_the_hand_written_sheet_is_checked_against_the_data(tmp_path):
     doc = mini_doc()
-    assert "adapters/starforged/sheet-template.md" not in imp.generate(doc)   # not generated
-    lines = imp.sheet_lines(doc)
+    assert "adapters/starforged/sheet-template.md" not in imp.generate(doc, SF)   # not generated
+    lines = imp.sheet_lines(doc, SF)
     assert "- edge {{}}" in lines and "- Health   [▰▰▰▰▰] 5/5" in lines
     assert "- *misfortunes:* [ ] wounded" in lines and "- STARSHIP integrity [▰▰▰▰▰] 5/5" in lines
     assert "- Quests      [▱▱▱▱▱▱▱▱▱▱] 0/10 — Swear vows." in lines
 
     sheet = tmp_path / "adapters" / "starforged" / "sheet-template.md"
-    assert imp.check_sheet(str(tmp_path), doc) == [
+    assert imp.check_sheet(str(tmp_path), doc, SF) == [
         "missing   adapters/starforged/sheet-template.md (hand-written; see sheet_lines())"]
     sheet.parent.mkdir(parents=True)
     sheet.write_text("# {{name}}\n\nLayout the tool doesn't own.\n" + "\n".join(lines) + "\n")
-    assert imp.check_sheet(str(tmp_path), doc) == []
+    assert imp.check_sheet(str(tmp_path), doc, SF) == []
     sheet.write_text("\n".join(l for l in lines if "Health" not in l) + "\n")
-    assert imp.check_sheet(str(tmp_path), doc) == [
+    assert imp.check_sheet(str(tmp_path), doc, SF) == [
         "sheet     adapters/starforged/sheet-template.md lacks the data line: - Health   [▰▰▰▰▰] 5/5"]
-    with pytest.raises(SystemExit):
-        imp.check(str(tmp_path), {}, imp.check_sheet(str(tmp_path), doc))
+    assert imp.check(str(tmp_path), {}, SF, imp.check_sheet(str(tmp_path), doc, SF)) == [
+        "sheet     adapters/starforged/sheet-template.md lacks the data line: - Health   [▰▰▰▰▰] 5/5"]
 
 
 def test_load_caches_the_pinned_file(tmp_path, monkeypatch):
     raw = b'{"pinned": true}'
-    monkeypatch.setattr(imp, "UPSTREAM_SHA256", __import__("hashlib").sha256(raw).hexdigest())
+    monkeypatch.setattr(SF, "sha256", __import__("hashlib").sha256(raw).hexdigest())
     fetched = []
     monkeypatch.setattr(imp, "fetch", lambda url: fetched.append(url) or raw)
     cache = tmp_path / "cache"
-    assert imp.load(None, str(cache)) == {"pinned": True}
-    assert imp.load(None, str(cache)) == {"pinned": True}
+    assert imp.load(None, SF, str(cache)) == {"pinned": True}
+    assert imp.load(None, SF, str(cache)) == {"pinned": True}
     assert len(fetched) == 1        # the second load read the cache
+    assert fetched == [SF.url]
 
 
 def test_fixture_max_is_upstream_not_the_weight_sum():
-    files = imp.generate(mini_doc())
+    files = imp.generate(mini_doc(), SF)
     fx = json.loads(files["tests/fixtures/oracles/starforged/character/name/given-name.json"])
     assert [r["max"] for r in fx["rows"]] == [6, 10]
 
@@ -248,7 +288,7 @@ def test_rows_must_tile_the_die():
 
 
 def test_generate_mini_doc():
-    files = imp.generate(mini_doc())
+    files = imp.generate(mini_doc(), SF)
     o = "adapters/starforged/oracles/"
     assert {o + p for p in ["action.md", "planet/class.md", "planet/ice/feature.md",
                             "character/name/given-name.md", "character/name/family-name.md",
@@ -291,10 +331,152 @@ def test_generate_mini_doc():
             assert text.startswith(imp.MARKER), rel
 
 
+def mini_classic():
+    src = {"license": imp.CC_BY_NC_SA}
+    action = _table("oracle_rollable:classic/action_and_theme/action", "Action",
+                    [_row(1, 10, "Scheme")], dice="1d10")
+    region = _table("oracle_rollable:classic/place/region", "Region", [_row(1, 10, "Havens")])
+    harm = _table("move.oracle_rollable:classic/suffer/endure_harm.endure_harm", "Endure Harm",
+                  [_row(1, 10, "You are battered but still standing.")])
+    return {
+        "oracles": {"action_and_theme": {"name": "Action and Theme Oracles", "contents": {"action": action}},
+                    "place": {"name": "Place Oracles", "contents": {"region": region}}},
+        "moves": {"suffer": {"name": "Suffer Moves", "contents": {"endure_harm": {
+            "_id": "move:classic/suffer/endure_harm", "name": "Endure Harm", "roll_type": "action_roll",
+            "text": "Roll +iron.\n\n{{table>move.oracle_rollable:classic/suffer/endure_harm.endure_harm}}",
+            "oracles": {"endure_harm": harm}}}},
+                  "relationship": {"name": "Relationship Moves", "contents": {"write_your_epilogue": {
+            "_id": "move:classic/relationship/write_your_epilogue", "name": "Write Your Epilogue",
+            "roll_type": "special_track", "text": "When you retire..."}}}},
+        "truths": {"iron": {"_id": "truth:classic/iron", "name": "Iron", "dice": "1d10", "_source": src,
+                            "options": [{"roll": {"min": 1, "max": 5}, "description": "Black iron.",
+                                         "quest_starter": "Find the caravan."},
+                                        {"roll": {"min": 6, "max": 10}, "description": "Rare iron."}]},
+                   # as upstream has it: the second option repeats the third's range (ERRATA)
+                   "mysticism": {"_id": "truth:classic/mysticism", "name": "Mysticism", "dice": "1d100",
+                                 "options": [{"roll": {"min": lo, "max": hi}, "description": d}
+                                             for lo, hi, d in [(1, 33, "Lost."), (68, 100, "Rare."),
+                                                               (68, 100, "Everywhere.")]]}},
+        "assets": {"companion": {"name": "Companion Assets", "contents": {"hawk": {
+            "_id": "asset:classic/companion/hawk", "name": "Hawk", "requirement": "It is aloft.",
+            "options": {"name": {"label": "name", "field_type": "text"}},
+            "controls": {"health": {"label": "health", "field_type": "condition_meter", "max": 3, "value": 3}},
+            "abilities": [{"name": "Far-seeing", "text": "Add +1.", "enabled": False}]}}},
+                   "combat_talent": {"name": "Combat Talent Assets", "contents": {"ironclad": {
+            "_id": "asset:classic/combat_talent/ironclad", "name": "Ironclad", "options": {},
+            "controls": {"equipped": {"label": "equipped", "field_type": "select_enhancement", "choices": {
+                "light": {"label": "lightly armored"}, "war": {"label": "geared for war"}}}},
+            "abilities": [{"text": "When you [Check Your Gear](datasworn:move:delve/delve/check_your_gear), "
+                                   "add +1.", "enabled": True}]}}}},
+        "npcs": {"beasts": {"_id": "npc_collection:classic/beasts", "name": "Beasts", "description": "Unknown in the [Old World](datasworn:truth:classic/old_world).",
+                            "contents": {"wyvern": {
+            "_id": "npc:classic/beasts/wyvern", "name": "Wyvern", "nature": "Beast", "rank": 4, "_source": src,
+            "features": ["Huge wings"], "drives": ["Feed"], "tactics": ["Swoop down"],
+            "description": "It hunts the [Havens](datasworn:atlas_entry:classic/ironlands/havens).",
+            "quest_starter": "Tame one.", "your_truth": "Where do they die?"}}}},
+        "atlas": {"ironlands": {"_id": "atlas_collection:classic/ironlands", "name": "The Ironlands",
+                                "summary": "A rugged peninsula.", "contents": {"havens": {
+            "_id": "atlas_entry:classic/ironlands/havens", "name": "Havens", "summary": "Forests and rivers.",
+            "features": ["Walled settlements", "[Raiders](datasworn:npc:classic/ironlanders/raider)"],
+            "description": "A fresh start.", "quest_starter": "Unseat the cruel leader.", "_source": src}}}},
+        "rules": {"stats": {"iron": {"description": "Strength."}},
+                  "condition_meters": {"supply": {"label": "supply", "max": 5, "value": 5, "shared": True}},
+                  "impacts": {"banes": {"label": "banes", "contents": {"maimed": {"label": "maimed"}}}},
+                  "special_tracks": {"bonds": {"label": "bonds", "description": "Forge a Bond."}}},
+    }
+
+
+def test_generate_mini_classic():
+    files = imp.generate(mini_classic(), CLASSIC)
+    a = "adapters/ironsworn/"
+    assert {a + p for p in ["oracles/action.md", "oracles/moves/endure-harm.md", "oracles/truths/iron.md",
+                            "rules/moves.md", "rules/truths.md", "rules/encounters.md", "rules/regions.md",
+                            "rules/assets/companion.md"]} <= set(files)
+    assert a + "sheet-template.md" not in files       # hand-written, its data lines checked
+    assert "tests/fixtures/oracles/ironsworn/truths/iron.json" in files
+    # truth options with no summary: a range heading, then the truth and its quest starter
+    truths = files[a + "rules/truths.md"]
+    assert "### 1–5\n\nBlack iron.\n\n*Quest starter:* Find the caravan." in truths
+    truth = roll.parse_table(files[a + "oracles/truths/iron.md"])
+    assert [(e["weight"], e["entry"]) for e in truth] == [(5, "Black iron.\nQuest starter: Find the caravan."),
+                                                         (5, "Rare iron.")]
+    mysticism = roll.parse_table(files[a + "oracles/truths/mysticism.md"])
+    assert [(e["weight"], e["entry"]) for e in mysticism] == [(33, "Lost."), (34, "Rare."), (33, "Everywhere.")]
+    moves = files[a + "rules/moves.md"]
+    assert "# Ironsworn Moves" in moves and "| 1–10 | You are battered but still standing. |" in moves
+    assert "*Roll:* progress roll on your bonds track" in moves
+    cards = files[a + "rules/assets/companion.md"]
+    assert "- [ ] **Far-seeing:** Add +1." in cards and "*Track:* health meter: starts at 3, max 3" in cards
+    talent = files[a + "rules/assets/combat-talent.md"]
+    assert "*Choose:* equipped: lightly armored / geared for war" in talent
+    assert "Check Your Gear (Delve move), add +1." in talent
+    enc = files[a + "rules/encounters.md"]
+    assert "# Ironsworn Encounters" in enc
+    assert "*Beast* · **Rank:** extreme (4)" in enc and "**Features:** Huge wings" in enc
+    assert "Unknown in the Old World." in enc and "It hunts the Havens." in enc
+    assert "*Your truth:* Where do they die?" in enc
+    regions = files[a + "rules/regions.md"]
+    assert "## Havens" in regions and "*Features:* Walled settlements; Raiders." in regions
+    lines = imp.sheet_lines(mini_classic(), CLASSIC)
+    assert "- Supply   [▰▰▰▰▰] 5/5" in lines and "- *banes:* [ ] maimed" in lines
+    assert "- Bonds       [▱▱▱▱▱▱▱▱▱▱] 0/10 — Forge a Bond." in lines
+    assert not any("STARSHIP" in line for line in lines)
+    for rel, text in files.items():
+        assert "datasworn:" not in text, rel
+
+
+def test_classic_licenses_are_checked():
+    doc = mini_classic()
+    doc["npcs"]["beasts"]["contents"]["wyvern"]["_source"] = {"license": imp.CC_BY}
+    with pytest.raises(ValueError, match="npcs"):
+        imp.generate(doc, CLASSIC)
+    # untagged content (like the sheet's rules) falls under the file's own license
+    doc = mini_classic()
+    doc["license"] = imp.CC_BY_NC_SA
+    with pytest.raises(ValueError, match="classic oracles: licensed"):
+        imp.generate(doc, CLASSIC)
+
+
+
+
+def test_errata_fix_the_value_they_name():
+    data = {"truths": {"mysticism": {"options": [{}, {"roll": {"min": 68, "max": 100}}]}}}
+    fixed = imp.apply_errata(data, CLASSIC)
+    assert fixed["truths"]["mysticism"]["options"][1]["roll"] == {"min": 34, "max": 67}
+    assert data["truths"]["mysticism"]["options"][1]["roll"] == {"min": 68, "max": 100}   # a copy
+    data["truths"]["mysticism"]["options"][1]["roll"] = {"min": 34, "max": 67}            # fixed upstream
+    with pytest.raises(ValueError, match="drop the erratum"):
+        imp.apply_errata(data, CLASSIC)
+    with pytest.raises(ValueError, match="no such value"):
+        imp.apply_errata({"truths": {}}, CLASSIC)
+
+
+def test_row_oracle_rolls_must_name_a_table_of_the_ruleset():
+    doc = mini_doc()
+    doc["oracles"]["planet"]["contents"]["class"]["rows"][1]["oracle_rolls"] = [
+        {"oracle": "oracle_rollable:classic/action_and_theme/action"}]
+    with pytest.raises(ValueError, match="unknown table"):
+        imp.generate(doc, SF)
+
+
+def test_nested_npc_collections_fail_loudly():
+    doc = mini_classic()
+    doc["npcs"]["beasts"]["collections"] = {"wyrms": {"_id": "npc_collection:classic/beasts/wyrms"}}
+    with pytest.raises(ValueError, match="nested NPC"):
+        imp.generate(doc, CLASSIC)
+
+
+def test_generated_text_never_leaks_a_datasworn_link():
+    doc = mini_classic()
+    doc["npcs"]["beasts"]["contents"]["wyvern"]["nature"] = "[Beast](datasworn:npc_collection:classic/beasts)"
+    with pytest.raises(ValueError, match="unconverted"):
+        imp.generate(doc, CLASSIC)
+
+
 def test_write_owns_only_marked_files(tmp_path):
     root = str(tmp_path)
-    files = imp.generate(mini_doc())
-    imp.write(root, files)
+    files = imp.generate(mini_doc(), SF)
+    imp.write(root, files, SF)
     hand = tmp_path / "adapters" / "starforged" / "rules" / "character-creation.md"
     hand.write_text("# hand-written\n")
     stale = tmp_path / "adapters" / "starforged" / "oracles" / "gone.md"
@@ -304,33 +486,40 @@ def test_write_owns_only_marked_files(tmp_path):
     empty.mkdir()                   # a hand-made dir, still empty
     (tmp_path / "tests" / "fixtures" / "oracles" / "starforged" / ".DS_Store").write_bytes(b"\x00\x05\x16\x07\xff")
 
-    imp.write(root, files)          # regenerating removes stale output, keeps hand-written files
+    imp.write(root, files, SF)      # regenerating removes stale output, keeps hand-written files
     assert hand.read_text() == "# hand-written\n"
     assert not stale.exists()
     assert empty.is_dir()
-    imp.check(root, files)          # in sync (and the .DS_Store isn't ours): returns quietly
+    assert imp.check(root, files, SF) == []    # in sync (and the .DS_Store isn't ours)
 
     (tmp_path / "adapters" / "starforged" / "oracles" / "action.md").write_text(imp.GENERATED + "\n- [1] edited\n")
-    with pytest.raises(SystemExit):
-        imp.check(root, files)
+    assert imp.check(root, files, SF) == ["differs   adapters/starforged/oracles/action.md"]
 
     clash = dict(files)
     clash["adapters/starforged/rules/character-creation.md"] = imp.GENERATED + "\n"
+    assert imp.clashes(root, clash, SF) == ["adapters/starforged/rules/character-creation.md"]
     with pytest.raises(SystemExit, match="isn't generated"):
-        imp.write(root, clash)
+        imp.write(root, clash, SF)
 
 
 def test_load_rejects_an_unpinned_file(tmp_path):
     p = tmp_path / "starforged.json"
     p.write_text("{}")
     with pytest.raises(SystemExit, match="doesn't match the pin"):
-        imp.load(str(p))
+        imp.load(str(p), SF)
 
 
-@pytest.mark.skipif(not os.environ.get("DATASWORN_STARFORGED_JSON"),
-                    reason="set DATASWORN_STARFORGED_JSON to a copy of the pinned file (CI runs --check online)")
-def test_checked_in_tree_matches_upstream():
-    p = subprocess.run([TOOL, "--check", "--json", os.environ["DATASWORN_STARFORGED_JSON"]],
+def test_json_needs_a_ruleset():
+    p = subprocess.run([TOOL, "--check", "--json", "x.json"], capture_output=True, text=True)
+    assert p.returncode == 2 and "--json needs --ruleset" in p.stderr
+
+
+@pytest.mark.parametrize("ruleset", sorted(imp.RULESETS))
+def test_checked_in_tree_matches_upstream(ruleset):
+    env = f"DATASWORN_{ruleset.upper()}_JSON"
+    if not os.environ.get(env):
+        pytest.skip(f"set {env} to a copy of the pinned file (CI runs --check online)")
+    p = subprocess.run([TOOL, "--check", "--ruleset", ruleset, "--json", os.environ[env]],
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
 
@@ -341,10 +530,12 @@ def _tables(adapter_dir):
     return sorted(glob.glob(os.path.join(adapter_dir, "oracles", "**", "*.md"), recursive=True))
 
 
-def test_every_starforged_table_has_golden_ranges():
-    tables = {os.path.relpath(p, os.path.join(STARFORGED, "oracles"))[:-3] for p in _tables(STARFORGED)}
-    fixtures = {os.path.relpath(p, FIXTURES)[:-5]
-                for p in glob.glob(os.path.join(FIXTURES, "**", "*.json"), recursive=True)}
+@pytest.mark.parametrize("adapter", ["starforged", "ironsworn"])
+def test_every_generated_table_has_golden_ranges(adapter):
+    adapter_dir, fixtures = os.path.join(ADAPTERS, adapter), os.path.join(FIXTURE_ROOT, adapter)
+    tables = {os.path.relpath(p, os.path.join(adapter_dir, "oracles"))[:-3] for p in _tables(adapter_dir)}
+    fixtures = {os.path.relpath(p, fixtures)[:-5]
+                for p in glob.glob(os.path.join(fixtures, "**", "*.json"), recursive=True)}
     assert tables == fixtures
 
 
@@ -363,6 +554,25 @@ def test_starforged_ships_the_full_set():
     assert not os.path.exists(os.path.join(STARFORGED, "oracles", "pay-the-price.md"))
     # the sheet is hand-written (a character's sheet is copied from it), so it carries no marker
     assert not open(os.path.join(STARFORGED, "sheet-template.md")).read().startswith(imp.MARKER)
+
+
+def test_ironsworn_ships_the_full_set():
+    # counts from the pinned upstream: 30 tables + 8 move tables + 11 truths (no one-roll collections)
+    assert len(_tables(IRONSWORN)) == 49
+    assert len(glob.glob(os.path.join(IRONSWORN, "oracles", "truths", "*.md"))) == 11
+    rules = os.path.join(IRONSWORN, "rules")
+    assert open(os.path.join(rules, "moves.md")).read().count("\n### ") == 35
+    cards = "".join(open(p).read() for p in glob.glob(os.path.join(rules, "assets", "*.md")))
+    assert cards.count("\n## ") == 78
+    assert open(os.path.join(rules, "encounters.md")).read().count("\n### ") == 29
+    assert open(os.path.join(rules, "regions.md")).read().count("\n## ") == 9
+    # every file in the adapter is generated, apart from the hand-written ones SOURCE.md names
+    hand = {"adapter.md", "SOURCE.md", "sheet-template.md", "rules/campaign-launch.md",
+            "rules/character-creation.md"}
+    for p in glob.glob(os.path.join(IRONSWORN, "**", "*.md"), recursive=True):
+        rel = os.path.relpath(p, IRONSWORN)
+        if rel not in hand and not rel.startswith("frames/"):
+            assert open(p).read().startswith(imp.MARKER), rel
 
 
 @pytest.mark.parametrize("table", [p for d in sorted(glob.glob(os.path.join(ADAPTERS, "*")))

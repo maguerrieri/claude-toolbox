@@ -1,0 +1,22 @@
+{
+  "id": "move.oracle_rollable:classic/fate/pay_the_price.pay_the_price",
+  "die": "1d100",
+  "rows": [
+    {"max": 2, "result": "Roll again and apply that result but make it worse. If you roll this result yet again, think of something dreadful that changes the course of your quest (Ask the Oracle if unsure) and make it happen."},
+    {"max": 5, "result": "A person or community you trusted loses faith in you, or acts against you."},
+    {"max": 9, "result": "A person or community you care about is exposed to danger."},
+    {"max": 16, "result": "You are separated from something or someone."},
+    {"max": 23, "result": "Your action has an unintended effect."},
+    {"max": 32, "result": "Something of value is lost or destroyed."},
+    {"max": 41, "result": "The current situation worsens."},
+    {"max": 50, "result": "A new danger or foe is revealed."},
+    {"max": 59, "result": "It causes a delay or puts you at a disadvantage."},
+    {"max": 68, "result": "It is harmful."},
+    {"max": 76, "result": "It is stressful."},
+    {"max": 85, "result": "A surprising development complicates your quest."},
+    {"max": 90, "result": "It wastes resources."},
+    {"max": 94, "result": "It forces you to act against your best intentions."},
+    {"max": 98, "result": "A friend, companion, or ally is put in harm’s way (or you are, if alone)."},
+    {"max": 100, "result": "Roll twice more on this table. Both results occur. If they are the same result, make it worse."}
+  ]
+}

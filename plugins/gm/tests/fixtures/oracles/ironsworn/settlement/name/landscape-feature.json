@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/settlement/name/landscape_feature",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Highmount"},
+    {"max": 20, "result": "Brackwater"},
+    {"max": 30, "result": "Frostwood"},
+    {"max": 40, "result": "Redcrest"},
+    {"max": 50, "result": "Grimtree"},
+    {"max": 60, "result": "Stoneford"},
+    {"max": 70, "result": "Deepwater"},
+    {"max": 80, "result": "Whitefall"},
+    {"max": 90, "result": "Graycliff"},
+    {"max": 100, "result": "Three Rivers"}
+  ]
+}

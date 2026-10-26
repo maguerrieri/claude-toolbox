@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/settlement/name/creature",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Ravencliff"},
+    {"max": 20, "result": "Bearmark"},
+    {"max": 30, "result": "Wolfcrag"},
+    {"max": 40, "result": "Eaglespire"},
+    {"max": 50, "result": "Wyvern's Rest"},
+    {"max": 60, "result": "Boarwood"},
+    {"max": 70, "result": "Foxhollow"},
+    {"max": 80, "result": "Elderwatch"},
+    {"max": 90, "result": "Elkfield"},
+    {"max": 100, "result": "Dragonshadow"}
+  ]
+}
