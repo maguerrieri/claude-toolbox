@@ -17,7 +17,8 @@
 # otherwise: no --projects, no scope, a scope that names no project, or a
 # directory that couldn't be read. The comparison is exact, case included,
 # against the names as listed, so a case-insensitive filesystem can't turn
-# `Voter-Guide:` into a project.
+# `Voter-Guide:` into a project. A symlinked directory is not a project, on
+# either path below, so both name a session the same way.
 #
 # Directories are read from the checkout at --root (default: the current
 # directory), or with --repo from the GitHub contents API on the default
@@ -76,24 +77,27 @@ lists() {
 		[ -d "$root/$1" ] || return 1
 		local d
 		for d in "$root/${1:+$1/}"*/; do
-			[ -d "$d" ] || continue # the unmatched pattern itself
 			d=${d%/}
+			# Skip the unmatched pattern itself, and a symlink, which the
+			# contents API reports as a symlink rather than a directory.
+			[ -d "$d" ] && ! [ -L "$d" ] || continue
 			printf '%s\n' "${d##*/}"
 		done
 	fi
 }
 
-# is_dir <dir>: succeeds when <dir> is a directory.
+# is_dir <dir>: succeeds when <dir> is a directory, and not a symlink to one.
 is_dir() {
 	if [ -n "$repo" ]; then
 		[ "$("$gh_bin" api "repos/$repo/contents/$1" --jq type)" = array ]
 	else
-		[ -d "$root/$1" ]
+		[ -d "$root/$1" ] && ! [ -L "$root/$1" ]
 	fi
 }
 
 read -r -a entries <<<"$projects"
 for entry in ${entries[@]+"${entries[@]}"}; do
+	entry=${entry%/} # services/ and services/*/ mean services and services/*
 	seg='[A-Za-z0-9_][A-Za-z0-9._-]*'
 	if ! [[ $entry == '*' || $entry =~ ^($seg/)*$seg(/\*)?$ ]]; then
 		echo "session-prefix.sh: skipping malformed entry '$entry'" >&2
