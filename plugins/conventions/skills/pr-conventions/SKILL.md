@@ -1,6 +1,6 @@
 ---
 name: pr-conventions
-description: 'Mario''s pull request title and issue-link format. Use whenever writing, editing, or reviewing a PR title or body in any of Mario''s repos.'
+description: "Pull request title and issue-link format. Use whenever writing, editing, or reviewing a PR title or body in any of the user's repos."
 ---
 
 # Pull request conventions

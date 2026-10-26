@@ -1,6 +1,6 @@
 ---
 name: commit-conventions
-description: Mario's git commit message format. Use whenever writing, amending, or reviewing a git commit message in any of Mario's repos.
+description: "Git commit message format. Use whenever writing, amending, or reviewing a git commit message in any of the user's repos."
 ---
 
 # Commit message conventions

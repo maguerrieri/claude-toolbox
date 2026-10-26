@@ -1,8 +1,8 @@
 {
   "name": "gm",
   "description": "System-agnostic, persona-driven solo RPG game master.",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "author": {
-    "name": "Mario Guerrieri"
+    "name": "maguerrieri"
   }
 }

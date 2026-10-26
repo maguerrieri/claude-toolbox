@@ -1,9 +1,9 @@
 {
   "name": "defaults",
-  "description": "Meta-plugin: installs Mario's default plugin set via dependencies",
-  "version": "0.3.0",
+  "description": "Meta-plugin that pulls in the full default set via dependencies",
+  "version": "0.3.1",
   "author": {
-    "name": "Mario Guerrieri"
+    "name": "maguerrieri"
   },
   "dependencies": [
     "conventions",
