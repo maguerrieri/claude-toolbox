@@ -437,6 +437,15 @@ def test_classic_licenses_are_checked():
         imp.generate(doc, CLASSIC)
 
 
+@pytest.mark.parametrize("adapter", ["starforged", "ironsworn"])
+def test_sheet_points_at_the_momentum_step(adapter):
+    # the generated sheet names a step of the hand-written procedure, which --check can't see
+    import re
+    sheet = open(os.path.join(ADAPTERS, adapter, "sheet-template.md")).read()
+    step = re.search(r"`rules/character-creation\.md`, step (\d+)", sheet).group(1)
+    proc = open(os.path.join(ADAPTERS, adapter, "rules", "character-creation.md")).read()
+    section = re.search(rf"^## {step}\. .*?(?=^## |\Z)", proc, re.M | re.S).group(0)
+    assert "momentum" in section.lower()
 
 
 def test_errata_fix_the_value_they_name():

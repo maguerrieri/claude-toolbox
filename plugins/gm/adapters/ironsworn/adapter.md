@@ -12,7 +12,7 @@ The **Ironlands** are a harsh peninsula in the northern ocean, settled two gener
 
 ## What this adapter provides
 
-The full Ironsworn SRD content, generated from Datasworn (see `SOURCE.md`), with the rulebook's world and foes:
+The full Ironsworn SRD content, generated from Datasworn (see `SOURCE.md`), with the rulebook's world, foes and campaign setup:
 
 - **`rules/moves.md`** — every move (adventure, relationship, combat, suffer, quest, fate), with the tables they roll on.
 - **`rules/assets.md`** — the asset index; the cards are in `rules/assets/<category>.md` (combat talent, companion, path, ritual).
@@ -20,6 +20,7 @@ The full Ironsworn SRD content, generated from Datasworn (see `SOURCE.md`), with
 - **`rules/truths.md`** — the 11 world truths, each rollable as `oracles/truths/<truth>.md`.
 - **`rules/regions.md`** — the nine regions of the Ironlands.
 - **`rules/encounters.md`** — the rulebook's NPCs and foes: rank, features, drives, tactics, quest starter. A foe's rank comes from here, never improvised.
+- **`rules/campaign-launch.md`**, **`rules/character-creation.md`** — the rulebook's campaign setup (your world, where the story begins, the inciting incident and first vow) and character creation.
 - **`sheet-template.md`** — the Ironsworn character sheet (stats, meters, debilities, bonds).
 
 ## Resolution
