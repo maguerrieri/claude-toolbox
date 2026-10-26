@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:sundered_isles/island/landscape/vitality/myriads",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Devastated — Ravaged by natural forces or razed by despoilers"},
+    {"max": 30, "result": "Dying — Withered woodlands, blighted scrub, or sickly marshes"},
+    {"max": 40, "result": "Desolate — Arid wastes"},
+    {"max": 50, "result": "Sparse — Thin woodlands, bleak scrub, or stagnant marshes"},
+    {"max": 90, "result": "Lush — Verdant woodlands, dense jungles, or thriving swamps"},
+    {"max": 100, "result": "Primeval — Ancient jungles or impenetrable swamps"}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "oracle_rollable:sundered_isles/settlement/aesthetics",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Ancient — Ancestral structures that have stood the test of time"},
+    {"max": 20, "result": "Dismal — Gloomy, tightly-packed structures and shadowed paths"},
+    {"max": 25, "result": "Earthen — Carved into the terrain"},
+    {"max": 35, "result": "Foreboding — Structures with ornate, dramatic forms and cavernous interiors"},
+    {"max": 45, "result": "Fortified — Imposing structures hardened against assaults"},
+    {"max": 50, "result": "Garish — Structures with tacky design and showy adornments"},
+    {"max": 55, "result": "Grand — Majestic structures with opulent details"},
+    {"max": 65, "result": "Idyllic — Organic forms and materials, at one with the landscape"},
+    {"max": 70, "result": "Industrial — Grim, utilitarian structures, built for function over form"},
+    {"max": 75, "result": "Makeshift — Temporary shelters for nomadic or displaced people"},
+    {"max": 85, "result": "Modest — Practical, charming structures"},
+    {"max": 95, "result": "Ramshackle — Haphazard structures using scavenged or repurposed materials"},
+    {"max": 100, "result": "Wondrous — Enigmatic structures of awe-inspiring design or function"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/sea/heart",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Elaborate trap or puzzle"},
+    {"max": 20, "result": "Lair of a beast"},
+    {"max": 30, "result": "Sacred or fabled artifact"},
+    {"max": 40, "result": "Secret hideout or refuge"},
+    {"max": 50, "result": "Wondrous natural environment"},
+    {"max": 60, "result": "Ruin (`oracles/ruin/`)"},
+    {"max": 70, "result": "Ship (`oracles/ship/`)"},
+    {"max": 80, "result": "Shipwreck (`oracles/shipwreck/`)"},
+    {"max": 90, "result": "Treasure (`oracles/treasure/value/large.md`) (large repository)"},
+    {"max": 100, "result": "Treasure (`oracles/treasure/value/vast.md`) (vast repository)"}
+  ]
+}

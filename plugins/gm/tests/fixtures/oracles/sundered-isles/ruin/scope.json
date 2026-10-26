@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:sundered_isles/ruin/scope",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Unimpressive structure"},
+    {"max": 10, "result": "Few minor structures"},
+    {"max": 25, "result": "Typical structure"},
+    {"max": 40, "result": "Several scattered structures"},
+    {"max": 60, "result": "Large, imposing structure"},
+    {"max": 80, "result": "Sizable sprawl of structures"},
+    {"max": 95, "result": "Colossal structure"},
+    {"max": 100, "result": "Vast sprawl of structures"}
+  ]
+}

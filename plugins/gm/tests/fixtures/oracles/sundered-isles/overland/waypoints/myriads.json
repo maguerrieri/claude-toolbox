@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/waypoints/myriads",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "**Feature of the landscape**\nRegion Landmark (`oracles/overland/region-landmarks/`)"},
+    {"max": 30, "result": "**Changing landscape**\nOverland Region (`oracles/overland/region.md`)"},
+    {"max": 35, "result": "**Changing weather**\nWeather (`oracles/weather/`)"},
+    {"max": 55, "result": "**Instance (choose one)**\n* Overland Details (`oracles/overland/details.md`)\n* Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 70, "result": "**Inland community**\nSettlement (`oracles/settlement/`)"},
+    {"max": 75, "result": "**Relic of the past**\nRuin (`oracles/ruin/`)"},
+    {"max": 85, "result": "**Character focus**\nInterlude Scene (`oracles/misc/interlude-scene.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

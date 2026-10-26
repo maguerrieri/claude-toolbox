@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/rank",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Troublesome"},
+    {"max": 35, "result": "Dangerous"},
+    {"max": 65, "result": "Formidable"},
+    {"max": 85, "result": "Extreme"},
+    {"max": 100, "result": "Epic"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/settlement/identity/controlling_faction/reaches",
+  "die": "1d100",
+  "rows": [
+    {"max": 30, "result": "Known faction"},
+    {"max": 55, "result": "Unknown faction"},
+    {"max": 90, "result": "Independent"},
+    {"max": 95, "result": "Factions in cooperation"},
+    {"max": 100, "result": "Factions in conflict"}
+  ]
+}

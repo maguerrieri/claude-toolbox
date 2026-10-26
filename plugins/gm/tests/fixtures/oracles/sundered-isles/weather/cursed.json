@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/weather/cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Ash storm — Churning, low-level clouds of gray ash"},
+    {"max": 10, "result": "Blighting muck — Rain of corrosive, mucous-like ooze"},
+    {"max": 15, "result": "Blood rain — Ghastly, crimson rain"},
+    {"max": 20, "result": "Cinder rain — Storm of fiery rock and ash"},
+    {"max": 25, "result": "Creeping mist — Slithering, grasping fog"},
+    {"max": 30, "result": "Crimson mist — Slow-moving fog that burns like acid"},
+    {"max": 35, "result": "Dead calm — Disquieting stillness"},
+    {"max": 40, "result": "Fisher's feast — Shower of fish"},
+    {"max": 45, "result": "Forge's fury — Fast-moving storm of scorching heat"},
+    {"max": 50, "result": "Gloam tide — Unnatural darkness that moves with the tide"},
+    {"max": 55, "result": "Ice fall — Uncanny cold that leaves surfaces enveloped in thick ice"},
+    {"max": 60, "result": "Iron wind — Strong wind that sends ships along an inevitable, fatebound course"},
+    {"max": 65, "result": "Knowing mist — Fog that manifests visions of dark secrets and painful memories"},
+    {"max": 70, "result": "Phantom mist — Ghost-haunted fog"},
+    {"max": 75, "result": "Rot wind — Wind that carries the foul stench of death"},
+    {"max": 80, "result": "Sand storm — Clouds of pelting, stinging sand, ripped from a now-barren island"},
+    {"max": 85, "result": "Seeking spouts — Waterspouts and tornadoes that move with dreadful purpose"},
+    {"max": 90, "result": "Tempest — Undying storm that prowls the isles in search of prey"},
+    {"max": 95, "result": "Wailing wind — Wind that carries the mournful keen of the lost and the drowned"},
+    {"max": 100, "result": "Witch fire — Low clouds suffused with tendrils of chaotic, arcane energy"}
+  ]
+}

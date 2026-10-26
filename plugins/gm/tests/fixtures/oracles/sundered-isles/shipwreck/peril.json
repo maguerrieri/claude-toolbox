@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/shipwreck/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Booby-trapped passage or container"},
+    {"max": 10, "result": "Claustrophobic or unnerving spaces"},
+    {"max": 15, "result": "Collapsing overhead structure"},
+    {"max": 20, "result": "Dangerous or volatile cargo"},
+    {"max": 25, "result": "Disorienting murk or smoke"},
+    {"max": 30, "result": "Disturbing scene of death or violence"},
+    {"max": 35, "result": "Entangling debris"},
+    {"max": 40, "result": "Flooded or blocked space"},
+    {"max": 45, "result": "Foes or rivals arrive at the site"},
+    {"max": 50, "result": "Hostile explorer or survivor"},
+    {"max": 55, "result": "Lair of a territorial creature"},
+    {"max": 60, "result": "Precarious path through wreckage"},
+    {"max": 65, "result": "Sense of being watched"},
+    {"max": 70, "result": "Signs of infestation or disease"},
+    {"max": 75, "result": "Sudden shifting of the wreck"},
+    {"max": 80, "result": "Swarm of aggressive creatures"},
+    {"max": 85, "result": "Tricky passage or descent"},
+    {"max": 90, "result": "Unstable or rotting deck"},
+    {"max": 95, "result": "Worsening weather or environment"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

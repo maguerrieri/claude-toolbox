@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/lurking_threat_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 25, "result": "Threat: Dark-dwelling beings\nWhen the clock advances...: Sense of being watched; skulking shadows\nWhen the clock is filled...: Denizens defend their domain!"},
+    {"max": 50, "result": "Threat: Eldritch cultists\nWhen the clock advances...: Accursed symbols; ritualistic artifacts or remains\nWhen the clock is filled...: The cultists strike!"},
+    {"max": 70, "result": "Threat: Mighty beast\nWhen the clock advances...: Territorial markings; signs or sounds of a beast on the hunt\nWhen the clock is filled...: The beast attacks!"},
+    {"max": 85, "result": "Threat: Monstrous infestation\nWhen the clock advances...: Skitters or splashes; foul nests\nWhen the clock is filled...: A vile swarm appears!"},
+    {"max": 100, "result": "Threat: Restless dead\nWhen the clock advances...: Phantom whispers; glimpses of spectral forms\nWhen the clock is filled...: The wrathful dead manifest!"}
+  ]
+}

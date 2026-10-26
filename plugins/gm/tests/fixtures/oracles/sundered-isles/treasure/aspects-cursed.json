@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/treasure/aspects_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Attracts foul creatures or vermin"},
+    {"max": 12, "result": "Awakens the dead"},
+    {"max": 16, "result": "Blighted by unnatural decay"},
+    {"max": 24, "result": "Causes foul luck"},
+    {"max": 28, "result": "Haunted by former keepers or victims"},
+    {"max": 32, "result": "Illusions conceal its true nature"},
+    {"max": 40, "result": "Imbued with a whispering sentience"},
+    {"max": 44, "result": "Incites a possessive obsession"},
+    {"max": 48, "result": "Inflicts a dreadful transformation"},
+    {"max": 52, "result": "Inflicts a sickness or wasting"},
+    {"max": 56, "result": "Marked with indelible bloodstains"},
+    {"max": 60, "result": "Marked with sinister glyphs"},
+    {"max": 64, "result": "Mystically bound to a location"},
+    {"max": 68, "result": "Mystically bound to a person"},
+    {"max": 72, "result": "Protected by a monstrous guardian"},
+    {"max": 80, "result": "Protected by a sorcerous spell"},
+    {"max": 84, "result": "Provokes dreadful visions or dreams"},
+    {"max": 92, "result": "Radiates a foul aura"},
+    {"max": 96, "result": "Sought after by a dreadful foe"},
+    {"max": 100, "result": "Summons a powerful being or creature"}
+  ]
+}

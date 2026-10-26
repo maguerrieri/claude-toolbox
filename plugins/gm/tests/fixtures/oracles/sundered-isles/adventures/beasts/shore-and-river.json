@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:sundered_isles/adventures/beasts/shore_and_river",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Name: Great Crocodile\nRank: Various Ranks\nDescription: Large crocodiles dwell in waters throughout the isles, including coastal wetlands, rivers, and the depths of tidal caves. The greatest and fiercest of them are the size of a sloop­­ —armed with dagger-like teeth, impenetrable hides, and powerful tails capable of shattering stone."},
+    {"max": 35, "result": "Name: Tenebrous Squid\nRank: Extreme\nDescription: This beast dwells within shoreline hollows and sea caves. It is a cunning and patient creature, slumbering for months or years until hapless prey wanders into its dark lair. As it awakens, its orb-like eyes glimmer with a foul, hungry light, and its barbed tentacles prepare to strike."},
+    {"max": 50, "result": "Name: Diving Spider\nRank: Dangerous\nDescription: These semi-aquatic arachnids trap air with their silk, enabling them to hunt along riverbeds and coastal shallows, or lurk along the shore in wait of prey. They occasionally get caught up in nets, an unlucky catch for fisher folk."},
+    {"max": 65, "result": "Name: Muck Toad\nRank: Formidable\nDescription: This creature lurks within the mire of swamps and muddy rivers. What the muck toad lacks in speed and agility, it makes up for in strength and scale, grasping prey with its prehensile tongue and swallowing it whole with its cavernous maw."},
+    {"max": 75, "result": "Name: Sand Dragon\nRank: Formidable\nDescription: Sand dragons are the smallest of dragon-kind, but are still a fearsome foe. Burrowing beneath shoreline dunes, it stirs at the telltale vibrations of footfalls upon its lair. It attacks with dagger-like claws, teeth as long and wicked as cutlasses, and breath of scalding steam."},
+    {"max": 85, "result": "Name: Keelback Crab\nRank: Extreme\nDescription: The keelback crab uses a scavenged ship as a protective shell for its soft exoskeleton. Reports of ghost ships can often be attributed to keelbacks, scuttling along coastal waters with wrecks on their backs. As it grows, a keelback must commandeer vessels of increasing size."},
+    {"max": 95, "result": "Name: Jade Crab\nRank: Extreme\nDescription: The jade crab is the largest and most aggressive of the crustaceans, able to snap a longboat or even a small ship in two with its vice-like pincers. At rest, their shell is slate gray, easily mistaken for rocks or reefs. On the hunt, they shimmer with an iridescent blue-green. Fiercely territorial, these creatures often claim a waterway, cove, or sea cave as their lair."},
+    {"max": 100, "result": "Name: Abomination\nRank: Various Ranks\nDescription: Generate this beast using the Starforged creature oracles (`oracles/creature/`), giving it a land (`oracles/creature/basic-form/land.md`) or water (`oracles/creature/basic-form/liquid.md`) form."}
+  ]
+}

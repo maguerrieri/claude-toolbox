@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/adventures/factions/organizations",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Bloody Skulls — Bands of scavenging shipbreakers who lie in wait along hazardous passages. They believe that painting their faces with a death-like visage protect against retribution by spirits of the dead."},
+    {"max": 20, "result": "Cynosure League — Guild of scientists and naturalists who record their findings in exhaustively-detailed journals. Their works are copied and recorded by archivists at a grand central library."},
+    {"max": 30, "result": "Ebb Tide — Covert insurgency of spies and saboteurs. They seek to cripple imperial ambitions from within, and use trained gulls to carry vital messages to collaborators."},
+    {"max": 40, "result": "Faceless Accord — Renegades sailing in defiance of imperial powers. They conceal their identities behind iron masks to protect kinfolk still under imperial rule."},
+    {"max": 50, "result": "Forsaken Fleet — Powerful clan of pirates led by a marauder known as the Raven Queen. They recently sacked and seized a major port town and made it a refuge for outlaws and outcasts."},
+    {"max": 60, "result": "Ironmongers — Guild of shipbuilders and arms manufacturers who supply their destructive wares to the highest bidder. They secretly incite wars to expand their fortune."},
+    {"max": 70, "result": "Moonsingers — Mystic coven that draw their powers from the dance of the moons and the rhythm of the tides. They recruit and train talented initiates from across the isles."},
+    {"max": 80, "result": "Saltblood — Mariners bound to an age-old seafaring fellowship. They recognize fellow saltbloods and communicate using complex hand signals."},
+    {"max": 90, "result": "Tide Runners — Smugglers who ferry their ill-gotten goods from island to island. They rely on speed, stealth, and the cover of foul weather or moonless nights."},
+    {"max": 100, "result": "Wayfarers — Peddlers who range across the isles and beyond. They transport rare and unusual cargo aboard their vibrantly painted ships."}
+  ]
+}

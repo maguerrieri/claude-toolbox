@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/combatant",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Duelist"},
+    {"max": 40, "result": "Guard / Militia"},
+    {"max": 60, "result": "Mercenary"},
+    {"max": 80, "result": "Soldier"},
+    {"max": 100, "result": "Vigilante"}
+  ]
+}
