@@ -87,8 +87,9 @@ Return the set of child numbers this child is blocked by, **keeping only those t
 ## DEPENDENCY_PR(id)  — find the open PR for a dependency (START phase)
 GitHub PRs created by this workflow close their issue from the body, so search for an exact closing reference (not merely `#<n>` appearing in discussion):
 ```bash
-gh pr list --state open -L 500 --search "#<n> in:body" --json number,headRefName,body --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number,headRefName}'
+gh pr list --state open -L 500 --author @me --search "#<n> in:body" --json number,headRefName,body --jq '.[] | select((.body // "") | test("(?i)(closes|fixes|resolves):?\\s+#<n>\\b")) | {number,headRefName}'
 ```
+`--author @me` keeps only PRs the account `gh` runs as opened, which every session's PR is: the stacked child checks the PR's branch out and runs its tests, and anyone can write a closing reference into a PR body.
 Return the match only when there is **exactly one**; zero or multiple is ambiguous and START falls back rather than guessing.
 
 ## COORD(epic_id)  — coordination channel for EPIC runs (EPIC phase)
