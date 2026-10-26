@@ -140,6 +140,8 @@ cat >"$tmp/listing.json" <<'LISTING_EOF'
   {"name": "no colon #42", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "i", "startedAt": "2026-10-01T00:00:00Z"},
   {"name": "toolbox PR #42: address review", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "n", "startedAt": "2026-10-01T00:00:00Z"},
   {"name": "#42: no prefix", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "o", "startedAt": "2026-10-01T00:00:00Z"},
+  {"name": "my repo #42: spaced basename", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "p", "startedAt": "2026-10-04T00:00:00Z"},
+  {"name": "my repo #238: epic — spaced basename", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "q", "startedAt": "2026-10-06T00:00:00Z"},
   {"cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "j", "startedAt": "2026-10-01T00:00:00Z"},
   {"name": "voter-guide #238: epic — ballots v2", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "l", "startedAt": "2026-10-05T00:00:00Z"},
   {"name": "toolbox #238: epic — ballots", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "k", "startedAt": "2026-10-04T00:00:00Z"},
@@ -152,16 +154,21 @@ cat >"$tmp/bin/claude" <<'STUB_EOF'
 cat "$LISTING"
 STUB_EOF
 chmod +x "$tmp/bin/claude"
-lookup() { # lookup <file> <text>: the sessionIds the docs' block containing <text> keeps
+lookup() { # lookup <file> <text> <repo>: the sessionIds the docs' block containing <text> keeps
 	local block
-	block=$(extract_block "$1" "$2")
+	block=$(extract_block "$1" "$2" | sed "s|\"<repo>\"|\"$3\"|")
 	PATH="$tmp/bin:$PATH" LISTING="$tmp/listing.json" launch_dir=/home/me/toolbox \
 		bash -c "$block" | jq -r 'map(.sessionId) | join(",")'
 }
+spawn_block="--argjson ids '[\"#42\", \"42\"]'"
 record 'a,b,c' 'SPAWN: an issue under either prefix and either spelling' \
-	"$(lookup "$skill/phases/spawn.md" "--argjson ids '[\"#42\", \"42\"]'")"
+	"$(lookup "$skill/phases/spawn.md" "$spawn_block" toolbox)"
+record 'a,b,c,p' 'SPAWN: an old name from a repo whose basename has a space' \
+	"$(lookup "$skill/phases/spawn.md" "$spawn_block" 'my repo')"
 record 'k,l' 'EPIC: a coordinator under either prefix' \
-	"$(lookup "$skill/phases/epic.md" 'startswith("epic — ")')"
+	"$(lookup "$skill/phases/epic.md" 'startswith("epic — ")' toolbox)"
+record 'k,l,q' 'EPIC: and under a basename with a space' \
+	"$(lookup "$skill/phases/epic.md" 'startswith("epic — ")' 'my repo')"
 
 # Every copy of the ID filter in the docs is the same filter.
 filters=$(grep -rhoE 'def issue_id: [^;]*;' "$skill" "$plugin/commands" | sort -u | wc -l | tr -d ' ')
