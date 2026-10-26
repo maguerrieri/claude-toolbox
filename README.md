@@ -47,7 +47,7 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 - **gm** — system-agnostic, persona-driven solo-RPG game master: the `gm` skill
   plus 8 `/gm:*` commands (`/gm:new-campaign`, `/gm:play`, `/gm:wrap`,
   `/gm:oracle`, `/gm:forge`, `/gm:checkpoint`, `/gm:rewind`, `/gm:backup`).
-  Pluggable system adapters (generic / Ironsworn / Starforged), true dice,
+  Pluggable system adapters (generic / Ironsworn / Starforged / Sundered Isles), true dice,
   git-versioned saves that autosave every turn's dialogue, and a GM screen (a
   `gm:screen` subagent plus state sealed on disk) that keeps secrets out of the
   player's transcript.
