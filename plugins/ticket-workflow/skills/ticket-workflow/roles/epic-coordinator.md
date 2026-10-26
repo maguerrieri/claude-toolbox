@@ -37,8 +37,8 @@ and assemble what comes back up.
   a scope addition, a name, feedback), as soon as it reaches you: from the
   owner in this session, or as a `request:` from your recorded spawner,
   checked as a `finish:` clearance is (below). Send the child a `request:`
-  with the owner's words (on cloud, post the `Owner request:` record on its
-  PR and hint it), and un-freeze its row (the profile's `REVIEW_BOT`,
+  with the owner's words (on cloud, post that line as a comment on its PR
+  and hint it), and un-freeze its row (the profile's `REVIEW_BOT`,
   *Owner requests*; `phases/epic.md` Step 6). Don't wait for it to hand
   back, and don't raise its cap for it: only automated review rounds count.
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
