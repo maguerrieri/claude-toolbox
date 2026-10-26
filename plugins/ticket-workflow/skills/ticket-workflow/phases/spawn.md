@@ -15,13 +15,13 @@ One or more issue IDs, optionally with briefing text. Common shapes:
 
 Extract `(id, briefing)` pairs; no per-issue briefing → just the cap from Step 2.
 
-**Stack on in-flight work, by default.** An issue whose work builds on, or touches the same code as, an open PR whose design is settled (CI green or in review, nothing being reworked) launches now, stacked on that PR, rather than waiting for it to merge. Waiting costs the new work the whole of that PR's review; a stack costs at most one restack, after that PR lands. To stack it, the issue declares that PR's issue as its **only** dependency in the tracker's `DEPS` syntax (`Depends on #<n>`). Add the line to the issue body when it isn't there, and drop any dependency line for work that has already landed, since START Step 2 won't stack an issue that declares two; an issue with another dependency still open builds on more than one PR (below). START Step 2 then bases it on the PR's head branch (Step 3 resolves the same base for a cloud launch). `DEPENDENCY_PR` finds a PR by its closing reference, so for a PR that closes no issue, put `Base branch: <its head branch>` in the issue's per-issue briefing instead. Hold the launch, and name it in the report as `held: <why>`, when:
+**Stack on in-flight work, by default.** An issue whose work builds on, or touches the same code as, an open PR whose design is settled (CI green or in review, nothing being reworked) launches now, stacked on that PR, rather than waiting for it to merge. Waiting costs the new work the whole of that PR's review; a stack costs at most one restack, after that PR lands. To stack it, the issue declares that PR's issue as its **only** dependency in the tracker's `DEPS` syntax (`Depends on #<n>`). Add the line to the issue body when it isn't there, and drop any dependency line for work that has already landed, since START Step 2 won't stack an issue that declares two; an issue with another dependency still open builds on more than one PR (below). START Step 2 then bases it on the PR's head branch (Step 3 resolves the same base for a cloud launch). `DEPENDENCY_PR` finds a PR by its closing reference, so for a PR that closes no issue, put `Base branch: <its head branch>` in the issue's per-issue briefing instead. Wait rather than stack when:
 
 - the PR's design is still moving: substantive review feedback outstanding, failing CI being reworked, or a redesign under way;
 - stacking would branch: the PR already has an open PR stacked on it, other than one that closes this issue (`gh pr list --state open --base <its head> -L 500 --json number,body`; a resumed or re-spawned issue may have opened its own already), or another issue in this same request stacks on it too. A branching stack belongs to an epic: `/spawn-epic`, or launch one and wait with the rest;
 - the work builds on more than one in-flight PR (a diamond, also an epic's), or on an epic child's PR (its branch starts with `epic-`; that epic's coordinator owns the stack).
 
-An owner who asks for a held issue to launch anyway gets it launched. A pinned planner applies this by its charter (`roles/planner.md`). Step 4's report shows each launch's base (Step 3's *Each launch's base*).
+Waiting is the spawner's choice, made before it asks for the launch: a pinned planner leaves such an issue out of the request and says why (`roles/planner.md`). SPAWN itself never drops an issue it was asked to launch. When a wait condition holds for one, launch it as resolved and flag the condition in the report's `Base` column (`stacked on #101; #101 has review feedback outstanding`), so whoever asked can stop that session. Step 4's report shows each launch's base (Step 3's *Each launch's base*).
 
 ## Step 2 — Append the profile's `SPAWN_CAP`
 
@@ -59,13 +59,13 @@ Ticket-only notes layered on top of `spawn`:
 
 ## Step 4 — Report back
 
-As `spawn` does — print a table, then hand back (don't block on the siblings). The `Base` column is each launch's base (Step 3), so the report says which launches were stacked and on which PR; a held issue gets a row with no session:
+As `spawn` does — print a table, then hand back (don't block on the siblings). The `Base` column is each launch's base (Step 3), so the report says which launches were stacked and on which PR, and flags any Step 1 wait condition that held:
 
 | Issue | Session | Base | Scope |
 |---|---|---|---|
 | ABC-12 | `widgets ABC-12: add GeoIP routing` | `main` | `<one-line summary>` |
 | ABC-13 | `widgets ABC-13: GeoIP fallback` | stacked on #101 (`abc-12`) | `<one-line summary>` |
-| ABC-14 | — | `held: #101 has review feedback outstanding` | `<one-line summary>` |
+| ABC-14 | `widgets ABC-14: GeoIP metrics` | stacked on #101 (`abc-12`); would branch with ABC-13 | `<one-line summary>` |
 
 Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
 

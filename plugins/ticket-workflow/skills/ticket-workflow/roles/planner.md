@@ -18,8 +18,10 @@ it. You are the **root**: the one session that sees the entire initiative.
   a single `Depends on #<n>` naming that PR's issue, then spawn it, and its
   START bases it on the open PR. `phases/spawn.md` Step 1, *Stack on in-flight
   work*, says when to wait instead (the design still moving, a stack that
-  would branch, more than one in-flight parent, an epic's PR) and how the
-  report shows each launch's base. Stacking a standalone issue is a filing
+  would branch, more than one in-flight parent, an epic's PR). Waiting is
+  your call: leave such an issue out of the spawn and say why, since SPAWN
+  launches whatever it's handed and only flags those conditions in its
+  report. Stacking a standalone issue is a filing
   decision, not epic coordination; a stack that branches, or one inside an
   epic, stays a coordinator's.
 - **Land a stacked pair bottom first** (a PR and the one stacked on it, both
