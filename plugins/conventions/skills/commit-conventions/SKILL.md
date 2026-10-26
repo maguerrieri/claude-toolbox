@@ -1,6 +1,6 @@
 ---
 name: commit-conventions
-description: "Git commit message format ([ticket] (flags) scope: description). Use whenever writing, amending, or reviewing a git commit message in any of the user's repos."
+description: "Git commit message format. Use whenever writing, amending, or reviewing a git commit message in any of the user's repos."
 ---
 
 # Commit message conventions

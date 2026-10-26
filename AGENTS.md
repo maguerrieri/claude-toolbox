@@ -255,11 +255,11 @@ without a name and source, fails too, since CI doesn't run `claude plugin valida
 This is a public marketplace, and a name written into prose goes stale. Keep the
 owner's name out of manifests and skill text (#169):
 
-- `author.name` in each `plugin.json` and `owner.name` in `marketplace.json` are the
-  GitHub handle `maguerrieri`, the account that owns the repo the install commands
-  name (`maguerrieri/claude-toolbox`).
-- Plugin, marketplace and skill descriptions name no person. Where one used a name for
-  the person running the session ("X's repos"), say "the user". Role terms that
-  aren't names stay as they are, such as ticket-workflow's "the owner" (the merge
-  authority).
+- `author.name` in each `plugins/<name>/.claude-plugin/plugin.json` and `owner.name` in
+  `marketplace.json` are the GitHub handle `maguerrieri`, the account that owns the
+  repo the install commands name (`maguerrieri/claude-toolbox`). An external plugin's
+  manifest (today `provenance`'s) lives in its own repo, outside this rule.
+- Plugin, marketplace and skill descriptions name no person. When a description needs
+  to refer to the person running the session, say "the user". Role terms that aren't
+  names stay as they are, such as ticket-workflow's "the owner" (the merge authority).
 - `LICENSE` is the exception: its copyright line carries the legal name.
