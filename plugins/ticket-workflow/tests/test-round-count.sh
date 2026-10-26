@@ -182,6 +182,12 @@ for sh in "${shells[@]}"; do
 	record 3 "$sh: a record from before round 1 frees only head 1, so not head 3" "$(count "$sh")"
 	base; request 101 'one'; review 3; marker 102 3 101
 	record 2 "$sh: a late marker still frees the head right after its record" "$(count "$sh")"
+	# A request arrives while head 3's review is in flight: recorded once that
+	# review lands, it frees head 4; recorded before, it pairs with head 3.
+	base; review 3; request 101 'one'; marker 102 4 101; review 4
+	record 3 "$sh: a record posted after the in-flight review frees the next head" "$(count "$sh")"
+	base; request 101 'one'; review 3; marker 102 4 101; review 4
+	record 4 "$sh: a record posted during the in-flight review pairs with that head" "$(count "$sh")"
 	base; request 101 'one'; marker 102 9 101; marker 103 3 101; review 3
 	record 2 "$sh: a marker with a wrong sha uses nothing up" "$(count "$sh")"
 	base; request 101 'one'; marker 102 1 101; marker 103 3 101; review 3

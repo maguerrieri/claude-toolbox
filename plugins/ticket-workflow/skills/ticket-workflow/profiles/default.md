@@ -315,8 +315,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   which every session posts as). A comment from any other login is neither, since anyone can
   comment on a public repo's PR:
   - **The request record**: `Owner request: <the owner's words, quoted or closely summarized>
-    (owner: <where and when>)`, which the child posts **before** the push that lands it. The words
-    come from one of three places:
+    (owner: <where and when>)`. The child posts it **right before the push that lands it, once no
+    bot review is pending on its current head**: the count pairs a record with the first head the
+    bot reviews after it, so a record posted while a review is in flight pairs with that head and
+    frees nothing. The words come from one of three places:
     - the owner in the child's own session;
     - a comment of the owner's on the PR, top-level or opening a line thread (never a reply in a
       bot's thread), which the record links. Sessions post as the owner's login too, so the child
@@ -328,7 +330,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
       `finish:` clearance must come from (its marker's `notify:` line, matched as
       `phases/finish.md`'s intro says). A spawner relays only the owner's own words, from its own
       session or its own recorded spawner. On a cloud edge, where no message reaches the child,
-      the spawner posts the record itself (`messaging.md`'s `request:` has the cloud forms).
+      the spawner posts the same `request:` line as a comment on the child's PR, which the child
+      takes only from the owner's login (`messaging.md`'s `request:` has the cloud forms).
 
     The child never records a change of its own choosing. A fix for a bot or self-review finding
     is never an owner request, even when the owner agrees with it, or every finding could be routed
@@ -361,12 +364,13 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - **No hand-back first.** A request moves no count, so it needs no raise, and a comment can't
     collide with the child's rewrites of the PR body. A spawner relays one at once:
     `request: PR #<pr>: <the owner's words> (owner: <how and when>)` by SendMessage on a local
-    edge, or on cloud the record itself plus a `request: PR #<pr> <record URL>` hint by the
-    child-bound one-shot Routine, as for a `raise:`. A plain PR comment may not wake a child that
-    handed back, so an owner who comments on the PR and wants it acted on now also tells the child
-    in its session, or tells its spawner. A child mid-round lets the review in flight on its head
-    land (it waits for that in-turn anyway), then pushes the request with that round's fixes, or
-    alone as an owner head when there is nothing to fix or it is at its cap. A child that had
+    edge, or on cloud that line as a PR comment plus a `request: PR #<pr> <comment URL>` hint by
+    the child-bound one-shot Routine, as for a `raise:`. A plain PR comment may not wake a child
+    that handed back, so an owner who comments on the PR and wants it acted on now also tells the
+    child in its session, or tells its spawner. A child mid-round lets the review in flight on its
+    head land (it waits for that in-turn anyway), then posts the record and pushes the request
+    with that round's fixes, or alone as an owner head when there is nothing to fix or it is at
+    its cap. A child that had
     handed back resumes for it and pings `resumed: request on PR #<pr>` on a local edge. Once that
     head is reviewed it runs the final self-review again before handing back, since START Step 8
     runs one per hand-back and a request can add code. Requests taken in the same resumption share

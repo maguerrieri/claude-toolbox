@@ -132,13 +132,15 @@ receivers and greps treat the two channels uniformly:
   place of `PR #<pr>`, and the coordinator forwards it to that child. Each
   receiver accepts it only from its recorded spawner, checked as a `finish:`
   clearance's sender is (the `finish:` bullet above). The child then posts
-  the `Owner request:` record itself and lands the request. On a cloud edge
-  the spawner posts the record on the child's PR and the Routine carries only
-  `request: PR #<pr> <record URL>`, which, like `raise:`, **authorizes
-  nothing**: the child acts on the record. A planner with a cloud coordinator
-  posts the `<child-id>` form on the epic as a `COORD` marker, which the
-  coordinator's next wake reads (EPIC Step 6) and relays to the child as its
-  spawner. A child woken by a request after
+  the `Owner request:` record itself and lands the request. On a cloud edge,
+  where no message reaches the child, the spawner posts the same line as a
+  comment on the child's PR, and the Routine carries only
+  `request: PR #<pr> <comment URL>`, which, like `raise:`, **authorizes
+  nothing**: the child reads the comment and takes it only from the owner's
+  login. A planner with a cloud coordinator posts the `<child-id>` form on the
+  epic as a `COORD` marker, which the coordinator's next wake reads with its
+  author and relays only from the owner's login (EPIC Step 6), since anyone
+  can comment on a public repo's issue. A child woken by a request after
   handing back answers `resumed: request on PR #<pr>` on a local edge.
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
