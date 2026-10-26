@@ -114,6 +114,7 @@ RULESETS = {
         encounters_intro=("Starforged Encounters", [
             "The SRD's sample NPCs and foes, with each one's rank (it sets the progress per mark on a",
             "fight or other challenge against them), its variants, and a quest starter."]),
+        named_kinds=("npc", "npc_collection"),
         sheet_asset=("command_vehicle", "starship", "STARSHIP")),
     "classic": Ruleset(
         "classic", "ironsworn", "Ironsworn",
@@ -236,8 +237,8 @@ def convert_links(text, rs):
     """Datasworn markdown links -> plain text the GM can act on.
 
     A table or collection keeps its path so the GM can roll it; a move is just its
-    name (they all live in rules/moves.md), and so is a region or an NPC for a ruleset
-    that ships them (rs.named_kinds: rules/regions.md, rules/encounters.md); an asset names
+    name (they all live in rules/moves.md), and so is an NPC or a region for a ruleset
+    that ships them (rs.named_kinds: rules/encounters.md, rules/regions.md); an asset names
     its category. A truth or move category named in prose is just its name too. A link
     into another ruleset is an error, except a move, which names its game (an asset
     can point at an expansion's move).
@@ -800,7 +801,7 @@ def apply_errata(data, rs):
     if not ERRATA.get(rs.key):
         return data
     data = copy.deepcopy(data)
-    for path, old, new, _why in ERRATA.get(rs.key, []):
+    for path, old, new, _why in ERRATA[rs.key]:
         node = data
         try:
             for key in path[:-1]:
@@ -900,15 +901,16 @@ def load(json_path, rs, cache_dir=None):
     return json.loads(raw)
 
 
-def clashes(root, files, rs):
-    """The generated paths that would overwrite a file the tool didn't write."""
-    old = owned_files(root, rs)
+def clashes(root, files, rs, old=None):
+    """The generated paths that would overwrite a file the tool didn't write (old: the
+    owned files, if the caller already has them)."""
+    old = owned_files(root, rs) if old is None else old
     return [rel for rel in sorted(files) if os.path.exists(os.path.join(root, rel)) and rel not in old]
 
 
 def write(root, files, rs):
     old = owned_files(root, rs)
-    for rel in clashes(root, files, rs):
+    for rel in clashes(root, files, rs, old):
         sys.exit(f"datasworn-import: {rel} exists and isn't generated; move it before regenerating")
     for rel in old:
         os.remove(os.path.join(root, rel))

@@ -2,7 +2,8 @@
 
 These fixtures are the *golden reference*, not live adapter data. The generic ones
 are the original JSON oracles as they existed before commit 485eed1 (migrated to MD).
-The starforged and ironsworn ones are the upstream SRDs' own roll ranges, written by
+The starforged and ironsworn ones are the upstream SRDs' own roll ranges (with the
+tool's ERRATA corrections, so they can't catch a wrong erratum), written by
 tools/datasworn-import from the pinned Datasworn files alongside the tables, and
 nested like the tables (fixtures/oracles/<adapter>/<path>.json -> oracles/<path>.md).
 A weight typo, row-ordering mistake, or entry `roll table` would misparse in any live

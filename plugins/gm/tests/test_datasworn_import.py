@@ -193,10 +193,10 @@ def test_convert_links_rejects_other_rulesets_tables():
 def test_convert_links_rejects_unknown_link_types():
     with pytest.raises(ValueError):
         imp.convert_links("[x](datasworn:delve_site:starforged/x)", SF)
-    # starforged ships no foes or regions file for an NPC or a region to point at
-    for kind in ("npc", "npc_collection", "atlas_entry"):
-        with pytest.raises(ValueError):
-            imp.convert_links(f"[x](datasworn:{kind}:starforged/x)", SF)
+    # starforged ships no regions file for a region to point at; its NPCs are in encounters.md
+    with pytest.raises(ValueError):
+        imp.convert_links("[x](datasworn:atlas_entry:starforged/x)", SF)
+    assert imp.convert_links("[Chiton](datasworn:npc:starforged/creature/chiton)", SF) == "Chiton"
 
 
 def test_convert_links_rejects_leftover_templates():
@@ -439,7 +439,7 @@ def test_classic_licenses_are_checked():
 
 @pytest.mark.parametrize("adapter", ["starforged", "ironsworn"])
 def test_sheet_points_at_the_momentum_step(adapter):
-    # the generated sheet names a step of the hand-written procedure, which --check can't see
+    # the sheet points at a step of the character creation procedure, a link --check can't see
     import re
     sheet = open(os.path.join(ADAPTERS, adapter, "sheet-template.md")).read()
     step = re.search(r"`rules/character-creation\.md`, step (\d+)", sheet).group(1)
