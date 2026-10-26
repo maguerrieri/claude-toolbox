@@ -2,10 +2,10 @@
   "id": "oracle_rollable:sundered_isles/ship/size",
   "die": "1d100",
   "rows": [
-    {"max": 30, "result": "Small — * Such as: Cutter, Sloop\n* Rigging: One or two masts\n* Crew: 5–25\n* Rank: Troublesome or Dangerous"},
-    {"max": 60, "result": "Medium — * Such as: Corvette, Schooner\n* Rigging: Two or three masts\n* Crew: 25–50\n* Rank: Dangerous or Formidable"},
-    {"max": 80, "result": "Large — * Such as: Frigate, Galleon\n* Rigging: Three or more masts\n* Crew: 50–200\n* Rank: Formidable or Extreme"},
-    {"max": 85, "result": "Colossal — * Such as: Dreadnought, Titan\n* Rigging: Four or more masts\n* Crew: 200–500\n* Rank: Extreme or Epic"},
+    {"max": 30, "result": "Small\n* Such as: Cutter, Sloop\n* Rigging: One or two masts\n* Crew: 5–25\n* Rank: Troublesome or Dangerous"},
+    {"max": 60, "result": "Medium\n* Such as: Corvette, Schooner\n* Rigging: Two or three masts\n* Crew: 25–50\n* Rank: Dangerous or Formidable"},
+    {"max": 80, "result": "Large\n* Such as: Frigate, Galleon\n* Rigging: Three or more masts\n* Crew: 50–200\n* Rank: Formidable or Extreme"},
+    {"max": 85, "result": "Colossal\n* Such as: Dreadnought, Titan\n* Rigging: Four or more masts\n* Crew: 200–500\n* Rank: Extreme or Epic"},
     {"max": 95, "result": "Flotilla — Medium flagship and a few other ships"},
     {"max": 99, "result": "Fleet — Large flagship and many other ships"},
     {"max": 100, "result": "Armada — Colossal flagship and countless other ships"}

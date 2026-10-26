@@ -661,6 +661,62 @@ def test_a_move_showing_the_ruleset_table_id_has_no_loose_tables(mini_pins):
     assert "Roll its tables" not in section[:section.find("\n### ", 1)]
 
 
+def test_row_marks_and_list_columns(mini_pins):
+    exp = mini_expansion()
+    exp["oracles"]["ship"]["contents"]["persona"] = _table(
+        "oracle_rollable:sundered_isles/ship/persona", "Persona", [
+            _row(1, 5, "Piper", tags={"sundered_isles": {"requires_allies": True, "supernatural": True}}),
+            _row(6, 10, "Gunner", text2="* Such as: Cannon\n* Crew: Many")], oracle_type="table_text2")
+    entries = roll.parse_table(imp.generate(exp, mini_base())["adapters/sundered-isles/oracles/ship/persona.md"])
+    assert entries[0]["entry"] == "Piper\n(Supernatural or mythic powers; only for co-op or guided play with allies)"
+    assert entries[1]["entry"] == "Gunner\n* Such as: Cannon\n* Crew: Many"     # a list starts its own line
+
+
+def test_a_cursed_table_with_its_own_cursed_version_keeps_both_notes(mini_pins):
+    exp = mini_expansion()
+    ship = exp["oracles"]["ship"]["contents"]
+    ship["look_cursed"]["tags"]["sundered_isles"]["cursed_by"] = "oracle_rollable:sundered_isles/ship/look_worse"
+    ship["look_worse"] = _table("oracle_rollable:sundered_isles/ship/look_worse", "Worse", [_row(1, 10, "Worse")])
+    text = imp.generate(exp, mini_base())["adapters/sundered-isles/oracles/ship/look-cursed.md"]
+    assert "The cursed version of `oracles/ship/look.md`." in text
+    assert "Cursed die: on a 10, read the same roll on `oracles/ship/look-worse.md` instead." in text
+
+
+def test_ruleset_errata_reach_the_expansion(mini_pins, monkeypatch):
+    base = mini_base()
+    base["moves"]["fate"]["contents"]["pay_the_price"]["oracles"]["pay_the_price"]["rows"] = [_row(1, 6, "Worse")]
+    monkeypatch.setitem(imp.ERRATA, "starforged",
+                        {"move.oracle_rollable:starforged/fate/pay_the_price.pay_the_price": [(7, 10, "Restored")]})
+    exp = mini_expansion()
+    exp["moves"]["fate"]["contents"] = {}            # the ruleset's Pay the Price stays in force
+    moves = imp.generate(exp, base)["adapters/sundered-isles/rules/moves.md"]
+    assert "| 7–10 | Restored |" in moves
+
+
+def test_an_expansion_with_rules_of_its_own_fails(mini_pins):
+    exp = mini_expansion()
+    exp["rules"] = {"impacts": {"at_sea": {"label": "at sea", "contents": {}}}}
+    with pytest.raises(ValueError, match="rules of its own"):
+        imp.generate(exp, mini_base())
+
+
+def test_a_replaced_sub_collection_leaves_the_ruleset_index(mini_pins):
+    exp = mini_expansion()
+    exp["oracles"]["character"]["replaces"] = []      # only character/name is replaced
+    index = imp.generate(exp, mini_base())["adapters/sundered-isles/rules/oracles.md"]
+    ruleset = index[index.index("## Starforged oracle collections"):]
+    assert "Character Name" not in ruleset and "character/name.md" not in ruleset
+
+
+def test_an_expansion_move_that_replaces_no_move_fails(mini_pins):
+    exp = mini_expansion()
+    move = exp["moves"]["fate"]["contents"]["pay_the_price"]
+    move["replaces"] = ["truth:starforged/cataclysm"]   # a real id, but not a move
+    move["text"], move["oracles"] = "Roll.", {}          # and no table to collide with Starforged's
+    with pytest.raises(ValueError, match="replace no ruleset move"):
+        imp.generate(exp, mini_base())
+
+
 def test_oracle_path_of_an_asset_table():
     assert imp.oracle_path("asset.ability.oracle_rollable:sundered_isles/companion/parrot.0.parrot_wisdom") \
         == "assets/parrot/parrot-wisdom.md"

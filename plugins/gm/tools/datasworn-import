@@ -155,6 +155,10 @@ LINK = re.compile(r"\[([^\]]*)\]\(datasworn:([^)\s]+)\)")
 TABLE_TEMPLATE = re.compile(r"\{\{table>([^}]+)\}\}")
 TABLE_KINDS = ("oracle_rollable", "move.oracle_rollable", "truth.option.oracle_rollable",
                "asset.ability.oracle_rollable")
+# Row tags the Guidebook prints as icons beside a result, in its own words.
+ROW_MARKS = [("supernatural", "supernatural or mythic powers"),
+             ("technological", "remarkable technologies"),
+             ("requires_allies", "only for co-op or guided play with allies")]
 ROLL_TYPES = {
     "action_roll": "action roll",
     "progress_roll": "progress roll",
@@ -381,7 +385,8 @@ def checked_rows(rows, dice, ref):
 def row_lines(doc, row, labels=None, three=False):
     """One table row as entry lines: its text (+ second column), then any rolls on
     other tables, and any tables it suggests next, that the text doesn't already link.
-    In a three-column table (three),
+    A row the data tags with one of ROW_MARKS says so on a line of its own. In a
+    three-column table (three),
     a row using more than its first column puts each column on its own line, after its
     label (`Rank: Dangerous`)."""
     cols = ("text", "text2", "text3")
@@ -394,9 +399,14 @@ def row_lines(doc, row, labels=None, three=False):
             lines += (f"{label}: {cell}" if label and label != "Result" else cell).split("\n")
     else:
         text = doc.links(row["text"])
-        if row.get("text2"):
-            text = f"{text} — {doc.links(row['text2'])}"
+        if row.get("text2"):            # a multi-line second column (a list) starts its own line
+            text2 = doc.links(row["text2"])
+            text = f"{text}\n{text2}" if "\n" in text2 else f"{text} — {text2}"
         lines = text.split("\n")
+    marks = [label for tag, label in ROW_MARKS if _tag(doc, row, tag)]
+    if marks:
+        mark = "; ".join(marks)
+        lines.append(f"({mark[0].upper()}{mark[1:]})")
     linked = {m.group(2) for m in LINK.finditer("".join(row.get(c) or "" for c in cols))}
     for roll in row.get("oracle_rolls") or []:
         ref = roll.get("oracle")
@@ -572,7 +582,8 @@ def curse_notes(doc):
         notes[ref] = f"Cursed die: on a 10, {how}."
         bases.setdefault(target, []).append(f"`oracles/{doc.tables[ref][1]}`")
     for target, paths in bases.items():
-        notes[target] = "The cursed version of " + ", ".join(paths) + "."
+        note = "The cursed version of " + ", ".join(paths) + "."
+        notes[target] = f"{note}\n\n{notes[target]}" if target in notes else note
     return notes
 
 
@@ -785,6 +796,11 @@ def merged_moves(doc):
             home[2].extend(new)
         else:
             cats.append((cat["_id"], cat["name"], new))
+    placed = {m["_id"] for _id, _name, ms in cats for m, ours in ms if ours}
+    lost = [m["_id"] for cat in doc.data["moves"].values() for m in cat["contents"].values()
+            if m["_id"] not in placed]
+    if lost:
+        raise ValueError(f"expansion moves that replace no ruleset move: {lost}")
     return [(name, moves) for _id, name, moves in cats]
 
 
@@ -964,6 +980,8 @@ def render_oracle_index(doc, files):
     curses = cursed_versions(doc)
 
     def walk(d, coll, depth, out, keep=lambda ref: True, note=lambda ref: ""):
+        if "_id" in coll and not keep(coll["_id"]):     # a replaced (sub-)collection
+            return
         out.append("#" * depth + f" {coll['name']}")
         out.append("")
         if coll.get("summary") or coll.get("description"):
@@ -1001,10 +1019,9 @@ def render_oracle_index(doc, files):
                 f"{doc.base.pkg.name} adapter.", ""]
         mine = set(table_files(doc))
         for coll in doc.base.data["oracles"].values():
-            if not _replacement(doc, coll["_id"]):
-                walk(doc.base, coll, 3, out, keep=lambda ref: not _replacement(doc, ref),
-                     note=lambda ref: f" (shadowed here by the {pkg.title} table at this path)"
-                     if doc.base.path(ref) in mine else "")
+            walk(doc.base, coll, 3, out, keep=lambda ref: not _replacement(doc, ref),
+                 note=lambda ref: f" (shadowed here by the {pkg.title} table at this path)"
+                 if doc.base.path(ref) in mine else "")
         moves = [m for _n, ms in merged_moves(doc) for m, _e in ms]
     else:
         out = [GENERATED, "# Starforged Oracles", "",
@@ -1156,10 +1173,14 @@ def generate(data, base=None):
     pkg = PACKAGES[data.get("_id", "starforged")]
     if bool(pkg.base) != (base is not None):
         raise ValueError(f"{pkg.key}: pass its ruleset's data as base exactly when it's an expansion")
+    own_rules = [k for k in ("stats", "condition_meters", "impacts", "special_tracks") if (data.get("rules") or {}).get(k)]
+    if base is not None and own_rules:
+        raise ValueError(f"{pkg.key} has rules of its own ({', '.join(own_rules)}), which neither its sheet "
+                         "check nor any rules file takes in yet")
     data = apply_errata(pkg.key, data)
     base_doc = None
     if base is not None:
-        base_doc = Doc(PACKAGES[pkg.base], base)
+        base_doc = Doc(PACKAGES[pkg.base], apply_errata(pkg.base, base))
         collect_tables(base_doc)
     doc = Doc(pkg, data, base_doc)
     if base_doc:

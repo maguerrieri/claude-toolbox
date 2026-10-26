@@ -3,19 +3,23 @@
 
 > Datasworn `oracle_rollable:sundered_isles/ship/size` · 1d100
 
-- [30] Small — * Such as: Cutter, Sloop
+- [30] Small
+  * Such as: Cutter, Sloop
   * Rigging: One or two masts
   * Crew: 5–25
   * Rank: Troublesome or Dangerous
-- [30] Medium — * Such as: Corvette, Schooner
+- [30] Medium
+  * Such as: Corvette, Schooner
   * Rigging: Two or three masts
   * Crew: 25–50
   * Rank: Dangerous or Formidable
-- [20] Large — * Such as: Frigate, Galleon
+- [20] Large
+  * Such as: Frigate, Galleon
   * Rigging: Three or more masts
   * Crew: 50–200
   * Rank: Formidable or Extreme
-- [5] Colossal — * Such as: Dreadnought, Titan
+- [5] Colossal
+  * Such as: Dreadnought, Titan
   * Rigging: Four or more masts
   * Crew: 200–500
   * Rank: Extreme or Epic
