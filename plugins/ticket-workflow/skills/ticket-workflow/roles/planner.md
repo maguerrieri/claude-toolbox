@@ -28,18 +28,21 @@ it. You are the **root**: the one session that sees the entire initiative.
   both, since FINISH Step 2 won't merge the top while its base is the
   bottom's open branch. Land the bottom with your own FINISH, in a temporary
   worktree as that bullet says. Its Step 2 merges that layer only: with
-  `gh stack merge` when the pair is registered (the top's START registers it,
-  START Step 7), else with `gh pr merge` plus a `restack:` request on the
-  top. The top then becomes an unstacked PR. A registered stack retargets
-  and rebases it server-side, keeping its diff, so wait only for its CI on
-  the new head; otherwise wait for its implementer's `done:` after the
-  restack (START Step 8). Once its PR is based on the base branch with the
-  restack met (START Step 8's *Already met?* test), clear its implementer,
-  `finish: #<top> (grant: …)`, rather than running FINISH again: an unstacked
-  PR is one a PR clearance covers, and its implementer owns the branch and
-  worktree. For a cloud implementer's top, run FINISH here for it too. A
-  grant that names only the bottom lands only the bottom; report the top as
-  `ready; needs the owner` once it's unstacked.
+  `gh stack merge` when `gh stack` is installed (linking the pair first if
+  the top's START didn't, START Step 7), else with `gh pr merge` plus a
+  `restack:` request on the top. The top then becomes an unstacked PR.
+  After `gh stack merge` it's retargeted and rebased server-side with its
+  diff unchanged, so the grant still covers it: wait for its CI on the new
+  head, then, with its PR based on the base branch (START Step 8's *Already
+  met?* test), clear its implementer, `finish: #<top> (grant: …)`, rather
+  than running FINISH again. It's an unstacked PR now, which a PR clearance
+  covers, and its implementer owns the branch and worktree. For a cloud
+  implementer's top, run FINISH here for it too. A restack its implementer
+  made instead (`gh pr merge` path) is a new head the owner hasn't seen, so
+  after its `done:` report it as `ready; needs the owner`, the same rule
+  FINISH Step 2 applies to a restacked head. A grant that names only the
+  bottom lands only the bottom; report the top the same way once it's
+  unstacked.
 
 ## You do NOT
 
