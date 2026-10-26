@@ -1,9 +1,9 @@
 {
   "name": "maguerrieri-toolbox",
   "owner": {
-    "name": "Mario Guerrieri"
+    "name": "maguerrieri"
   },
-  "description": "Mario's portable Claude Code conventions and workflows",
+  "description": "Portable Claude Code conventions and workflows",
   "plugins": [
     {
       "name": "defaults",

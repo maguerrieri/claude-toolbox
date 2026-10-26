@@ -1,8 +1,8 @@
 {
   "name": "conventions",
-  "description": "Mario's cross-repo development conventions",
-  "version": "0.6.0",
+  "description": "Cross-repo development conventions (commit messages, PR titles, and repository instructions)",
+  "version": "0.6.1",
   "author": {
-    "name": "Mario Guerrieri"
+    "name": "maguerrieri"
   }
 }
