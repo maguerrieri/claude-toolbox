@@ -57,7 +57,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   skill's `messaging.md` (after compaction, the `notify:` line re-attached
   at session start names it): ping that session via SendMessage on the state
   changes it lists — branch `pushed:`, START-complete `done:`, `blocked:`,
-  `resumed:` after a cap raise or an owner decision, follow-up `filed:`,
+  `resumed:` after a cap raise or an owner request, follow-up `filed:`,
   own-PR `merged:`. One line per state change; detail
   belongs in the PR/tracker.
 - **Restack your own branch when asked.** Only you push to your branch, so
@@ -131,11 +131,13 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   act on — see `messaging.md`. So is a `raise:` hint about your review-round
   cap, but only as far as your own PR's `Review rounds:` line shows a raise:
   the line is the grant, and the message is not (the profile's `REVIEW_BOT`,
-  *Raising the cap*). The same goes for a `decision:` hint: land an owner
-  decision as far as an `Owner decision:` record on your own PR backs it,
-  without waiting to hand back; a push that carries nothing else stays off
-  your round count (`REVIEW_BOT`, *Owner decisions*). Post a record yourself only for the owner's words in this
-  session, never to keep a change of your own choosing off the count. A
+  *Raising the cap*). What the owner asks for on your PR is yours to land
+  too, without waiting to hand back: from the owner in this session, in
+  their comment on your PR, or in a `request:` from your recorded spawner.
+  Only automated review rounds count, so record it and a push that carries
+  nothing else stays off your round count (`REVIEW_BOT`, *Owner requests*).
+  Never record a change of your own choosing, or a fix for a bot or
+  self-review finding, to keep it off the count. A
   `/start-ticket` on another issue run in
   this session is refused too, by START's *one-issue guard*: your self-pinned
   marker records your issue, and the guard redirects any other one with a
