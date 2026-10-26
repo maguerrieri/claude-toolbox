@@ -23,6 +23,7 @@ mkdir -p "$root"/services/{voter-guide,sunset,home-supplies,.cache} \
 	"$root"/mcp-servers/{spotify-curator,home-supplies} "$root"/apps/curator-web \
 	"$root"/infra/{firebase-shared,modules}
 touch "$root/services/README.md"
+mkdir -p "$root/libs/shared" && ln -s ../libs/shared "$root/services/shared"
 projects='services/* mcp-servers/* apps/* infra/firebase-shared'
 
 prefix() { # prefix <title> [script args...]: the prefix the script prints for toolbox
@@ -47,6 +48,10 @@ record 'sunset' 'surrounding whitespace is trimmed' "$(local_prefix '  sunset : 
 record 'toolbox' 'no colon, no scope' "$(local_prefix 'voter-guide fix the page')"
 record 'toolbox' 'a file is not a project' "$(local_prefix 'README.md: Reword')"
 record 'toolbox' 'a hidden dir is not a project' "$(local_prefix '.cache: Clear')"
+record 'toolbox' 'a symlinked dir is not a project' "$(local_prefix 'shared: Fix')"
+record 'toolbox' 'nor a symlink named by a plain entry' "$(prefix 'shared: Fix' --root "$root" --projects 'services/shared')"
+record 'firebase-shared' 'trailing slashes are fine' "$(prefix 'firebase-shared: Fix' --root "$root" --projects 'services/*/ infra/firebase-shared/')"
+record 'voter-guide' 'on a star entry too' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'services/*/')"
 record 'toolbox' 'a path scope is not a project' "$(local_prefix 'services/voter-guide: Fix')"
 record 'toolbox' 'a quoted scope is not a project' "$(local_prefix '`voter-guide`: Fix')"
 record 'voter-guide' 'shell characters later in the title are data' "$(local_prefix 'voter-guide: Fix $HOME and `ls` and "quotes"')"
@@ -76,14 +81,14 @@ cat >"$tmp/gh" <<'STUB_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$STUB_ARGS"
 [ "$1" = api ] || exit 1
-path=${2#repos/o/r/contents}
-path=${path#/}
-dir="$STUB_ROOT/$path"
+rel=${2#repos/o/r/contents}
+rel=${rel#/}
+dir="$STUB_ROOT/$rel"
 [ -d "$dir" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
 [ -n "${STUB_FAIL:-}" ] && { echo 'gh: HTTP 403' >&2; exit 1; }
 for e in "$dir"/* "$dir"/.[!.]*; do
 	[ -e "$e" ] || continue
-	if [ -d "$e" ]; then t=dir; else t=file; fi
+	if [ -L "$e" ]; then t=symlink; elif [ -d "$e" ]; then t=dir; else t=file; fi
 	jq -cn --arg n "${e##*/}" --arg t "$t" '{name: $n, type: $t}'
 done | jq -cs . >"$STUB_OUT"
 jq -r "$4" "$STUB_OUT"
@@ -98,6 +103,7 @@ record 'toolbox' '--repo: an area scope' "$(remote_prefix 'firebase apps: Bump')
 record 'firebase-shared' '--repo: a plain-dir entry' "$(remote_prefix 'firebase-shared: Rotate')"
 record 'toolbox' '--repo: a file is not a project' "$(remote_prefix 'README.md: Reword')"
 record 'toolbox' '--repo: a hidden dir is not a project' "$(remote_prefix '.cache: Clear')"
+record 'toolbox' '--repo: a symlinked dir is not a project' "$(remote_prefix 'shared: Fix')"
 record 'services' '--repo: a bare * reads the root' "$(printf 'services: Fix\n' | bash "$script" toolbox --repo o/r --projects '*' 2>/dev/null)"
 record 'toolbox' '--repo: a failed read falls back' "$(STUB_FAIL=1 remote_prefix 'voter-guide: Fix')"
 record 'yes' '--repo: and is noted' "$(grep -q "can't read 'services'" "$tmp/err" && echo yes)"
@@ -132,6 +138,8 @@ cat >"$tmp/listing.json" <<'LISTING_EOF'
   {"name": "toolbox #42: another clone", "cwd": "/home/me/other/toolbox", "status": "stopped", "sessionId": "g", "startedAt": "2026-10-01T00:00:00Z"},
   {"name": "toolbox #50: follow-up to #42: thing", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "h", "startedAt": "2026-10-01T00:00:00Z"},
   {"name": "no colon #42", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "i", "startedAt": "2026-10-01T00:00:00Z"},
+  {"name": "toolbox PR #42: address review", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "n", "startedAt": "2026-10-01T00:00:00Z"},
+  {"name": "#42: no prefix", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "o", "startedAt": "2026-10-01T00:00:00Z"},
   {"cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "j", "startedAt": "2026-10-01T00:00:00Z"},
   {"name": "voter-guide #238: epic — ballots v2", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "l", "startedAt": "2026-10-05T00:00:00Z"},
   {"name": "toolbox #238: epic — ballots", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "k", "startedAt": "2026-10-04T00:00:00Z"},
