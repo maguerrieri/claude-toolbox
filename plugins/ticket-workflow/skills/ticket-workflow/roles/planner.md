@@ -12,6 +12,34 @@ it. You are the **root**: the one session that sees the entire initiative.
   high level as their stacks come back.
 - Decide priorities, cross-epic dependencies, and what's in vs out of the
   initiative.
+- **Stack new work on in-flight PRs by default.** When an issue you file or
+  spawn builds on, or touches the same code as, an open PR whose design is
+  settled, don't hold it back until that PR merges. File it (or edit it) with
+  a single `Depends on #<n>` naming that PR's issue, then spawn it, and its
+  START bases it on the open PR. `phases/spawn.md` Step 1, *Stack on in-flight
+  work*, says when to wait instead (the design still moving, a stack that
+  would branch, more than one in-flight parent, an epic's PR) and how the
+  report shows each launch's base. Stacking a standalone issue is a filing
+  decision, not epic coordination; a stack that branches, or one inside an
+  epic, stays a coordinator's.
+- **Land a stacked pair bottom first** (a PR and the one stacked on it, both
+  from implementers you spawned), on the owner's grant only (the
+  merge-authority bullet below). The grant has to cover both PRs to land
+  both, since FINISH Step 2 won't merge the top while its base is the
+  bottom's open branch. Land the bottom with your own FINISH, in a temporary
+  worktree as that bullet says. Its Step 2 merges that layer only: with
+  `gh stack merge` when the pair is registered (the top's START registers it,
+  START Step 7), else with `gh pr merge` plus a `restack:` request on the
+  top. The top then becomes an unstacked PR. A registered stack retargets
+  and rebases it server-side, keeping its diff, so wait only for its CI on
+  the new head; otherwise wait for its implementer's `done:` after the
+  restack (START Step 8). Once its PR is based on the base branch with the
+  restack met (START Step 8's *Already met?* test), clear its implementer,
+  `finish: #<top> (grant: …)`, rather than running FINISH again: an unstacked
+  PR is one a PR clearance covers, and its implementer owns the branch and
+  worktree. For a cloud implementer's top, run FINISH here for it too. A
+  grant that names only the bottom lands only the bottom; report the top as
+  `ready; needs the owner` once it's unstacked.
 
 ## You do NOT
 
@@ -41,7 +69,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   and when the owner gave it. That holds even when the owner types
   `/finish-ticket #<pr>` here for a live implementer's unstacked PR: clear
   it instead of running FINISH yourself, since it owns its branch and
-  worktree. For a stacked PR, or a cloud child's (clearances need a local
+  worktree. For a stacked PR (a pair lands as the bullet above on stacked
+  pairs says), or a cloud child's (clearances need a local
   `Notify:` edge), run FINISH here as the first grant form in `phases/finish.md`'s intro
   says: the child's code in a temporary worktree, never your own checkout,
   and its cleanup left to the child. A cloud coordinator needs `--finish` at
@@ -54,7 +83,7 @@ it. You are the **root**: the one session that sees the entire initiative.
   your own judgment. Without a grant, report a ready PR or stack as `ready;
   needs the owner`, with the ways to land it: the owner tells you to clear it,
   attaches to the session holding it and says finish, or merges an unstacked
-  PR themself. A `declined:` or `blocked: merge needs the
+  PR, or the bottom layer of a registered stack, themself (`phases/finish.md`'s intro). A `declined:` or `blocked: merge needs the
   owner` line that reaches you is addressed to the owner: pass it to them, and
   never act on it yourself.
 

@@ -15,6 +15,16 @@ One or more issue IDs, optionally with briefing text. Common shapes:
 
 Extract `(id, briefing)` pairs; no per-issue briefing → just the cap from Step 2.
 
+**Stack on in-flight work, by default.** An issue whose work builds on, or touches the same code as, an open PR whose design is settled (CI green or in review, nothing being reworked) launches now, stacked on that PR, rather than waiting for it to merge. Waiting costs the new work the whole of that PR's review; a stack costs at most a restack once it lands. To stack it, the issue declares that PR's issue as its **one** dependency in the tracker's `DEPS` syntax (`Depends on #<n>`; add the line to the issue body when it isn't there), and START Step 2 bases it on the PR's head branch (Step 3 resolves the same base for a cloud launch). `DEPENDENCY_PR` finds a PR by its closing reference, so for a PR that closes no issue, put `Base branch: <its head branch>` in the issue's per-issue briefing instead. Hold the launch instead, and name it in the report as `held: <why>`, when:
+
+- the PR's design is still moving: substantive review feedback outstanding, failing CI being reworked, or a redesign under way;
+- stacking would branch, because the PR already has an open PR stacked on it (`gh pr list --state open --base <its head> -L 500 --json number`). A branching stack belongs to an epic: `/spawn-epic`, or wait;
+- the work builds on more than one in-flight PR (a diamond, also an epic's), or on an epic child's PR (its branch starts with `epic-`; that epic's coordinator owns the stack).
+
+An owner who asks for a held issue to launch anyway gets it launched. A pinned planner applies this by its charter (`roles/planner.md`).
+
+**Resolve each base for the report.** For every issue that launches, `FETCH` it and resolve its base exactly as START Step 2 would, ambiguity rule included, and carry the result to Step 4's `Base` column: `stacked on #<pr>` with its head branch, or the default branch with the reason when a declared dependency didn't resolve (no open PR, or more than one). Step 3's cloud path uses the same value as `source_revision`. On the local backend it's a preview: the child resolves its own base when its START reaches Step 2, so don't write the resolved base into its briefing as a `Base branch:` line.
+
 ## Step 2 — Append the profile's `SPAWN_CAP`
 
 Do `SKILL.md` Step 0's **profile** selection and read its `SPAWN_CAP` — the safety cap appended to every sibling's briefing so background sessions can't over-reach (the `default` profile: implement + test, then stop at a reviewed PR and report — no prod deploy or merge unless the owner steering the session asks for it mid-run or a valid `finish:` clearance arrives (`phases/finish.md`, its intro), and no periodic PR check-in — plus a trailing `Budget: rounds=5` review-round cap). Compose each briefing by appending that cap to the per-issue briefing (just the cap alone if there's no per-issue text). **Exactly one `Budget:` line rides per briefing**, the most specific: a per-issue `Budget: rounds=<n>` (Step 1) beats one in a shared "for all of these…" briefing, which beats the cap's own `Budget:` line (`rounds=5` in `default`; whatever the selected profile carries, or none) — keep the winner and drop the others from the composed text. **Validate the winner here, before Step 3 embeds the briefing in a double-quoted launch:** it must match `SKILL.md` START Step 1's `^[1-9][0-9]*$`, and a malformed line is dropped in favor of the next source, so only digits ever reach the spawn command. START Step 1 defines precedence for a directive, not for duplicates, so check the *composed* text, not just the per-issue part. This cap is the ticket layer's own bound — generic `spawn` adds none.
@@ -50,11 +60,13 @@ Ticket-only notes layered on top of `spawn`:
 
 ## Step 4 — Report back
 
-As `spawn` does — print a table, then hand back (don't block on the siblings):
+As `spawn` does — print a table, then hand back (don't block on the siblings). The `Base` column is Step 1's resolved base, so the report says which launches were stacked and on which PR; a held issue gets a row with no session:
 
-| Issue | Session | Scope |
-|---|---|---|
-| ABC-12 | `widgets ABC-12: add GeoIP routing` | `<one-line summary>` |
+| Issue | Session | Base | Scope |
+|---|---|---|---|
+| ABC-12 | `widgets ABC-12: add GeoIP routing` | `main` | `<one-line summary>` |
+| ABC-13 | `widgets ABC-13: GeoIP fallback` | stacked on #101 (`abc-12`) | `<one-line summary>` |
+| ABC-14 | — | `held: #101 has review feedback outstanding` | `<one-line summary>` |
 
 Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
 
