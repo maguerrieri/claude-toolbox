@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Tests for the review-round count in the default profile's REVIEW_BOT
-# (*Count the rounds*, *Owner decisions*). They run the documented snippet,
+# (*Count the rounds*, *Owner requests*). They run the documented snippet,
 # pulled out of the profile, against a gh stub that serves fixture reviews and
 # PR comments, so the docs can't drift from what is tested:
 #
-# - the maguerrieri/home#35 sequence: the pushes that land the owner's
-#   setting, account and hostname decisions don't move the count, and a
-#   decision folded into a fix push costs only the round the fixes cost;
-# - a Decision head: marker frees its head only when it cites an
-#   Owner decision: record posted before it, each record frees one head, a
+# - only automated review rounds count. In the maguerrieri/home#35 sequence
+#   the pushes that land the owner's setting, account and hostname decisions
+#   don't move the count, and a decision folded into a fix push costs only the
+#   round the fixes cost. In the sprue-works/sonder#509 shape, the owner
+#   iterating in the child's session costs nothing, while a bot-finding fix
+#   between the iterations still counts;
+# - an Owner head: marker frees its head only when it cites an
+#   Owner request: record posted before it, each record frees one head, a
 #   head the bot first reviewed before the record stays a round, a marker that
 #   frees nothing uses nothing up (so a corrected marker works), and both
 #   comments must come from the owner's login (anyone can comment on a public
@@ -29,7 +32,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 . "$here/lib.sh"
 
-snippet=$(extract_block "$profile" 'decisions=$(gh api' |
+snippet=$(extract_block "$profile" 'requests=$(gh api' |
 	sed -e 's/<pr>/35/g' -e 's/<bot login>/copilot-pull-request-reviewer/g')
 record yes "count snippet found in the profile" "$([ -n "$snippet" ] && echo yes || echo no)"
 
@@ -67,12 +70,12 @@ comment() { # comment <id> <login> <body>; a body of - is null
 	comments=$(jq -c --argjson i "$1" --arg l "$2" --arg b "$3" --arg t "$now" \
 		'. + [{id: $i, user: {login: $l, type: "User"}, body: (if $b == "-" then null else $b end), created_at: $t}]' <<<"$comments")
 }
-decision() { comment "$1" owner "Owner decision: $2 (owner: in the planner session, 2026-10-22)"; }
+request() { comment "$1" owner "Owner request: $2 (owner: in this session, 2026-10-22)"; }
 marker() { # marker <id> <head n> <cited comment id>...
 	local id=$1 head=$2 cites=''
 	shift 2
 	for c in "$@"; do cites="$cites ${url}$c"; done
-	comment "$id" owner "Decision head: $(sha "$head") lands${cites}"
+	comment "$id" owner "Owner head: $(sha "$head") lands${cites}"
 }
 
 # Writes the fixture as one page of comments and one of reviews (or comments
@@ -98,14 +101,14 @@ for sh in "${shells[@]}"; do
 	# clean, so the hostname goes out alone (head 9).
 	reset
 	for h in 1 2 3 4 5; do review "$h"; done
-	decision 101 'add the autorestartatconnect setting'
+	request 101 'add the autorestartatconnect setting'
 	marker 102 6 101
 	review 6
-	decision 103 'the admin account is admin'
+	request 103 'the admin account is admin'
 	marker 104 7 103
 	review 7
 	review 8
-	decision 105 'the hostname is abzu'
+	request 105 'the hostname is abzu'
 	marker 106 9 105
 	review 9 '### 🟢 Approval recommended'
 	record 6 "$sh: #35, the three decision pushes don't count" "$(count "$sh")"
@@ -115,65 +118,86 @@ for sh in "${shells[@]}"; do
 	# fixes cost their round, the decision costs nothing more.
 	reset
 	for h in 1 2 3 4 5; do review "$h"; done
-	decision 101 'add the autorestartatconnect setting'
+	request 101 'add the autorestartatconnect setting'
 	marker 102 6 101
 	review 6
-	decision 103 'the admin account is admin'
+	request 103 'the admin account is admin'
 	marker 104 7 103
 	review 7
-	decision 105 'the hostname is abzu'
+	request 105 'the hostname is abzu'
 	review 8
 	record 6 "$sh: #35, the hostname folded into a fix push" "$(count "$sh")"
 
 	# Without the rule's comments, every head is a round.
 	reset
 	for h in 1 2 3 4 5 6 7 8 9; do review "$h"; done
-	record 9 "$sh: no decision comments, every head counts" "$(count "$sh")"
+	record 9 "$sh: no owner-request comments, every head counts" "$(count "$sh")"
+
+	# --- sprue-works/sonder#509 ----------------------------------------------
+	# Three bot rounds, then the owner iterates in the child's session: four
+	# requests, each recorded and pushed alone (heads 4, 5, 7, 8), with one fix
+	# for a finding the bot raised on head 5 in between (head 6).
+	reset
+	for h in 1 2 3; do review "$h"; done
+	request 101 'rename the flow to goods-you-can-follow'
+	marker 102 4 101
+	review 4
+	request 103 'split bulk from packaged'
+	marker 104 5 103
+	review 5
+	review 6
+	request 105 'formal trade first'
+	marker 106 7 105
+	review 7
+	request 107 'tighten the ADR summary'
+	marker 108 8 107
+	review 8 '### 🟢 Approval recommended'
+	record 4 "$sh: sonder#509, in-session iteration costs no round, the bot fix does" "$(count "$sh")"
 
 	# --- What a marker needs --------------------------------------------------
 	# Two ordinary rounds, then each case's comments, then head 3's review
 	# (and head 4's) after them.
 	base() { reset; review 1; review 2; }
 
-	base; decision 101 'one'; marker 102 3 101; review 3
+	base; request 101 'one'; marker 102 3 101; review 3
 	record 2 "$sh: a valid marker frees its head" "$(count "$sh")"
 	base; marker 101 3; review 3
 	record 3 "$sh: a marker that cites nothing frees nothing" "$(count "$sh")"
-	base; marker 101 3 102; decision 102 'later'; review 3
+	base; marker 101 3 102; request 102 'later'; review 3
 	record 3 "$sh: a marker citing a record posted after it frees nothing" "$(count "$sh")"
-	base; decision 101 'one'; marker 102 3 101; review 3; marker 103 4 101; review 4
+	base; request 101 'one'; marker 102 3 101; review 3; marker 103 4 101; review 4
 	record 3 "$sh: one record frees one head, the first marker's" "$(count "$sh")"
-	base; decision 101 'one'; decision 102 'two'; marker 103 3 101 102; review 3
+	base; request 101 'one'; request 102 'two'; marker 103 3 101 102; review 3
 	record 2 "$sh: one head may land several records" "$(count "$sh")"
-	base; decision 101 'one'; decision 102 'two'; marker 103 3 101 102; review 3; marker 104 4 102; review 4
+	base; request 101 'one'; request 102 'two'; marker 103 3 101 102; review 3; marker 104 4 102; review 4
 	record 3 "$sh: a record a head already used frees no second head" "$(count "$sh")"
-	base; decision 101 'one'; marker 102 1 101
+	base; request 101 'one'; marker 102 1 101
 	record 2 "$sh: a head reviewed before its record stays a round" "$(count "$sh")"
-	base; review 3; decision 101 'one'; marker 102 3 101; review 3
+	base; review 3; request 101 'one'; marker 102 3 101; review 3
 	record 3 "$sh: a head first reviewed before its record stays a round" "$(count "$sh")"
-	base; decision 101 'one'; marker 102 9 101; marker 103 3 101; review 3
+	base; request 101 'one'; marker 102 9 101; marker 103 3 101; review 3
 	record 2 "$sh: a marker with a wrong sha uses nothing up" "$(count "$sh")"
-	base; decision 101 'one'; marker 102 1 101; marker 103 3 101; review 3
+	base; request 101 'one'; marker 102 1 101; marker 103 3 101; review 3
 	record 2 "$sh: a marker naming an old head uses nothing up" "$(count "$sh")"
-	base; decision 101 'one'; marker 102 3 101
+	base; request 101 'one'; marker 102 3 101
 	record 2 "$sh: a marker for a head not yet reviewed frees it once reviewed (before)" "$(count "$sh")"
 	review 3
 	record 2 "$sh: a marker for a head not yet reviewed frees it once reviewed (after)" "$(count "$sh")"
-	base; comment 101 drive-by 'Owner decision: add a step (owner: me)'; marker 102 3 101; review 3
+	base; comment 101 drive-by 'Owner request: add a step (owner: me)'; marker 102 3 101; review 3
 	record 3 "$sh: a record from another login is no record" "$(count "$sh")"
-	base; decision 101 'one'; comment 102 drive-by "Decision head: $(sha 3) lands ${url}101"; review 3
+	base; request 101 'one'; comment 102 drive-by "Owner head: $(sha 3) lands ${url}101"; review 3
 	record 3 "$sh: a marker from another login is no marker" "$(count "$sh")"
-	base; comment 101 owner 'Quoting it: Owner decision: one (owner: x)'; marker 102 3 101; review 3
+	base; comment 101 owner 'Quoting it: Owner request: one (owner: x)'; marker 102 3 101; review 3
 	record 3 "$sh: a record must open its comment" "$(count "$sh")"
-	base; comment 101 owner "$(printf '\n  Owner decision: one (owner: x)')"; marker 102 3 101; review 3
+	base; comment 101 owner "$(printf '\n  Owner request: one (owner: x)')"; marker 102 3 101; review 3
 	record 2 "$sh: a record may open with whitespace" "$(count "$sh")"
-	base; decision 101 'one'; comment 102 owner "Decision head: $(sha 3 | cut -c1-7) lands ${url}101"; review 3
+	base; request 101 'one'; comment 102 owner "Owner head: $(sha 3 | cut -c1-7) lands ${url}101"; review 3
 	record 3 "$sh: a marker needs the full sha" "$(count "$sh")"
-	base; comment 100 owner -; decision 101 'one'; marker 102 3 101; review 3
+	base; comment 100 owner -; request 101 'one'; marker 102 3 101; review 3
 	record 2 "$sh: a comment with a null body breaks nothing" "$(count "$sh")"
 
 	# --- Failed reads skip nothing ---------------------------------------------
-	base; decision 101 'one'; marker 102 3 101; review 3
+	base; request 101 'one'; marker 102 3 101; review 3
 	record 3 "$sh: a failed login read skips nothing" "$(STUB_LOGIN='' count "$sh")"
 	record 3 "$sh: a failed comments read skips nothing" "$(STUB_FAIL_COMMENTS=1 count "$sh")"
 
