@@ -223,6 +223,8 @@ latest version." `marketplace.json` carries no version; each plugin's own `plugi
 is the source of truth. CI enforces this: the `plugin versions` check
 (`.github/workflows/plugin-versions.yml`) fails any PR whose touched plugin isn't at a
 strictly greater version than the PR's base branch (normally `main`).
+The check counts **any** file changed under `plugins/<name>/` as touching that plugin,
+so a metadata-only edit (a description, the author field) needs a patch bump too.
 
 **External plugins.** A marketplace entry can source its plugin from another repo instead
 of `./plugins/`. Today that's `provenance`: a `github` source for `maguerrieri/provenance`
@@ -247,3 +249,17 @@ without a bump; a base pin it can't fetch is noted and head is checked alone; ot
 types get a `skip` line. A head `marketplace.json` the check can't read, or an entry
 without a name and source, fails too, since CI doesn't run `claude plugin validate`.
 `provenance` isn't a `defaults` dependency (neither is `gm`).
+
+## Manifest metadata: no personal names
+
+This is a public marketplace, and a name written into prose goes stale. Keep the
+owner's name out of manifests and skill text (#169):
+
+- `author.name` in each `plugin.json` and `owner.name` in `marketplace.json` are the
+  GitHub handle `maguerrieri`, the account that owns the repo the install commands
+  name (`maguerrieri/claude-toolbox`).
+- Plugin, marketplace and skill descriptions name no person. Where one used a name for
+  the person running the session ("X's repos"), say "the user". Role terms that
+  aren't names stay as they are, such as ticket-workflow's "the owner" (the merge
+  authority).
+- `LICENSE` is the exception: its copyright line carries the legal name.
