@@ -540,7 +540,7 @@ Use the Starship Mission table when prompted by another oracle, or to flesh out 
 - `oracles/moves/ask-the-oracle/fifty-fifty.md` — Ask the Oracle: 50/50
 - `oracles/moves/ask-the-oracle/unlikely.md` — Ask the Oracle: Unlikely
 - `oracles/moves/ask-the-oracle/small-chance.md` — Ask the Oracle: Small Chance
-- `oracles/pay-the-price.md` — Pay the Price: Pay the Price
+- `oracles/moves/pay-the-price.md` — Pay the Price: Pay the Price
 
 ## Setting truths
 

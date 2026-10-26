@@ -34,7 +34,7 @@ Each move in `rules/moves.md` names its roll and its stat; a move's outcome text
 
 - **Ask the Oracle** (yes/no): pick the odds, then roll its table: `oracles/moves/ask-the-oracle/small-chance.md`, `oracles/moves/ask-the-oracle/unlikely.md`, `oracles/moves/ask-the-oracle/fifty-fifty.md`, `oracles/moves/ask-the-oracle/likely.md`, or `oracles/moves/ask-the-oracle/almost-certain.md`.
 - **A spark:** `oracles/action.md` + `oracles/theme.md` (a goal, situation or event), or `oracles/descriptor.md` + `oracles/focus.md` (a location, discovery or encounter), as each table's summary says.
-- **Pay the Price:** `oracles/pay-the-price.md`, when no more specific consequence fits.
+- **Pay the Price:** `oracles/moves/pay-the-price.md`, when no more specific consequence fits.
 - **Harm** is the suffer moves: Endure Harm, Endure Stress, Withstand Damage, Companion Takes a Hit, Lose Momentum, Sacrifice Resources. Impacts are marked on the sheet.
 
 ## Genre guidance

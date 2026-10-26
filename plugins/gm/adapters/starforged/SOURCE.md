@@ -15,7 +15,8 @@ It comes from the machine-readable edition published by **Datasworn** (https://g
 
 - `oracles/**/*.md` (every rollable table)
 - `rules/moves.md`, `rules/assets.md`, `rules/assets/*.md`, `rules/truths.md`, `rules/encounters.md`, `rules/oracles.md`
-- `sheet-template.md`
+
+`sheet-template.md` is hand-written, since each character's sheet is copied from it, but its SRD lines (the stats and their descriptions, the condition meters, impacts, legacy tracks and the STARSHIP's integrity) must match the data verbatim: the importer fails, `--check` included, if one doesn't.
 
 Changes made: the JSON is converted to Markdown tables and rules files; Datasworn's cross-references are rewritten as this adapter's file paths; nothing is added to or omitted from the moves, assets, tables or truths. To regenerate, or to check the tree against the pin, run `plugins/gm/tools/datasworn-import` (or `--check`); `--help` says how to move the pin.
 
@@ -31,6 +32,6 @@ These files are hand-written, abridged for solo play, with the book's page refer
 
 ## Original content
 
-`adapter.md` and `frames/` are written for this plugin. They describe and point at the content above, and quote none of it.
+`adapter.md` and `frames/` are written for this plugin. They describe and point at the content above, and quote none of it. The sheet's layout is written for this plugin too.
 
 This adapter is not affiliated with or endorsed by Shawn Tomkin. Ironsworn and Starforged: https://ironswornrpg.com

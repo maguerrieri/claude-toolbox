@@ -134,7 +134,7 @@ def mini_doc():
     ("oracle_rollable:starforged/core/action", "action.md"),
     ("oracle_rollable:starforged/planet/desert/settlements/terminus", "planet/desert/settlements/terminus.md"),
     ("oracle_rollable:starforged/campaign_launch/background_assets", "campaign-launch/background-assets.md"),
-    ("move.oracle_rollable:starforged/fate/pay_the_price.pay_the_price", "pay-the-price.md"),
+    ("move.oracle_rollable:starforged/fate/pay_the_price.pay_the_price", "moves/pay-the-price.md"),
     ("move.oracle_rollable:starforged/suffer/endure_harm.endure_harm", "moves/endure-harm.md"),
     ("move.oracle_rollable:starforged/fate/ask_the_oracle.likely", "moves/ask-the-oracle/likely.md"),
     ("truth.option.oracle_rollable:starforged/cataclysm.0.sun_plague_cause", "truths/cataclysm/sun-plague-cause.md"),
@@ -197,8 +197,27 @@ def test_followups_moves_tables_and_npcs_are_rendered():
     assert "### Chiton" in enc and "**Rank:** dangerous (2)" in enc
     assert "- **Chiton queen** (*Monster*, extreme (4)): Massive." in enc
     assert "*Quest starter:* A larva wakes." in enc
-    sheet = files["adapters/starforged/sheet-template.md"]
-    assert sheet.startswith(imp.MARKER) and "Leave this line out of a character's sheet" in sheet.split("\n")[0]
+
+
+def test_the_hand_written_sheet_is_checked_against_the_data(tmp_path):
+    doc = mini_doc()
+    assert "adapters/starforged/sheet-template.md" not in imp.generate(doc)   # not generated
+    lines = imp.sheet_lines(doc)
+    assert "- edge {{}}" in lines and "- Health   [▰▰▰▰▰] 5/5" in lines
+    assert "- *misfortunes:* [ ] wounded" in lines and "- STARSHIP integrity [▰▰▰▰▰] 5/5" in lines
+    assert "- Quests      [▱▱▱▱▱▱▱▱▱▱] 0/10 — Swear vows." in lines
+
+    sheet = tmp_path / "adapters" / "starforged" / "sheet-template.md"
+    assert imp.check_sheet(str(tmp_path), doc) == [
+        "missing   adapters/starforged/sheet-template.md (hand-written; see sheet_lines())"]
+    sheet.parent.mkdir(parents=True)
+    sheet.write_text("# {{name}}\n\nLayout the tool doesn't own.\n" + "\n".join(lines) + "\n")
+    assert imp.check_sheet(str(tmp_path), doc) == []
+    sheet.write_text("\n".join(l for l in lines if "Health" not in l) + "\n")
+    assert imp.check_sheet(str(tmp_path), doc) == [
+        "sheet     adapters/starforged/sheet-template.md lacks the data line: - Health   [▰▰▰▰▰] 5/5"]
+    with pytest.raises(SystemExit):
+        imp.check(str(tmp_path), {}, imp.check_sheet(str(tmp_path), doc))
 
 
 def test_load_caches_the_pinned_file(tmp_path, monkeypatch):
@@ -233,7 +252,7 @@ def test_generate_mini_doc():
     o = "adapters/starforged/oracles/"
     assert {o + p for p in ["action.md", "planet/class.md", "planet/ice/feature.md",
                             "character/name/given-name.md", "character/name/family-name.md",
-                            "character/name.md", "pay-the-price.md", "truths/cataclysm.md",
+                            "character/name.md", "moves/pay-the-price.md", "truths/cataclysm.md",
                             "truths/cataclysm/cause.md"]} <= set(files)
 
     # weights reproduce the ranges, links become paths, rolls the text doesn't name follow it
@@ -260,15 +279,13 @@ def test_generate_mini_doc():
     assert [r["result"] for r in fx["rows"]] == [e["entry"] for e in entries]
 
     moves = files["adapters/starforged/rules/moves.md"]
-    assert "Roll `oracles/pay-the-price.md` (1d10):" in moves
+    assert "Roll `oracles/moves/pay-the-price.md` (1d10):" in moves
     assert "| 1–10 | The current situation worsens. |" in moves
     assert "Face Danger or roll" in moves and "datasworn:" not in moves
     assets = files["adapters/starforged/rules/assets/path.md"]
     assert "- [x] When you Face Danger, add +1." in assets and "- [ ] Take +1 momentum." in assets
     assert "`rules/assets/path.md`" in files["adapters/starforged/rules/assets.md"]
     assert "Vestige (path asset)" in files["adapters/starforged/rules/truths.md"]
-    sheet = files["adapters/starforged/sheet-template.md"]
-    assert "[ ] wounded" in sheet and "- STARSHIP integrity [▰▰▰▰▰] 5/5" in sheet
     for rel, text in files.items():
         if rel.endswith(".md"):
             assert text.startswith(imp.MARKER), rel
@@ -341,6 +358,11 @@ def test_starforged_ships_the_full_set():
     assert moves.count("\n### ") == 56
     cards = "".join(open(p).read() for p in glob.glob(os.path.join(STARFORGED, "rules", "assets", "*.md")))
     assert cards.count("\n## ") == 87
+    # one layout for move tables: Pay the Price sits with the rest
+    assert os.path.isfile(os.path.join(STARFORGED, "oracles", "moves", "pay-the-price.md"))
+    assert not os.path.exists(os.path.join(STARFORGED, "oracles", "pay-the-price.md"))
+    # the sheet is hand-written (a character's sheet is copied from it), so it carries no marker
+    assert not open(os.path.join(STARFORGED, "sheet-template.md")).read().startswith(imp.MARKER)
 
 
 @pytest.mark.parametrize("table", [p for d in sorted(glob.glob(os.path.join(ADAPTERS, "*")))
