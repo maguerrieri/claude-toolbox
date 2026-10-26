@@ -351,6 +351,14 @@ EOF
 )"
 ```
 
+**Register a stacked PR.** When Step 2 stacked this PR (its base is another open PR's head branch), register the chain as a native GitHub stack now, rather than leaving it to FINISH, so that it lands cleanly however it's merged: by FINISH, by `gh stack merge`, or by the owner. This session is the chain's one writer for its own edge. An epic child never links (EPIC Step 6), because siblings each see one edge of a DAG and their links race; outside an epic, the PR that adds an edge to a chain is the only session adding it. Skip registration in Projects mode, when `gh stack` isn't installed (`gh extension list` shows no `github/gh-stack`; cloud containers lack it, `github-rest.md`), when any head or base in the chain starts with `epic-` (its coordinator registers that chain), and when the chain isn't a simple path. To find the chain, walk it both ways. Down: while this PR's base, then each next PR's base, is the head of an open PR (`gh pr list --state open --head <base> -L 500 --json number,baseRefName`), add that PR; the last one is the bottom, and its base is the stack's base. Up: `gh pr list --state open --base <head> -L 500 --json number,headRefName` adds the PR stacked on this one, and so on to the top. The chain is a simple path only when every lookup down finds exactly one PR and every PR in the chain has at most one open PR based on its head (FINISH Step 2's rule). Then link the whole chain, bottom to top:
+
+```bash
+gh stack link --base <the bottom PR's base> <bottom-pr> ... <top-pr>   # prints "stack #<s>"
+```
+
+Always pass `--base`: without it, `gh stack link` retargets the bottom PR to the default branch (#170). Linking the whole chain rather than only this PR's edge keeps a concurrent link from another layer harmless, since a superset of an existing stack grows it and a subset is refused (EPIC Step 6). Record the stack with one comment on the bottom PR, `stack: <s> <bottom-pr>..<top-pr>` (`gh pr comment <bottom-pr> --body …`), where FINISH Step 2 looks for it; the newest such comment wins. Registration is best-effort: if the link fails, post no comment and say why in the Step 9 hand-back, and FINISH Step 2 links the chain just in time instead. Once registered, a member's base is locked (#170): to move one later, run `gh stack unstack <s>`, retarget it, and link again with `--base`.
+
 ### Step 8 — Review-bot cycle + CI watch
 
 Watch CI in parallel with any review bot:
@@ -384,7 +392,7 @@ If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you 
 
 ### Step 9 — Hand back
 
-Report: PR URL, a 1–2 sentence summary, which self-review ran for each of the two passes (`/code-review high` or the manual read) and any self-review finding held at the cap, whether the review bot had non-trivial comments and how they were handled — the round count, and if the cap was hit, the `Review rounds:` line and that more rounds are theirs to grant (raise the line's cap, or say "one more round" in this session) — anything Step 1 couldn't record or accept (a skipped or failed self-pin or notify record and why, a malformed `Budget:` or issue ID, a refused `Notify:` name), and that `/finish-ticket <id>` is the next step after the user's review.
+Report: PR URL, a 1–2 sentence summary, which self-review ran for each of the two passes (`/code-review high` or the manual read) and any self-review finding held at the cap, whether the review bot had non-trivial comments and how they were handled — the round count, and if the cap was hit, the `Review rounds:` line and that more rounds are theirs to grant (raise the line's cap, or say "one more round" in this session) — anything Step 1 couldn't record or accept (a skipped or failed self-pin or notify record and why, a malformed `Budget:` or issue ID, a refused `Notify:` name), for a stacked PR the stack Step 7 registered or why it didn't, and that `/finish-ticket <id>` is the next step after the user's review.
 
 ---
 
