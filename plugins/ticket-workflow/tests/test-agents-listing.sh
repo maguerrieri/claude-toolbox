@@ -37,8 +37,9 @@ lookup=$(extract_block "$local_md" 'claude agents --json --all > "$agents"' |
 record yes "lookup snippet found in local.md" "$([ -n "$lookup" ] && echo yes || echo no)"
 
 # EPIC Step 5's worked example, up to the end of its lookup (the rest reads a
-# transcript and resumes).
-epic_lookup=$(extract_block "$epic_md" 'claude agents --json --all > "$agents"' |
+# transcript and resumes). Found by its own IDs, since Step 1's predecessor
+# lookup also lists sessions, earlier in the file.
+epic_lookup=$(extract_block "$epic_md" '"#263", "263"' |
 	awk '{ print } /sort_by\(\.startedAt\)'\'' "\$agents"/ { exit }')
 record yes "lookup snippet found in epic.md" "$([ -n "$epic_lookup" ] && echo yes || echo no)"
 
