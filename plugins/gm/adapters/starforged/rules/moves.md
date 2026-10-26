@@ -905,7 +905,7 @@ __When you suffer the outcome of an action__, choose one.
   * Ask the Oracle for inspiration. Interpret the answer as a hardship or complication appropriate to the situation.
   * Roll on the table below. If the result doesn’t fit the situation, roll again.
 
-Roll `oracles/pay-the-price.md` (1d100):
+Roll `oracles/moves/pay-the-price.md` (1d100):
 
 | Roll | Result |
 |---|---|

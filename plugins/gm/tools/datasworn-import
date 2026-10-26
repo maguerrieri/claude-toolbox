@@ -12,15 +12,19 @@ converts one pinned copy of it into the gm adapter's formats:
   adapters/starforged/rules/assets/<cat>.md     every asset card, by category
   adapters/starforged/rules/truths.md           the 14 setting truths
   adapters/starforged/rules/encounters.md       the sample NPCs and foes
-  adapters/starforged/sheet-template.md         the character sheet
   tests/fixtures/oracles/starforged/**/*.json   golden ranges for tests/test_oracle_parity.py
 
 The tool owns its output: a run deletes every file it generated before (each .md
 starts with the GENERATED marker; the fixture dir is all its own) and writes the
 new set, so edit this tool or its pin, never the output. Hand-written adapter files
 (adapter.md, SOURCE.md, frames/, rules/campaign-launch.md,
-rules/character-creation.md, rules/sector-creation.md) have no marker and are never
-touched; a generated path that would overwrite one is an error.
+rules/character-creation.md, rules/sector-creation.md, sheet-template.md) have no
+marker and are never touched; a generated path that would overwrite one is an error.
+
+The character sheet is hand-written, since a character's sheet is copied from it and
+much of its layout isn't data, but its data lines (stats, condition meters, impacts,
+legacy tracks, the STARSHIP's integrity) are checked: a run, --check included, fails
+unless sheet-template.md carries each of them verbatim (sheet_lines() lists them).
 
 Usage:
   datasworn-import                  fetch the pinned upstream, verify it, regenerate
@@ -86,10 +90,9 @@ def _split(ref):
 def oracle_path(ref):
     """A rollable table's file, relative to the adapter's oracles/ dir.
 
-    Datasworn ids map to nested paths (underscores become hyphens). Two families
-    keep the flat names the gm core and the other adapters use: the core oracles
-    (action, theme, descriptor, focus) sit at the top, and the Pay the Price
-    move's table is pay-the-price.md. Tables inside moves live under moves/,
+    Datasworn ids map to nested paths (underscores become hyphens). The core
+    oracles (action, theme, descriptor, focus) sit at the top, where the gm core
+    looks for its action + theme spark. Tables inside moves live under moves/,
     tables inside truths under truths/<truth>/.
     """
     kind, path = _split(ref)
@@ -100,8 +103,6 @@ def oracle_path(ref):
     elif kind == "move.oracle_rollable":
         move_path, _, key = path.partition(".")
         move = move_path.split("/")[-1]
-        if move == "pay_the_price" and key == move:
-            return "pay-the-price.md"
         segs = ["moves", move] + ([] if key == move else [key])
     elif kind == "truth.option.oracle_rollable":
         truth, _idx, key = path.split(".")
@@ -558,45 +559,33 @@ def _meter(m):
     return f"[{'▰' * m['value'] + '▱' * (m['max'] - m['value'])}] {m['value']}/{m['max']}"
 
 
-def render_sheet(doc, files):
-    rules = doc.data["rules"]
-    stats = rules["stats"]
-    meters = rules["condition_meters"]
-    starship = doc.data["assets"]["command_vehicle"]["contents"]["starship"]
-    # A character's sheet is copied from this template, so the marker says to drop it there.
-    marker = (f"{MARKER} from {UPSTREAM_REPO}@{UPSTREAM_REF[:7]} ({UPSTREAM_TAG}): the sheet "
-              "template. Leave this line out of a character's sheet. -->")
-    out = [marker, "# {{name}}", "",
-           "**Pronouns:** {{}} · **Callsign:** {{}}  ",
-           "**Look / act / wear:** {{}}", "",
-           "Fill it in with `rules/character-creation.md`.", "",
-           "**Stats** (assign the array 3, 2, 2, 1, 1, as in `ironsworn-core/sheet-template.md`):",
-           "- " + " · ".join(f"{k} {{{{}}}}" for k in stats), ""]
-    out += [f"  - *{k}:* {v['description']}" for k, v in stats.items()]
-    out += ["", "**Condition meters:**"]
-    for m in meters.values():
-        out.append(f"- {m['label'].capitalize():<8} {_meter(m)}")
-    out += ["- Momentum  +2     (max +10; reset +2; impacts lower both: `rules/character-creation.md`, step 8)", "",
-            "**Impacts** (mark as the fiction demands):"]
-    for group in rules["impacts"].values():
-        boxes = " ".join(f"[ ] {i['label']}" for i in group["contents"].values())
-        out.append(f"- *{group['label']}:* {boxes}")
-    out += ["", "**Legacy tracks** (progress tracks; see Earn Experience in `rules/moves.md`):"]
-    for t in rules["special_tracks"].values():
-        out.append(f"- {t['label'].capitalize():<11} [▱▱▱▱▱▱▱▱▱▱] 0/10 — {t['description']}")
-    out += ["", "**Background vow** (epic): {{vow}} [▱▱▱▱▱▱▱▱▱▱] 0/10", "",
-            "**Vows** (progress tracks; rank sets the mark per milestone):",
-            "- {{vow}} — {{troublesome | dangerous | formidable | extreme | epic}} [▱▱▱▱▱▱▱▱▱▱] 0/10", "",
-            "**Connections** (progress tracks):",
-            "- {{name, role}} — {{rank}} [▱▱▱▱▱▱▱▱▱▱] 0/10", "",
-            "**Assets** (`rules/assets.md`): STARSHIP {{name}} · {{two paths}} · {{one more}}", "",
-            "**Asset tracks** (each card's meters, clocks and counters, at their starting values):"]
-    for c in starship["controls"].values():
-        out.append(f"- STARSHIP {c['label']} {_meter(c)}")
-    out += ["- {{asset}} {{track}} {{value}} (a companion's health, a support vehicle's integrity, …)", "",
-            "**Experience:** {{earned}} / {{spent}}", "",
-            "**Notes / Inventory:** {{freeform}}"]
-    put(files, f"{ADAPTER}/sheet-template.md", "\n".join(out) + "\n")
+SHEET = f"{ADAPTER}/sheet-template.md"
+
+
+def sheet_lines(data):
+    """The lines the hand-written sheet-template.md must carry verbatim: every part of
+    the sheet that comes from the data."""
+    rules = data["rules"]
+    lines = ["- " + " · ".join(f"{k} {{{{}}}}" for k in rules["stats"])]
+    lines += [f"  - *{k}:* {v['description']}" for k, v in rules["stats"].items()]
+    lines += [f"- {m['label'].capitalize():<8} {_meter(m)}" for m in rules["condition_meters"].values()]
+    lines += [f"- *{g['label']}:* " + " ".join(f"[ ] {i['label']}" for i in g["contents"].values())
+              for g in rules["impacts"].values()]
+    lines += [f"- {t['label'].capitalize():<11} [▱▱▱▱▱▱▱▱▱▱] 0/10 — {t['description']}"
+              for t in rules["special_tracks"].values()]
+    starship = data["assets"]["command_vehicle"]["contents"]["starship"]
+    lines += [f"- STARSHIP {c['label']} {_meter(c)}" for c in starship["controls"].values()]
+    return lines
+
+
+def check_sheet(root, data):
+    """Problems with the hand-written sheet: each data line it lacks, as a --check line."""
+    p = os.path.join(root, SHEET)
+    if not os.path.isfile(p):
+        return [f"missing   {SHEET} (hand-written; see sheet_lines())"]
+    with open(p, encoding="utf-8") as fh:
+        have = set(fh.read().split("\n"))
+    return [f"sheet     {SHEET} lacks the data line: {line}" for line in sheet_lines(data) if line not in have]
 
 
 # --- npcs -------------------------------------------------------------------
@@ -650,7 +639,6 @@ def generate(data):
     render_assets(doc, files)
     render_npcs(doc, files)
     render_oracle_index(doc, files)
-    render_sheet(doc, files)
     return files
 
 
@@ -731,15 +719,17 @@ def write(root, files):
     print(f"datasworn-import: wrote {len(files)} files" + (f", removed {len(removed)}" if removed else ""))
 
 
-def check(root, files):
+def check(root, files, sheet_problems=()):
     old = owned_files(root)
     problems = [f"missing   {rel}" for rel in sorted(set(files) - set(old))]
     problems += [f"stale     {rel}" for rel in sorted(set(old) - set(files))]
     problems += [f"differs   {rel}" for rel in sorted(set(files) & set(old)) if files[rel] != old[rel]]
-    if problems:
-        print("\n".join(problems))
-        sys.exit(f"datasworn-import --check: {len(problems)} generated file(s) out of date; re-run datasworn-import")
-    print(f"datasworn-import --check: {len(files)} generated files match {UPSTREAM_REPO}@{UPSTREAM_REF[:7]}")
+    if problems or sheet_problems:
+        print("\n".join(problems + list(sheet_problems)))
+        sys.exit(f"datasworn-import --check: {len(problems)} generated file(s) out of date, "
+                 f"{len(sheet_problems)} sheet line(s) missing; re-run datasworn-import, fix the sheet by hand")
+    print(f"datasworn-import --check: {len(files)} generated files and the sheet's data lines "
+          f"match {UPSTREAM_REPO}@{UPSTREAM_REF[:7]}")
 
 
 def main(argv=None):
@@ -751,8 +741,16 @@ def main(argv=None):
                     help="keep the fetched file in DIR (by its sha256) and reuse it next time")
     ap.add_argument("--root", default=PLUGIN, help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
-    files = generate(load(a.json, a.cache))
-    (check if a.check else write)(a.root, files)
+    data = load(a.json, a.cache)
+    files = generate(data)
+    sheet_problems = check_sheet(a.root, data)
+    if a.check:
+        check(a.root, files, sheet_problems)
+        return
+    write(a.root, files)
+    if sheet_problems:              # regenerated, but the hand-written sheet needs a fix
+        print("\n".join(sheet_problems))
+        sys.exit(f"datasworn-import: {SHEET} is missing {len(sheet_problems)} data line(s); edit it by hand")
 
 
 if __name__ == "__main__":
