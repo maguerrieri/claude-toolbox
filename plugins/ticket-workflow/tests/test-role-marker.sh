@@ -122,6 +122,8 @@ record "implementer|issue: 52|notify: repo #52: new| exit 0" "notify: replaces t
 	"$(run $'implementer\nissue: 52\nnotify: old\n' $'repo #52: new\n' notify)"
 record "epic-coordinator|notify: planning| exit 0" "notify: marker without a trailing newline" \
 	"$(run epic-coordinator planning notify)"
+record "implementer|notify: session_01UXqirFosAymBhQ5aByjgNt| exit 0" "notify: a cloud session id is a valid target" \
+	"$(run $'implementer\n' session_01UXqirFosAymBhQ5aByjgNt notify)"
 record "implementer|notify: $tricky| exit 0" "notify: quotes and shell syntax stay data" \
 	"$(run $'implementer\n' "$tricky" notify)"
 record absent "notify: nothing in the name ran" "$([ -e "$tmp/pwned" ] && echo present || echo absent)"

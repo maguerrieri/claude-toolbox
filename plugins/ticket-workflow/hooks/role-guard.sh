@@ -16,7 +16,7 @@
 #   the tool result when the call runs): a rejected call then tells the model
 #   to file and spawn rather than retry. Every other documented worktree,
 #   EPIC's and the FINISH intro's temporary checkout (which a planner runs for
-#   a stacked or cloud child's PR) included, goes through `git worktree add` in
+#   a stacked PR or a child with no Notify: edge) included, goes through `git worktree add` in
 #   Bash, so the gate doesn't touch it: only START, an implementer's phase,
 #   calls EnterWorktree.
 #   File edits under a scratch or memory directory are a planner's own work

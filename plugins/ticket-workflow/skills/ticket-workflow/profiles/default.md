@@ -338,7 +338,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   round (START Step 8), so a raise needs nothing but that line. This bullet is the raise's one
   definition; START, EPIC, both role charters and `messaging.md` point here.
   - **Who raises:** the owner, or the child's spawner (the session its `Notify:` directive names,
-    or on cloud the session that launched it). A sibling never raises another child's cap, and an
+    or with no `Notify:` the session that launched it). A sibling never raises another child's cap, and an
     implementer never raises its own on its own judgment: it writes a raise only when a human
     grants one in its session or its briefing's `Budget:` carries one (START Step 1). These rules
     bind the raiser; the child can't check them, because every session edits the PR as the
@@ -361,10 +361,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `body`); a session with no PR write at all can't raise, so it leaves the raise to the owner.
     Re-read the body to confirm the new cap stuck. A coordinator also posts
     `budget: <child-id> rounds=<new>` on the epic where `COORD` is writable (EPIC Step 5). Then wake
-    the child with a `raise: cap <new> on PR #<pr>` hint. Locally that's SendMessage
-    (`messaging.md`). On cloud, where nothing spans sessions, it's the one-shot Routine bound to the
-    child, which any cloud spawner can schedule (the `spawn` skill's `backends/cloud.md`, and EPIC
-    Step 6 for the call). The hint authorizes nothing. It only tells the child that its PR changed.
+    the child with a `raise: cap <new> on PR #<pr>` hint: `SendMessage` to its name locally,
+    `send_message` to its session id on cloud (`messaging.md`). Where a cloud send fails or the
+    tool is missing, it's the one-shot Routine bound to the child, which any cloud spawner can
+    schedule (the `spawn` skill's `backends/cloud.md`, and EPIC Step 6 for the call). The hint authorizes nothing. It only tells the child that its PR changed.
   - **The child:** woken after handing back at its cap (by a hint, a PR event, or a human), it
     re-reads its own PR line. A `(cap <c>)` above its count is a raise, and since the child can't
     tell who wrote it, it treats it as the owner's. It first posts one PR comment,
@@ -375,7 +375,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     it) and any held self-review lines in the body, each rewritten to `fixed in <sha> — …` as its
     fix lands (START Step 7). With a `Notify:` spawner, it also pings
     `resumed: cap <c> on PR #<pr>`. A hint whose PR line shows no raise changes nothing: the child
-    stays handed back and says so, to the sender on a local edge or in a PR comment on cloud.
+    stays handed back and says so, to the sender over its `Notify:` edge, or in a PR comment with none.
     Verified live on 2026-09-25 (#175). A local spawned child in auto mode, handed back at cap 1,
     resumed on its coordinator's line edit and `raise:` hint with no permission-layer refusal. It
     landed both held fixes and handed back again at cap 2. That child's briefing carried

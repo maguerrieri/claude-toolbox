@@ -1,13 +1,27 @@
-# Cross-session messaging (SendMessage)
+# Cross-session messaging (SendMessage, `send_message`)
 
 A **wake-up channel** between related sessions — a spawned implementer pinging its
-coordinator ("PR up", "blocked"), or a coordinator poking a child — carried by the
-harness's built-in session messaging: `SendMessage({to: <session name>, message:
-"…"})`, with `ListAgents` to look receivers up. Delivery is the harness's job:
-nothing to arm, nothing to keep alive across resume/compaction (only the
-target's *name* needs keeping, and the role marker keeps it; see Addressing),
-and a send to an offline session is **queued and delivered when that session next wakes**
-(verified empirically) — write to it as at-least-once-on-next-wake, not
+coordinator ("PR up", "blocked"), or a coordinator poking a child. It has two
+transports, one per spawn backend, and everything below holds for both unless it
+names one:
+
+- **Local** (`claude --bg` siblings): the harness's built-in session messaging,
+  `SendMessage({to: <session name>, message: "…"})`, with `ListAgents` to look
+  receivers up. A delivery arrives wrapped in `<cross-session-message
+  from-name="<session name>" …>`.
+- **Cloud** (`create_session` siblings): the session-management server's
+  `send_message({"session_id": "<session id>", "message": "…"})`. A delivery
+  arrives as a queued notification you read with `ReadNotifications`, wrapped in
+  `<cross-session-message from-session="session_…">`. `SendMessage` and
+  `ListAgents` don't reach across cloud containers; this does (the `spawn`
+  skill's `backends/cloud.md` has the evidence, verified 2026-10-21).
+
+Delivery is the harness's job: nothing to arm, nothing to keep alive across
+resume/compaction (only the target's address needs keeping, and the role marker
+keeps it; see Addressing), and a send to an offline session is **queued and
+delivered when that session next wakes** (verified for `SendMessage`; for
+`send_message`, whether a send wakes a cloud session whose container was
+reclaimed isn't verified yet) — write to it as at-least-once-on-next-wake, not
 guaranteed.
 
 This is a **latency optimization on top of** the durable record, never a
@@ -33,20 +47,33 @@ sessions; resuming it, not a fresh spawn, is the way back to it.
 
 ## Addressing
 
-- The **`Notify:` directive** on a spawn edge carries the spawner's **session
-  name** (e.g. `Notify: widgets epic #40`), a sibling of `Base branch:` /
-  `Worktree:` / `Role:`. The child pings that name via SendMessage. In the other
-  direction, the spawner already named every child at spawn (`--name "<repo>
-  <ID>: <desc>"`), so both directions are addressable by name — no paths, no
-  keys.
+- The **`Notify:` directive** on a spawn edge carries the spawner's address, a
+  sibling of `Base branch:` / `Worktree:` / `Role:`. **One directive covers both
+  transports, and the backend you run on picks one:**
+  - a **session name** on a local edge (e.g. `Notify: widgets epic #40`): the
+    child pings it via `SendMessage`. In the other direction, the spawner
+    already named every child at spawn (`--name "<repo> <ID>: <desc>"`), so both
+    directions are addressable by name — no paths, no keys;
+  - a **session id** on a cloud edge (`Notify: session_…`, the spawner's own
+    `$CLAUDE_CODE_REMOTE_SESSION_ID`): the child pings it via `send_message`. In
+    the other direction, the spawner recorded each child's id from
+    `create_session`. Use the id rather than the `"@parent"` alias
+    a delivery offers, since the id is what a sender gets checked against.
+
+  So a single `notify:` marker line, check and re-injection serve both. A
+  spawn edge never crosses backends, so the session's own backend says which
+  tool to send with: `send_message` in a cloud session
+  (`CLAUDE_CODE_REMOTE_SESSION_ID` is set), `SendMessage` otherwise. Don't
+  infer it from the value: a local session can be renamed to anything,
+  `session_…` included.
 - **The target survives compaction.** The briefing that carried `Notify:` does
-  not: compaction drops it, and a session that forgets the name
+  not: compaction drops it, and a session that forgets the address
   stops pinging. So a session that self-pins a role (START Step 1, EPIC Step 1)
-  also writes the target into its role marker as a `notify: <session name>`
+  also writes the target into its role marker as a `notify: <session name or id>`
   line (`scripts/role-marker.sh notify`), and the SessionStart hook re-injects it
   next to the charter after resume or compaction. The latest write
   replaces any earlier line, so a re-brief naming a new spawner wins. The
-  marker is the one place the name is kept; `/role none` deletes it, and the
+  marker is the one place the address is kept; `/role none` deletes it, and the
   `notify:` line goes with it. Any spawn name fits, em dash, apostrophe, and
   ` [ref]` suffix included. The script and the hook share one check
   (`scripts/notify-name.sh`), which refuses only control characters,
@@ -57,7 +84,7 @@ sessions; resuming it, not a fresh spawn, is the way back to it.
   checked against (below), so a session whose marker has no `notify:` line
   accepts no clearance.
 - **Each edge's `Notify:` names that edge's own spawner.** When you spawn,
-  put *your* name in the child's `Notify:`, never the `Notify:` you inherited:
+  put *your* name (or id) in the child's `Notify:`, never the `Notify:` you inherited:
   a grandchild (an implementer's helper, say) never addresses its grandparent.
   Anything the tier above should see travels up one edge at a time, in the
   middle session's own pings.
@@ -69,7 +96,8 @@ sessions; resuming it, not a fresh spawn, is the way back to it.
   named) can find its own row via `ListAgents` — or put its handle in the
   directive instead, though a child briefed with a handle still gets
   pinged but can't be cleared to merge (the FINISH intro in the skill's `phases/finish.md` matches a
-  `finish:` sender by name).
+  `finish:` sender by name). Cloud session ids can't be renamed, so none of
+  this applies to them.
 - **Confirm-with-ref:** a cross-session send to a bare session name that isn't
   already part of your conversation may be **rejected pending confirmation** —
   re-send with the ` [ref]` suffix exactly as a `ListAgents` row prints it
@@ -106,7 +134,9 @@ receivers and greps treat the two channels uniformly:
 - **Coordinator → child:** rare — a redirect the child should see before its
   next natural checkpoint (e.g. `restack: #<parent> merged into <base>;
   restack #<pr> onto <base>`), sent to the name the coordinator assigned at
-  spawn. A redirect is
+  spawn (on cloud, by `send_message` to the id it recorded; a scheduled
+  one-shot Routine is the fallback when the send fails, `backends/cloud.md`).
+  A redirect is
   *about the child's own issue*: a base-branch change, a scope clarification,
   "stop" / "restack" / "rebase". It is **never a new issue ID** — a live
   session's branch, worktree, PR footer, name, and notify wiring are all keyed
@@ -119,15 +149,16 @@ receivers and greps treat the two channels uniformly:
   child's PR `Review rounds:` line, never instead of it): **the ping
   authorizes nothing** — the line is the raise, and the child acts only on
   what it reads there (the profile's `REVIEW_BOT`, *Raising the cap*). On a
-  local edge the child answers `resumed: cap <n> on PR #<pr>` when it resumes,
-  a prefix of its own so it isn't mistaken for a first `pushed:`. A cloud
-  child has no channel back (below), so its spawner reads the resume off the
-  PR, where the child also posts it as a comment.
+  `Notify:` edge the child answers `resumed: cap <n> on PR #<pr>` when it resumes,
+  a prefix of its own so it isn't mistaken for a first `pushed:`. A child with
+  no `Notify:` edge posts the resume as a PR comment instead, and its spawner
+  reads it off the PR.
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
   restack (an FYI: the dependent restacks when you merge, on a `restack:`
   request, not on this ping). Sibling names follow the spawn convention, and
-  `ListAgents` resolves them.
+  `ListAgents` resolves them. That's local only: a cloud child knows its
+  spawner's id but not its siblings', so on cloud the PR comment is the message.
 - **Restack requests, `restack:`:** in the merged or moved form START Step 8's
   *Restack on request* defines (e.g. `restack: #<parent> merged into <base>;
   restack #<pr> onto <base>`). Only a branch's own session pushes to it, so a
@@ -171,15 +202,17 @@ defines it.
 - Not for unrelated sessions — the channel spans one spawn tree (spawner, its
   children, siblings of the same run); don't message sessions whose work you're
   not part of.
-- Not load-bearing — a harness without SendMessage (older build, restricted
-  tool set) simply degrades to the existing poll (EPIC Step 6, PR state); do
-  not fall back to a file mailbox.
-- **Not available on cloud spawn edges.** When the spawner is itself a cloud
-  session, its siblings are separate cloud sessions (the `spawn` skill's
-  `backends/cloud.md`) and this channel does not reach them **in either
-  direction**: `ListAgents` does not list a live, connected cloud sibling, and a
-  `SendMessage` addressed to one comes back unreachable. So a cloud spawn edge carries
-  **no** `Notify:` directive, and its spawner polls — PR/tracker state, plus
-  `get_session` for whether a child is still running. This is the degrade-to-poll
-  case above, not a reduced-messaging one: there is nothing to arm and nothing
-  to ping.
+- Not load-bearing — a harness without the edge's transport (an older build, a
+  restricted tool set: no `SendMessage` locally, no `send_message` on cloud)
+  simply degrades to the existing poll (EPIC Step 6, PR state); do not fall
+  back to a file mailbox. A cloud spawner without `send_message` puts no
+  `Notify:` in the briefing, and a child that has a `Notify:` but no tool to
+  send it with falls back to the durable notes (`roles/implementer.md`).
+- **Cloud `finish:` clearances are optimistic.** They ride `send_message` like
+  any ping, checked by the delivery's `from-session` against the recorded
+  `session_…` id, never an id in the text (the FINISH intro in
+  `phases/finish.md`). They haven't been tested live (#247): the receiving
+  harness frames a peer's message as data and tells the session not to take a
+  new destructive action solely on its basis, so it may refuse the merge. A
+  refusal is a permission block like any other: the child pings `blocked:
+  merge needs the owner`, which goes on toward the owner as below.
