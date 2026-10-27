@@ -6,6 +6,7 @@
     "name": "Mario Guerrieri"
   },
   "dependencies": [
-    "spawn"
+    "spawn",
+    "ledger"
   ]
 }
