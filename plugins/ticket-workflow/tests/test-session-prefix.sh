@@ -24,6 +24,7 @@ mkdir -p "$root"/services/{voter-guide,sunset,home-supplies,.cache} \
 	"$root"/infra/{firebase-shared,modules}
 touch "$root/services/README.md"
 mkdir -p "$root/libs/shared" && ln -s ../libs/shared "$root/services/shared"
+ln -s services "$root/svc"
 projects='services/* mcp-servers/* apps/* infra/firebase-shared'
 
 prefix() { # prefix <title> [script args...]: the prefix the script prints for toolbox
@@ -53,6 +54,11 @@ record 'toolbox' 'a file is not a project' "$(local_prefix 'README.md: Reword')"
 record 'toolbox' 'a hidden dir is not a project' "$(local_prefix '.cache: Clear')"
 record 'toolbox' 'a symlinked dir is not a project' "$(local_prefix 'shared: Fix')"
 record 'toolbox' 'nor a symlink named by a plain entry' "$(prefix 'shared: Fix' --root "$root" --projects 'services/shared')"
+record 'toolbox' 'nor a dir under a symlinked parent' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'svc/*')"
+record 'toolbox' 'nor one a plain entry reaches through a symlink' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'svc/voter-guide')"
+record 'toolbox' 'a plain entry must match the dir case and all' "$(prefix 'Voter-Guide: Fix' --root "$root" --projects 'services/Voter-Guide')"
+record 'voter-guide' 'a plain entry for a real dir' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'services/voter-guide')"
+record 'services' 'a plain top-level entry' "$(prefix 'services: Fix' --root "$root" --projects 'services')"
 record 'firebase-shared' 'trailing slashes are fine' "$(prefix 'firebase-shared: Fix' --root "$root" --projects 'services/*/ infra/firebase-shared/')"
 record 'voter-guide' 'on a star entry too' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'services/*/')"
 record 'toolbox' 'a path scope is not a project' "$(local_prefix 'services/voter-guide: Fix')"
@@ -88,6 +94,11 @@ rel=${2#repos/o/r/contents}
 rel=${rel#/}
 dir="$STUB_ROOT/$rel"
 [ -d "$dir" ] || { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+# The API describes a symlink rather than listing what it points to.
+if [ -n "$rel" ] && [ -L "$dir" ]; then
+	jq -rn --arg n "${rel##*/}" '{name: $n, type: "symlink"}' | jq -r "$4"
+	exit
+fi
 [ -n "${STUB_FAIL:-}" ] && { echo 'gh: HTTP 403' >&2; exit 1; }
 for e in "$dir"/* "$dir"/.[!.]*; do
 	[ -e "$e" ] || continue
@@ -107,6 +118,13 @@ record 'firebase-shared' '--repo: a plain-dir entry' "$(remote_prefix 'firebase-
 record 'toolbox' '--repo: a file is not a project' "$(remote_prefix 'README.md: Reword')"
 record 'toolbox' '--repo: a hidden dir is not a project' "$(remote_prefix '.cache: Clear')"
 record 'toolbox' '--repo: a symlinked dir is not a project' "$(remote_prefix 'shared: Fix')"
+remote_with() { printf '%s\n' "$1" | bash "$script" toolbox --repo o/r --projects "$2" 2>"$tmp/err"; }
+record 'toolbox' '--repo: nor a symlink named by a plain entry' "$(remote_with 'shared: Fix' 'services/shared')"
+record 'toolbox' '--repo: nor a dir under a symlinked parent' "$(remote_with 'voter-guide: Fix' 'svc/*')"
+record 'toolbox' '--repo: a plain entry must match the dir case and all' "$(remote_with 'Voter-Guide: Fix' 'services/Voter-Guide')"
+record 'voter-guide' '--repo: a plain entry for a real dir' "$(remote_with 'voter-guide: Fix' 'services/voter-guide')"
+record 'toolbox' '--repo: a plain entry on a failed read' "$(STUB_FAIL=1 remote_with 'firebase-shared: Fix' 'infra/firebase-shared')"
+record 'yes' "--repo: is noted as a read failure, not a missing dir" "$(grep -q "can't read 'infra'" "$tmp/err" && echo yes)"
 record 'services' '--repo: a bare * reads the root' "$(printf 'services: Fix\n' | bash "$script" toolbox --repo o/r --projects '*' 2>/dev/null)"
 record 'toolbox' '--repo: a failed read falls back' "$(STUB_FAIL=1 remote_prefix 'voter-guide: Fix')"
 record 'yes' '--repo: and is noted' "$(grep -q "can't read 'services'" "$tmp/err" && echo yes)"
@@ -116,9 +134,9 @@ record '0' '--repo: a failed read still exits 0' \
 remote_prefix 'ci: Cache' >/dev/null
 record '3' '--repo: one read per star entry, none for a plain entry that cannot match' "$(wc -l <"$tmp/args" | tr -d ' ')"
 
-# The docs' own call, from phases/spawn.md Step 3, with its placeholders filled
-# and the list item's indent taken off, as a reader copying it would.
-doc_call=$(extract_block "$skill/phases/spawn.md" 'session-prefix.sh" "<repo>"' | sed 's/^  //')
+# The docs' own call, from phases/spawn.md Step 3, verbatim but for its
+# placeholders: the block sits in column one, so a copy closes its heredoc.
+doc_call=$(extract_block "$skill/phases/spawn.md" 'session-prefix.sh" "<repo>"')
 run_doc_call() { # run_doc_call <title>: what the docs' snippet prints
 	local filled
 	filled=$(printf '%s\n' "$doc_call" | sed -e 's|"<repo>"|"toolbox"|' -e "s|<checkout>|$root|" \
