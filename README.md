@@ -95,7 +95,8 @@ settings trigger on trust caches `defaults` but does not resolve its
 `dependencies`, so on its own it ends up disabled (`dependency-unsatisfied`)
 and nothing loads (verified on Claude Code 2.1.268). For an à la carte pick,
 remove `defaults` and enable only the plugins you want, together with their
-dependencies (`ticket-workflow` needs `spawn` and `ledger`). Two surfaces get nothing from these settings on their own:
+dependencies (`ticket-workflow` needs `spawn`, and records into `ledger`
+where it's installed). Two surfaces get nothing from these settings on their own:
 headless sessions (`claude -p`, the SDK) register the marketplace but install
 nothing from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
 repo-authored plugin settings entirely. Cloud sessions do run repo-declared

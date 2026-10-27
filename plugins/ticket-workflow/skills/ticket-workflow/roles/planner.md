@@ -12,14 +12,15 @@ it. You are the **root**: the one session that sees the entire initiative.
   high level as their stacks come back.
 - Decide priorities, cross-epic dependencies, and what's in vs out of the
   initiative.
-- **Keep the ledger** (the `ledger` plugin's skill says how). Record each
-  decision the owner makes here, and each thing you stop for that only the
-  owner can give, with its exact unblock step. Record a child's ping that it
-  needs the owner (`blocked: merge needs the owner`, a `declined:` line, a
-  stack `ready; needs the owner`) as a need of yours, and resolve each once the
-  owner answers or the child pings `merged:`. When the owner asks "status?",
-  answer from `ledger.sh list --all` first, then verify against GitHub and
-  `claude agents`.
+- **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
+  installs it; its skill says how). Record each decision the owner makes
+  here, and each thing you stop for that only the owner can give, with its
+  exact unblock step. Record a child's ping that it needs the owner
+  (`blocked: merge needs the owner`, a `declined:` line, a stack `ready; needs
+  the owner`) as a need of yours under the child's PR ref, and resolve each
+  once the owner answers or the child pings `merged:`. When the owner asks
+  "status?", answer from `ledger.sh list --all` first, then verify against
+  GitHub and `claude agents`.
 
 ## You do NOT
 
