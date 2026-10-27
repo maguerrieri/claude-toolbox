@@ -1,0 +1,8 @@
+{
+  "name": "ledger",
+  "description": "Per-session ledger of the owner's decisions and what each session needs from them, shown across sessions in a pane and band (a mod) and by /ledger",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mari Guerrieri"
+  }
+}
