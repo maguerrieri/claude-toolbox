@@ -370,11 +370,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     child in its session, or tells its spawner. A child mid-round lets the review in flight on its
     head land (it waits for that in-turn anyway), then posts the record and pushes the request
     with that round's fixes, or alone as an owner head when there is nothing to fix or it is at
-    its cap. A child that had
-    handed back resumes for it and pings `resumed: request on PR #<pr>` on a local edge. Once that
-    head is reviewed it runs the final self-review again before handing back, since START Step 8
-    runs one per hand-back and a request can add code. Requests taken in the same resumption share
-    that pass. Either way the PR's Summary gains what was asked. Before the PR exists, a request is
+    its cap. A child that had handed back resumes for it and pings `resumed: request on PR #<pr>`
+    on a local edge. Before it pushes, it rewrites its `Final diff:` line to `pending` (START Step
+    7's record rules), so no gate reads the last hand-back's pass as covering the new code and
+    EPIC Step 6 can't freeze its row again early. Once that head is reviewed it runs the final
+    self-review again and fills the line in before handing back, since START Step 8 runs one per
+    hand-back and a request can add code. Requests taken in the same resumption share that pass. Either way the PR's Summary gains what was asked. Before the PR exists, a request is
     just part of the work.
 
 - **The cap.** It is the one START Step 8 resolves: the **larger** valid value of the PR line's
