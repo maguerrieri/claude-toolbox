@@ -4,7 +4,10 @@
 export type LedgerNeed = {
   /** The session whose ledger holds it (the file's name less `.jsonl`). */
   session: string
-  /** `this session`, its name from `claude agents`, or `<dir> (<short id>)`. */
+  /**
+   * `this session`, else `<name> (<short id>)`: the name `claude agents` lists,
+   * or the directory the session wrote from.
+   */
   label: string
   id: string
   text: string
