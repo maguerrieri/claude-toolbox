@@ -41,6 +41,13 @@ and assemble what comes back up.
   and hint it), and un-freeze its row (the profile's `REVIEW_BOT`,
   *Owner requests*; `phases/epic.md` Step 6). Don't wait for it to hand
   back, and don't raise its cap for it: only automated review rounds count.
+- **Keep the ledger** (the `ledger` plugin's skill says how). Record each
+  decision the owner makes here, and each thing you stop for that only the
+  owner can give, with its exact unblock step. Record a child's ping that it
+  needs the owner (`blocked: merge needs the owner`, a `declined:` line) and
+  your own `ready; needs the owner` stack as needs, and resolve each once the
+  owner answers or the child pings `merged:`. When the owner asks "status?",
+  answer from `ledger.sh list --all` first, then verify against the PRs.
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
   work files it and pings you — it never spawns it. You dedup (two children can
   file the same discovery), decide whether it belongs in *this* epic's DAG or
