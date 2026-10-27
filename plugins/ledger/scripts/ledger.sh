@@ -34,14 +34,16 @@
 # A session writes only its own ledger, keyed by its session id: the harness's
 # CLAUDE_CODE_SESSION_ID, else the CLAUDE_SESSION_ID that ticket-workflow's
 # SessionStart hook exports on older CLIs. The one exception is
-# `resolve --session`, the owner dismissing another session's need (the full
-# id, or a unique prefix of at least four characters).
+# `resolve --session` (the full id, or a unique prefix of at least four
+# characters): the owner dismissing another session's need, or a FINISH that
+# landed another session's PR resolving its hand-back.
 #
 # `list` prints this session's open needs, decisions and resolved needs,
 # newest first. `list --all` prints the open needs of every session's ledger,
-# newest first and each named by `claude agents --json --all` where it lists
-# the session (else by its directory and short id), then this session's
-# decisions.
+# newest first, then this session's decisions. Another session is shown as
+# `<name> (<short id>)`: its name where `claude agents --json --all` lists it,
+# else the directory it wrote from. The short id, the session id's first eight
+# characters, is `claude attach`'s handle and a `resolve --session` prefix.
 #
 # Every write goes to a temp file in the ledger directory and is renamed over
 # the ledger, so a reader never sees half of one. Reads skip a line that isn't
@@ -284,7 +286,7 @@ list)
 		entries "$ledger" | jq -c --arg s "$owner" '. + {session: $s}'
 	done | jq -rs --argjson names "$names" --arg me "$sid" "$jq_defs"'
 		def who: if .session == $me then "this session"
-			elif ($names[.session] | type) == "string" then $names[.session]
+			elif ($names[.session] | type) == "string" then $names[.session] + " (" + .session[0:8] + ")"
 			else ((.cwd // "" | tostring | split("/") | map(select(. != "")) | last) // "?") + " (" + .session[0:8] + ")" end;
 		([.[] | select(.kind == "need" and .resolved_at == null)] | sort_by(.at, .session, num) | reverse) as $needs
 		| ([.[] | select(.kind == "decision" and $me != "" and .session == $me)] | sort_by(.at, num) | reverse) as $decisions

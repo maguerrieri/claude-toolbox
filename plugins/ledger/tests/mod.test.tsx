@@ -90,7 +90,7 @@ test('the band counts the open needs and shows the newest, on each surface', asy
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
     expect((await ui.find({ type: 'Text', text: /open needs/ }))?.text).toBe('2 open needs ')
-    expect((await ui.find({ type: 'Text', text: /212/ }))?.text).toBe('toolbox #212: merge it: PR #212 needs review ')
+    expect((await ui.find({ type: 'Text', text: /212/ }))?.text).toBe('toolbox #212: merge it (other): PR #212 needs review ')
     await ui.unmount()
   }
 })
@@ -118,7 +118,7 @@ test('the pane lists every open need and this session\'s decisions, and Resolve 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /^Open needs/ }))?.text).toBe('Open needs (2)')
-    expect((await ui.find({ type: 'Text', text: /^toolbox/ }))?.text).toBe('toolbox #212: merge it · n1 · #212 · 10m')
+    expect((await ui.find({ type: 'Text', text: /^toolbox/ }))?.text).toBe('toolbox #212: merge it (other) · n1 · #212 · 10m')
     expect((await ui.find({ type: 'Text', text: /^www/ }))?.text).toBe('www (third) · n2 · 3h')
     expect((await ui.find({ type: 'Text', text: /^Decisions/ }))?.text).toBe('Decisions in this session (1)')
     expect((await ui.find({ type: 'Text', text: /^d1/ }))?.text).toBe('d1 · #208 · 1h')
@@ -144,7 +144,7 @@ test('the model skips lines that are not entries and orders newest first', async
 
   const view = viewOf(ledgers, 'me', { other: 'toolbox #212: merge it' })
   expect(view.needs.map(need => `${need.label} ${need.id}`)).toEqual([
-    'toolbox #212: merge it n1',
+    'toolbox #212: merge it (other) n1',
     'www (third) n2',
   ])
   expect(view.decisions.map(decision => decision.id)).toEqual(['d1'])

@@ -190,7 +190,7 @@ printf 'ignored\n' >"$dir/notes.txt"
 record "exit 0" "list --all" "$(run '' list --all)"
 labels=$(grep -E '^  [^ ]' "$tmp/out" | sed -E 's/^  //; s/ · [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}//')
 record "this session · n1 · #212
-toolbox #212: merge it · n1
+toolbox #212: merge it (22222222) · n1
 repo-b (33333333) · n1
 d1 · #208" "list --all: open needs across sessions, newest first, then this session's decisions" "$labels"
 record 1 "list --all: header" "$(grep -c '^Open needs across sessions (3):$' "$tmp/out")"

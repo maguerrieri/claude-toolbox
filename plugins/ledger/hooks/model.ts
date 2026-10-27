@@ -90,13 +90,10 @@ const labelOf = (
   if (session === me) {
     return 'this session'
   }
-  const name = names[session]
-  if (name !== undefined) {
-    return clean(name)
-  }
-  const dir = (cwd ?? '').split('/').filter(part => part !== '').at(-1) ?? '?'
+  // The short id is `claude attach`'s handle and a `resolve --session` prefix.
+  const name = names[session] ?? (cwd ?? '').split('/').filter(part => part !== '').at(-1) ?? '?'
 
-  return `${clean(dir)} (${session.slice(0, 8)})`
+  return `${clean(name)} (${session.slice(0, 8)})`
 }
 
 const numberOf = (id: string): number => Number(id.slice(1)) || 0
