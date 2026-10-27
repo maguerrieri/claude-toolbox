@@ -182,18 +182,22 @@ cat >"$dir/$other.jsonl" <<EOF
 {"kind":"decision","id":"d1","text":"their decision","at":"2020-01-01T10:01:00Z","cwd":"$tmp/work/repo-a"}
 {"kind":"need","id":"n2","text":"done already","at":"2020-01-01T10:02:00Z","cwd":"$tmp/work/repo-a","resolved_at":"2020-01-01T10:03:00Z"}
 EOF
+# repo-b's n2 shares this session's n1's ref, as a child's need and its
+# spawner's copy do: one need, shown once, under the first recorded.
 cat >"$dir/33333333-x.jsonl" <<EOF
 {"kind":"need","id":"n1","text":"Pick a design","at":"2020-01-01T09:00:00Z","cwd":"$tmp/work/repo-b"}
 not json
+{"kind":"need","id":"n2","text":"Review PR #212","ref":"#212","at":"2020-01-01T08:00:00Z","cwd":"$tmp/work/repo-b"}
 EOF
 printf 'ignored\n' >"$dir/notes.txt"
 record "exit 0" "list --all" "$(run '' list --all)"
 labels=$(grep -E '^  [^ ]' "$tmp/out" | sed -E 's/^  //; s/ · [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}//')
-record "this session · n1 · #212
+record "repo-b (33333333) · n2 · #212
 toolbox #212: merge it (22222222) · n1
 repo-b (33333333) · n1
 d1 · #208" "list --all: open needs across sessions, newest first, then this session's decisions" "$labels"
-record 1 "list --all: header" "$(grep -c '^Open needs across sessions (3):$' "$tmp/out")"
+record 1 "list --all: a shared ref names the other copies" "$(grep -c '^    also: this session n1$' "$tmp/out")"
+record 1 "list --all: header counts a shared ref once" "$(grep -c '^Open needs across sessions (3):$' "$tmp/out")"
 record 1 "list --all: decisions header" "$(grep -c '^Decisions in this session (1):$' "$tmp/out")"
 record 1 "list --all: a need's text" "$(grep -c '^    Pick a design$' "$tmp/out")"
 record 0 "list --all: resolved needs left out" "$(grep -c 'Unlock 1Password\|done already' "$tmp/out")"
@@ -207,14 +211,44 @@ record "exit 0" "list --all: claude agents failing" \
 	"$(cd "$work" && env -i PATH="$tmp/bin-broken:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
 record 1 "list --all: falls back to the directory name" "$(grep -c '^  repo-a (22222222) · n1' "$tmp/out")"
+
+# A claude that hangs is given five seconds, and then nobody is named.
+mkdir -p "$tmp/bin-hung"
+printf '#!/bin/sh\nexec sleep 30\n' >"$tmp/bin-hung/claude"
+chmod +x "$tmp/bin-hung/claude"
+started=$(date +%s)
+record "exit 0" "list --all: claude agents hanging" \
+	"$(cd "$work" && env -i PATH="$tmp/bin-hung:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
+record yes "list --all: done within ten seconds" "$([ $(($(date +%s) - started)) -lt 10 ] && echo yes)"
+record 1 "list --all: a hung claude names nobody" "$(grep -c '^  repo-a (22222222) · n1' "$tmp/out")"
 record "exit 0" "list --all: no session id still lists" \
 	"$(cd "$work" && env -i PATH="$tmp/bin:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		"$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
 record 0 "list --all: no session id marks no session as this one" "$(grep -c 'this session' "$tmp/out")"
 record "exit 1" "list: an unknown option" "$(run '' list --json)"
 
-# --- writes are atomic -------------------------------------------------------
+# --- writes are atomic and serialized ---------------------------------------
 
-record "" "no temp files left behind" "$(ls -A "$dir" | grep -v -e '\.jsonl$' -e '^notes\.txt$')"
+record "" "no temp files or locks left behind" "$(ls -A "$dir" | grep -v -e '\.jsonl$' -e '^notes\.txt$')"
+
+# Ten adds at once, and a resolve among them: every entry lands, numbered
+# without a repeat.
+reset
+run 'first' add-need >/dev/null
+for i in 1 2 3 4 5 6 7 8 9 10; do
+	(cd "$work" && printf 'need %s' "$i" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" add-need >/dev/null 2>&1) &
+done
+run '' resolve n1 --session "$sid" >/dev/null &
+wait
+record "11 11 1" "concurrent writes: none lost, ids unique, the resolve kept" \
+	"$(jq -s '"\(length) \([.[].id] | unique | length) \([.[] | select(.resolved_at)] | length)"' -r "$dir/$sid.jsonl")"
+
+# A lock a killed write left is taken over once it's a minute old.
+mkdir "$dir/.$sid.jsonl.lock"
+touch -t 202001010000 "$dir/.$sid.jsonl.lock"
+record "exit 0" "a stale lock is taken over" "$(run 'after a crash' add-decision)"
+record "" "the stale lock is gone" "$(ls -A "$dir" | grep -v '\.jsonl$')"
 
 finish
