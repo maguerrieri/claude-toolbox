@@ -1,5 +1,6 @@
 {
-  "description": "Session ledger: export the plugin root so the docs can run scripts/ledger.sh, reap ledgers untouched for 30 days, and keep in-process subagents from writing their parent's ledger.",
+  "description": "Session ledger: export the plugin root so the docs can run scripts/ledger.sh, reap ledgers untouched for 30 days, and keep in-process subagents from writing their parent's ledger. The module is the mod: the band, the pane and /ledger-pane.",
+  "modules": ["./register.tsx"],
   "hooks": {
     "SessionStart": [
       {
