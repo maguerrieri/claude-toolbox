@@ -34,7 +34,7 @@ finished (`done`) still exists and can be continued **with its context**. A
 fresh session for the same unit starts from nothing: it re-reads the work from
 PRs and the tracker, loses in-flight reasoning, and may redo decisions. So when a
 unit may already have a session (a re-spawn after a restart, a retried fan-out, a
-caller whose names are deterministic, like ticket-workflow's `<repo> <ID>: …`),
+caller whose names are deterministic, like ticket-workflow's `<prefix> <ID>: …`),
 look it up first and **resume it; spawn fresh only when nothing resumable
 matches**.
 
@@ -57,14 +57,18 @@ run, across every project on the machine.
 
 **Match on the launch dir as well as the name.** The listing is machine-wide,
 and a name alone can collide: two clones, or two repos with the same basename
-under different owners, produce the same `<repo> <ID>: …` names. Every unit is
+under different owners, produce the same `<prefix> <ID>: …` names. Every unit is
 launched from the durable launch dir (above), so keep only rows whose `cwd` is
 exactly that dir (`claude agents --cwd` matches everything *under* a path, which
 is too loose). If you recorded a unit's handle at spawn, match that `sessionId`
 instead: it survives the user renaming the session, which a name match misses.
 Otherwise match by name, exactly or by prefix when only part of the name is
 deterministic; `$ps` takes several prefixes for one unit when its name has more
-than one spelling (a caller's ID with and without a `#`):
+than one spelling (a caller's ID with and without a `#`). A caller whose name
+can start differently from one launch to the next matches the part that stays
+put instead, with its own filter in place of the name filter below:
+ticket-workflow matches the issue ID before the name's first `: `
+(its `phases/spawn.md` Step 3).
 
 `$launch_dir` is the durable launch dir from the section above: **resolve it
 before the lookup**, since an empty value matches no row and reads as "none".

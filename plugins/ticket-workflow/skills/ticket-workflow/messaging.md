@@ -36,9 +36,9 @@ sessions; resuming it, not a fresh spawn, is the way back to it.
 - The **`Notify:` directive** on a spawn edge carries the spawner's **session
   name** (e.g. `Notify: widgets epic #40`), a sibling of `Base branch:` /
   `Worktree:` / `Role:`. The child pings that name via SendMessage. In the other
-  direction, the spawner already named every child at spawn (`--name "<repo>
-  <ID>: <desc>"`), so both directions are addressable by name — no paths, no
-  keys.
+  direction, the spawner already named every child at spawn (`--name "<prefix>
+  <ID>: <desc>"`, `phases/spawn.md` Step 3), so both directions are addressable
+  by name — no paths, no keys.
 - **The target survives compaction.** The briefing that carried `Notify:` does
   not: compaction drops it, and a session that forgets the name
   stops pinging. So a session that self-pins a role (START Step 1, EPIC Step 1)

@@ -32,7 +32,10 @@ Profile: default
 
 (An optional `Worktree dir: <path>` line in the same block — or in project memory —
 overrides where `/start-ticket` creates worktrees; the default, `.claude/worktrees/`,
-is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.)
+is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.
+A monorepo can add a `Session projects: <dirs>` line, e.g. `services/* apps/*`,
+so a spawned session's name leads with the issue's project instead of the repo;
+the skill's Step 0 defines it. This repo sets neither.)
 
 Work is tracked in **GitHub Issues**. Commits follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
