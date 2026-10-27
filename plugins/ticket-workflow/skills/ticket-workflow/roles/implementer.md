@@ -59,6 +59,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   changes it lists — branch `pushed:`, START-complete `done:`, `blocked:`,
   `resumed:` after a cap raise, follow-up `filed:`, own-PR `merged:`. One line per state change; detail
   belongs in the PR/tracker.
+- **Record what you need from the owner** in your ledger (the `ledger`
+  plugin's skill): the reviewed PR at hand-back (START Step 9), and a
+  `blocked:` that waits on the owner. Resolve each when FINISH lands the PR or
+  the owner clears the blockage. A decision the owner makes in your session
+  goes there too.
 - **Restack your own branch when asked.** Only you push to your branch, so
   when the PR below yours merges, or your base moves, the restack is yours.
   A `restack:` line on your PR, or from your coordinator, is a redirect
