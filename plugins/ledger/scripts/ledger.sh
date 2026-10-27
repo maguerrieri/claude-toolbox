@@ -40,15 +40,20 @@
 #
 # `list` prints this session's open needs, decisions and resolved needs,
 # newest first. `list --all` prints the open needs of every session's ledger,
-# newest first, then this session's decisions. Another session is shown as
-# `<name> (<short id>)`: its name where `claude agents --json --all` lists it,
-# else the directory it wrote from. The short id, the session id's first eight
-# characters, is `claude attach`'s handle and a `resolve --session` prefix.
+# newest first, then this session's decisions. Open needs that share a ref are
+# one need recorded on its way up the spawn tree, so they're shown once, under
+# the first recorded, with an `also:` line naming the rest. Another session is
+# shown as `<name> (<short id>)`: its name where `claude agents --json --all`
+# lists it (given five seconds), else the directory it wrote from. The short
+# id, the session id's first eight characters, is `claude attach`'s handle and
+# a `resolve --session` prefix.
 #
-# Every write goes to a temp file in the ledger directory and is renamed over
-# the ledger, so a reader never sees half of one. Reads skip a line that isn't
-# a JSON object. Exits 0 on success; exits 1 with the reason on stderr when
-# nothing was written or read.
+# Every write holds the ledger's lock (a directory beside it) from its read to
+# its rename, goes to a temp file in the ledger directory, and is renamed over
+# the ledger, so writes at once don't lose each other's entries and a reader
+# never sees half of one. Reads skip a line that isn't a JSON object. Exits 0
+# on success; exits 1 with the reason on stderr when nothing was written or
+# read.
 set -uo pipefail
 # Bytes, not characters: the 4000-byte limit and the control-character check
 # count bytes.
@@ -178,6 +183,47 @@ replace() {
 	fail 'the ledger could not be written'
 }
 
+# lock <file>: hold <file>'s lock, a directory beside it (mkdir is atomic),
+# until the script exits. Every write reads the ledger before it replaces it,
+# so without the lock two writes at once (two of this session's calls run in
+# parallel, or the owner's Resolve beside the session's own add) would each
+# drop the other's entry. A lock a killed write left is taken over once it is
+# a minute old.
+lock() {
+	local tries=0
+	lockdir="$dir/.${1##*/}.lock"
+	mkdir -p "$dir" 2>/dev/null || fail 'the ledger directory could not be created'
+	until mkdir "$lockdir" 2>/dev/null; do
+		if [ -n "$(find "$lockdir" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+			rmdir "$lockdir" 2>/dev/null
+			continue
+		fi
+		tries=$((tries + 1))
+		[ "$tries" -le 200 ] || fail 'another write held the ledger for 10 seconds'
+		sleep 0.05
+	done
+	trap 'rmdir "$lockdir" 2>/dev/null' EXIT
+}
+
+# agents_json: what `claude agents --json --all` prints, given five seconds.
+# A hung CLI must not hold up a status answer; then nobody is named. The
+# watchdog writes nowhere, so a caller reading this script's output never
+# waits on its sleep.
+agents_json() {
+	local out pid watchdog
+	out=$(mktemp "${TMPDIR:-/tmp}/ledger-agents.XXXXXX" 2>/dev/null) || return 1
+	claude agents --json --all >"$out" 2>/dev/null &
+	pid=$!
+	(
+		sleep 5
+		kill "$pid"
+	) >/dev/null 2>&1 &
+	watchdog=$!
+	wait "$pid" && cat "$out"
+	kill "$watchdog" 2>/dev/null
+	rm -f "$out"
+}
+
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # The jq helpers both listings use: a date in local time, an entry's heading
@@ -196,8 +242,7 @@ def section($title; $label): if length == 0 then empty
 	else ($title + " (\(length)):"), (.[] | show($label)) end;
 '
 
-# append_entry <kind> <letter>: the ledger with one more entry of <kind>,
-# numbered after the highest id of that kind it holds.
+# append_entry: the ledger with $entry added on a line of its own.
 append_entry() {
 	if [ -f "$file" ]; then
 		cat "$file" || return 1
@@ -211,6 +256,8 @@ case "$cmd" in
 add-decision | add-need)
 	kind=${cmd#add-}
 	letter=${kind:0:1}
+	# Numbered after the highest id of its kind, read under the lock.
+	lock "$file"
 	last=0
 	if [ -f "$file" ]; then
 		last=$(entries "$file" | jq -s --arg k "$kind" '[.[] | select(.kind == $k) | (.id[1:] | tonumber? // 0)] | max // 0') ||
@@ -238,6 +285,7 @@ resolve)
 		fi
 	fi
 	[ -f "$file" ] || fail 'this session has no ledger'
+	lock "$file"
 	state=$(entries "$file" | jq -rs --arg id "$need" \
 		'[.[] | select(.kind == "need" and .id == $id)] | if length == 0 then "missing" elif any(.[]; .resolved_at == null) then "open" else "resolved" end') ||
 		fail 'the ledger could not be read'
@@ -272,26 +320,41 @@ list)
 	# Session names, where `claude agents` lists the session.
 	names='{}'
 	if command -v claude >/dev/null 2>&1; then
-		listed=$(claude agents --json --all 2>/dev/null |
+		listed=$(agents_json |
 			jq -c 'if type == "array" then map(select(.sessionId and .name) | {key: .sessionId, value: .name}) | from_entries else empty end' 2>/dev/null) &&
 			[ -n "$listed" ] && names=$listed
 	fi
 	shopt -s nullglob
 	files=("$dir"/*.jsonl)
 	shopt -u nullglob
+	ledgers=()
 	for ledger in ${files[@]+"${files[@]}"}; do
 		owner=${ledger##*/}
-		owner=${owner%.jsonl}
-		id_ok "$owner" || continue
-		entries "$ledger" | jq -c --arg s "$owner" '. + {session: $s}'
-	done | jq -rs --argjson names "$names" --arg me "$sid" "$jq_defs"'
+		id_ok "${owner%.jsonl}" && ledgers+=("$ledger")
+	done
+	# Every ledger read by one jq, each entry tagged with its session. Open needs
+	# that share a ref are one need recorded along the way up (a child's own,
+	# then its spawner's copy), so they're shown once: the first recorded,
+	# naming the others.
+	{
+		[ "${#ledgers[@]}" -eq 0 ] ||
+			jq -cR 'fromjson? // empty | select(type == "object")
+				| . + {session: (input_filename | split("/") | last | rtrimstr(".jsonl"))}' "${ledgers[@]}"
+	} | jq -rs --argjson names "$names" --arg me "$sid" "$jq_defs"'
 		def who: if .session == $me then "this session"
 			elif ($names[.session] | type) == "string" then $names[.session] + " (" + .session[0:8] + ")"
 			else ((.cwd // "" | tostring | split("/") | map(select(. != "")) | last) // "?") + " (" + .session[0:8] + ")" end;
-		([.[] | select(.kind == "need" and .resolved_at == null)] | sort_by(.at, .session, num) | reverse) as $needs
+		[.[] | select(.kind == "need" and .resolved_at == null)] as $open
+		| ([$open[] | select((.ref | type) != "string") | [.]]
+			+ ([$open[] | select((.ref | type) == "string")] | group_by(.ref))
+			| map(sort_by(.at, .session, num))
+			| sort_by((map(.at) | max), .[0].session, (.[0] | num)) | reverse) as $needs
 		| ([.[] | select(.kind == "decision" and $me != "" and .session == $me)] | sort_by(.at, num) | reverse) as $decisions
 		| if ($needs | length) == 0 then "No session has an open need."
-		  else ("Open needs across sessions (\($needs | length)):"), ($needs[] | show([who])) end,
+		  else ("Open needs across sessions (\($needs | length)):"),
+			($needs[] | (.[0] | show([who])),
+				(if length > 1 then "    also: " + (.[1:] | map([who, .id] | map(clean) | join(" ")) | join(", ")) else empty end))
+		  end,
 		  ($decisions | section("Decisions in this session"; []))' || fail 'the ledgers could not be read'
 	;;
 esac

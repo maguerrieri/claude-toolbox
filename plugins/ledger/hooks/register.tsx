@@ -5,9 +5,9 @@
 // sessions from `claude agents --json --all`. It writes only through the
 // script (Resolve), so the files keep one writer's format.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { LedgerView } from '../types'
+import type { LedgerCopy, LedgerNeed, LedgerView } from '../types'
 import { EMPTY_VIEW, ageOf, firstLine, namesOf, needsKey, parseLedger, sessionOf, viewOf } from './model'
 import type { Entry } from './model'
 
@@ -18,15 +18,19 @@ const NAMES_MS = 60_000
 
 // Change the tag when LedgerView's fields change: it declines what an earlier
 // version stored, which outlives a reload.
-const view = atom({ plugin: 'ledger', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-1' })
+const view = atom({ plugin: 'ledger', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-2' })
 const hiddenFor = atom({ plugin: 'ledger', key: 'hiddenFor' } as const, '')
 
 // Caches, which a reload starts over: each file's entries as last read, kept
-// while its size and mtime hold; the session names; and the view last written.
+// while its size and mtime hold; the session names; and the view this module
+// last wrote. That starts unknown, since the atom keeps what an earlier load
+// wrote, so the first refresh always writes.
 const files = new Map<string, { mtimeMs: number; size: number; entries: Entry[] }>()
 let names: Record<string, string> = {}
 let namesAt = 0
-let shown = JSON.stringify(EMPTY_VIEW)
+let shown: string | undefined
+// The poll, one per module: a second session.start (a /clear) replaces it.
+let poll: Timer | undefined
 
 async function ledgerDir($: EngineInterface): Promise<string | undefined> {
   const override = await $.env.get('CLAUDE_SESSION_LEDGER_DIR')
@@ -99,16 +103,32 @@ async function openPane($: EngineInterface): Promise<void> {
   await $.ui.open({ id: PANE, title: 'Ledger' })
 }
 
-// The owner's dismissal, through the script like every other write.
-async function resolveNeed($: EngineInterface, session: string, id: string): Promise<void> {
-  await $.process
-    .run(['bash', `${$.plugin.root}/scripts/ledger.sh`, 'resolve', id, '--session', session])
-    .catch(() => undefined)
+// The owner's dismissal of a need and every copy of it, through the script
+// like every other write. A copy the script couldn't resolve says why.
+async function resolveNeed($: EngineInterface, need: LedgerNeed): Promise<void> {
+  const failures: string[] = []
+  for (const copy of [need, ...need.also]) {
+    const ran = await $.process
+      .run(['bash', `${$.plugin.root}/scripts/ledger.sh`, 'resolve', copy.id, '--session', copy.session], {
+        timeoutMs: 15_000,
+      })
+      .catch((error: unknown) => ({ exitCode: 1, stderr: String(error) }))
+    if (ran.exitCode !== 0) {
+      failures.push(`${copy.label} ${copy.id}: ${ran.stderr.trim().split('\n')[0] ?? 'failed'}`)
+    }
+  }
+  if (failures.length > 0) {
+    $.ui.toast(`Couldn't resolve ${failures.join('; ')}`)
+  }
   await refreshQuietly($)
 }
 
 function meta(parts: (string | undefined)[]): string {
   return parts.filter(part => part !== undefined).join(' · ')
+}
+
+function copies(also: readonly LedgerCopy[]): string {
+  return also.map(copy => `${copy.label} ${copy.id}`).join(', ')
 }
 
 export const register: Register = on => {
@@ -119,7 +139,8 @@ export const register: Register = on => {
       description: "Show every session's open needs and this session's decisions in a pane",
     })
     await refreshQuietly($)
-    $.clock.every(POLL_MS, () => refreshQuietly($))
+    poll?.cancel()
+    poll = $.clock.every(POLL_MS, () => refreshQuietly($))
 
     return started
   })
@@ -165,20 +186,17 @@ export const register: Register = on => {
         <Text bold>Open needs ({current.needs.length})</Text>
         {current.needs.length === 0 && <Text dimColor>No session needs you.</Text>}
         {current.needs.map(need => (
-          <Box flexDirection="column" marginBottom={1}>
+          <Box key={`need:${need.session}:${need.id}`} flexDirection="column" marginBottom={1}>
             <Text color="warning">{meta([need.label, need.id, need.ref, ageOf(need.at, now)])}</Text>
             <Text>{need.text}</Text>
-            <Button
-              key={`resolve:${need.session}:${need.id}`}
-              label="Resolve"
-              onPress={() => resolveNeed($, need.session, need.id)}
-            />
+            {need.also.length > 0 && <Text dimColor>also: {copies(need.also)}</Text>}
+            <Button key={`resolve:${need.session}:${need.id}`} label="Resolve" onPress={() => resolveNeed($, need)} />
           </Box>
         ))}
         <Text bold>Decisions in this session ({current.decisions.length})</Text>
         {current.decisions.length === 0 && <Text dimColor>None recorded.</Text>}
         {current.decisions.map(decision => (
-          <Box flexDirection="column" marginBottom={1}>
+          <Box key={`decision:${decision.id}`} flexDirection="column" marginBottom={1}>
             <Text dimColor>{meta([decision.id, decision.ref, ageOf(decision.at, now)])}</Text>
             <Text>{decision.text}</Text>
           </Box>

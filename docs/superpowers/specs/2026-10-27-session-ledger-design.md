@@ -18,12 +18,18 @@ anywhere durable:
 
 - **Its own plugin, `ledger`.** A non-ticket session can keep a ledger too, so
   the script, the hooks, the mod, `/ledger` and a short skill live in
-  `plugins/ledger/`. `ticket-workflow` lists it under `dependencies` and its
-  charters, START and FINISH point to the skill. `defaults` pulls it in.
+  `plugins/ledger/`. `ticket-workflow`'s charters, START and FINISH point to
+  the skill where the plugin is installed, and `defaults` pulls it in.
+  `ticket-workflow` doesn't list it under `dependencies`: the install that
+  repo settings trigger doesn't resolve dependencies (`AGENTS.md`), so a repo
+  whose settings predate `ledger` would lose `ticket-workflow` entirely.
 - **One JSONL file per session**, keyed like the role marker:
   `~/.claude/session-ledger/<session id>.jsonl` (`CLAUDE_SESSION_LEDGER_DIR`
   overrides it for tests). The session id is `CLAUDE_CODE_SESSION_ID`, else the
   `CLAUDE_SESSION_ID` ticket-workflow's SessionStart hook exports on older CLIs.
+  A write holds a per-file lock (a directory: `mkdir` is atomic) from its read
+  to its rename, since parallel tool calls and the owner's Resolve can write
+  one ledger at once.
   Each line is one entry:
   `{kind: "decision"|"need", id, text, ref?, at, cwd, resolved_at?}`. `id` is
   `d<n>` or `n<n>`, numbered per kind within the file. `cwd` is where the
@@ -50,7 +56,9 @@ anywhere durable:
   while any session has an open need, and a pane (`/ledger-pane`) listing open
   needs across every local session plus this session's recent decisions, each
   need with a Resolve button. `/ledger` prints the same through
-  `ledger.sh list --all` for a session without mods.
+  `ledger.sh list --all` for a session without mods. Open needs that share a
+  ref (a child's need and its spawner's copy) are one row in both, so a
+  bubbled need isn't counted once per tier.
 - **"status?" reads the ledger first.** The planner and coordinator charters
   answer from `ledger.sh list --all` and verify against GitHub, instead of
   sweeping first.

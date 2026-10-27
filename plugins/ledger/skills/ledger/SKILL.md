@@ -33,8 +33,10 @@ answer and let the parent record it.
 - **A child's need**, when a session you spawned pings that it needs the owner
   (`blocked: merge needs the owner`, a `declined: … needs the owner` line, a
   stack `ready; needs the owner`). Record it as a need of yours, naming the
-  child and its unblock step. That puts it in the ledger of the session the
-  owner talks to, so a "status?" there has it.
+  child and its unblock step, with the `--ref` the child used (its PR). That
+  puts it in the ledger of the session the owner talks to, so a "status?"
+  there has it, and the shared ref lets the listings show the child's need and
+  your copy once, as one row naming both.
 - **Resolve a need** once the owner has answered: they replied, approved,
   merged, or the child pinged `merged:` or `resumed:`. Resolve a need that no
   longer applies too (its PR closed, the plan changed).
@@ -73,6 +75,9 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
   never for a need that session can still answer itself.
 - `list` prints this session's open needs, decisions and resolved needs;
   `list --all` prints every session's open needs and this session's decisions.
+  Open needs that share a ref are one row there, under the first recorded,
+  with an `also:` line naming the other copies. The pane's Resolve resolves
+  every copy; `resolve` resolves one, so resolve the copy in your own ledger.
 - A body line that is exactly `LEDGER_EOF` would end the heredoc early: use
   another delimiter, the same word in both places. Don't also pipe into the
   command: under zsh a pipe and a heredoc on one command both feed stdin.
