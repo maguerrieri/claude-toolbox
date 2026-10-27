@@ -59,6 +59,15 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   wakes nothing), and resumes the session with a fixed wake prompt carrying only
   URLs. Its launchd install is separate (#295). See
   [its README](plugins/pr-notifier/README.md).
+- **ledger** — a per-session record of the decisions the owner made and what
+  each session needs from them (a review, a merge, a permission prompt, a
+  credential), with the exact step that unblocks it: the `ledger` skill plus
+  `/ledger`. A mod in the same plugin shows every local session's open needs at
+  a glance: a band above the prompt while any is open, and a pane
+  (`/ledger-pane`) with a Resolve button per need and this session's latest
+  decisions. `ticket-workflow`'s charters record into it, bubble children's
+  needs up to the planner, and answer "status?" from it first. Local sessions
+  only: the ledgers are files under `~/.claude/session-ledger/`.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
@@ -95,7 +104,8 @@ Per repo, in `.claude/settings.json`:
     "spawn@maguerrieri-toolbox": true,
     "generate@maguerrieri-toolbox": true,
     "ticket-workflow@maguerrieri-toolbox": true,
-    "yaml@maguerrieri-toolbox": true
+    "yaml@maguerrieri-toolbox": true,
+    "ledger@maguerrieri-toolbox": true
   }
 }
 ```
@@ -105,7 +115,7 @@ settings trigger on trust caches `defaults` but does not resolve its
 `dependencies`, so on its own it ends up disabled (`dependency-unsatisfied`)
 and nothing loads (verified on Claude Code 2.1.268). For an à la carte pick,
 remove `defaults` and enable only the plugins you want, together with their
-dependencies (`ticket-workflow` needs `spawn`). Two surfaces get nothing from these settings on their own:
+dependencies (`ticket-workflow` needs `spawn` and `ledger`). Two surfaces get nothing from these settings on their own:
 headless sessions (`claude -p`, the SDK) register the marketplace but install
 nothing from `enabledPlugins`, and cloud sessions (Claude Code on the web) skip
 repo-authored plugin settings entirely. Cloud sessions do run repo-declared
@@ -130,7 +140,7 @@ the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
-five default plugins (`gm`, `provenance` and `pr-notifier` aren't `defaults`
+six default plugins (`gm`, `provenance` and `pr-notifier` aren't `defaults`
 dependencies; install them separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
