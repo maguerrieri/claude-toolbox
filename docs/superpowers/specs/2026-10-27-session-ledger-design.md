@@ -31,8 +31,9 @@ anywhere durable:
   doesn't list (an interactive one).
 - **One writer per file.** A session writes only its own ledger. A child's
   `blocked:` ping becomes a need in the spawner's ledger because the spawner
-  records it there. The one exception is the owner dismissing a dead session's
-  need (`resolve --session`, the pane's Resolve button). Every write goes
+  records it there. The exceptions resolve another session's need
+  (`resolve --session`): the owner dismissing one (the pane's Resolve button,
+  `/ledger resolve`), and a FINISH that landed another session's PR. Every write goes
   through a temp file and a rename, so a reader never sees half a line.
 - **Writes go through `scripts/ledger.sh`**: `add-decision` and `add-need` (text
   on stdin through a quoted heredoc, `--ref` optional), `resolve <id>`, and
