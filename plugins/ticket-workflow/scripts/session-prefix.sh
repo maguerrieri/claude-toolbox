@@ -15,10 +15,11 @@
 # Prints the title's scope, the text before its first colon with surrounding
 # whitespace trimmed, when that scope is exactly a project's name, and <repo>
 # otherwise: no --projects, no scope, a scope that names no project, or a
-# directory that couldn't be read. The comparison is exact, case included,
-# against the names as listed, so a case-insensitive filesystem can't turn
-# `Voter-Guide:` into a project. A symlinked directory is not a project, on
-# either path below, so both name a session the same way.
+# directory that couldn't be read. Every entry, plain or starred, is checked
+# against a listing of its parent directory, exactly and case included, so a
+# case-insensitive filesystem can't turn `Voter-Guide:` into a project. A
+# symlink is never a project or a parent of one, as the contents API sees it,
+# so both paths below name a session the same way.
 #
 # Directories are read from the checkout at --root (default: the current
 # directory), or with --repo from the GitHub contents API on the default
@@ -69,30 +70,28 @@ fi
 gh_bin=${SESSION_PREFIX_GH:-gh}
 
 # lists <dir> ("" for the root): prints the names of the directories directly
-# inside it, one a line. Fails when the directory can't be read.
+# inside it, one a line. Fails when the directory can't be read, or when it or
+# any directory on the way to it is a symlink, which the contents API reports
+# as a symlink rather than a directory.
 lists() {
 	if [ -n "$repo" ]; then
 		"$gh_bin" api "repos/$repo/contents${1:+/$1}" \
 			--jq 'if type == "array" then .[] | select(.type == "dir") | .name else error("not a directory") end'
 	else
 		[ -d "$root/$1" ] || return 1
-		local d
+		local d= part
+		local -a parts=()
+		[ -n "$1" ] && IFS=/ read -r -a parts <<<"$1"
+		for part in ${parts[@]+"${parts[@]}"}; do
+			d=${d:+$d/}$part
+			! [ -L "$root/$d" ] || return 1
+		done
 		for d in "$root/${1:+$1/}"*/; do
 			d=${d%/}
-			# Skip the unmatched pattern itself, and a symlink, which the
-			# contents API reports as a symlink rather than a directory.
+			# Skip the unmatched pattern itself, and a symlink.
 			[ -d "$d" ] && ! [ -L "$d" ] || continue
 			printf '%s\n' "${d##*/}"
 		done
-	fi
-}
-
-# is_dir <dir>: succeeds when <dir> is a directory, and not a symlink to one.
-is_dir() {
-	if [ -n "$repo" ]; then
-		[ "$("$gh_bin" api "repos/$repo/contents/$1" --jq type)" = array ]
-	else
-		[ -d "$root/$1" ] && ! [ -L "$root/$1" ]
 	fi
 }
 
@@ -107,21 +106,25 @@ for entry in ${entries[@]+"${entries[@]}"}; do
 	if [[ $entry == '*' || $entry == */\* ]]; then
 		parent=${entry%\*}
 		parent=${parent%/}
-		if ! names=$(lists "$parent" 2>/dev/null); then
-			echo "session-prefix.sh: can't read '${parent:-.}'; using '$fallback' for it" >&2
-			continue
-		fi
-		while IFS= read -r name; do
-			if [ "$name" = "$scope" ]; then
-				printf '%s\n' "$scope"
-				exit 0
-			fi
-		done <<<"$names"
 	elif [ "${entry##*/}" = "$scope" ]; then
-		if is_dir "$entry" 2>/dev/null; then
+		# A plain entry names one directory: look for it in its parent's
+		# listing, as for a star entry, so the name must match exactly.
+		parent=
+		[[ $entry == */* ]] && parent=${entry%/*}
+	else
+		continue # a plain entry that can't be this scope needs no read
+	fi
+	if ! names=$(lists "$parent" 2>/dev/null); then
+		echo "session-prefix.sh: can't read '${parent:-.}'; using '$fallback' for it" >&2
+		continue
+	fi
+	while IFS= read -r name; do
+		if [ "$name" = "$scope" ]; then
 			printf '%s\n' "$scope"
 			exit 0
 		fi
+	done <<<"$names"
+	if [[ $entry != '*' && $entry != */\* ]]; then
 		echo "session-prefix.sh: no directory '$entry'; using '$fallback' for it" >&2
 	fi
 done
