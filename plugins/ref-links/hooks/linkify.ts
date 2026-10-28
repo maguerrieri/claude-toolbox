@@ -179,21 +179,35 @@ function issueUrl(repo: Repo, n: number): string {
 // indented code blocks, headings, link reference definitions, code spans,
 // links, autolinks and HTML tags, bare URLs, and backslash escapes.
 
-// A line's blockquote markers, each with the one space or tab it takes. Every
-// block pattern below reads the line's body after them, and a fence closes
-// only at the quote depth it opened at.
+// Containers. A line's blockquote markers, each with the one space or tab it
+// takes, leave its body; the list markers at the start of the body (`- `,
+// `1. `, `- - `) leave its content, and their width is the column the item's
+// later lines are indented to. Every block pattern below reads the content,
+// and a fence remembers its container: the quote depth, and the item's column
+// when it opened inside a list item. It closes only there, and ends with it.
+// Only the innermost item is tracked: past it, a fence runs on, which leaves
+// code unlinked rather than links in code.
 const QUOTE = /^(?: {0,3}>[ \t]?)*/
-// A fence may open on a list item's own line (`- ~~~sh`, `1. ```bash`); it
-// closes on a line of its own, since a marker line inside the code is code.
-const FENCE = /^(?:[ \t]|(?:[-*+]|\d{1,9}[.)])[ \t])*(`{3,}|~{3,})(.*)$/
+const LIST_MARKERS = /^(?:[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$))*/
+const FENCE = /^[ \t]*(`{3,}|~{3,})(.*)$/
 const FENCE_CLOSE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/
 const HEADING = /^ {0,3}#{1,6}(?:\s|$)/
 // Four columns in, after a blank line, a heading or the start, is code; a
 // list item that deep is a nested list. A list's own paragraph that deep is
 // taken for code too: a missed link is the safe way to be wrong.
 const INDENTED = /^(?: {4}| {0,3}\t)/
-const LIST_ITEM = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:\s|$)/
 const DEFINITION = /^ {0,3}\[((?:[^[\]\\]|\\.)+)\]:/
+
+/** The columns of indentation a line starts with, a tab to the next stop of 4. */
+function indentOf(line: string): number {
+  let column = 0
+  for (const c of line) {
+    if (c === ' ') column++
+    else if (c === '\t') column += 4 - (column % 4)
+    else break
+  }
+  return column
+}
 const AUTOLINK_OR_TAG = /<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|\/?[A-Za-z][^<>]*)>/y
 const BARE_URL = /(?:(?:https?|ftp|file):\/\/|www\.)[^\s<>]*/iy
 
@@ -203,9 +217,12 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
   const definitions = new Set<string>()
 
   // Lines first: code blocks, headings and definitions are whole lines.
-  let fence: { char: string; length: number; depth: number; start: number } | null = null
+  type Container = { depth: number; column: number }
+  let fence: (Container & { char: string; length: number; start: number }) | null = null
   let indented: number | null = null
+  let item: Container | null = null
   let codeMayStart = true
+  let wasBlank = true
   let quoteDepth = 0
   let proseStart = 0
   let offset = 0
@@ -213,7 +230,10 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
     const lineEnd = offset + line.length
     const quote = QUOTE.exec(line)?.[0] ?? ''
     const body = line.slice(quote.length)
+    const markers = LIST_MARKERS.exec(body)?.[0] ?? ''
+    const content = body.slice(markers.length)
     const depth = quote.split('>').length - 1
+    const indent = indentOf(body)
     // A line of bare `>` is a blank line inside the quote, and a deeper quote
     // opens a container a code block may start in.
     const isBlank = body.trim() === ''
@@ -221,9 +241,19 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
     quoteDepth = depth
     let endsBlock = false
 
-    if (fence !== null && depth < fence.depth) {
-      // Leaving the quote a fence opened in ends it, closed or not.
+    // Leaving the quote or the list item a fence opened in ends it, closed or
+    // not. A line indented less than the item leaves it after a blank line,
+    // or when it starts a fence, heading or item of its own; plain text right
+    // after a code line is where renderers differ, so it stays code.
+    const leavesItem =
+      fence !== null &&
+      depth === fence.depth &&
+      !isBlank &&
+      indent < fence.column &&
+      (wasBlank || markers !== '' || FENCE.test(content) || HEADING.test(content))
+    if (fence !== null && (depth < fence.depth || leavesItem)) {
       ranges.push([fence.start, offset])
+      if (fence.column > 0) item = null
       fence = null
       proseStart = offset
       codeMayStart = true
@@ -243,27 +273,36 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
         endsBlock = true
       }
     } else if (indented === null) {
+      // The item a line opens, or the one it stays in: a line indented less
+      // than the item's column ends it after a blank line (before one, it may
+      // be the item's paragraph running on).
+      if (markers !== '') item = { depth, column: markers.length }
+      else if (item !== null && (depth !== item.depth || (!isBlank && indent < item.column && wasBlank))) item = null
+      const inItem: boolean = item !== null && item.depth === depth && indent >= item.column
+
       // An indented block comes first: a fence four columns in, after a
       // blank line, is that block's text, not a fence.
-      const opener = FENCE.exec(body)
+      const opener = FENCE.exec(content)
       const marker = opener?.[1]
-      const label = DEFINITION.exec(body)?.[1]
-      if (codeMayStart && !isBlank && INDENTED.test(body) && !LIST_ITEM.test(body)) {
+      const label = DEFINITION.exec(content)?.[1]
+      if (codeMayStart && !isBlank && INDENTED.test(body) && markers === '') {
         prose.push([proseStart, offset])
         indented = offset
       } else if (marker !== undefined && !(marker[0] === '`' && opener?.[2]?.includes('`'))) {
         prose.push([proseStart, offset])
-        fence = { char: marker[0] ?? '`', length: marker.length, depth, start: offset }
-      } else if (HEADING.test(body) || label !== undefined) {
+        const column: number = markers !== '' || inItem ? (item?.column ?? 0) : 0
+        fence = { char: marker[0] ?? '`', length: marker.length, depth, column, start: offset }
+      } else if (HEADING.test(content) || label !== undefined) {
         if (label !== undefined) definitions.add(normalizeLabel(label))
         prose.push([proseStart, offset])
         ranges.push([offset, lineEnd])
         proseStart = lineEnd + 1
-        endsBlock = HEADING.test(body)
+        endsBlock = HEADING.test(content)
       }
     }
 
     codeMayStart = isBlank || endsBlock
+    wasBlank = isBlank
     offset = lineEnd + 1
   }
   if (fence !== null) ranges.push([fence.start, text.length])

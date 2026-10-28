@@ -151,6 +151,20 @@ describe("don't touch", () => {
     expect(link('> ```\n> echo #12\nafter #2', ctx)).toBe(`> \`\`\`\n> echo #12\nafter [#2](${issue(CURRENT, 2)})`)
   })
 
+  test("a list item's fence ends with the item", () => {
+    expect(link('- ~~~md\n  example\n\n~~~\necho #12\n~~~\n\nSee #13', ctx)).toBe(
+      `- ~~~md\n  example\n\n~~~\necho #12\n~~~\n\nSee [#13](${issue(CURRENT, 13)})`,
+    )
+    expect(link('1. step\n   ```\n   x\n```\necho #12\n```\nsee #3', ctx)).toBe(
+      `1. step\n   \`\`\`\n   x\n\`\`\`\necho #12\n\`\`\`\nsee [#3](${issue(CURRENT, 3)})`,
+    )
+    // Plain text right after a code line may be the item running on: code.
+    same('1. step\n   ```\n   x\necho #12\n   ```')
+    // A fence indented under no list item keeps less-indented lines as code.
+    same('  ```\necho #12\n  ```')
+    same('para\n\n  ```\necho #12\n  ```')
+  })
+
   test('indented code blocks', () => {
     same('    echo #12')
     expect(link('para #1\n\n    echo #12\n\n    more #13\nafter #3', ctx)).toBe(
@@ -187,6 +201,8 @@ describe("don't touch", () => {
     same('See [#12].\n\n[#12]: https://example.com/x')
     same('[docs #3]: <https://example.com>')
     same('> [#12]: https://example.com\n>\n> See [#12].')
+    same('- [#12]: https://example.com\n\n  See [#12].')
+    expect(link('- [ ] #12 to do', ctx)).toBe(`- [ ] [#12](${issue(CURRENT, 12)}) to do`)
   })
 
   test('an unclosed fence runs to the end', () => {
