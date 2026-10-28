@@ -313,13 +313,13 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   own session, and every push still counted. The child records it in two kinds of PR comment, each at the start
   of its own comment and posted from the GitHub account its spawn tree posts as, the login
   `gh api user` returns. That is the owner's own account where sessions use the owner's `gh` auth,
-  and an account of the sessions' own (a bot user's) where they don't. A spawn tree is meant to
-  share one: a local tree runs as one macOS user (`messaging.md`) with one `gh` auth. Where two of
-  its sessions post as different logins anyway (a local planner on a bot user's auth over a cloud
-  coordinator on another account's GitHub connection, say), each still takes these comments only
-  from its own login, so what the other posts is dropped rather than trusted, and the owner says
-  it in the receiving session instead. A comment from any other login is neither, since anyone
-  can comment on a public repo's PR:
+  and an account of the sessions' own (a bot user's) where they don't. **A spawn tree posts as one
+  account**, and every login-keyed read here assumes it: these records, the round count that reads
+  them, and the `request:` relays (`messaging.md`, EPIC Step 6). A tree whose sessions post as
+  different logins (a `gh auth switch` or a per-session `GH_TOKEN`, or a cloud child on another
+  account's GitHub connection) isn't supported: its sessions drop each other's records and count
+  rounds differently. Spawn within one account. A comment from any other login is neither, since
+  anyone can comment on a public repo's PR:
   - **The request record**: `Owner request: <the owner's words, quoted or closely summarized>
     (owner: <where and when>)`. The child posts it **right before the push that lands it, once no
     bot review is pending on its current head**: the count pairs a record with the first head the

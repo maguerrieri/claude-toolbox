@@ -196,7 +196,10 @@ content, which the child records before landing them, and lifts no hold.)
   not part of.
 - **Not across macOS users.** Claude Code appears to bind the channel per
   user: each user's sessions listen on sockets in a directory private to that
-  user, and peers authenticate with a key published in that user's own
+  user (`/tmp/cc-socks` when that directory is the user's own, or root's, and
+  private, else `/tmp/cc-socks-<uid>`, mode 700, so a delivery's
+  `uds:/tmp/cc-socks/<pid>.sock` address belongs to one user), and peers
+  authenticate with a key published in that user's own
   session registry (read in Claude Code 2.1.312's binary, not yet tested
   across users). The workflow treats the channel as per-user either way: a
   spawn tree runs as one user, its `Notify:` edges, `finish:` clearances,
