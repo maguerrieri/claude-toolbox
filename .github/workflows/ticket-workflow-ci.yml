@@ -33,7 +33,9 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-session-identity.sh
       - name: REST list-helper tests
         run: bash plugins/ticket-workflow/tests/test-gh-rest-list.sh
-      - name: Install zsh (the round-count test also runs its snippet under zsh)
+      - name: Install zsh (the round-count and agents-listing tests also run their snippets under zsh)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
       - name: Review-round count tests
         run: bash plugins/ticket-workflow/tests/test-round-count.sh
+      - name: Session-lookup (claude agents listing) tests
+        run: bash plugins/ticket-workflow/tests/test-agents-listing.sh
