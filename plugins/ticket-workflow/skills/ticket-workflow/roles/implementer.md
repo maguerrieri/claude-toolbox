@@ -103,8 +103,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   owner` with FINISH Step 2's block fallbacks (not a re-clearance, which
   would only repeat the blocked attempt), and don't work around it. If
   GitHub refuses it for want of an approving review, ping `blocked: merge
-  needs the owner's approval` with FINISH Step 2's two ways to clear it, and
-  never bypass it. With no
+  needs the owner's approval` with every way FINISH Step 2 gives to clear it,
+  and never bypass it. With no
   recorded spawner (no `Notify:` directive, as on a cloud edge or an
   interactive run, or no `notify:` line in your marker), no clearance can
   reach you; only the owner's own request in this session can.
