@@ -71,6 +71,7 @@ function world(on: On, { commands = {}, remote = CURRENT_REMOTE, store = {} }: W
 
 const start = ($: Engine) => $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
 
+const EVENTS = 'gh api users/maguerrieri/events?per_page=100 --paginate --jq .[] | "\\(.type) \\(.repo.name)"'
 const AGENTS = JSON.stringify([
   { cwd: '/dev/www' },
   { cwd: '/dev/claude-toolbox/.claude/worktrees/223-x' },
@@ -83,7 +84,8 @@ const SOURCES: Record<string, string | null> = {
   'git -C /dev/claude-toolbox remote get-url origin': `${CURRENT_REMOTE}\n`,
   'git -C /dev/gitlab-thing remote get-url origin': 'git@gitlab.com:me/thing.git\n',
   'gh api user --jq .login': 'maguerrieri\n',
-  'gh api users/maguerrieri/events?per_page=100 --paginate --jq .[].repo.name': 'maguerrieri/provenance\nanthropics/claude-code\n',
+  [EVENTS]:
+    'PushEvent maguerrieri/provenance\nIssueCommentEvent anthropics/claude-code\nWatchEvent vercel/docs\nForkEvent octo/cli\n',
   'gh api user/repos?sort=pushed&per_page=100 --jq .[].full_name': 'maguerrieri/www\nmaguerrieri/dotfiles\n',
 }
 
@@ -174,12 +176,23 @@ describe('the refresh', () => {
 
   test('when one of the gh reads fails, adds to the last GitHub list', async ($, on) => {
     const commands = { ...SOURCES }
-    delete commands['gh api users/maguerrieri/events?per_page=100 --paginate --jq .[].repo.name']
+    delete commands[EVENTS]
     const old = { repos: [], local: [], github: ['anthropics/claude-code'], refreshedAt: NOW - TTL_MS - 1 }
     const w = world(on, { commands, store: { known: old } })
     await start($)
     await w.clock.settle()
     expect(w.stored.known).toHaveProperty('github', ['anthropics/claude-code', 'maguerrieri/dotfiles', 'maguerrieri/www'])
+  })
+
+  test('when every source fails, the next check tries again', async ($, on) => {
+    const w = world(on, {})
+    await start($)
+    await w.clock.settle()
+    expect(w.stored.known).toHaveProperty('refreshedAt', 0)
+    const tries = () => w.ran.filter(line => line === 'claude agents --json --all').length
+    const before = tries()
+    await w.clock.advance(CHECK_MS)
+    expect(tries()).toBe(before + 1)
   })
 
   test('a second session.start in one load keeps one interval', async ($, on) => {

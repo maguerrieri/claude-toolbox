@@ -25,12 +25,27 @@ type Cache = { repos: Repo[]; local: Repo[]; github: Repo[]; refreshedAt: number
 /** What gh found, and whether both of its reads answered. */
 type GitHubRepos = { repos: Repo[]; isComplete: boolean }
 
+// The events the owner acts in: pushes, pull requests and their reviews,
+// issues and comments. A star or a fork names a repo they only looked at.
+const OWN_EVENTS = new Set([
+  'PushEvent',
+  'PullRequestEvent',
+  'PullRequestReviewEvent',
+  'PullRequestReviewCommentEvent',
+  'IssuesEvent',
+  'IssueCommentEvent',
+])
+
+/** How many drawn blocks the render hook remembers, per index. */
+const DRAWN_MAX = 64
+
 // Module state, which a reload starts over: whether a refresh is running (at
-// worst a reload runs one twice), this load's timers, and the index built for
-// the state versions it was built from.
+// worst a reload runs one twice), this load's timers, the index built for the
+// state versions it was built from, and the blocks drawn with that index, so
+// a redraw of an unchanged block doesn't parse it again.
 let isRefreshing = false
 let timers: Timer[] = []
-let built: { versions: string; index: RepoIndex } | null = null
+let built: { versions: string; index: RepoIndex; drawn: Map<string, string> } | null = null
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -64,9 +79,15 @@ export const register: Register = on => {
     const [repos, current] = await Promise.all([$.state.get(REPOS), $.state.get(CURRENT)])
     const versions = `${repos.version}:${current.version}`
     if (built?.versions !== versions) {
-      built = { versions, index: repoIndex({ current: current.value ?? null, known: repos.value ?? [] }) }
+      const index = repoIndex({ current: current.value ?? null, known: repos.value ?? [] })
+      built = { versions, index, drawn: new Map() }
     }
-    const text = linkify(e.props.text, built.index)
+    let text = built.drawn.get(e.props.text)
+    if (text === undefined) {
+      text = linkify(e.props.text, built.index)
+      if (built.drawn.size >= DRAWN_MAX) built.drawn.delete(built.drawn.keys().next().value ?? '')
+      built.drawn.set(e.props.text, text)
+    }
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text } })
   }).catch(($, e, next) => next(e))
 }
@@ -92,7 +113,10 @@ async function refreshIfStale($: EngineInterface): Promise<void> {
         ? (cache?.github ?? [])
         : mergeRepos(fromGitHub.isComplete ? fromGitHub.repos : [...fromGitHub.repos, ...(cache?.github ?? [])])
     const repos = mergeRepos([...local, ...github, ...(current === null ? [] : [current])])
-    await $.store.set(STORE_KEY, { repos, local, github, refreshedAt: now } satisfies Cache)
+    // With every source failed, nothing was learned: keep the old stamp, so
+    // the next check tries again rather than trusting this list for hours.
+    const refreshedAt = found === null && fromGitHub === null ? (cache?.refreshedAt ?? 0) : now
+    await $.store.set(STORE_KEY, { repos, local, github, refreshedAt } satisfies Cache)
     await setRepos($, repos)
   } catch (error) {
     $.ui.log(`ref-links: refreshing the known repos failed: ${String(error)}`, { to: 'debug' })
@@ -166,11 +190,15 @@ async function reposFromGitHub($: EngineInterface): Promise<GitHubRepos | null> 
   const login = (await run($, ['gh', 'api', 'user', '--jq', '.login']))?.trim() ?? ''
   if (!/^[A-Za-z0-9-]{1,39}$/.test(login)) return null
   const [events, owned] = await Promise.all([
-    run($, ['gh', 'api', `users/${login}/events?per_page=100`, '--paginate', '--jq', '.[].repo.name']),
+    run($, ['gh', 'api', `users/${login}/events?per_page=100`, '--paginate', '--jq', '.[] | "\\(.type) \\(.repo.name)"']),
     run($, ['gh', 'api', 'user/repos?sort=pushed&per_page=100', '--jq', '.[].full_name']),
   ])
   if (events === null && owned === null) return null
-  const repos = `${events ?? ''}\n${owned ?? ''}`.split('\n').filter(line => line.trim() !== '')
+  const acted = (events ?? '').split('\n').flatMap(line => {
+    const [type = '', repo = ''] = line.trim().split(/\s+/)
+    return OWN_EVENTS.has(type) ? [repo] : []
+  })
+  const repos = [...acted, ...(owned ?? '').split('\n')].filter(line => line.trim() !== '')
   return { repos, isComplete: events !== null && owned !== null }
 }
 
