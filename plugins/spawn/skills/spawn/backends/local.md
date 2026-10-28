@@ -85,9 +85,10 @@ Every unit is launched from the durable launch dir (above), so keep only rows
 whose `cwd` is exactly that dir (`claude agents --cwd` matches everything
 *under* a path, which is too loose). If you recorded a unit's handle at spawn,
 match that `sessionId` instead: it survives the user renaming the session,
-which a name match misses. Otherwise match by name, exactly or by prefix when only part of the name is
-deterministic; `$ps` takes several prefixes for one unit when its name has more
-than one spelling (a caller's ID with and without a `#`):
+which a name match misses. Otherwise match by name, exactly or by prefix when
+only part of the name is deterministic; `$ps` takes several prefixes for one
+unit when its name has more than one spelling (a caller's ID with and without a
+`#`):
 
 `$launch_dir` is the durable launch dir from the section above: **resolve it
 before the lookup**, since an empty value matches no row and reads as "none".
