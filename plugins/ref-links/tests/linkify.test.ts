@@ -39,6 +39,9 @@ describe('resolution rules', () => {
     expect(link('_www_ #8', ctx)).toBe(`_www_ [#8](${www(8)})`)
     expect(link('(www) #8', ctx)).toBe(`(www) [#8](${www(8)})`)
     expect(link('((www)) #8', ctx)).toBe(`((www)) [#8](${www(8)})`)
+    // The word must start a word of its own, outside its wrapper too.
+    expect(link('foo**www** #8', ctx)).toBe(`foo**www** [#8](${issue(CURRENT, 8)})`)
+    expect(link('x`www` #8', ctx)).toBe(`x\`www\` [#8](${issue(CURRENT, 8)})`)
     expect(link('**PR** #9', ctx)).toBe(`**PR** [#9](${issue(CURRENT, 9)})`)
   })
 
@@ -172,6 +175,27 @@ describe("don't touch", () => {
     )
   })
 
+  test('indented code that starts like a list item, with no list open', () => {
+    same('    - echo #12')
+    same('    1. echo #12')
+    same('para\n\n    - see #5 in code')
+  })
+
+  test('a fence line indented four columns past its container is code, not a closer', () => {
+    same('```\ncode\n    ```\nwww #5 still code\n```')
+    same('> ```\n> code\n>     ```\n> x #9\n> ```')
+    expect(link('para\n    ```\nx #1', ctx)).toBe(`para\n    \`\`\`\nx [#1](${issue(CURRENT, 1)})`)
+    same('- item\n\n    ```\n    x #1\n    ```')
+  })
+
+  test('HTML blocks', () => {
+    same('<details>\n<summary>Fixes #5</summary>\n</details>')
+    expect(link('<div>\n#1\n</div>\n\nsee #2', ctx)).toBe(`<div>\n#1\n</div>\n\nsee [#2](${issue(CURRENT, 2)})`)
+    same('<pre>\n#3\n\n#4\n</pre>')
+    expect(link('<!-- x #1\ny #2 -->\nsee #3', ctx)).toBe(`<!-- x #1\ny #2 -->\nsee [#3](${issue(CURRENT, 3)})`)
+    expect(link('<b>Fixes #5</b>', ctx)).toBe(`<b>Fixes [#5](${issue(CURRENT, 5)})</b>`)
+  })
+
   test('indented code inside a blockquote', () => {
     same('>     echo #12')
     same('> > \techo #12')
@@ -202,6 +226,8 @@ describe("don't touch", () => {
     same('[docs #3]: <https://example.com>')
     same('> [#12]: https://example.com\n>\n> See [#12].')
     same('- [#12]: https://example.com\n\n  See [#12].')
+    same('[#ref]: https://example.com\n  "Issue #12"\n\nSee [#ref].')
+    same("[r]: https://example.com\n('Issue #12')")
     expect(link('- [ ] #12 to do', ctx)).toBe(`- [ ] [#12](${issue(CURRENT, 12)}) to do`)
   })
 
