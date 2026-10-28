@@ -56,7 +56,7 @@ As `spawn` does — print a table, then hand back (don't block on the siblings):
 |---|---|---|
 | ABC-12 | `widgets ABC-12: add GeoIP routing` | `<one-line summary>` |
 
-Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
+Print the inspect path your **backend** specifies — locally the macOS user and directory to run it as and from, then `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces; the `spawn` skill's `backends/local.md`, *Report*, has the form); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
 
 ## SPAWN does NOT
 

@@ -1,8 +1,9 @@
 # Backend: local (`claude --bg`)
 
 The spawner is running on a machine the user has a shell on. Sessions are
-background jobs of the local CLI, recorded under `~/.claude/jobs/`, and the user
-inspects them with `claude agents`, `claude attach`, and `claude logs`.
+background jobs of the local CLI, recorded under the running macOS user's own
+`~/.claude/jobs/`, and the user inspects them with `claude agents`,
+`claude attach`, and `claude logs`, as that same macOS user (*Report*).
 
 ## Resolve a durable launch directory
 
@@ -62,11 +63,17 @@ right now. A `stopped` row never has a `pid` or a `status`; a `done` row has
 them while the session sits idle after its turn, and a `blocked` row loses
 them when its process dies at a prompt (a restart, say). **List once per run**
 and match every unit against that one listing, rather than re-listing per unit:
-the list grows with every session ever run, across every project on the
-machine.
+the list grows with every session ever run, across every project this macOS
+user has run on the machine.
 
-**Match on the launch dir as well as the name.** The listing is machine-wide,
-and a name alone can collide: two clones, or two repos with the same basename
+**The listing is per macOS user.** It reads the running user's own
+`~/.claude/jobs/`, and `ListAgents` and SendMessage reach only that user's
+sessions too. A session another user launched never appears, so it can't be
+found, resumed or messaged from here: the spawner and every session it resumes
+are always the same user.
+
+**Match on the launch dir as well as the name.** The listing covers every
+session this macOS user has run on this machine, and a name alone can collide: two clones, or two repos with the same basename
 under different owners, produce the same `<repo> <ID>: …` names. Every unit is
 launched from the durable launch dir (above), so keep only rows whose `cwd` is
 exactly that dir (`claude agents --cwd` matches everything *under* a path, which
@@ -191,11 +198,31 @@ your session:
   variable isn't set, the prefix does nothing.
 - `claude --bg` prints a **session handle** at spawn — record it per unit; it
   survives the user renaming the session and is how you inspect a stuck one later.
+- **An untrusted launch dir is refused: don't launch from somewhere else.** A
+  directory this macOS user has never trusted, such as a fresh clone, makes
+  `claude --bg` exit 1 without launching anything, printing *Workspace not
+  trusted. Run `claude` in <dir> once and accept the trust prompt, then retry.*
+  (Claude Code 2.1.312). A session can't accept the trust prompt itself, and a
+  retry from another directory breaks the durable launch dir rule above. So leave
+  each unit refused this way unlaunched, and in the report give the user the
+  one-time step, run as the user the spawner runs as (`id -un`), since trust is
+  recorded per user:
+  ```bash
+  cd "<launch dir>" && claude   # accept the trust prompt, then /exit
+  ```
+  Then they re-run the spawn.
 
 ## Report
 
 Name column = the `--name` you passed (for a resumed unit, its existing name,
-marked *resumed*). Point at the inspect commands: `claude agents` (list),
-`claude attach "<name>"` (open), `claude logs "<name>"` (read-only). Quote
-names — they contain spaces. Those are for the user's terminal; from a tool call,
-list with `claude agents --json --all` (above).
+marked *resumed*; for one the trust refusal left unlaunched, marked *not
+launched*, with the one-time step from *Launch* under the table). Point at the inspect commands, and name the macOS user to run
+them as and the directory to run them from: *as `<user>`, from `<launch dir>`:
+`claude agents` (list), `claude attach "<name>"` (open), `claude logs "<name>"`
+(read-only)*. `<user>` is `id -un` in the spawner's shell, and `<launch dir>` is
+the durable launch dir every unit was launched or resumed from. Both matter
+because the sessions are that user's alone (*Find and resume*), and because
+`claude attach` asks to trust its own cwd first, which the launch dir already
+is. A reader who is another user runs `sudo -iu <user>`, then `cd "<launch dir>"`.
+Quote names — they contain spaces. Those are for the user's terminal; from a
+tool call, list with `claude agents --json --all` (above).
