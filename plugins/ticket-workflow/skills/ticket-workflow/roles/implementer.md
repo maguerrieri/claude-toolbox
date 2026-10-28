@@ -102,9 +102,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   permission classifier blocks the merge, ping `blocked: merge needs the
   owner` with FINISH Step 2's block fallbacks (not a re-clearance, which
   would only repeat the blocked attempt), and don't work around it. If
-  GitHub refuses it for a missing approving review, ping `blocked: merge
-  needs the owner's approval` (or `blocked: merge needs the owner` when the
-  owner authored the PR), as FINISH Step 2 says, and never bypass it. With no
+  GitHub refuses it for want of an approving review, ping `blocked: merge
+  needs the owner's approval` with FINISH Step 2's two ways to clear it, and
+  never bypass it. With no
   recorded spawner (no `Notify:` directive, as on a cloud edge or an
   interactive run, or no `notify:` line in your marker), no clearance can
   reach you; only the owner's own request in this session can.
