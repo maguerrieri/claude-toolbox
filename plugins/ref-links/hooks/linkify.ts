@@ -171,6 +171,9 @@ function issueUrl(repo: Repo, n: number): string {
 // links, autolinks and HTML tags, bare URLs, and backslash escapes.
 
 const FENCE = /^[ \t>]*(`{3,}|~{3,})(.*)$/
+// A fence may open on a list item's own line (`- ~~~sh`, `1. ```bash`); it
+// closes on a line of its own, since a marker line inside the code is code.
+const FENCE_OPENER = /^(?:[ \t>]|(?:[-*+]|\d{1,9}[.)])[ \t])*(`{3,}|~{3,})(.*)$/
 const HEADING = /^ {0,3}(?:>[ \t]*)*#{1,6}(?:\s|$)/
 // Four columns in, after a blank line, a heading or the start, is code; a
 // list item that deep is a nested list. A list's own paragraph that deep is
@@ -226,7 +229,7 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
     } else if (indented === null) {
       // An indented block comes first: a fence four columns in, after a
       // blank line, is that block's text, not a fence.
-      const opener = FENCE.exec(line)
+      const opener = FENCE_OPENER.exec(line)
       const marker = opener?.[1]
       if (codeMayStart && !isBlank && INDENTED.test(body) && !LIST_ITEM.test(body)) {
         prose.push([proseStart, offset])
@@ -335,7 +338,8 @@ function matchLink(text: string, open: number, to: number, definitions: Readonly
   if (close === -1) return -1
   const next = text[close + 1]
   if (next === '(') {
-    const end = matchBracket(text, close + 1, to, '(', ')')
+    let end = matchDestination(text, close + 1, to)
+    if (end === -1) end = matchBracket(text, close + 1, to, '(', ')')
     return end === -1 ? -1 : end + 1
   }
   if (next === '[') {
@@ -343,6 +347,45 @@ function matchLink(text: string, open: number, to: number, definitions: Readonly
     return end === -1 ? -1 : end + 1
   }
   return definitions.has(normalizeLabel(text.slice(open + 1, close))) ? close + 1 : -1
+}
+
+/**
+ * The `)` that closes an inline link's `(dest "title")` at `open`, or -1.
+ * The title is read on its own, so a parenthesis inside its quotes doesn't
+ * count toward the destination's nesting.
+ */
+function matchDestination(text: string, open: number, to: number): number {
+  let i = skipSpace(text, open + 1, to)
+  if (text[i] === '<') {
+    i++
+    while (i < to && text[i] !== '>' && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1
+    if (text[i] !== '>') return -1
+    i++
+  } else {
+    let depth = 0
+    for (; i < to; i++) {
+      const c = text[i] ?? ''
+      if (c === '\\') i++
+      else if (c === '(') depth++
+      else if (c === ')' && depth-- === 0) break
+      else if (/\s/.test(c)) break
+    }
+  }
+  i = skipSpace(text, i, to)
+  const quote = text[i]
+  if (quote === '"' || quote === "'" || quote === '(') {
+    const closer = quote === '(' ? ')' : quote
+    i++
+    while (i < to && text[i] !== closer) i += text[i] === '\\' ? 2 : 1
+    if (i >= to) return -1
+    i = skipSpace(text, i + 1, to)
+  }
+  return text[i] === ')' ? i : -1
+}
+
+function skipSpace(text: string, i: number, to: number): number {
+  while (i < to && /\s/.test(text[i] ?? '')) i++
+  return i
 }
 
 function matchBracket(text: string, open: number, to: number, left: string, right: string): number {

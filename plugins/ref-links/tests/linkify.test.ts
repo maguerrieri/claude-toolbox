@@ -127,6 +127,14 @@ describe("don't touch", () => {
     same('1. step\n   ```bash\n   echo #12\n   ```')
   })
 
+  test('a fence opened on a list marker line', () => {
+    expect(link('- ~~~sh\n  echo #12\n  ~~~\n\nSee #13', ctx)).toBe(
+      `- ~~~sh\n  echo #12\n  ~~~\n\nSee [#13](${issue(CURRENT, 13)})`,
+    )
+    same('1. ```bash\n   echo #12\n   ```')
+    same('> - ```\n>   echo #12\n>   ```')
+  })
+
   test('indented code blocks', () => {
     same('    echo #12')
     expect(link('para #1\n\n    echo #12\n\n    more #13\nafter #3', ctx)).toBe(
@@ -177,6 +185,9 @@ describe("don't touch", () => {
     same('![shot #2](img.png)')
     same('[see #4][ref]')
     same('[code `]` #12](https://example.com)')
+    same('[PR #12](https://example.com "Follow-up (draft")')
+    same("[PR #12](<https://example.com/a b> 'x (y')")
+    same('[PR #12](https://example.com (draft \\( one))')
     same('[see `[` #5][ref]')
     same('<https://example.com/#12>')
     same('https://example.com/a/#12 and www.example.com/#3')
