@@ -1,0 +1,28 @@
+{
+  "description": "Session ledger: export the plugin root so the docs can run scripts/ledger.sh, reap ledgers untouched for 30 days, and keep in-process subagents from writing their parent's ledger. The module is the mod: the band, the pane and /ledger-pane.",
+  "modules": ["./register.tsx"],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ledger-session-start.sh\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Edit|Write|MultiEdit|NotebookEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ledger-guard.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

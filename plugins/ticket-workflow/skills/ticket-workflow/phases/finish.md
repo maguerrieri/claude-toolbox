@@ -91,5 +91,6 @@ If branch auto-deletion is on for the remote, no need to delete the remote branc
 ## Step 5 — Close the issue + record expected outcome
 
 - If the PR used a closing keyword (`Closes #42`), merging already closed the issue — confirm it. Otherwise run the adapter's `DONE`.
+- Where the `ledger` plugin is installed (its skill says how), resolve every open need for this PR, in every local ledger: `ledger.sh resolve --ref '#<pr>'`. That covers START Step 9's hand-back need, any `blocked:` need the merge answered, and the copies spawners recorded up the tree, whichever session lands the PR; the owner has acted on all of them. In Projects mode and cloud sessions there is no ledger to resolve.
 - Run the profile's `POST_MERGE` step (org profiles add monitoring actions here, e.g. resolving an error-tracking group), then end with a one-paragraph "what to watch for now that this is merged": the specific observable outcome (a metric, an error going away, a behavior change) and roughly when — or "no observable change; pure refactor/docs/config — just confirm CI stayed green." Never leave a merge dangling without a clear expectation.
 

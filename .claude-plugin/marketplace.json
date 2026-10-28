@@ -36,6 +36,11 @@
       "description": "System-agnostic, persona-driven solo RPG game master (dice, oracles, adapters, versioned saves)"
     },
     {
+      "name": "ledger",
+      "source": "./plugins/ledger",
+      "description": "Per-session ledger of the owner's decisions and what each session needs from them, shown across sessions in a pane and band (a mod) and by /ledger"
+    },
+    {
       "name": "ticket-workflow",
       "source": "./plugins/ticket-workflow",
       "description": "End-to-end issue workflow (make/start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile"
