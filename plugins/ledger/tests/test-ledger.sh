@@ -95,6 +95,9 @@ record "exit 1 none" "add: empty text" "$(run '' add-decision) $(ledger)"
 record "exit 1 none" "add: whitespace-only text" "$(run $' \n\t\n' add-decision) $(ledger)"
 record "exit 1 none" "add: a control character" "$(run $'red \033[31m' add-decision) $(ledger)"
 record "exit 1 none" "add: a carriage return" "$(run $'a\rb' add-decision) $(ledger)"
+record "exit 1 none" "add: a C1 control as UTF-8 (CSI)" "$(run $'a\xc2\x9b2J' add-decision) $(ledger)"
+record "exit 0" "add: other UTF-8 is kept" "$(run $'caf\xc3\xa9 \xe2\x80\x94 ok' add-decision)"
+reset
 record "exit 0" "add: 4000 bytes accepted" "$(run "$(printf 'x%.0s' $(seq 4000))" add-decision)"
 reset
 record "exit 1 none" "add: over 4000 bytes refused" "$(run "$(printf 'x%.0s' $(seq 4001))" add-decision) $(ledger)"
@@ -187,6 +190,9 @@ EOF
 cat >"$dir/33333333-x.jsonl" <<EOF
 {"kind":"need","id":"n1","text":"Pick a design","at":"2020-01-01T09:00:00Z","cwd":"$tmp/work/repo-b"}
 not json
+{"kind":"need","text":"no id","at":"2020-01-01T09:30:00Z"}
+{"kind":"need","id":"n8","text":"a number for a ref","ref":5,"at":"2020-01-01T09:30:00Z"}
+["an", "array"]
 {"kind":"need","id":"n2","text":"Review PR #212","ref":"#212","at":"2020-01-01T08:00:00Z","cwd":"$tmp/work/repo-b"}
 EOF
 printf 'ignored\n' >"$dir/notes.txt"
@@ -245,10 +251,68 @@ wait
 record "11 11 1" "concurrent writes: none lost, ids unique, the resolve kept" \
 	"$(jq -s '"\(length) \([.[].id] | unique | length) \([.[] | select(.resolved_at)] | length)"' -r "$dir/$sid.jsonl")"
 
-# A lock a killed write left is taken over once it's a minute old.
-mkdir "$dir/.$sid.jsonl.lock"
-touch -t 202001010000 "$dir/.$sid.jsonl.lock"
-record "exit 0" "a stale lock is taken over" "$(run 'after a crash' add-decision)"
+# A lock whose holder isn't running (a killed write's) is taken over at once.
+true &
+dead=$!
+wait "$dead"
+ln -s "$dead" "$dir/.$sid.jsonl.lock"
+started=$(date +%s)
+record "exit 0" "a dead holder's lock is taken over" "$(run 'after a crash' add-decision)"
+record yes "a dead holder's lock is taken over at once" "$([ $(($(date +%s) - started)) -lt 3 ] && echo yes)"
 record "" "the stale lock is gone" "$(ls -A "$dir" | grep -v '\.jsonl$')"
+# A live holder's lock is waited for, and a write still lands once it's gone.
+sleep 2 &
+live=$!
+ln -s "$live" "$dir/.$sid.jsonl.lock"
+(sleep 1 && rm -f "$dir/.$sid.jsonl.lock") &
+record "exit 0" "a live holder's lock is waited out" "$(run 'after the wait' add-decision)"
+wait
+
+# --- refs name their repo ----------------------------------------------------
+
+# A checkout with an origin remote writes a bare #<n> as owner/repo#<n>.
+repo_dir="$tmp/work/widgets"
+mkdir -p "$repo_dir"
+git -C "$repo_dir" init -q
+git -C "$repo_dir" remote add origin git@github.com:acme/widgets.git
+in_repo() { # in_repo <stdin> <arg>…: run as this session from $repo_dir
+	(cd "$repo_dir" && printf '%s' "$1" | env -i PATH="$PATH" HOME="$tmp/home" \
+		CLAUDE_SESSION_LEDGER_DIR="$dir" CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" "${@:2}" >"$tmp/out" 2>"$tmp/err")
+	echo "exit $?"
+}
+reset
+in_repo 'merge it' add-need --ref '#12' >/dev/null
+in_repo 'a jira ref' add-need --ref 'ABC-12' >/dev/null
+in_repo 'a full ref' add-need --ref 'other/repo#12' >/dev/null
+in_repo 'a prefixed ref' add-need --ref 'PR#12' >/dev/null
+record "acme/widgets#12 ABC-12 other/repo#12 PR#12" "add: a bare #<n> names the origin's repo, others are kept" \
+	"$(jq -r .ref "$dir/$sid.jsonl" | tr '\n' ' ' | sed 's/ $//')"
+git -C "$repo_dir" remote set-url origin https://github.com/acme/widgets
+in_repo 'over https' add-decision --ref '#13' >/dev/null
+record "acme/widgets#13" "add: an https remote" "$(jq -r 'select(.id == "d1") | .ref' "$dir/$sid.jsonl")"
+record "exit 0" "add: outside a checkout a bare ref stays" "$(run 'no repo' add-need --ref '#12')"
+record "#12" "add: outside a checkout, the ref as given" "$(jq -r 'select(.id == "n5") | .ref' "$dir/$sid.jsonl")"
+
+# --- resolve --ref -----------------------------------------------------------
+
+# The child's need and its spawner's copy, under the same ref, are both
+# resolved; another repo's #12, and a need already resolved, are left alone.
+cat >"$dir/$other.jsonl" <<EOF
+{"kind":"need","id":"n1","text":"copy of acme #12","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","cwd":"$repo_dir"}
+{"kind":"need","id":"n2","text":"done","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","resolved_at":"2020-01-01T11:00:00Z"}
+EOF
+record "exit 0" "resolve --ref: every open copy" "$(in_repo '' resolve --ref '#12')"
+record "2" "resolve --ref: one line per ledger it touched" "$(wc -l <"$tmp/out" | tr -d ' ')"
+record "n1 n2:2020-01-01T11:00:00Z" "resolve --ref: the other session's copy, and the old stamp kept" \
+	"$(jq -r 'select(.resolved_at) | "\(.id)\(if .id == "n2" then ":" + .resolved_at else "" end)"' "$dir/$other.jsonl" | tr '\n' ' ' | sed 's/ $//')"
+record "n1" "resolve --ref: this session's copy, and nothing else" \
+	"$(jq -r 'select(.resolved_at) | .id' "$dir/$sid.jsonl")"
+record "exit 0" "resolve --ref: nothing open under the ref" "$(in_repo '' resolve --ref '#99')"
+record 1 "resolve --ref: says so" "$(grep -c 'no open need has the ref acme/widgets#99' "$tmp/err")"
+record "exit 1" "resolve --ref: a bad ref" "$(run '' resolve --ref 'a b')"
+record "exit 1" "resolve --ref: with a need id" "$(run '' resolve --ref '#12' n1)"
+record "exit 0" "resolve --ref: no session id needed" \
+	"$(cd "$work" && env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+		"$BASH" "$script" resolve --ref 'ABC-12' >/dev/null 2>&1; echo "exit $?")"
 
 finish
