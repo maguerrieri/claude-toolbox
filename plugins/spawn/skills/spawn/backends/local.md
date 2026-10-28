@@ -51,11 +51,15 @@ give a false "none":
 `--json` prints interactive and background sessions without a TTY, and `--all`
 adds the completed ones (without it, `done` sessions are left out). Each row has
 `name`, `sessionId`, `state`, `cwd` (the recorded launch dir), `kind`,
-`startedAt`, and `id` (the job's short id; resume takes `sessionId`), and some
-rows add `pid` and `status`. **The lifecycle is `state`, not `status`**
-(verified on Claude Code 2.1.312): `state` is `working`, `blocked`, `done` or
-`stopped`, while `status` (`busy`, `idle`, `waiting`) only says what a session
-is doing right now, and a `stopped` row never has one. **List once per run**
+`startedAt` (epoch milliseconds), and `id` (the job's short id; resume takes
+`sessionId`), and a row whose process is alive adds `pid` and `status`. Both
+are verified on Claude Code 2.1.312, where every row with a `pid` was a live
+process and no row without one was. **The lifecycle is `state`, not
+`status`**: `state` is `working`, `blocked`, `done` or `stopped`, while
+`status` (`busy`, `idle`, `waiting`) only says what a live session is doing
+right now. A `stopped` row never has a `pid` or a `status`; a `done` row has
+them while the session sits idle after its turn, and a `blocked` row loses
+them when its process dies at a prompt (a restart, say). **List once per run**
 and match every unit against that one listing, rather than re-listing per unit:
 the list grows with every session ever run, across every project on the
 machine.
@@ -79,15 +83,17 @@ agents=$(mktemp) && claude agents --json --all > "$agents"   # once; stop here i
 jq --arg dir "$launch_dir" --argjson ps '["<prefix>", "<alternate prefix>"]' \
   '[.[] | select(.cwd == $dir)
         | select((.name // "") as $n | any($ps[]; . as $p | $n | startswith($p)))
-        | .class = (if .state == "working" or .state == "blocked" then "running"
-                    elif .state == "stopped" or .state == "done" then "resumable"
+        | .class = (if .pid != null then "running"
+                    elif .state == "stopped" or .state == "done" or .state == "blocked" then "resumable"
                     else "unplaced" end)]
    | sort_by(.startedAt)' "$agents"
 ```
 
-The filter tags each match with a `class` taken from its `state`: `running`
-(`working`, or `blocked` on input or a permission), `resumable` (`stopped`,
-`done`), or `unplaced` (any other `state`, or none). End a prefix at a
+The filter tags each match with a `class`. `running`: the row has a `pid`, so
+its process is alive, whatever its `state` (`working`, `blocked` on input or a
+permission, or `done` and idle after its turn). `resumable`: no process, and a
+`state` of `stopped`, `done` or `blocked`. `unplaced`: anything else (a
+`working` row with no process, another `state`, or none). End a prefix at a
 delimiter (`"widgets #26: "`, with the colon and space) so it can't also match
 `#263`. If the listing itself fails (non-zero exit, output that isn't JSON),
 **you don't know**, so don't spawn fresh on it: report the error and let the
@@ -100,16 +106,14 @@ caller decide.
   `CLAUDE_SESSION_ID` here: it is an ordinary exported variable, so a child can
   inherit its parent's, and matching it would drop the parent's row and keep
   yours;
-- for a **live** row only (`class` `running`; you are running, so your row is
-  live, and a `resumable` or `unplaced` row never counts), its `pid` is an
-  ancestor of your shell (a Bash tool call runs under its session's process),
-  which covers a CLI too old to set `CLAUDE_CODE_SESSION_ID`. A stopped or done
-  row's `pid` is historical, and after a restart the OS may have reused it for
-  one of your ancestors:
+- for a `running` row (only a live row has a `pid`; you are running, so your
+  row has one), its `pid` is an ancestor of your shell (a Bash tool call runs
+  under its session's process), which covers a CLI too old to set
+  `CLAUDE_CODE_SESSION_ID`:
 
 ```bash
 ancestors=" "; p=$$; while [ "${p:-1}" -gt 1 ]; do ancestors="$ancestors$p "; p=$(ps -o ppid= -p "$p" | tr -d ' '); done
-# drop a row whose sessionId is this session's id (the first check), or a live row when case "$ancestors" in *" <row pid> "*) matches
+# drop a row whose sessionId is this session's id (the first check), or a running row when case "$ancestors" in *" <row pid> "*) matches
 ```
 
 If neither identifies your row and your own name could match the prefix (a
@@ -117,12 +121,12 @@ coordinator looking for an earlier coordinator of the same work), you can't
 tell yourself from a live duplicate: stop and report the running matches rather
 than carry on. Then **decide by `class`**, never by `status`:
 
-- **A `running` match**: the unit already has a live session. Resume nothing
-  and don't launch a duplicate; report it, and message it via SendMessage if
-  the caller needs it to change course.
-- **Only `resumable` matches** (`stopped` / `done`): resume one (below), the
-  newest (`startedAt`, last after the sort) when there are several, and name
-  the others in the report.
+- **A `running` match**: the unit already has a live session, even one that
+  is `done` and idle. Resume nothing and don't launch a duplicate; report it,
+  and message it via SendMessage if the caller needs it to change course.
+- **Only `resumable` matches**: resume one (below), the newest (`startedAt`,
+  last after the sort) when there are several, and name the others in the
+  report.
 - **Several units with one name** ("spawn 3 agents to each do X", retried):
   a row answers at most one unit. Pair units with matching rows one-to-one,
   newest first, applying the rules above per pair, and launch fresh only for

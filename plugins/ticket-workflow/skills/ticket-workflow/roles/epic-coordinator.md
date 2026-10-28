@@ -53,7 +53,8 @@ and assemble what comes back up.
 - **Implement a child issue yourself** — or any fix that reaches you mid-run.
   When a child is blocked or its session dies, re-brief it: on the local
   backend, **message** it if its session is still running, **resume** it
-  (`claude --bg --resume`) if its `state` is `stopped` or `done`, and **re-spawn** it only
+  (`claude --bg --resume`) if it has no live process (`resumable` in the
+  lookup), and **re-spawn** it only
   when it has no session or its resume fails (the skill's `phases/epic.md`
   Steps 5–6); on cloud, re-spawn it only once its session has ended, and leave a
   still-running one alone or redirect it with a scheduled one-shot Routine
