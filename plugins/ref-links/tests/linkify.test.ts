@@ -134,6 +134,17 @@ describe("don't touch", () => {
     )
   })
 
+  test('indented code inside a blockquote', () => {
+    same('>     echo #12')
+    same('> > \techo #12')
+    same('> para\n>\n>     echo #12')
+    same('para\n>     echo #12')
+    expect(link('> see #1\n>     more #2', ctx)).toBe(
+      `> see [#1](${issue(CURRENT, 1)})\n>     more [#2](${issue(CURRENT, 2)})`,
+    )
+    expect(link('>     echo #12\n> see #3', ctx)).toBe(`>     echo #12\n> see [#3](${issue(CURRENT, 3)})`)
+  })
+
   test('a fence four columns in, after a blank line, is indented code, not a fence', () => {
     expect(link('para\n\n    ```\n    x #1\n\nsee #12', ctx)).toBe(
       `para\n\n    \`\`\`\n    x #1\n\nsee [#12](${issue(CURRENT, 12)})`,
@@ -165,6 +176,8 @@ describe("don't touch", () => {
     same('[PR #219](https://github.com/o/r/pull/219)')
     same('![shot #2](img.png)')
     same('[see #4][ref]')
+    same('[code `]` #12](https://example.com)')
+    same('[see `[` #5][ref]')
     same('<https://example.com/#12>')
     same('https://example.com/a/#12 and www.example.com/#3')
   })

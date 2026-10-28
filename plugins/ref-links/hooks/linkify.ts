@@ -176,6 +176,9 @@ const HEADING = /^ {0,3}(?:>[ \t]*)*#{1,6}(?:\s|$)/
 // list item that deep is a nested list. A list's own paragraph that deep is
 // taken for code too: a missed link is the safe way to be wrong.
 const INDENTED = /^(?: {4}| {0,3}\t)/
+// A line's blockquote markers, each with the one space or tab it takes; the
+// indentation that counts for code is what follows them.
+const QUOTE = /^(?: {0,3}>[ \t]?)*/
 const LIST_ITEM = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:\s|$)/
 const DEFINITION = /^ {0,3}\[((?:[^[\]\\]|\\.)+)\]:/
 const AUTOLINK_OR_TAG = /<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|\/?[A-Za-z][^<>]*)>/y
@@ -190,14 +193,22 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
   let fence: { char: string; length: number; start: number } | null = null
   let indented: number | null = null
   let codeMayStart = true
+  let quoteDepth = 0
   let proseStart = 0
   let offset = 0
   for (const line of text.split('\n')) {
     const lineEnd = offset + line.length
-    const isBlank = line.trim() === ''
+    const quote = QUOTE.exec(line)?.[0] ?? ''
+    const body = line.slice(quote.length)
+    const depth = quote.split('>').length - 1
+    // A line of bare `>` is a blank line inside the quote, and a deeper quote
+    // opens a container a code block may start in.
+    const isBlank = body.trim() === ''
+    if (depth > quoteDepth) codeMayStart = true
+    quoteDepth = depth
     let endsBlock = false
 
-    if (indented !== null && !isBlank && !INDENTED.test(line)) {
+    if (indented !== null && !isBlank && !INDENTED.test(body)) {
       ranges.push([indented, offset])
       indented = null
       proseStart = offset
@@ -217,7 +228,7 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
       // blank line, is that block's text, not a fence.
       const opener = FENCE.exec(line)
       const marker = opener?.[1]
-      if (codeMayStart && !isBlank && INDENTED.test(line) && !LIST_ITEM.test(line)) {
+      if (codeMayStart && !isBlank && INDENTED.test(body) && !LIST_ITEM.test(body)) {
         prose.push([proseStart, offset])
         indented = offset
       } else if (marker !== undefined && !(marker[0] === '`' && opener?.[2]?.includes('`'))) {
@@ -338,9 +349,19 @@ function matchBracket(text: string, open: number, to: number, left: string, righ
   let depth = 0
   for (let i = open; i < to; i++) {
     const c = text[i]
-    if (c === '\\') i++
-    else if (c === left) depth++
-    else if (c === right && --depth === 0) return i
+    if (c === '\\') {
+      i++
+    } else if (c === '`' && left === '[') {
+      // A code span binds tighter than a label's brackets: `[a `]` b](x)`.
+      let run = i
+      while (run < to && text[run] === '`') run++
+      const close = findBacktickRun(text, run, to, run - i)
+      i = (close === -1 ? run : close + (run - i)) - 1
+    } else if (c === left) {
+      depth++
+    } else if (c === right && --depth === 0) {
+      return i
+    }
   }
   return -1
 }
