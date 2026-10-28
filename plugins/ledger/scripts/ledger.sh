@@ -55,9 +55,10 @@
 # id, the session id's first eight characters, is `claude attach`'s handle and
 # a `resolve --session` prefix.
 #
-# Every write holds the ledger's lock from its read to its rename, goes to a
-# temp file in the ledger directory, and is renamed over the ledger, so writes
-# at once don't lose each other's entries and a reader never sees half of one.
+# Every write holds the ledger's lock (flock, through perl) from its read to
+# its rename, goes to a temp file in the ledger directory, and is renamed over
+# the ledger, so writes at once don't lose each other's entries and a reader
+# never sees half of one.
 # Reads skip a line that isn't an entry (an object with a string kind, id,
 # text and at, and a string or null ref, cwd and resolved_at). Exits 0 on
 # success; exits 1 with the reason on stderr when nothing was written or read.
@@ -79,6 +80,9 @@ fail() {
 usage='usage: ledger.sh add-decision|add-need [--ref <ref>] (text on stdin) | resolve <need id> [--session <session>] | resolve --ref <ref> | list [--all]'
 
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
+case "$cmd" in
+add-decision | add-need | resolve) command -v perl >/dev/null 2>&1 || fail 'perl is required (it takes the write lock)' ;;
+esac
 
 # id_ok <id> succeeds when <id> is a plain token that may name a ledger file:
 # no path separator, no dot-dot, not just a dot (the role marker's rule).
@@ -246,37 +250,33 @@ replace() {
 	fail 'the ledger could not be written'
 }
 
-# lock <file>: take <file>'s lock, a symlink beside it naming this process
-# (ln -s is atomic, and the holder comes with it). Every write reads the
+# lock <file>: hold <file>'s lock until unlock or exit. Every write reads the
 # ledger before it replaces it, so without the lock two writes at once (two of
 # this session's calls run in parallel, or the owner's Resolve beside the
-# session's own add) would each drop the other's entry. A lock whose holder
-# isn't running was left by a killed write, and is taken over at once. Two
-# waiters that both find the same dead holder can both take it over: that
-# needs a crash and a race together, and costs at most one entry.
-lockfile=''
+# session's own add) would each drop the other's entry. The lock is flock(2)
+# on a lock file beside the ledger, taken by perl on descriptor 9, which this
+# shell keeps open: the lock belongs to the open file, so it lasts until the
+# shell closes the descriptor, and the kernel drops it when the process dies.
+# So a killed write leaves nothing to reclaim, and no waiter can remove
+# another's lock (a lock file that could be deleted and remade, as a mkdir or
+# symlink lock is, raced exactly that way). The lock file is never deleted
+# while in use: it's touched on every lock, and the SessionStart hook reaps
+# only files untouched for 30 days.
 lock() {
-	local tries=0 holder
-	lockfile="$dir/.${1##*/}.lock"
+	local lockfile="$dir/.${1##*/}.lock" status
 	mkdir -p "$dir" 2>/dev/null || fail 'the ledger directory could not be created'
-	until ln -s "$$" "$lockfile" 2>/dev/null; do
-		# Released between the two calls: try again.
-		holder=$(readlink "$lockfile" 2>/dev/null) || continue
-		if ! kill -0 "$holder" 2>/dev/null; then
-			rm -f "$lockfile"
-			continue
-		fi
-		tries=$((tries + 1))
-		[ "$tries" -le 200 ] || fail 'another write held the ledger for 10 seconds'
-		sleep 0.05
-	done
-	trap unlock EXIT
+	{ touch "$lockfile" && exec 9>>"$lockfile"; } 2>/dev/null || fail 'the ledger lock file could not be opened'
+	perl -MFcntl=:flock -e 'open(my $fh, ">&=", 9) or exit 2;
+		for (1 .. 200) { exit 0 if flock($fh, LOCK_EX | LOCK_NB); select(undef, undef, undef, 0.05) }
+		exit 1'
+	status=$?
+	[ "$status" -ne 1 ] || fail 'another write held the ledger for 10 seconds'
+	[ "$status" -eq 0 ] || fail 'the ledger lock could not be taken'
 }
 
-# unlock: release the lock, if this process still holds it.
+# unlock: release the lock, by closing the descriptor that holds it.
 unlock() {
-	[ -n "$lockfile" ] && [ "$(readlink "$lockfile" 2>/dev/null)" = "$$" ] && rm -f "$lockfile"
-	lockfile=''
+	exec 9>&-
 }
 
 # agents_json: what `claude agents --json --all` prints, given five seconds.

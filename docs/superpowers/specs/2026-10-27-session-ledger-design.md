@@ -27,10 +27,14 @@ anywhere durable:
   `~/.claude/session-ledger/<session id>.jsonl` (`CLAUDE_SESSION_LEDGER_DIR`
   overrides it for tests). The session id is `CLAUDE_CODE_SESSION_ID`, else the
   `CLAUDE_SESSION_ID` the plugin's SessionStart hook (and ticket-workflow's)
-  exports on older CLIs. A write holds a per-file lock (a symlink naming the
-  holder's PID: `ln -s` is atomic, and a dead holder's lock is taken over at
-  once) from its read to its rename, since parallel tool calls and the
-  owner's Resolve can write one ledger at once.
+  exports on older CLIs. A write holds a per-file lock from its read to its
+  rename, since parallel tool calls and the owner's Resolve can write one
+  ledger at once. The lock is `flock(2)` on a lock file, taken by perl on a
+  descriptor the script's shell keeps open, so the kernel drops it when the
+  holder dies. A lock file that can be deleted and remade (`mkdir`, a symlink
+  naming the holder) needs stale-lock reclaiming, and a reclaiming waiter can
+  remove a successor's live lock: Codex reproduced lost entries that way on
+  PR #272.
   Each line is one entry:
   `{kind: "decision"|"need", id, text, ref?, at, cwd, resolved_at?}`. `id` is
   `d<n>` or `n<n>`, numbered per kind within the file. `cwd` is where the

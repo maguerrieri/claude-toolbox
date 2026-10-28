@@ -45,6 +45,6 @@ dir="$HOME/.claude/session-ledger"
 
 [ -z "$session_id" ] || [ ! -f "$dir/$session_id.jsonl" ] || touch "$dir/$session_id.jsonl" 2>/dev/null
 
-# A ledger, a temp file a killed write left behind, or its lock (a symlink).
-find "$dir" -maxdepth 1 \( -type f \( -name '*.jsonl' -o -name '.*.jsonl.*' \) -o -type l -name '.*.jsonl.lock' \) \
-	-mtime +30 -delete 2>/dev/null || true
+# A ledger, a temp file a killed write left behind, or a lock file (which
+# every write touches, so one in use is never this old).
+find "$dir" -maxdepth 1 -type f \( -name '*.jsonl' -o -name '.*.jsonl.*' \) -mtime +30 -delete 2>/dev/null || true

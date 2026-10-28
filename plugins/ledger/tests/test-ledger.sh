@@ -236,37 +236,61 @@ record "exit 1" "list: an unknown option" "$(run '' list --json)"
 
 # --- writes are atomic and serialized ---------------------------------------
 
-record "" "no temp files or locks left behind" "$(ls -A "$dir" | grep -v -e '\.jsonl$' -e '^notes\.txt$')"
+record "" "no temp files left behind (only ledgers and their lock files)" "$(ls -A "$dir" | grep -v -e '\.jsonl$' -e '^notes\.txt$' -e '^\..*\.jsonl\.lock$')"
 
-# Ten adds at once, and a resolve among them: every entry lands, numbered
-# without a repeat.
+# Twenty adds at once, twice over, with resolves among them: every entry
+# lands, numbered without a repeat. (A lock that could be deleted and remade
+# lost entries here: a waiter that saw a holder exit removed its successor's.)
 reset
 run 'first' add-need >/dev/null
-for i in 1 2 3 4 5 6 7 8 9 10; do
-	(cd "$work" && printf 'need %s' "$i" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
-		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" add-need >/dev/null 2>&1) &
+run 'second' add-need >/dev/null
+for batch in 1 2; do
+	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+		(cd "$work" && printf 'need %s.%s' "$batch" "$i" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+			CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" add-need >/dev/null 2>&1) &
+	done
+	run '' resolve "n$batch" --session "$sid" >/dev/null &
+	wait
 done
-run '' resolve n1 --session "$sid" >/dev/null &
-wait
-record "11 11 1" "concurrent writes: none lost, ids unique, the resolve kept" \
+record "42 42 2" "concurrent writes: none lost, ids unique, the resolves kept" \
 	"$(jq -s '"\(length) \([.[].id] | unique | length) \([.[] | select(.resolved_at)] | length)"' -r "$dir/$sid.jsonl")"
 
-# A lock whose holder isn't running (a killed write's) is taken over at once.
-true &
-dead=$!
-wait "$dead"
-ln -s "$dead" "$dir/.$sid.jsonl.lock"
+# hold_lock <seconds>: hold this session's ledger lock from a background
+# process for <seconds>, as a write in progress does; sets holder to its pid.
+hold_lock() {
+	mkdir -p "$dir"
+	(
+		exec 9>>"$dir/.$sid.jsonl.lock"
+		perl -MFcntl=:flock -e 'open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
+		exec sleep "$1"
+	) &
+	holder=$!
+	# Until the lock is taken: a non-blocking try fails while it's held.
+	until ! perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; exit(flock($f, LOCK_EX | LOCK_NB) ? 0 : 1)' "$dir/.$sid.jsonl.lock"; do
+		sleep 0.05
+	done
+}
+# A held lock is waited for, and the write lands once it's released.
+hold_lock 1
 started=$(date +%s)
-record "exit 0" "a dead holder's lock is taken over" "$(run 'after a crash' add-decision)"
-record yes "a dead holder's lock is taken over at once" "$([ $(($(date +%s) - started)) -lt 3 ] && echo yes)"
-record "" "the stale lock is gone" "$(ls -A "$dir" | grep -v '\.jsonl$')"
-# A live holder's lock is waited for, and a write still lands once it's gone.
-sleep 2 &
-live=$!
-ln -s "$live" "$dir/.$sid.jsonl.lock"
-(sleep 1 && rm -f "$dir/.$sid.jsonl.lock") &
-record "exit 0" "a live holder's lock is waited out" "$(run 'after the wait' add-decision)"
-wait
+record "exit 0" "a held lock is waited out" "$(run 'after the wait' add-decision)"
+record yes "a held lock is waited for" "$([ $(($(date +%s) - started)) -ge 1 ] && echo yes)"
+wait "$holder"
+# A killed holder's lock is free at once: the kernel dropped it.
+hold_lock 30
+kill -9 "$holder"
+wait "$holder" 2>/dev/null
+started=$(date +%s)
+record "exit 0" "a killed holder's lock is free" "$(run 'after a crash' add-decision)"
+record yes "a killed holder's lock is free at once" "$([ $(($(date +%s) - started)) -lt 3 ] && echo yes)"
+# A holder that outlasts ten seconds is reported, and nothing is written.
+hold_lock 15
+before=$(wc -l <"$dir/$sid.jsonl")
+record "exit 1" "a lock held past ten seconds" "$(run 'too late' add-decision)"
+record 1 "a lock held past ten seconds: says so" "$(grep -c 'held the ledger for 10 seconds' "$tmp/err")"
+record "$before" "a lock held past ten seconds: nothing written" "$(wc -l <"$dir/$sid.jsonl")"
+kill "$holder" 2>/dev/null
+wait "$holder" 2>/dev/null
 
 # --- refs name their repo ----------------------------------------------------
 
