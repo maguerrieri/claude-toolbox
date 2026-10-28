@@ -33,13 +33,14 @@ answer and let the parent record it.
 - **A child's need**, when a session you spawned pings that it needs the owner
   (`blocked: merge needs the owner`, a `declined: … needs the owner` line, a
   stack `ready; needs the owner`). Record it as a need of yours, naming the
-  child and its unblock step, with the `--ref` the child used (its PR). That
+  child and its unblock step, with the child's PR as `--ref` (`'#212'`). That
   puts it in the ledger of the session the owner talks to, so a "status?"
   there has it, and the shared ref lets the listings show the child's need and
   your copy once, as one row naming both.
 - **Resolve a need** once the owner has answered: they replied, approved,
   merged, or the child pinged `merged:` or `resumed:`. Resolve a need that no
-  longer applies too (its PR closed, the plan changed).
+  longer applies too (its PR closed, the plan changed). When a PR lands,
+  `resolve --ref` resolves every open need under it, in every local ledger.
 
 ## When to read
 
@@ -62,17 +63,23 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" add-need --ref '#212' <<'LEDGER
 <what the owner needs to do, and the exact step>
 LEDGER_EOF
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve n1
+bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve --ref '#212'
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
 ```
 
 - `add-decision` and `add-need` print the new entry's id (`d1`, `n1`); `--ref`
-  is optional (an issue or PR: `#212`, `owner/repo#12`, `ABC-12`). The text is
-  at most 4000 bytes, with no control characters but tab and newline.
+  is optional (an issue or PR: `#212`, `owner/repo#12`, `ABC-12`). A bare
+  `#212` is written as `owner/repo#212`, from the checkout's origin remote, so
+  every session in one repo records the same ref and two repos' `#12` don't
+  collide. The text is at most 4000 bytes, with no control characters but tab
+  and newline.
 - `resolve <need id>` marks one of this session's needs resolved;
   `--session <session id or a unique prefix of 4+ characters>` resolves another
-  session's. That is for the owner dismissing a need whose session is gone, and
-  for a session that landed another session's PR (ticket-workflow's FINISH),
+  session's, which is for the owner dismissing a need whose session is gone,
   never for a need that session can still answer itself.
+- `resolve --ref <ref>` resolves every open need with that ref in every local
+  ledger: the child's own and each spawner's copy. It's for a PR that landed
+  (ticket-workflow's FINISH runs it), since the merge answers all of them.
 - `list` prints this session's open needs, decisions and resolved needs;
   `list --all` prints every session's open needs and this session's decisions.
   Open needs that share a ref are one row there, under the first recorded,
@@ -91,6 +98,11 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
 `No such file`. Then find the script with the Glob tool
 (`cache/*/ledger/*/scripts/ledger.sh` under your Claude config's `plugins/`
 directory, the highest version if several match) and run it by that path.
+
+A ledger is keyed on the session id, so after `/clear` or a fork (which start
+a new one) entries recorded earlier stay under the old id. `list --all` still
+shows them, under the directory and the old short id, and `resolve --ref` or
+`resolve --session <old id>` reaches them.
 
 A ledger write that fails never blocks the work it describes: carry on, and
 say in your next report what wasn't recorded and why.

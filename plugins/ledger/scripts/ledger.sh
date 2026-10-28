@@ -18,6 +18,8 @@
 #   <text>
 #   LEDGER_EOF
 #   ledger.sh resolve <need id> [--session <session>]     mark a need resolved
+#   ledger.sh resolve --ref <ref>                         resolve every open need
+#                                                         with that ref, in every ledger
 #   ledger.sh list [--all]                                this session's entries, or
 #                                                         open needs across sessions
 #
@@ -27,16 +29,21 @@
 # The text comes on stdin, from a quoted heredoc, so no character of it
 # reaches a shell as syntax. One trailing newline is dropped; the rest is
 # kept, lines included. Empty or whitespace-only text, text over 4000 bytes,
-# and control characters other than tab and newline are refused. A ref is
-# letters, digits and # / _ . : -, starting with a letter, digit or #, at most
-# 100 bytes (#212, owner/repo#12, ABC-12).
+# and control characters (C0 and C1) other than tab and newline are refused.
+# A ref is letters, digits and # / _ . : -, starting with a letter, digit or
+# #, at most 100 bytes (#212, owner/repo#12, ABC-12). A bare #<n> names an
+# issue or PR of the checkout's own repo, and the same number in another repo
+# is another one, so it is written as <owner>/<repo>#<n>, read from the origin
+# remote where there is one. That way two sessions in one repo writing `#212`
+# record the same ref, and two repos' `#12` don't.
 #
-# A session writes only its own ledger, keyed by its session id: the harness's
-# CLAUDE_CODE_SESSION_ID, else the CLAUDE_SESSION_ID that ticket-workflow's
-# SessionStart hook exports on older CLIs. The one exception is
+# A session writes its own ledger, keyed by its session id: the harness's
+# CLAUDE_CODE_SESSION_ID, else the CLAUDE_SESSION_ID this plugin's
+# SessionStart hook exports on older CLIs. Two writes reach another session's:
 # `resolve --session` (the full id, or a unique prefix of at least four
-# characters): the owner dismissing another session's need, or a FINISH that
-# landed another session's PR resolving its hand-back.
+# characters), the owner dismissing a need; and `resolve --ref`, which
+# resolves every open copy of a need (a child's, and its spawner's) once the
+# PR it names lands.
 #
 # `list` prints this session's open needs, decisions and resolved needs,
 # newest first. `list --all` prints the open needs of every session's ledger,
@@ -48,12 +55,12 @@
 # id, the session id's first eight characters, is `claude attach`'s handle and
 # a `resolve --session` prefix.
 #
-# Every write holds the ledger's lock (a directory beside it) from its read to
-# its rename, goes to a temp file in the ledger directory, and is renamed over
-# the ledger, so writes at once don't lose each other's entries and a reader
-# never sees half of one. Reads skip a line that isn't a JSON object. Exits 0
-# on success; exits 1 with the reason on stderr when nothing was written or
-# read.
+# Every write holds the ledger's lock from its read to its rename, goes to a
+# temp file in the ledger directory, and is renamed over the ledger, so writes
+# at once don't lose each other's entries and a reader never sees half of one.
+# Reads skip a line that isn't an entry (an object with a string kind, id,
+# text and at, and a string or null ref, cwd and resolved_at). Exits 0 on
+# success; exits 1 with the reason on stderr when nothing was written or read.
 set -uo pipefail
 # Bytes, not characters: the 4000-byte limit and the control-character check
 # count bytes.
@@ -69,7 +76,7 @@ fail() {
 	exit 1
 }
 
-usage='usage: ledger.sh add-decision|add-need [--ref <ref>] (text on stdin) | resolve <need id> [--session <session>] | list [--all]'
+usage='usage: ledger.sh add-decision|add-need [--ref <ref>] (text on stdin) | resolve <need id> [--session <session>] | resolve --ref <ref> | list [--all]'
 
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
 
@@ -79,6 +86,14 @@ id_ok() {
 	case "$1" in
 	'' | . | *[!A-Za-z0-9._-]* | *..*) return 1 ;;
 	esac
+}
+
+# check_ref: fail unless $ref is a well-formed ref.
+check_ref() {
+	case "$ref" in
+	'' | [!A-Za-z0-9#]* | *[!A-Za-z0-9#/_.:-]*) fail 'the ref is empty or not just letters, digits and # / _ . : - (#212, owner/repo#12, ABC-12)' ;;
+	esac
+	[ "${#ref}" -le 100 ] || fail 'the ref is over 100 bytes'
 }
 
 # Check every argument before touching anything.
@@ -96,12 +111,7 @@ add-decision | add-need)
 		*) fail "$usage" ;;
 		esac
 	done
-	if [ "$has_ref" = yes ]; then
-		case "$ref" in
-		'' | [!A-Za-z0-9#]* | *[!A-Za-z0-9#/_.:-]*) fail 'the ref is empty or not just letters, digits and # / _ . : - (#212, owner/repo#12, ABC-12)' ;;
-		esac
-		[ "${#ref}" -le 100 ] || fail 'the ref is over 100 bytes'
-	fi
+	[ "$has_ref" = no ] || check_ref
 	# The text comes from a heredoc; from a terminal, reading would only block.
 	[ ! -t 0 ] || fail "$usage"
 	# All of stdin, kept exact (the x stops $(...) from stripping trailing
@@ -117,27 +127,40 @@ add-decision | add-need)
 	*) fail 'the text is empty' ;;
 	esac
 	[ "${#text}" -le 4000 ] || fail 'the text is over 4000 bytes'
+	# C0 controls but tab and newline, DEL, and C1 controls as UTF-8 encodes
+	# them (U+0080 to U+009F: C2 80 to C2 9F), which some terminals obey too.
+	c1=$'*\xc2[\x80-\x9f]*'
+	# shellcheck disable=SC2254 # the pattern is meant to match
+	case "$text" in
+	$c1) fail 'the text has a control character (only tab and newline are kept)' ;;
+	esac
 	[ "$(printf '%s' "$text" | tr -d '\001-\010\013-\037\177' | wc -c)" -eq "${#text}" ] ||
 		fail 'the text has a control character (only tab and newline are kept)'
 	;;
 resolve)
 	shift
 	[ $# -ge 1 ] || fail "$usage"
-	need=$1
-	shift
-	case "$need" in
-	n[1-9]*) ;;
-	*) fail "'$need' is not a need id (n1, n2, …)" ;;
-	esac
-	case "${need#n}" in
-	*[!0-9]*) fail "'$need' is not a need id (n1, n2, …)" ;;
-	esac
-	[ "${#need}" -le 10 ] || fail "'$need' is not a need id (n1, n2, …)"
-	if [ $# -gt 0 ]; then
-		[ "$1" = --session ] && [ $# -eq 2 ] || fail "$usage"
-		session=$2
-		id_ok "$session" || fail 'the session is not a plain token'
-		[ "${#session}" -ge 4 ] || fail 'the session prefix is under four characters'
+	if [ "$1" = --ref ]; then
+		[ $# -eq 2 ] || fail "$usage"
+		ref=$2 has_ref=yes
+		check_ref
+	else
+		need=$1
+		shift
+		case "$need" in
+		n[1-9]*) ;;
+		*) fail "'$need' is not a need id (n1, n2, …)" ;;
+		esac
+		case "${need#n}" in
+		*[!0-9]*) fail "'$need' is not a need id (n1, n2, …)" ;;
+		esac
+		[ "${#need}" -le 10 ] || fail "'$need' is not a need id (n1, n2, …)"
+		if [ $# -gt 0 ]; then
+			[ "$1" = --session ] && [ $# -eq 2 ] || fail "$usage"
+			session=$2
+			id_ok "$session" || fail 'the session is not a plain token'
+			[ "${#session}" -ge 4 ] || fail 'the session prefix is under four characters'
+		fi
 	fi
 	;;
 list)
@@ -154,18 +177,58 @@ esac
 sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [ -n "$sid" ]; then
 	id_ok "$sid" || fail 'the session id is not a plain token'
-elif [ "$all" = no ] && [ -z "$session" ]; then
-	# Only list --all, and a resolve that names its session, need no id.
+elif [ "$all" = no ] && [ -z "$session" ] && { [ "$cmd" != resolve ] || [ "$has_ref" = no ]; }; then
+	# Only list --all and a resolve that names its session or ref need no id.
 	fail 'no session id (neither CLAUDE_CODE_SESSION_ID nor CLAUDE_SESSION_ID is set)'
 fi
 [ -n "${CLAUDE_SESSION_LEDGER_DIR:-}${HOME:-}" ] || fail 'neither CLAUDE_SESSION_LEDGER_DIR nor HOME is set'
 dir="${CLAUDE_SESSION_LEDGER_DIR:-$HOME/.claude/session-ledger}"
 file="$dir/$sid.jsonl"
 
-# entries <file>: the file's entries, one compact JSON object per line,
-# skipping any line that isn't one.
+# A bare #<n> becomes <owner>/<repo>#<n>, from the origin remote's URL
+# (git@host:owner/repo.git, https://host/owner/repo, ssh://…), where the
+# checkout has one that parses.
+case "$ref" in
+'#'[1-9]*)
+	case "${ref#\#}" in
+	*[!0-9]*) ;;
+	*)
+		url=$(git -C "$PWD" remote get-url origin 2>/dev/null) || url=
+		rest=${url%.git}
+		repo=${rest##*/}
+		rest=${rest%/*}
+		owner=${rest##*[:/]}
+		if [ -n "$url" ] && id_ok "$repo" && id_ok "$owner"; then
+			ref="$owner/$repo$ref"
+		fi
+		;;
+	esac
+	;;
+esac
+
+# What counts as an entry, for every read: an object with a string kind
+# (decision or need), id, text and at, and a ref, cwd and resolved_at that are
+# strings or absent (null counts as absent). Anything else a hand edit left is
+# skipped, so one bad line can't break a listing.
+entry_filter='fromjson? // empty
+	| select(type == "object" and (.kind == "decision" or .kind == "need")
+		and (.id | type) == "string" and (.text | type) == "string" and (.at | type) == "string"
+		and ([.ref, .cwd, .resolved_at] | all(. == null or type == "string")))'
+
+# entries <file>…: the files' entries, one compact JSON object per line.
 entries() {
-	jq -cR 'fromjson? // empty | select(type == "object")' "$1"
+	jq -cR "$entry_filter" "$@"
+}
+
+# ledgers: the ledger files in the directory, one per line, skipping a name
+# that isn't a plain token.
+ledgers() {
+	local ledger
+	for ledger in "$dir"/*.jsonl; do
+		[ -f "$ledger" ] || continue
+		ledger=${ledger##*/}
+		id_ok "${ledger%.jsonl}" && printf '%s\n' "$dir/$ledger"
+	done
 }
 
 # replace <file> <command…>: the command's stdout, through a temp file beside
@@ -183,26 +246,37 @@ replace() {
 	fail 'the ledger could not be written'
 }
 
-# lock <file>: hold <file>'s lock, a directory beside it (mkdir is atomic),
-# until the script exits. Every write reads the ledger before it replaces it,
-# so without the lock two writes at once (two of this session's calls run in
-# parallel, or the owner's Resolve beside the session's own add) would each
-# drop the other's entry. A lock a killed write left is taken over once it is
-# a minute old.
+# lock <file>: take <file>'s lock, a symlink beside it naming this process
+# (ln -s is atomic, and the holder comes with it). Every write reads the
+# ledger before it replaces it, so without the lock two writes at once (two of
+# this session's calls run in parallel, or the owner's Resolve beside the
+# session's own add) would each drop the other's entry. A lock whose holder
+# isn't running was left by a killed write, and is taken over at once. Two
+# waiters that both find the same dead holder can both take it over: that
+# needs a crash and a race together, and costs at most one entry.
+lockfile=''
 lock() {
-	local tries=0
-	lockdir="$dir/.${1##*/}.lock"
+	local tries=0 holder
+	lockfile="$dir/.${1##*/}.lock"
 	mkdir -p "$dir" 2>/dev/null || fail 'the ledger directory could not be created'
-	until mkdir "$lockdir" 2>/dev/null; do
-		if [ -n "$(find "$lockdir" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-			rmdir "$lockdir" 2>/dev/null
+	until ln -s "$$" "$lockfile" 2>/dev/null; do
+		# Released between the two calls: try again.
+		holder=$(readlink "$lockfile" 2>/dev/null) || continue
+		if ! kill -0 "$holder" 2>/dev/null; then
+			rm -f "$lockfile"
 			continue
 		fi
 		tries=$((tries + 1))
 		[ "$tries" -le 200 ] || fail 'another write held the ledger for 10 seconds'
 		sleep 0.05
 	done
-	trap 'rmdir "$lockdir" 2>/dev/null' EXIT
+	trap unlock EXIT
+}
+
+# unlock: release the lock, if this process still holds it.
+unlock() {
+	[ -n "$lockfile" ] && [ "$(readlink "$lockfile" 2>/dev/null)" = "$$" ] && rm -f "$lockfile"
+	lockfile=''
 }
 
 # agents_json: what `claude agents --json --all` prints, given five seconds.
@@ -230,13 +304,13 @@ now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 # line and its indented text, control characters shown as ? (a hand-edited
 # file may hold one), and newest-first order.
 jq_defs='
-def clean: gsub("[\\x01-\\x08\\x0b-\\x1f\\x7f]"; "?");
+def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f]"; "?");
 def when: (.at | (fromdateiso8601? // null)) as $t
 	| if $t == null then "?" else ($t | strflocaltime("%Y-%m-%d %H:%M")) end;
 def num: (.id[1:] | tonumber? // 0);
 def heading($label): ($label + [.id, when] + (if (.ref | type) == "string" then [.ref] else [] end))
 	| map(clean) | join(" · ");
-def body: (.text | tostring | split("\n") | map("    " + clean) | join("\n"));
+def body: (.text | split("\n") | map("    " + clean) | join("\n"));
 def show($label): "  " + heading($label) + "\n" + body;
 def section($title; $label): if length == 0 then empty
 	else ($title + " (\(length)):"), (.[] | show($label)) end;
@@ -250,6 +324,18 @@ append_entry() {
 		[ -z "$(tail -c 1 "$file")" ] || echo
 	fi
 	printf '%s\n' "$entry"
+}
+
+# resolve_in <file> <jq condition on $e>: stamp every open need of <file>
+# that meets the condition, under the file's lock. Lines that aren't entries
+# are kept as they are.
+resolve_in() {
+	lock "$1"
+	replace "$1" jq -rR --arg at "$now" --arg id "$need" --arg ref "$ref" \
+		'(fromjson? // null) as $e
+		| if ($e | type) == "object" and $e.kind == "need" and $e.resolved_at == null and ('"$2"')
+		  then $e + {resolved_at: $at} | tojson else . end' "$1"
+	unlock
 }
 
 case "$cmd" in
@@ -272,20 +358,36 @@ add-decision | add-need)
 	printf '%s\n' "$id"
 	;;
 resolve)
+	if [ "$has_ref" = yes ]; then
+		resolved=0
+		while IFS= read -r ledger; do
+			count=$(entries "$ledger" | jq -s --arg ref "$ref" '[.[] | select(.kind == "need" and .resolved_at == null and .ref == $ref)] | length') ||
+				fail "$ledger could not be read"
+			[ "$count" -gt 0 ] || continue
+			resolve_in "$ledger" '$e.ref == $ref'
+			owner=${ledger##*/}
+			printf '%s: %s\n' "${owner%.jsonl}" "$count"
+			resolved=$((resolved + count))
+		done < <(ledgers)
+		[ "$resolved" -gt 0 ] || printf 'ledger resolve: no open need has the ref %s\n' "$ref" >&2
+		exit 0
+	fi
 	if [ -n "$session" ]; then
 		if [ -f "$dir/$session.jsonl" ]; then
 			file="$dir/$session.jsonl"
 		else
-			shopt -s nullglob
-			matches=("$dir/$session"*.jsonl)
-			shopt -u nullglob
+			matches=()
+			while IFS= read -r ledger; do
+				case "${ledger##*/}" in
+				"$session"*) matches+=("$ledger") ;;
+				esac
+			done < <(ledgers)
 			[ "${#matches[@]}" -gt 0 ] || fail "no session's ledger starts with '$session'"
 			[ "${#matches[@]}" -eq 1 ] || fail "more than one session's ledger starts with '$session'"
 			file=${matches[0]}
 		fi
 	fi
 	[ -f "$file" ] || fail 'this session has no ledger'
-	lock "$file"
 	state=$(entries "$file" | jq -rs --arg id "$need" \
 		'[.[] | select(.kind == "need" and .id == $id)] | if length == 0 then "missing" elif any(.[]; .resolved_at == null) then "open" else "resolved" end') ||
 		fail 'the ledger could not be read'
@@ -296,11 +398,7 @@ resolve)
 		exit 0
 		;;
 	esac
-	# Lines that aren't entries are kept as they are.
-	replace "$file" jq -rR --arg id "$need" --arg at "$now" \
-		'(fromjson? // null) as $e
-		| if ($e | type) == "object" and $e.kind == "need" and $e.id == $id and $e.resolved_at == null
-		  then $e + {resolved_at: $at} | tojson else . end' "$file"
+	resolve_in "$file" '$e.id == $id'
 	;;
 list)
 	if [ "$all" = no ]; then
@@ -317,33 +415,29 @@ list)
 			  end' || fail 'the ledger could not be read'
 		exit 0
 	fi
-	# Session names, where `claude agents` lists the session.
+	# Session names, where `claude agents` lists the session with one.
 	names='{}'
 	if command -v claude >/dev/null 2>&1; then
 		listed=$(agents_json |
-			jq -c 'if type == "array" then map(select(.sessionId and .name) | {key: .sessionId, value: .name}) | from_entries else empty end' 2>/dev/null) &&
+			jq -c 'if type == "array"
+				then map(select((.sessionId | type) == "string" and (.name | type) == "string" and .name != "")
+					| {key: .sessionId, value: .name}) | from_entries
+				else empty end' 2>/dev/null) &&
 			[ -n "$listed" ] && names=$listed
 	fi
-	shopt -s nullglob
-	files=("$dir"/*.jsonl)
-	shopt -u nullglob
-	ledgers=()
-	for ledger in ${files[@]+"${files[@]}"}; do
-		owner=${ledger##*/}
-		id_ok "${owner%.jsonl}" && ledgers+=("$ledger")
-	done
 	# Every ledger read by one jq, each entry tagged with its session. Open needs
 	# that share a ref are one need recorded along the way up (a child's own,
 	# then its spawner's copy), so they're shown once: the first recorded,
 	# naming the others.
+	files=()
+	while IFS= read -r ledger; do files+=("$ledger"); done < <(ledgers)
 	{
-		[ "${#ledgers[@]}" -eq 0 ] ||
-			jq -cR 'fromjson? // empty | select(type == "object")
-				| . + {session: (input_filename | split("/") | last | rtrimstr(".jsonl"))}' "${ledgers[@]}"
+		[ "${#files[@]}" -eq 0 ] ||
+			jq -cR "$entry_filter"' | . + {session: (input_filename | split("/") | last | rtrimstr(".jsonl"))}' "${files[@]}"
 	} | jq -rs --argjson names "$names" --arg me "$sid" "$jq_defs"'
 		def who: if .session == $me then "this session"
 			elif ($names[.session] | type) == "string" then $names[.session] + " (" + .session[0:8] + ")"
-			else ((.cwd // "" | tostring | split("/") | map(select(. != "")) | last) // "?") + " (" + .session[0:8] + ")" end;
+			else ((.cwd // "" | split("/") | map(select(. != "")) | last) // "?") + " (" + .session[0:8] + ")" end;
 		[.[] | select(.kind == "need" and .resolved_at == null)] as $open
 		| ([$open[] | select((.ref | type) != "string") | [.]]
 			+ ([$open[] | select((.ref | type) == "string")] | group_by(.ref))

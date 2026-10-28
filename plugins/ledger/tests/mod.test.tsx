@@ -202,6 +202,20 @@ test('the model skips lines that are not entries and orders newest first', async
   expect(viewOf(ledgers, 'other', {}).needs[0]?.label).toBe('this session')
   expect(parseLedger('{"kind":"need","id":"n1","text":"x\\u001b[31m","at":"t"}')[0]?.text).toBe('x\u001b[31m')
   expect(viewOf({ s: parseLedger('{"kind":"need","id":"n1","text":"x\\u001b[31m","at":"t"}') }, 'me', {}).needs[0]?.text).toBe('x?[31m')
+  expect(viewOf({ s: parseLedger('{"kind":"need","id":"n1","text":"x\u009b2J","at":"t"}') }, 'me', {}).needs[0]?.text).toBe('x?2J')
+
+  // As the script reads them: a non-string optional field skips the entry,
+  // and null counts as absent (no ref; not resolved).
+  const odd = parseLedger(
+    [
+      '{"kind":"need","id":"n1","text":"a number ref","ref":5,"at":"t"}',
+      '{"kind":"need","text":"no id","at":"t"}',
+      '["an", "array"]',
+      '{"kind":"need","id":"n2","text":"null fields","ref":null,"cwd":null,"resolved_at":null,"at":"t"}',
+    ].join('\n'),
+  )
+  expect(odd).toEqual([{ kind: 'need', id: 'n2', text: 'null fields', at: 't' }])
+  expect(viewOf({ s: odd }, 'me', {}).needs.map(need => need.id)).toEqual(['n2'])
   expect(ageOf('2026-10-27T11:59:30Z', NOW)).toBe('now')
   expect(ageOf('2026-10-24T12:00:00Z', NOW)).toBe('3d')
   expect(ageOf('garbage', NOW)).toBe('?')

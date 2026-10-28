@@ -16,8 +16,13 @@ export type Entry = {
 
 export const EMPTY_VIEW: LedgerView = { needs: [], decisions: [] }
 
-const isEntry = (value: unknown): value is Entry => {
-  if (typeof value !== 'object' || value === null) {
+const isOptionalString = (value: unknown): boolean => value === undefined || value === null || typeof value === 'string'
+
+// An entry as scripts/ledger.sh counts one: a string kind, id, text and at,
+// and a ref, cwd and resolved_at that are strings or absent (null counts as
+// absent). Anything else a hand edit left is skipped, as the script skips it.
+const isEntry = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false
   }
   const entry = value as Record<string, unknown>
@@ -26,20 +31,40 @@ const isEntry = (value: unknown): value is Entry => {
     (entry.kind === 'decision' || entry.kind === 'need') &&
     typeof entry.id === 'string' &&
     typeof entry.text === 'string' &&
-    typeof entry.at === 'string'
+    typeof entry.at === 'string' &&
+    isOptionalString(entry.ref) &&
+    isOptionalString(entry.cwd) &&
+    isOptionalString(entry.resolved_at)
   )
 }
 
+const stringOrAbsent = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined)
+
 /** A ledger file's entries, skipping any line that isn't one. */
 export const parseLedger = (text: string): Entry[] =>
-  text.split('\n').flatMap(line => {
+  text.split('\n').flatMap((line): Entry[] => {
+    let value: unknown
     try {
-      const value: unknown = JSON.parse(line)
-
-      return isEntry(value) ? [value] : []
+      value = JSON.parse(line)
     } catch {
       return []
     }
+    if (!isEntry(value)) {
+      return []
+    }
+    const [ref, cwd, resolvedAt] = [stringOrAbsent(value.ref), stringOrAbsent(value.cwd), stringOrAbsent(value.resolved_at)]
+
+    return [
+      {
+        kind: value.kind as Entry['kind'],
+        id: value.id as string,
+        text: value.text as string,
+        ...(ref === undefined ? {} : { ref }),
+        at: value.at as string,
+        ...(cwd === undefined ? {} : { cwd }),
+        ...(resolvedAt === undefined ? {} : { resolved_at: resolvedAt }),
+      },
+    ]
   })
 
 /**
@@ -77,9 +102,9 @@ export const namesOf = (stdout: string): Record<string, string> => {
   }
 }
 
-/** Control characters shown as `?`, as the script lists them. */
+/** Control characters (C0 but tab and newline, DEL, C1) shown as `?`, as the script lists them. */
 export const clean = (text: string): string =>
-  text.replace(/[\x01-\x08\x0b-\x1f\x7f]/g, '?')
+  text.replace(/[\x01-\x08\x0b-\x1f\x7f-\x9f]/g, '?')
 
 const labelOf = (
   session: string,
