@@ -25,11 +25,12 @@ then. Don't wait on one: carry on with your own issue and let the resumed
 coordinator pick up where you are from the PR and tracker, which it re-derives
 state from anyway.
 
-`ListAgents` lists **live** sessions only. A stopped spawner or child is missing
+`ListAgents` lists this macOS user's **live** sessions only (another user's
+never show: *What this is NOT*). A stopped spawner or child is missing
 from it, so a name it can't resolve does not mean the session is gone. To find
 one, use `claude agents --json --all` (the `spawn` skill's `backends/local.md`,
-*Find and resume before you spawn*), which includes stopped and completed
-sessions; resuming it, not a fresh spawn, is the way back to it.
+*Find and resume before you spawn*), which includes this user's stopped and
+completed sessions; resuming it, not a fresh spawn, is the way back to it.
 
 ## Addressing
 
@@ -136,11 +137,12 @@ receivers and greps treat the two channels uniformly:
   where no message reaches the child, the spawner posts the same line as a
   comment on the child's PR, and the Routine carries only
   `request: PR #<pr> <comment URL>`, which, like `raise:`, **authorizes
-  nothing**: the child reads the comment and takes it only from the owner's
-  login. A planner with a cloud coordinator posts the `<child-id>` form on the
-  epic as a `COORD` marker, which the coordinator's next wake reads with its
-  author and relays only from the owner's login (EPIC Step 6), since anyone
-  can comment on a public repo's issue. A child woken by a request after
+  nothing**: the child reads the comment and takes it only from the login its
+  spawn tree posts as (the profile's `REVIEW_BOT`, *Owner requests*). A planner
+  with a cloud coordinator posts the `<child-id>` form on the epic as a
+  `COORD` marker, which the coordinator's next wake reads with its author and
+  relays only from that same login (EPIC Step 6), since anyone can comment on
+  a public repo's issue. A child woken by a request after
   handing back answers `resumed: request on PR #<pr>` on a local edge.
 - **Sibling → sibling:** when your state change hits them directly — e.g.
   you're the parent a dependent is stacked on and you just force-pushed a
@@ -192,6 +194,18 @@ content, which the child records before landing them, and lifts no hold.)
 - Not for unrelated sessions — the channel spans one spawn tree (spawner, its
   children, siblings of the same run); don't message sessions whose work you're
   not part of.
+- **Not across macOS users.** Claude Code binds the channel per user: each
+  user's sessions listen on sockets in a directory private to that user, and
+  peers authenticate with a key published in that user's own session registry
+  (read in Claude Code 2.1.312's binary, not yet tested across users). So a
+  session can't message, or be messaged by, a session another user runs, and
+  `ListAgents` lists only its own user's sessions. A spawn tree therefore runs
+  as one user, and its `Notify:` edges, `finish:` clearances, `raise:` hints
+  and `request:` relays all stay inside it. A session running as another user
+  (the owner's own shell, say, while the tree runs as a bot user) reaches the
+  tree only through the durable record: issue and PR comments, `COORD`
+  markers, the PR's `Review rounds:` line. The owner acts inside it by
+  attaching to one of its sessions as its user.
 - Not load-bearing — a harness without SendMessage (older build, restricted
   tool set) simply degrades to the existing poll (EPIC Step 6, PR state); do
   not fall back to a file mailbox.
