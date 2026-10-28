@@ -38,6 +38,7 @@ describe('resolution rules', () => {
     expect(link('`www` #8', ctx)).toBe(`\`www\` [#8](${www(8)})`)
     expect(link('_www_ #8', ctx)).toBe(`_www_ [#8](${www(8)})`)
     expect(link('(www) #8', ctx)).toBe(`(www) [#8](${www(8)})`)
+    expect(link('((www)) #8', ctx)).toBe(`((www)) [#8](${www(8)})`)
     expect(link('**PR** #9', ctx)).toBe(`**PR** [#9](${issue(CURRENT, 9)})`)
   })
 
@@ -45,6 +46,13 @@ describe('resolution rules', () => {
     expect(link('my_repo #3', { current: null, known: ['octo/my_repo'] })).toBe(
       `[my_repo #3](${issue('octo/my_repo', 3)})`,
     )
+  })
+
+  test('a trailing underscore with no opening one is part of the name', () => {
+    expect(link('octo/widget_#12', ctx)).toBe(`[octo/widget_#12](${issue('octo/widget_', 12)})`)
+    const known = { current: CURRENT, known: ['octo/widget'] }
+    expect(link('widget_ #12', known)).toBe(`widget_ [#12](${issue(CURRENT, 12)})`)
+    expect(link('__widget__ #12', known)).toBe(`__widget__ [#12](${issue('octo/widget', 12)})`)
   })
 
   test('a known repo name before #N links to that repo, either spacing', () => {
@@ -135,6 +143,14 @@ describe("don't touch", () => {
     same('> - ```\n>   echo #12\n>   ```')
   })
 
+  test('a fence closes only in the quote it opened in', () => {
+    expect(link('~~~md\n> ~~~\necho #12\n~~~\n\nSee #13', ctx)).toBe(
+      `~~~md\n> ~~~\necho #12\n~~~\n\nSee [#13](${issue(CURRENT, 13)})`,
+    )
+    same('> ```\n> > ```\n> echo #12\n> ```')
+    expect(link('> ```\n> echo #12\nafter #2', ctx)).toBe(`> \`\`\`\n> echo #12\nafter [#2](${issue(CURRENT, 2)})`)
+  })
+
   test('indented code blocks', () => {
     same('    echo #12')
     expect(link('para #1\n\n    echo #12\n\n    more #13\nafter #3', ctx)).toBe(
@@ -170,6 +186,7 @@ describe("don't touch", () => {
   test('link reference definitions and the shortcut links they define', () => {
     same('See [#12].\n\n[#12]: https://example.com/x')
     same('[docs #3]: <https://example.com>')
+    same('> [#12]: https://example.com\n>\n> See [#12].')
   })
 
   test('an unclosed fence runs to the end', () => {
