@@ -4,7 +4,8 @@
 #
 # The same rule as ticket-workflow's hooks/role-guard-marker-write.jq, which
 # has the reasoning and the cases it has been through, with the script and its
-# read swapped: scripts/ledger.sh makes every ledger write the docs describe,
+# read swapped (the plugins install separately, so this is a copy, and
+# tests/test-ledger-hooks.sh fails when the two drift apart): scripts/ledger.sh makes every ledger write the docs describe,
 # so its path followed by any word but `list` is a write. `list` passes, and
 # so does a path with no word after it, or one followed by a path or an option
 # (a word holding / or ., or starting with - or +: git add …/ledger.sh x.sh). A

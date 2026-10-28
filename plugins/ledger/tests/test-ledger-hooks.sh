@@ -88,15 +88,22 @@ mkdir -p "$ledgers"
 : >"$ledgers/fresh.jsonl"
 : >"$ledgers/.old.jsonl.Ab12Cd"
 : >"$ledgers/keep.txt"
+ln -s 12345 "$ledgers/.old.jsonl.lock"
 touch -t 202001010000 "$ledgers/old.jsonl" "$ledgers/mine.jsonl" "$ledgers/.old.jsonl.Ab12Cd" "$ledgers/keep.txt"
+touch -h -t 202001010000 "$ledgers/.old.jsonl.lock"
 env_file="$tmp/env"
 : >"$env_file"
 printf '%s' '{"session_id": "mine", "source": "startup"}' |
 	env -i PATH="$PATH" HOME="$home" CLAUDE_ENV_FILE="$env_file" CLAUDE_PLUGIN_ROOT="/plugins/led ger" "$BASH" "$start"
 record "0" "session start exits 0" "$?"
-record 'export CLAUDE_LEDGER_ROOT=/plugins/led\ ger' "exports the plugin root" "$(cat "$env_file")"
-record "fresh.jsonl keep.txt mine.jsonl" "reaps month-old ledgers and temp files, keeps its own" \
+record 'export CLAUDE_LEDGER_ROOT=/plugins/led\ ger|export CLAUDE_SESSION_ID=mine' \
+	"exports the plugin root, and the session id on a CLI without its own" "$(tr '\n' '|' <"$env_file" | sed 's/|$//')"
+record "fresh.jsonl keep.txt mine.jsonl" "reaps month-old ledgers, temp files and locks, keeps its own" \
 	"$(ls -A "$ledgers" | tr '\n' ' ' | sed 's/ $//')"
+: >"$env_file"
+printf '%s' '{"session_id": "mine"}' |
+	env -i PATH="$PATH" HOME="$home" CLAUDE_ENV_FILE="$env_file" CLAUDE_CODE_SESSION_ID=mine CLAUDE_PLUGIN_ROOT=/p "$BASH" "$start"
+record 'export CLAUDE_LEDGER_ROOT=/p' "no session id export when the harness sets its own" "$(cat "$env_file")"
 
 : >"$tmp/other.jsonl"
 touch -t 202001010000 "$tmp/other.jsonl"
@@ -104,5 +111,19 @@ printf '%s' '{"session_id": "x"}' |
 	env -i PATH="$PATH" HOME="$home" CLAUDE_SESSION_LEDGER_DIR="$tmp" "$BASH" "$start"
 record "yes" "an overridden directory is never reaped" "$([ -f "$tmp/other.jsonl" ] && echo yes)"
 record "0" "no input, no HOME" "$(printf '' | env -i PATH="$PATH" "$BASH" "$start"; echo $?)"
+
+# --- the write rule stays ticket-workflow's ----------------------------------
+
+# ledger-guard-write.jq is ticket-workflow's role-guard-marker-write.jq with
+# the script's name and read swapped (the plugins install separately, so one
+# can't load the other's file). Its code, comments aside, must stay the
+# original's under that swap, so a fix to one reaches the other.
+original="$plugin/../ticket-workflow/hooks/role-guard-marker-write.jq"
+if [ -f "$original" ]; then
+	code() { grep -v -e '^#' -e '^[[:space:]]*$' "$1"; }
+	record "" "the write rule is ticket-workflow's, script and read swapped" \
+		"$(diff <(code "$original" | sed -e 's/role-marker\\\\\.sh/ledger\\\\.sh/g' -e 's/role-marker\.sh/ledger.sh/g' \
+			-e 's/ROLE_MARKER_SH/LEDGER_SH/g' -e 's/(?!show(/(?!list(/') <(code "$plugin/hooks/ledger-guard-write.jq"))"
+fi
 
 finish

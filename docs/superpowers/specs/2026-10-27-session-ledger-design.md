@@ -26,30 +26,37 @@ anywhere durable:
 - **One JSONL file per session**, keyed like the role marker:
   `~/.claude/session-ledger/<session id>.jsonl` (`CLAUDE_SESSION_LEDGER_DIR`
   overrides it for tests). The session id is `CLAUDE_CODE_SESSION_ID`, else the
-  `CLAUDE_SESSION_ID` ticket-workflow's SessionStart hook exports on older CLIs.
-  A write holds a per-file lock (a directory: `mkdir` is atomic) from its read
-  to its rename, since parallel tool calls and the owner's Resolve can write
-  one ledger at once.
+  `CLAUDE_SESSION_ID` the plugin's SessionStart hook (and ticket-workflow's)
+  exports on older CLIs. A write holds a per-file lock (a symlink naming the
+  holder's PID: `ln -s` is atomic, and a dead holder's lock is taken over at
+  once) from its read to its rename, since parallel tool calls and the
+  owner's Resolve can write one ledger at once.
   Each line is one entry:
   `{kind: "decision"|"need", id, text, ref?, at, cwd, resolved_at?}`. `id` is
   `d<n>` or `n<n>`, numbered per kind within the file. `cwd` is where the
   session wrote from, so a reader can name a session that `claude agents`
-  doesn't list (an interactive one).
-- **One writer per file.** A session writes only its own ledger. A child's
-  `blocked:` ping becomes a need in the spawner's ledger because the spawner
-  records it there. The exceptions resolve another session's need
-  (`resolve --session`): the owner dismissing one (the pane's Resolve button,
-  `/ledger resolve`), and a FINISH that landed another session's PR. Every write goes
-  through a temp file and a rename, so a reader never sees half a line.
+  doesn't list (an interactive one). A bare `#<n>` ref is written as
+  `<owner>/<repo>#<n>` from the checkout's origin, so a repo's sessions agree
+  on a ref and two repos' `#12` stay apart.
+- **A session writes its own ledger.** A child's `blocked:` ping becomes a
+  need in the spawner's ledger because the spawner records it there. Two
+  writes reach another session's: `resolve --session`, the owner dismissing a
+  need (the pane's Resolve button, `/ledger resolve`); and `resolve --ref`,
+  which FINISH runs when a PR lands, resolving the child's need and every
+  spawner's copy at once. Every write goes through a temp file and a rename,
+  so a reader never sees half a line.
 - **Writes go through `scripts/ledger.sh`**: `add-decision` and `add-need` (text
-  on stdin through a quoted heredoc, `--ref` optional), `resolve <id>`, and
-  `list [--all]`. Text on stdin keeps quotes and `$` literal, the same way
-  `role-marker.sh notify` takes a session name.
+  on stdin through a quoted heredoc, `--ref` optional), `resolve <id>`,
+  `resolve --ref <ref>`, and `list [--all]`. Text on stdin keeps quotes and `$`
+  literal, the same way `role-marker.sh notify` takes a session name.
 - **Subagents can't write their parent's ledger.** A subagent's Bash runs with
   the same environment as its parent (checked on 2.1.312: the variable names
   match), so the script can't tell it apart. The PreToolUse hook can: a
   subagent's call carries an `agent_id`. It denies a subagent's Bash that runs
-  `ledger.sh` with a writing subcommand. Reads (`list`) pass.
+  `ledger.sh` with a writing subcommand. Reads (`list`) pass. The rule is
+  ticket-workflow's marker-write rule with the script and its read swapped;
+  the plugins install separately, so it's a copy, and a test fails if the two
+  drift apart.
 - **Reader: a mod plus `/ledger`.** The mod (a hooks module in the same plugin)
   polls the ledger directory, joins session names from
   `claude agents --json --all`, and draws a one-line band above the prompt
