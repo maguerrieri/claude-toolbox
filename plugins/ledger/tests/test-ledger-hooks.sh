@@ -88,9 +88,10 @@ mkdir -p "$ledgers"
 : >"$ledgers/fresh.jsonl"
 : >"$ledgers/.old.jsonl.Ab12Cd"
 : >"$ledgers/keep.txt"
-ln -s 12345 "$ledgers/.old.jsonl.lock"
-touch -t 202001010000 "$ledgers/old.jsonl" "$ledgers/mine.jsonl" "$ledgers/.old.jsonl.Ab12Cd" "$ledgers/keep.txt"
-touch -h -t 202001010000 "$ledgers/.old.jsonl.lock"
+: >"$ledgers/.old.jsonl.lock"
+: >"$ledgers/.fresh.jsonl.lock"
+touch -t 202001010000 "$ledgers/old.jsonl" "$ledgers/mine.jsonl" "$ledgers/.old.jsonl.Ab12Cd" "$ledgers/keep.txt" \
+	"$ledgers/.old.jsonl.lock"
 env_file="$tmp/env"
 : >"$env_file"
 printf '%s' '{"session_id": "mine", "source": "startup"}' |
@@ -98,7 +99,7 @@ printf '%s' '{"session_id": "mine", "source": "startup"}' |
 record "0" "session start exits 0" "$?"
 record 'export CLAUDE_LEDGER_ROOT=/plugins/led\ ger|export CLAUDE_SESSION_ID=mine' \
 	"exports the plugin root, and the session id on a CLI without its own" "$(tr '\n' '|' <"$env_file" | sed 's/|$//')"
-record "fresh.jsonl keep.txt mine.jsonl" "reaps month-old ledgers, temp files and locks, keeps its own" \
+record ".fresh.jsonl.lock fresh.jsonl keep.txt mine.jsonl" "reaps month-old ledgers, temp files and lock files, keeps its own" \
 	"$(ls -A "$ledgers" | tr '\n' ' ' | sed 's/ $//')"
 : >"$env_file"
 printf '%s' '{"session_id": "mine"}' |
