@@ -69,7 +69,9 @@ const LEFT = /[\s([{<>"'*_~`,;:!?|—–“‘]/
 const TOKEN_CHAR = /[A-Za-z0-9._/-]/
 // What may close around the word before the #: emphasis, code, a parenthesis.
 const WRAPPER = /[*_`)]/
-const REF = /#([1-9][0-9]{0,6})(?![A-Za-z0-9_])/g
+// A `_` may close emphasis right after the number (`_www #8_`), but not run
+// on into a word (`#8_foo`).
+const REF = /#([1-9][0-9]{0,6})(?![A-Za-z0-9]|_+[A-Za-z0-9])/g
 
 type Range = readonly [start: number, end: number]
 
@@ -91,7 +93,8 @@ export function linkify(text: string, index: RepoIndex): string {
     if (isProtected(hash, end)) continue
 
     const link = resolve(text, hash, Number(m[1]), index, isProtected)
-    if (link === null) continue
+    // `![…](…)` draws as an image: leave the reference as written.
+    if (link === null || text[link.start - 1] === '!') continue
 
     out += text.slice(copied, link.start) + `[${text.slice(link.start, end)}](${link.url})`
     copied = end
@@ -131,8 +134,13 @@ function resolve(
     start = tokenEnd
     while (start > 0 && TOKEN_CHAR.test(text[start - 1] ?? '')) start--
   }
-  const token = text.slice(start, tokenEnd)
   const outer = start - wrapped
+  // Underscores opening emphasis around the whole reference (`_www #8_`)
+  // aren't part of the word either.
+  if (wrapped === 0 && (start === 0 || LEFT.test(text[start - 1] ?? ''))) {
+    while (start < tokenEnd - 1 && text[start] === '_') start++
+  }
+  const token = text.slice(start, tokenEnd)
   const isWord =
     token !== '' &&
     !token.endsWith('.') &&
@@ -194,6 +202,11 @@ const LIST_MARKERS = /^(?:[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$))*/
 const FENCE = /^[ \t]*(`{3,}|~{3,})(.*)$/
 const FENCE_CLOSE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/
 const HEADING = /^ {0,3}#{1,6}(?:\s|$)/
+// A paragraph underlined with `=` or `-` is a heading too; a line of three or
+// more `-`, `*` or `_` with nothing under it to underline is a break, and a
+// block may start after it.
+const SETEXT_UNDERLINE = /^[ \t]*(?:=+|-+)[ \t]*$/
+const THEMATIC = /^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/
 // Four columns in, after a blank line, a heading or the start, is code; a
 // list item that deep inside an open list is a nested list. A list's own
 // paragraph that deep is taken for code too: a missed link is the safe way to
@@ -247,6 +260,8 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
   let html: { end: RegExp | null; depth: number; start: number } | null = null
   let indented: number | null = null
   let item: Container | null = null
+  type Paragraph = Container & { start: number }
+  let paragraph: Paragraph | null = null
   let codeMayStart = true
   let wasBlank = true
   let wasDefinition = false
@@ -268,6 +283,7 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
     quoteDepth = depth
     let endsBlock = false
     let isDefinition = false
+    let nextParagraph: Paragraph | null = null
 
     // Leaving the quote or the list item a fence opened in ends it, closed or
     // not. A line indented less than the item leaves it after a blank line,
@@ -321,9 +337,25 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
       // blank line, is that block's text, not a fence. A list marker that
       // deep is a nested item only inside an open list.
       const itemOpen = item !== null && item.depth === depth
+      const itemColumn = item?.column ?? 0
       if (codeMayStart && !isBlank && INDENTED.test(body) && (markers === '' || !itemOpen)) {
         prose.push([proseStart, offset])
         indented = offset
+      } else if (
+        paragraph !== null &&
+        depth === paragraph.depth &&
+        indent >= paragraph.column &&
+        indent - paragraph.column <= 3 &&
+        SETEXT_UNDERLINE.test(body)
+      ) {
+        // A setext heading: the paragraph above, underlined.
+        prose.push([proseStart, paragraph.start])
+        ranges.push([paragraph.start, lineEnd])
+        proseStart = lineEnd + 1
+        endsBlock = true
+      } else if (indent - (itemOpen && indent >= itemColumn ? itemColumn : 0) <= 3 && THEMATIC.test(body)) {
+        endsBlock = true
+        if (item !== null && indent < item.column) item = null
       } else {
         // The item a line opens, or the one it stays in: a line indented less
         // than the item's column ends it after a blank line (before one, it
@@ -360,10 +392,14 @@ function protectedRanges(text: string): (start: number, end: number) => boolean 
           ranges.push([offset, lineEnd])
           proseStart = lineEnd + 1
           endsBlock = HEADING.test(content)
+        } else if (!isBlank) {
+          // A paragraph line: a new item's starts a paragraph of its own.
+          nextParagraph = markers === '' && paragraph !== null ? paragraph : { depth, column, start: offset }
         }
       }
     }
 
+    paragraph = nextParagraph
     codeMayStart = isBlank || endsBlock
     wasBlank = isBlank
     wasDefinition = isDefinition

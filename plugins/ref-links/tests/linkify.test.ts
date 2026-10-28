@@ -39,6 +39,10 @@ describe('resolution rules', () => {
     expect(link('_www_ #8', ctx)).toBe(`_www_ [#8](${www(8)})`)
     expect(link('(www) #8', ctx)).toBe(`(www) [#8](${www(8)})`)
     expect(link('((www)) #8', ctx)).toBe(`((www)) [#8](${www(8)})`)
+    // An underscore that opens emphasis isn't part of the name.
+    expect(link('_www #8_', ctx)).toBe(`_[www #8](${www(8)})_`)
+    expect(link('__www #8__', ctx)).toBe(`__[www #8](${www(8)})__`)
+    expect(link('*www #8*', ctx)).toBe(`*[www #8](${www(8)})*`)
     // The word must start a word of its own, outside its wrapper too.
     expect(link('foo**www** #8', ctx)).toBe(`foo**www** [#8](${issue(CURRENT, 8)})`)
     expect(link('x`www` #8', ctx)).toBe(`x\`www\` [#8](${issue(CURRENT, 8)})`)
@@ -175,6 +179,23 @@ describe("don't touch", () => {
     )
   })
 
+  test('a thematic break ends a block, so indented code may follow it', () => {
+    same('---\n    echo #12')
+    same('> ***\n>     echo #12')
+    expect(link('- - -\n#3', ctx)).toBe(`- - -\n[#3](${issue(CURRENT, 3)})`)
+    expect(link('para #1\n\n---\nafter #2', ctx)).toBe(
+      `para [#1](${issue(CURRENT, 1)})\n\n---\nafter [#2](${issue(CURRENT, 2)})`,
+    )
+  })
+
+  test('setext headings', () => {
+    same('Fixed #8\n---')
+    same('Fixed #8\n===')
+    same('Line one #1\nline two #2\n===')
+    expect(link('> Foo #1\n---', ctx)).toBe(`> Foo [#1](${issue(CURRENT, 1)})\n---`)
+    expect(link('para #1\n\n===', ctx)).toBe(`para [#1](${issue(CURRENT, 1)})\n\n===`)
+  })
+
   test('indented code that starts like a list item, with no list open', () => {
     same('    - echo #12')
     same('    1. echo #12')
@@ -274,6 +295,13 @@ describe("don't touch", () => {
 
   test('an escaped #', () => {
     same('\\#12')
+  })
+
+  test('a ! right before the link, which would draw it as an image', () => {
+    same('Done!#8')
+    same('x !#8')
+    same('Done!www #8')
+    expect(link('Done! #8', ctx)).toBe(`Done! [#8](${issue(CURRENT, 8)})`)
   })
 
   test('a token ending in a period is a sentence, not a repo', () => {
