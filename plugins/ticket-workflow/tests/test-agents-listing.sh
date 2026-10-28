@@ -9,8 +9,8 @@
 #   `status` only while the process lives), whatever its `state`, so a `done`
 #   row idle after its turn is running too;
 # - a row with no process is resumable when its `state` is `stopped` (which
-#   never has a `status`, #275), `done` or `blocked` (a process that died at a
-#   prompt), and unplaced otherwise (`working` with no process, another
+#   never has a `status`, #275), `done`, or `working` or `blocked` (a process
+#   that died mid-turn or at a prompt), and unplaced otherwise (another
 #   `state`, or none), never by `status`;
 # - only rows launched from the launch dir match, and a prefix ending at its
 #   delimiter doesn't also match a longer ID (`#26: ` vs `#263: `);
@@ -97,7 +97,7 @@ command -v zsh >/dev/null 2>&1 && shells+=(zsh)
 
 for sh in "${shells[@]}"; do
 	got=$(classes "$sh" /home/me/widgets "$lookup")
-	record "widgets #26: stopped=resumable|widgets #26: done=resumable|widgets #26: done idle=running|widgets #26: working busy=running|widgets 26: working idle=running|widgets #26: blocked busy=running|widgets #26: blocked idle=running|widgets #26: blocked waiting=running|widgets #26: blocked dead=resumable|widgets #26: working dead=unplaced|widgets #26: failed=unplaced|widgets #26: no state=unplaced|widgets #26: status only=unplaced" \
+	record "widgets #26: stopped=resumable|widgets #26: done=resumable|widgets #26: done idle=running|widgets #26: working busy=running|widgets 26: working idle=running|widgets #26: blocked busy=running|widgets #26: blocked idle=running|widgets #26: blocked waiting=running|widgets #26: blocked dead=resumable|widgets #26: working dead=resumable|widgets #26: failed=unplaced|widgets #26: no state=unplaced|widgets #26: status only=unplaced" \
 		"$sh: local.md classes every match by pid and state, oldest first" "$got"
 
 	stopped=$(printf '%s' "$got" | tr '|' '\n' | grep -c '^widgets #26: stopped=resumable$')
@@ -118,5 +118,12 @@ stale=$(grep -rnE 'decide by `status`|\.status *[!=]=|select\(\.status|"status":
 	"$spawn_plugin/skills" "$spawn_plugin/commands" "$plugin/skills" "$plugin/commands" 2>/dev/null |
 	grep -v 'session_status' | wc -l | tr -d ' ')
 record 0 "no doc keys the lookup on status" "$stale"
+
+# Nor on bare state names, which miss a live done row and a dead blocked one:
+# a resume decision names the lookup's class.
+stale=$(grep -rnE '`stopped` (or|/) `done`' \
+	"$spawn_plugin/skills" "$spawn_plugin/commands" "$plugin/skills" "$plugin/commands" 2>/dev/null |
+	wc -l | tr -d ' ')
+record 0 "no doc decides a resume by stopped or done alone" "$stale"
 
 finish
