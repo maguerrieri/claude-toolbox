@@ -1,16 +1,19 @@
 # Backend: local (`claude --bg`)
 
 The spawner is running on a machine the user has a shell on. Sessions are
-background jobs of the local CLI, recorded under `~/.claude/jobs/`, and the user
-inspects them with `claude agents`, `claude attach`, and `claude logs`.
+background jobs of the local CLI, recorded under the spawner's config root
+(`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/`, owned by the macOS user running it),
+and the user inspects them with `claude agents`, `claude attach`, and
+`claude logs`, as that user and under that config root (*Report*).
 
 ## Resolve a durable launch directory
 
-The bg job records its launch cwd (in `~/.claude/jobs/<id>/state.json`), and later
-attach/resume re-enters that directory. **Never spawn a background session from
-inside a disposable worktree** — once the worktree is cleaned up (e.g. when the
-spawning ticket session finishes), the recorded cwd dangles and attaching to the
-spawned job fails with "session ended", even if the job completed fine.
+The bg job records its launch cwd (in its config root's `jobs/<id>/state.json`),
+and later attach/resume re-enters that directory. **Never spawn a background
+session from inside a disposable worktree** — once the worktree is cleaned up
+(e.g. when the spawning ticket session finishes), the recorded cwd dangles and
+attaching to the spawned job fails with "session ended", even if the job
+completed fine.
 
 - **In a git checkout:** launch from the repo's **main checkout** — the first entry
   of `git worktree list`:
@@ -25,7 +28,8 @@ spawned job fails with "session ended", even if the job completed fine.
   only needs to be **stable**.
 - **Not in a git repo:** the fallback above gives the current dir — fine, unless
   it's itself temporary (a job tmp dir, `/tmp`), in which case pick a durable one
-  (e.g. `$HOME` or the relevant project dir).
+  (e.g. the relevant project dir) that this user has already run `claude` in
+  under this config root, since *Launch* refuses an untrusted one.
 
 ## Find and resume before you spawn
 
@@ -62,19 +66,29 @@ right now. A `stopped` row never has a `pid` or a `status`; a `done` row has
 them while the session sits idle after its turn, and a `blocked` row loses
 them when its process dies at a prompt (a restart, say). **List once per run**
 and match every unit against that one listing, rather than re-listing per unit:
-the list grows with every session ever run, across every project on the
-machine.
+the list grows with every session ever run under this config root, across
+every project.
 
-**Match on the launch dir as well as the name.** The listing is machine-wide,
-and a name alone can collide: two clones, or two repos with the same basename
-under different owners, produce the same `<repo> <ID>: …` names. Every unit is
-launched from the durable launch dir (above), so keep only rows whose `cwd` is
-exactly that dir (`claude agents --cwd` matches everything *under* a path, which
-is too loose). If you recorded a unit's handle at spawn, match that `sessionId`
-instead: it survives the user renaming the session, which a name match misses.
-Otherwise match by name, exactly or by prefix when only part of the name is
-deterministic; `$ps` takes several prefixes for one unit when its name has more
-than one spelling (a caller's ID with and without a `#`):
+**The listing is per config root, so per macOS user too.** It reads the jobs
+directory of the root the spawner runs under, so it leaves out every session
+launched under another root, even by the same user, and every session another
+macOS user launched. Neither can be found or resumed from here, and
+`ListAgents` and SendMessage don't reach another user's sessions either
+(Claude Code 2.1.312 binds their sockets per user; read in the binary, not
+tested). So the spawner and every session it resumes always share one user and
+one config root.
+
+**Match on the launch dir as well as the name.** The listing spans every
+project, and a name alone can collide: two clones, or two repos with the same
+basename under different owners, produce the same `<repo> <ID>: …` names.
+Every unit is launched from the durable launch dir (above), so keep only rows
+whose `cwd` is exactly that dir (`claude agents --cwd` matches everything
+*under* a path, which is too loose). If you recorded a unit's handle at spawn,
+match that `sessionId` instead: it survives the user renaming the session,
+which a name match misses. Otherwise match by name, exactly or by prefix when
+only part of the name is deterministic; `$ps` takes several prefixes for one
+unit when its name has more than one spelling (a caller's ID with and without a
+`#`):
 
 `$launch_dir` is the durable launch dir from the section above: **resolve it
 before the lookup**, since an empty value matches no row and reads as "none".
@@ -155,7 +169,11 @@ carrying on. Quote it, and strip `CLAUDE_SESSION_ID`, the way *Launch* below say
 
 A session belongs to the directory it was launched from, so if that `cwd` no
 longer exists, don't resume from somewhere else: launch fresh and say why in the
-report. Do the same when the resume command errors. If its output says it
+report. Do the same when the resume command errors, except on the trust refusal
+(*Launch*): a fresh launch from that directory would be refused the same way,
+so skip it and report the unit *not launched* with *Launch*'s one-time step. A
+caller whose own rule launches fresh after any failed resume ends up there too,
+since that launch gets the same refusal. If its output says it
 **started a copy** because the session is already running, the session was
 live after all: stop the copy (`claude stop <the id it printed>`) and treat the
 original as live.
@@ -191,11 +209,40 @@ your session:
   variable isn't set, the prefix does nothing.
 - `claude --bg` prints a **session handle** at spawn — record it per unit; it
   survives the user renaming the session and is how you inspect a stuck one later.
+- **An untrusted launch dir is refused: don't launch from somewhere else.** A
+  directory never trusted under the spawner's config root, such as a fresh
+  clone, makes `claude --bg` exit 1 without launching anything. Treat any launch
+  failure whose output says the workspace isn't trusted as this refusal; on
+  Claude Code 2.1.312 it reads *Workspace not trusted. Run `claude` in <dir>
+  once and accept the trust prompt, then retry.* A session can't accept the
+  trust prompt itself, and a retry from another directory breaks the durable
+  launch dir rule above. So leave each unit refused this way unlaunched, and in
+  the report give the user the one-time step. Trust is recorded per user and
+  per config root, so the step runs as the spawner's user (`id -un`) and under
+  its config root: `CLAUDE_CONFIG_DIR` set to the spawner's value, or unset
+  when the spawner has none, since the reader's own shell may export another:
+  ```bash
+  cd "<launch dir>" && CLAUDE_CONFIG_DIR="<config root>" claude   # accept the trust prompt, then /exit
+  cd "<launch dir>" && env -u CLAUDE_CONFIG_DIR claude            # the same, when the spawner has none
+  ```
+  Then they re-run the spawn.
 
 ## Report
 
 Name column = the `--name` you passed (for a resumed unit, its existing name,
-marked *resumed*). Point at the inspect commands: `claude agents` (list),
-`claude attach "<name>"` (open), `claude logs "<name>"` (read-only). Quote
-names — they contain spaces. Those are for the user's terminal; from a tool call,
-list with `claude agents --json --all` (above).
+marked *resumed*; for one the trust refusal left unlaunched, marked *not
+launched*, with the one-time step from *Launch* under the table). Point at the
+inspect commands, and say who runs them and where: *as `<user>`, from
+`<launch dir>`, with `CLAUDE_CONFIG_DIR=<config root>`: `claude agents` (list),
+`claude attach "<name>"` (open), `claude logs "<name>"` (read-only)*. `<user>`
+is `id -un` in the spawner's shell, `<launch dir>` is the durable launch dir
+every unit was launched or resumed from, and `<config root>` is the spawner's
+`$CLAUDE_CONFIG_DIR`; when it has none, say *with `CLAUDE_CONFIG_DIR` unset*
+instead, since the reader's shell may set one. They matter because the
+sessions are listed only for that user and config root (*Find and resume*),
+and because `claude attach` asks to trust its own cwd first, which the launch
+dir is once anything has launched from it. A reader who is another user
+switches to that user first (`sudo -iu <user>` from an admin account, or
+`su - <user>`), then runs `cd "<launch dir>"` and sets or unsets the config
+root as named. Quote names — they contain spaces. Those are for the user's
+terminal; from a tool call, list with `claude agents --json --all` (above).
