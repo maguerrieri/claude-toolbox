@@ -56,7 +56,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   what precedes the `#`: `owner/repo#N` names it, a known repo's name
   (`www #8`, the form session names use) picks it from the repos your
   background sessions ran in and your recent GitHub activity, and a bare
-  `#N` means the session's own repo. A name two owners share, code,
+  `#N` means the session's own repo. A name two owners share picks the
+  one your session repo's owner owns, and stays unlinked otherwise; code,
   existing links and headings are left alone. It changes only what's drawn;
   the transcript keeps what the model wrote. Opt-in, so install it on its
   own:

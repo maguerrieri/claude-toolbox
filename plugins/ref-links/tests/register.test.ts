@@ -86,7 +86,8 @@ const SOURCES: Record<string, string | null> = {
   'gh api user --jq .login': 'maguerrieri\n',
   [EVENTS]:
     'PushEvent maguerrieri/provenance\nIssueCommentEvent anthropics/claude-code\nWatchEvent vercel/docs\nForkEvent octo/cli\n',
-  'gh api user/repos?sort=pushed&per_page=100 --jq .[].full_name': 'maguerrieri/www\nmaguerrieri/dotfiles\n',
+  'gh api user/repos?affiliation=owner,collaborator&sort=pushed&per_page=100 --jq .[].full_name':
+    'maguerrieri/www\nmaguerrieri/dotfiles\n',
 }
 
 describe('the render hook', () => {

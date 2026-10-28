@@ -82,12 +82,16 @@ export const register: Register = on => {
       const index = repoIndex({ current: current.value ?? null, known: repos.value ?? [] })
       built = { versions, index, drawn: new Map() }
     }
+    // Least recently drawn goes first, so a streaming block's one-off partial
+    // texts fall out before the finished blocks that keep being redrawn.
     let text = built.drawn.get(e.props.text)
     if (text === undefined) {
       text = linkify(e.props.text, built.index)
       if (built.drawn.size >= DRAWN_MAX) built.drawn.delete(built.drawn.keys().next().value ?? '')
-      built.drawn.set(e.props.text, text)
+    } else {
+      built.drawn.delete(e.props.text)
     }
+    built.drawn.set(e.props.text, text)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text } })
   }).catch(($, e, next) => next(e))
 }
@@ -191,7 +195,9 @@ async function reposFromGitHub($: EngineInterface): Promise<GitHubRepos | null> 
   if (!/^[A-Za-z0-9-]{1,39}$/.test(login)) return null
   const [events, owned] = await Promise.all([
     run($, ['gh', 'api', `users/${login}/events?per_page=100`, '--paginate', '--jq', '.[] | "\\(.type) \\(.repo.name)"']),
-    run($, ['gh', 'api', 'user/repos?sort=pushed&per_page=100', '--jq', '.[].full_name']),
+    // The owner's own repos and the ones they collaborate on; an org's other
+    // repos come in through the events feed only once they act in them.
+    run($, ['gh', 'api', 'user/repos?affiliation=owner,collaborator&sort=pushed&per_page=100', '--jq', '.[].full_name']),
   ])
   if (events === null && owned === null) return null
   const acted = (events ?? '').split('\n').flatMap(line => {
