@@ -29,8 +29,9 @@ spawned job fails with "session ended", even if the job completed fine.
 
 ## Find and resume before you spawn
 
-A background session that stopped (a machine restart, `claude stop`, a crash) or
-finished (`done`) still exists and can be continued **with its context**. A
+A background session whose process is gone (a machine restart, `claude stop`, a
+crash, or a finished session that exited) still exists and can be continued
+**with its context**. A
 fresh session for the same unit starts from nothing: it re-reads the work from
 PRs and the tracker, loses in-flight reasoning, and may redo decisions. So when a
 unit may already have a session (a re-spawn after a restart, a retried fan-out, a
@@ -84,16 +85,17 @@ jq --arg dir "$launch_dir" --argjson ps '["<prefix>", "<alternate prefix>"]' \
   '[.[] | select(.cwd == $dir)
         | select((.name // "") as $n | any($ps[]; . as $p | $n | startswith($p)))
         | .class = (if .pid != null then "running"
-                    elif .state == "stopped" or .state == "done" or .state == "blocked" then "resumable"
+                    elif IN(.state; "working", "blocked", "done", "stopped") then "resumable"
                     else "unplaced" end)]
    | sort_by(.startedAt)' "$agents"
 ```
 
 The filter tags each match with a `class`. `running`: the row has a `pid`, so
 its process is alive, whatever its `state` (`working`, `blocked` on input or a
-permission, or `done` and idle after its turn). `resumable`: no process, and a
-`state` of `stopped`, `done` or `blocked`. `unplaced`: anything else (a
-`working` row with no process, another `state`, or none). End a prefix at a
+permission, or `done` and idle after its turn). `resumable`: no process, and
+one of those four `state`s (a `working` or `blocked` row whose process died
+mid-turn or at a prompt, a `done` session that exited, or a `stopped` one).
+`unplaced`: no process and any other `state`, or none. End a prefix at a
 delimiter (`"widgets #26: "`, with the colon and space) so it can't also match
 `#263`. If the listing itself fails (non-zero exit, output that isn't JSON),
 **you don't know**, so don't spawn fresh on it: report the error and let the
@@ -131,9 +133,9 @@ than carry on. Then **decide by `class`**, never by `status`:
   a row answers at most one unit. Pair units with matching rows one-to-one,
   newest first, applying the rules above per pair, and launch fresh only for
   the units left over.
-- **An `unplaced` match** (a `state` this list doesn't name, e.g. a failure
-  state, or a row with none): you can't tell whether it is running, so do
-  nothing for that unit and report the row.
+- **An `unplaced` match**, alone or next to `resumable` ones (a `state` this
+  list doesn't name, e.g. a failure state, or a row with none): you can't tell
+  whether it is running, so do nothing for that unit and report its rows.
 - **No match**: launch fresh (next section).
 
 **Resume** from the row's `cwd`, the directory it was launched from, with a
