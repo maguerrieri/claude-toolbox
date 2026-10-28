@@ -15,8 +15,8 @@
 #   only the first head the bot reviews after the record (so a record that
 #   rode a fix push, or one from before round 1, frees nothing later), a marker that
 #   frees nothing uses nothing up (so a corrected marker works), and both
-#   comments must come from the owner's login (anyone can comment on a public
-#   repo's PR);
+#   comments must come from the login the session posts as, gh api user's
+#   (anyone can comment on a public repo's PR);
 # - a failed read of the login or the comments skips nothing, so the count
 #   errs high.
 #
