@@ -324,6 +324,7 @@ Look at the diff (`git diff origin/<base_branch>...HEAD` — compare against `or
 Then self-check the branch's commits — this is the cheap place to fix them; FINISH's pre-merge gate *blocks* on anything that slips through, and fixing it there costs a force-push round-trip back here:
 - Each commit subject matches the tracker's `COMMIT_REF` (via `COMMIT_STYLE`) and accurately describes its diff — reword stale/placeholder subjects with `git rebase` now, while nothing's reviewed yet.
 - No hold / placeholder / leftover-debug markers — the same commit/diff markers FINISH Step 1's gate blocks on (`DO NOT MERGE`, `WIP`, qualified `FIXME`/`XXX`/`HACK`, stray debug) — remain in the commit messages or the diff (`git log origin/<base_branch>..HEAD`, `git diff origin/<base_branch>...HEAD`).
+- In a repo set to `Merge: signed fast-forward` (Step 0), every commit is signed by an allowed key, which FINISH Step 2 checks with `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/signed-range.sh" origin/<base_branch> HEAD`: run it now, after any reword. Re-sign what it lists with `git rebase --force-rebase --gpg-sign origin/<base_branch>`, and sign every later commit too (`commit.gpgsign` on, or `-S`), CI fixes and conflict merges included.
 
 ```bash
 git push -u origin <branch>
@@ -378,7 +379,7 @@ If CI fails, diagnose and fix (push fixes, re-watch), or stop and report if you 
 
   ```bash
   gh pr edit <yours> --base <new_base>   # only if GitHub hasn't already retargeted it
-  git rebase origin/<new_base>           # the parent's merged commits drop out
+  git rebase origin/<new_base>           # the parent's merged commits drop out; --gpg-sign in a signed fast-forward repo
   git log --oneline origin/<new_base>..HEAD   # must list only your own commits
   git push --force-with-lease
   ```

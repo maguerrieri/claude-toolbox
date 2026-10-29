@@ -29,6 +29,10 @@
 # the same way as role-marker.sh.
 set -euo pipefail
 
+# Check the objects a push sends, never local replacements for them
+# (git replace), which git log and cat-file would otherwise read.
+export GIT_NO_REPLACE_OBJECTS=1
+
 usage() {
 	echo "usage: signed-range.sh [--allowed-signers <file>] <base> <head>" >&2
 	exit 2
@@ -52,9 +56,17 @@ done
 base=$1
 head=$2
 
-[ -n "$signers" ] || signers=$(git config --type=path --get gpg.ssh.allowedSignersFile || true)
+# A relative path resolves where it was given: --allowed-signers against the
+# current directory, the config value against the worktree's top level,
+# where git runs ssh-keygen.
+if [ -n "$signers" ]; then
+	rel_to=$PWD
+else
+	signers=$(git config --type=path --get gpg.ssh.allowedSignersFile || true)
+	rel_to=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+fi
 [ -n "$signers" ] || fail_setup "no allowed-signers file: pass --allowed-signers <file> or set gpg.ssh.allowedSignersFile"
-case $signers in /*) ;; *) signers=$PWD/$signers ;; esac
+case $signers in /*) ;; *) signers=$rel_to/$signers ;; esac
 [ -r "$signers" ] && [ -s "$signers" ] || fail_setup "allowed-signers file $signers is missing, unreadable or empty"
 
 # git verifies the signature header of the repo's own hash: gpgsig in a
@@ -84,7 +96,7 @@ ssh_signed() { # ssh_signed <sha>: the header git verified is one SSH signature,
 base_sha=$(git rev-parse --verify -q "$base^{commit}") || fail_setup "$base is not a commit"
 head_sha=$(git rev-parse --verify -q "$head^{commit}") || fail_setup "$head is not a commit"
 
-log=$(git -c gpg.ssh.allowedSignersFile="$signers" log --format='%H %G? %s' "$base_sha..$head_sha") ||
+log=$(git -c gpg.ssh.allowedSignersFile="$signers" log --no-show-signature --format='%H %G? %s' "$base_sha..$head_sha") ||
 	fail_setup "git log $base..$head failed"
 [ -n "$log" ] || fail_setup "no commits in $base..$head"
 
