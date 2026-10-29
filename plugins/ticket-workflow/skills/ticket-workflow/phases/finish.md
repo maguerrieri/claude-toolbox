@@ -81,23 +81,24 @@ A repo set to `Merge: signed fast-forward` (Step 0) deploys only commits signed 
 
 The session needs a signing key (the owner's through 1Password, which asks them to approve each signature, or a bot account's) and a credential allowed to push the base. Without one, stop and report which. The deploy, and any rule on the base that requires signed commits, are what enforce the signatures. Step 3's check only keeps this session from pushing what they would plainly refuse, so it can have holes. A signing failure such as `agent refused operation` means nobody approved it: report it blocked, never turn signing off. Any checkout of the repo will do, since the steps read `origin/<branch>`; only step 1's rebase needs the branch checked out, in its owner's own worktree.
 
-1. **Bring the branch onto the base.** Fetch, and pin the base to a SHA once:
+1. **Bring the branch onto the base.** Fetch, and pin both tips to SHAs once:
 
    ```bash
-   git fetch origin <base_branch> <branch> && base=$(git rev-parse origin/<base_branch>) && echo "pinned base: $base"
+   git fetch origin <base_branch> <branch> && base=$(git rev-parse origin/<base_branch>) &&
+     tip=$(git rev-parse origin/<branch>) && echo "pinned base: $base  branch tip: $tip"
    ```
 
-   Use that printed `<base>` SHA from here on, never `origin/<base_branch>` again: another checkout of this repo can move the shared remote-tracking ref between steps and shrink the range step 3 checks. When `git merge-base --is-ancestor <base> origin/<branch>` holds, the branch is already on the base: land `origin/<branch>` as it is. Otherwise it needs a rebase, which re-signs every commit:
-   - **A branch this session owns** (its own START worktree, clean and at `origin/<branch>`): `git rebase --gpg-sign <base>`. Pass `--gpg-sign`, since a plain rebase drops the signatures unless `commit.gpgsign` is on. On a conflict, `git rebase --abort` and stop: resolving it is START's job.
-   - **A branch another session owns** (EPIC Step 7, or a grant held outside the implementer): never rebase it here. Post `restack: <base_branch> moved; restack #<pr> onto <base_branch>` on the PR (START Step 8's moved form) and land it once its owner has restacked and it is green again. EPIC Step 7 waits as it does for any restack; a solo finish reports the request and stops.
-2. **Pin the head, and update the PR's head if step 1 rebased.** `<head>` is `HEAD` after a rebase, else `origin/<branch>`. Resolve it to a SHA once:
+   Use those printed `<base>` and `<tip>` SHAs from here on, never `origin/<base_branch>` or `origin/<branch>` again: another checkout of this repo can move the shared remote-tracking refs between steps. When `git merge-base --is-ancestor <base> <tip>` holds, the branch is already on the base: land `<tip>` as it is. Otherwise it needs a rebase, which re-signs every commit. That's FINISH's to do only for a linear branch: when `git rev-list --merges <base>..<tip>` prints anything, a rebase would flatten or skip those merges and can silently drop changes made in one, so the branch goes back to its owner as for a branch another session owns (below), where the update is reviewed again.
+   - **A linear branch this session owns** (its own START worktree, clean and at `<tip>`): `git rebase --gpg-sign <base>`. Pass `--gpg-sign`, since a plain rebase drops the signatures unless `commit.gpgsign` is on. On a conflict, `git rebase --abort` and stop: resolving it is START's job.
+   - **A branch another session owns** (EPIC Step 7, or a grant held outside the implementer), or one with merges: never rebase it here. Post `restack: <base_branch> moved; restack #<pr> onto <base_branch>` on the PR (START Step 8's moved form) and land it once its owner has restacked and it is green again. EPIC Step 7 waits as it does for any restack; a solo finish reports the request and stops.
+2. **Pin the head, and update the PR's head if step 1 rebased.** `<head>` is `HEAD` after a rebase, else `<tip>`. Resolve it to a SHA once:
 
    ```bash
    sha=$(git rev-parse <head>) && echo "head to land: $sha"
-   git push --force-with-lease origin "${sha}:refs/heads/<branch>"   # only when step 1 rebased
+   git push --force-with-lease="refs/heads/<branch>:<tip>" origin "${sha}:refs/heads/<branch>"   # only when step 1 rebased
    ```
 
-   That printed SHA is the only commit steps 3–5 may land. Carry it forward as written, never as a fresh `git rev-parse`: a later push to the branch, from its owner or anyone else who can push it, moves `origin/<branch>` and the PR's head together, and would land commits nobody checked. The `${sha}` braces matter, since under zsh a colon right after `$sha` starts a modifier. The rebase replays reviewed commits, so its push isn't a review round, and FINISH doesn't wait for a bot review of it.
+   That printed SHA is the only commit steps 3–5 may land. Carry it forward as written, never as a fresh `git rev-parse`: a later push to the branch, from its owner or anyone else who can push it, moves `origin/<branch>` and the PR's head together, and would land commits nobody checked. The lease names the tip step 1 pinned, so a push made since then is refused rather than overwritten. The `${sha}` braces matter, since under zsh a colon right after `$sha` starts a modifier. The rebase replays reviewed commits, so its push isn't a review round, and FINISH doesn't wait for a bot review of it.
 3. **Check that GitHub would take it**, a best effort before the push: every commit about to land is one GitHub marks verified, and this account can push the base:
 
    ```bash
