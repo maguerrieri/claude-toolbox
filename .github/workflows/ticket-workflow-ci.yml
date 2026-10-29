@@ -33,8 +33,8 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-session-identity.sh
       - name: REST list-helper tests
         run: bash plugins/ticket-workflow/tests/test-gh-rest-list.sh
-      - name: Signed-range check tests
-        run: bash plugins/ticket-workflow/tests/test-signed-range.sh
+      - name: GitHub-verified check tests
+        run: bash plugins/ticket-workflow/tests/test-gh-verified.sh
       - name: Install zsh (the round-count and agents-listing tests also run their snippets under zsh)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
       - name: Review-round count tests
