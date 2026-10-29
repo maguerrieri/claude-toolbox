@@ -124,6 +124,28 @@ g config --unset gpg.ssh.allowedSignersFile
 cp "$tmp/allowed_signers" "$tmp/rel_signers"
 record '|exit 0' 'a relative path resolves from the current directory' "$(run --allowed-signers ../rel_signers base good)"
 
+# A relative config value resolves against the top level, as git resolves it.
+cp "$tmp/allowed_signers" "$repo/top_signers"
+mkdir "$repo/sub"
+g config gpg.ssh.allowedSignersFile top_signers
+record 'G' 'git reads a relative config path from the top level' "$(cd "$repo/sub" && git log -1 --format=%G? good)"
+record 'exit 0' 'so does the script, run from a subdirectory' \
+	"$(cd "$repo/sub" && bash "$script" base good 2>/dev/null; echo "exit $?")"
+g config --unset gpg.ssh.allowedSignersFile
+
+g config log.showSignature true
+record '|exit 0' 'log.showSignature adds no lines' "$(run --allowed-signers "$tmp/allowed_signers" base good)"
+record 'N:unsigned|exit 1' 'log.showSignature still lists the failure' "$(run --allowed-signers "$tmp/allowed_signers" base unsigned)"
+g config --unset log.showSignature
+
+# A local replacement of the unsigned commit by a signed one would make
+# git log read the range as signed; the push still sends the original.
+g replace unsigned good
+record 'G' 'the replacement reads signed to git log' \
+	"$(g -c gpg.ssh.allowedSignersFile="$tmp/allowed_signers" log --format=%G? base..unsigned | sort -u | paste -sd, -)"
+record 'N:unsigned|exit 1' 'the original commit is checked, not its replacement' "$(run --allowed-signers "$tmp/allowed_signers" base unsigned)"
+g replace -d "$(g rev-parse unsigned)" >/dev/null
+
 record '|exit 2' 'no file passed or configured' "$(run base good)"
 record '|exit 2' 'an empty file' "$(run --allowed-signers "$tmp/empty_signers" base good)"
 record '|exit 2' 'a missing file' "$(run --allowed-signers "$tmp/nope" base good)"
