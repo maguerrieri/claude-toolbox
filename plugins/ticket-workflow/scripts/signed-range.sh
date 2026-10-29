@@ -83,14 +83,24 @@ done
 [ -L "$real" ] && fail_setup "allowed-signers file $signers is a symlink chain too deep to follow"
 real_dir=$(canon_dir "$(dirname "$real")") || fail_setup "can't resolve the directory of $signers"
 real=$real_dir/$(basename "$real")
-while IFS= read -r line; do
-	case $line in
-	'worktree '*)
-		wt=$(canon_dir "${line#worktree }") || continue
-		case $real in "$wt"/*) fail_setup "allowed-signers file $signers is inside this repo's checkout $wt, where the branch being checked can change it; keep the list outside the repo" ;; esac
-		;;
-	esac
-done < <(git worktree list --porcelain)
+# Fail closed: a listing that fails, or a checkout that exists but can't be
+# resolved, stops the check rather than skipping that checkout.
+outside_checkout() { # outside_checkout <checkout path>
+	local wt
+	if ! wt=$(canon_dir "$1"); then
+		# A checkout whose directory is gone (git calls it prunable) can't hold the file.
+		[ -e "$1" ] && fail_setup "can't resolve this repo's checkout $1"
+		return 0
+	fi
+	case $real in "$wt"/*) fail_setup "allowed-signers file $signers is inside this repo's checkout $wt, where the branch being checked can change it; keep the list outside the repo" ;; esac
+}
+top=$(git rev-parse --show-toplevel 2>/dev/null) && outside_checkout "$top"
+listing=$(mktemp)
+trap 'rm -f "$listing"' EXIT
+git worktree list --porcelain -z >"$listing" || fail_setup "can't list this repo's checkouts"
+while IFS= read -r -d '' line; do
+	case $line in 'worktree '*) outside_checkout "${line#worktree }" ;; esac
+done <"$listing"
 
 # git verifies the signature header of the repo's own hash: gpgsig in a
 # SHA-1 repo, gpgsig-sha256 in a SHA-256 one.
