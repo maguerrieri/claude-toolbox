@@ -19,8 +19,8 @@
 # when every commit passes. <file> defaults to git's
 # gpg.ssh.allowedSignersFile. Exits 2 on a usage or setup error: no
 # allowed-signers file, a missing or empty one, one inside a checkout of
-# this repo (the branch being checked could add its own key to it), a ref
-# that doesn't resolve, or an empty range.
+# this repo (the branch being checked could add its own key to it), a
+# shallow clone, a ref that doesn't resolve, or an empty range.
 #
 # Why both checks: with no file configured git reads every SSH signature as
 # N, and with a missing or empty one as U (checked on git 2.54), so a
@@ -125,6 +125,11 @@ ssh_signed() { # ssh_signed <sha>: the header git verified is one SSH signature,
 	done <<<"${obj%%$'\n\n'*}"
 	[ "$count" -eq 1 ]
 }
+
+# A shallow history hides the ancestors past its boundary from the walk
+# below, while a push still lands them, so check only a full history.
+[ "$(git rev-parse --is-shallow-repository)" = false ] ||
+	fail_setup "this clone is shallow, so the range may hide commits the push would land; run git fetch --unshallow first"
 
 base_sha=$(git rev-parse --verify -q "$base^{commit}") || fail_setup "$base is not a commit"
 head_sha=$(git rev-parse --verify -q "$head^{commit}") || fail_setup "$head is not a commit"

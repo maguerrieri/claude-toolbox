@@ -150,6 +150,16 @@ rm -rf "$tmp/gone-checkout"
 record '|exit 0' 'a checkout whose directory is gone holds nothing' "$(run --allowed-signers "$tmp/allowed_signers" base good)"
 g worktree prune
 
+# A shallow clone whose boundary hides the unsigned commit right below a
+# signed tip: the walk would see only signed commits.
+tip=$(g rev-parse two-bad~1)
+git clone -q --depth 1 "file://$repo" "$tmp/shallow" 2>/dev/null
+git -C "$tmp/shallow" fetch -q --depth 1 origin "$(g rev-parse base)" "$tip" 2>/dev/null
+record 'G' 'the shallow walk sees only the signed tip' \
+	"$(git -C "$tmp/shallow" -c gpg.ssh.allowedSignersFile="$tmp/allowed_signers" log --format=%G? "$(g rev-parse base)..$tip" | paste -sd, -)"
+record '|exit 2' 'a shallow clone is refused' \
+	"$(repo=$tmp/shallow run --allowed-signers "$tmp/allowed_signers" "$(g rev-parse base)" "$tip")"
+
 # A git whose worktree listing fails: the check stops rather than skip it.
 mkdir "$tmp/bin"
 printf '#!/bin/sh\n[ "$1" = worktree ] && exit 1\nexec %s "$@"\n' "$(command -v git)" >"$tmp/bin/git"
