@@ -145,6 +145,16 @@ g worktree add -q --detach "$tmp/other-checkout" good
 cp "$tmp/allowed_signers" "$tmp/other-checkout/wt_signers"
 record '|exit 2' 'a list inside another worktree of the repo' "$(run --allowed-signers "$tmp/other-checkout/wt_signers" base good)"
 g worktree remove --force "$tmp/other-checkout"
+g worktree add -q --detach "$tmp/gone-checkout" good
+rm -rf "$tmp/gone-checkout"
+record '|exit 0' 'a checkout whose directory is gone holds nothing' "$(run --allowed-signers "$tmp/allowed_signers" base good)"
+g worktree prune
+
+# A git whose worktree listing fails: the check stops rather than skip it.
+mkdir "$tmp/bin"
+printf '#!/bin/sh\n[ "$1" = worktree ] && exit 1\nexec %s "$@"\n' "$(command -v git)" >"$tmp/bin/git"
+chmod +x "$tmp/bin/git"
+record '|exit 2' 'a failed worktree listing' "$(PATH="$tmp/bin:$PATH" run --allowed-signers "$tmp/allowed_signers" base good)"
 
 g config log.showSignature true
 record '|exit 0' 'log.showSignature adds no lines' "$(run --allowed-signers "$tmp/allowed_signers" base good)"
