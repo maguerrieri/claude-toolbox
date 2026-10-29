@@ -61,14 +61,6 @@ gh pr merge <pr> --merge    # Merge: merge
 
 Wherever this phase spells the merge as `gh pr merge <pr> --rebase` (the fallbacks below, the owner's own merge in the intro), a repo set to `Merge: merge` uses `--merge`, and one set to `Merge: signed fast-forward` uses its steps.
 
-**Where the line takes effect.** FINISH never reads `Merge:` from a PR, so a PR that adds or changes the line changes nothing until it has merged, and is itself merged by the method in force before it, normally `rebase`. Project memory takes effect at once, but only on the machine that holds it. So a repo taking on both a `Merge:` line and a rule requiring signed commits (a ruleset's `required_signatures` rule, or classic branch protection's required signatures) rolls them out in this order:
-
-1. Every machine that merges has a ticket-workflow version that reads `Merge:` (0.39.0 or later). An older one rebase-merges whatever the line says.
-2. `Merge: merge` (or `Merge: signed fast-forward`) is on the base branch, or in project memory on every machine that merges.
-3. Only then is the rule turned on.
-
-Turned on first, the rule refuses the rebase merge of the very PR that adds the line (the signed-commits case below).
-
 If the merge is **blocked by a permission layer** (e.g. an auto-mode classifier citing an earlier "do not merge" cap from the START briefing or `SPAWN_CAP`), don't just re-run it — the context is unchanged, so the verdict repeats. Report the block plainly and surface the deterministic fallbacks, any one of which unblocks:
 
 - the user **runs the merge themself**: `gh pr merge <pr> --rebase`;
@@ -79,7 +71,7 @@ If **GitHub itself refuses the merge for want of an approving review** (a rulese
 
 - **`CHANGES_REQUESTED`**: a reviewer's requested changes are still open, so the PR isn't the reviewed state FINISH assumes. Report it and stop; the changes go back through START.
 - **`REVIEW_REQUIRED`**: report `blocked: merge needs the owner's approval` with the PR's URL and the ways to clear it below, and don't wait for it. Which way works depends on who authored the PR, which the user knows and a session can't tell from a login alone, so name each. Where the author is an account other than the user's (sessions post to GitHub as their own account, such as a bot user's), the user approves it from their own account (the third fallback above). Where the user authored it (sessions use the user's `gh` auth), GitHub won't take their approval of their own PR, so it needs another reviewer's approval, or the user merges it themself with a bypass the rule grants them (`gh pr merge <pr> --rebase --admin` from their own terminal, or the GitHub UI's bypass). Either way, a rule that asks for a particular reviewer (a code owner, say) takes only that reviewer's approval. After an approval, whoever holds the grant re-runs the merge: the user's `/finish-ticket` in this session, a fresh clearance from the spawner, or the user merging it themself. An approval covers the head it was given on, so a later push, such as a restack, can need another.
-- **Anything else** (an approved PR still refused, say for a required check or for conversation resolution): it isn't an approval the user can give here. Report the refusal as it reads and stop. A rule requiring signed commits refuses a rebase merge outright, `Rebase merges cannot be automatically signed by GitHub`. GitHub signs its own merge commits, so with the refusal, suggest a `Merge: merge` line (Step 0), or `Merge: signed fast-forward` where only the repo's own keys may sign, and say where the line has to live: in project memory, or on the base branch, never only in a PR (*Where the line takes effect*, above). In project memory it takes effect at once, so the owner can add it there and re-run FINISH. On the base branch it arrives by a PR, and while the rule is on that PR is refused the same way, so the owner lands that one by hand: `gh pr merge <pr> --merge` from their own terminal for `Merge: merge`, or *Signed fast-forward*'s steps (below) for `Merge: signed fast-forward`.
+- **Anything else** (an approved PR still refused, say for a required check or for conversation resolution): it isn't an approval the user can give here. Report the refusal as it reads and stop. A rule requiring signed commits refuses a rebase merge outright, `Rebase merges cannot be automatically signed by GitHub`. GitHub signs its own merge commits, so with the refusal, suggest a `Merge: merge` line (Step 0), or `Merge: signed fast-forward` where only the repo's own keys may sign. Say where the line has to live: on the base branch or in project memory, never only in a PR, since FINISH doesn't read it from one. And say that while the rule is on, the PR that adds it to the base branch is refused the same way, so the owner lands that one by hand: `gh pr merge <pr> --merge` from their own terminal, for `Merge: merge`. *Adopting a merge method* (below) has the details and the rollout order.
 
 Never get around the rule from this session. `gh` suggests two ways, and both are out: `--admin` uses a bypass to merge without the review, and `--auto` queues a merge that lands after this phase has moved on, while the restack requests above and Steps 3–5 follow a merge that has landed.
 
@@ -132,6 +124,18 @@ The session needs a signing key (the owner's through 1Password, which asks them 
 A permission layer that blocks the push to the base is a blocked merge (above), with the push in place of `gh pr merge`: the owner runs steps 3 to 5 themself, or adds a standing permission rule for that push. A cloud or Projects session usually has neither the key nor a push to the base, so it hands the owner these steps too. A hand-off stops this phase: Steps 3–5 follow only a merge that has landed.
 
 Once the PR is merged — by whichever path — continue with Steps 3–5.
+
+### Adopting a merge method
+
+For the owner setting up a `Merge:` line, and for a signed-commits refusal (above) to point at. FINISH never reads the line from a PR, so a PR that adds or changes it changes nothing until it has merged, and is itself merged by the method in force before it, normally `rebase`. Project memory needs no merge, but counts only for the sessions that read it: memory belongs to one Claude config and one clone path, a cloud session has none, and a session sees an edit made after it started only once it re-reads its memory (start a new one to be sure). A **signature rule** here is a GitHub rule requiring signed commits (a ruleset's `required_signatures`, or classic branch protection's required signatures), or, for `Merge: signed fast-forward`, a deploy that takes only commits signed by its own keys. A repo taking on a `Merge:` line and a signature rule together rolls them out in this order:
+
+1. Everything that merges runs a ticket-workflow version that reads `Merge:` (0.39.0 or later). An older one rebase-merges whatever the line says.
+2. The line is on the base branch, or in the project memory of every config and clone that merges. Cloud sessions read only the base branch. `Merge: merge` also needs the repo to allow merge commits (`gh api 'repos/{owner}/{repo}' --jq .allow_merge_commit` reads `true`) and no rule requiring linear history on the base, which no merge commit meets. Where the owner keeps either, `signed fast-forward` is the method that fits.
+3. Only then is the signature rule turned on.
+
+Once the line is on the base branch, drop its memory copies: memory outranks the branch's instructions, so a stale copy keeps the old method after the committed line changes.
+
+A rule already on when the line arrives catches the PR that adds it: a GitHub rule refuses its rebase merge, and a deploy-only check lets it land unsigned and then refuses to deploy it. So the owner lands that one PR by hand. For `Merge: merge`, that's `gh pr merge <pr> --merge` from their own terminal, once its commits are signed, since a merge commit doesn't sign the commits under it (`gh-verified.sh`, as in START's *Signed commits*, lists any that aren't). For `Merge: signed fast-forward`, it's *Signed fast-forward*'s steps.
 
 ## Step 3 — Clean up the worktree
 
