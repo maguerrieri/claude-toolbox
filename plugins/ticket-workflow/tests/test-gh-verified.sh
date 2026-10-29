@@ -93,6 +93,16 @@ g remote set-url origin /some/local/path
 record 'exit 2+msg' 'an origin URL with no owner/repo' "$(err "can't read owner/repo" base two)"
 g remote set-url origin https://github.com/o/r.git
 
+# A replace ref that parents a stand-in for two directly on base would hide
+# one from the walk, while a push of two still lands it.
+standin=$(g commit-tree -m two "$(g rev-parse 'two^{tree}')" -p base)
+g replace two "$standin"
+record 'unsigned:one|exit 1' 'a replace ref can'"'"'t hide a commit' "$(STUB_UNVERIFIED=one run base two)"
+g replace -d "$(g rev-parse two)" >/dev/null
+printf '%s %s\n' "$(g rev-parse two)" "$(g rev-parse base)" >"$repo/.git/info/grafts"
+record 'exit 2+msg' 'a graft file is refused' "$(err 'grafts' base two)"
+rm "$repo/.git/info/grafts"
+
 git clone -q --depth 1 "file://$repo" "$tmp/shallow" 2>/dev/null
 git -C "$tmp/shallow" fetch -q --depth 1 origin "$(g rev-parse base)" 2>/dev/null
 record 'true' 'the clone is shallow' "$(git -C "$tmp/shallow" rev-parse --is-shallow-repository)"

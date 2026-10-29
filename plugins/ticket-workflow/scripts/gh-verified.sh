@@ -31,6 +31,13 @@ fail_setup() {
 [ $# -eq 2 ] || fail_setup "usage: gh-verified.sh <base> <head>"
 gh_bin=${GH_VERIFIED_GH:-gh}
 
+# Walk the commits a push sends, never local stand-ins for them: a
+# replace ref or a graft could hide a commit from the walk while the push
+# still lands it.
+export GIT_NO_REPLACE_OBJECTS=1
+grafts="$(git rev-parse --git-common-dir)/info/grafts"
+[ ! -s "$grafts" ] || fail_setup "$grafts rewrites history locally; remove it first"
+
 [ "$(git rev-parse --is-shallow-repository)" = false ] ||
 	fail_setup "this clone is shallow, so the range may hide commits a push would land; run git fetch --unshallow first"
 base_sha=$(git rev-parse --verify -q "$1^{commit}") || fail_setup "$1 is not a commit"
