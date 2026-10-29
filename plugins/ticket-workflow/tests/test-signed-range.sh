@@ -71,6 +71,30 @@ pgp=$(printf 'tree %s\nparent %s\nauthor A <a@x> 1700000000 +0000\ncommitter A <
 	"$(g rev-parse 'good^{tree}')" "$(g rev-parse good)" | g hash-object -t commit -w --stdin)
 g tag pgp "$pgp"
 
+# The same PGP commit plus an SSH-looking gpgsig-sha256 header, which a SHA-1
+# repo doesn't verify: git reads it good on the PGP header alone.
+both=$(g cat-file commit pgp | awk '{ print } /^ -----END PGP SIGNATURE-----$/ {
+	print "gpgsig-sha256 -----BEGIN SSH SIGNATURE-----"; print " U1NIU0lH"; print " -----END SSH SIGNATURE-----" }' |
+	sed 's/^pgp$/both/' | g hash-object -t commit -w --stdin)
+g tag both "$both"
+
+# A good SSH-signed commit with its gpgsig header repeated.
+twice=$(g cat-file commit good | awk '
+	/^gpgsig / { sig = 1 } sig && !/^gpgsig / && !/^ / { printf "%s", block; sig = 0 }
+	sig { block = block $0 "\n" } { print }' | sed 's/^two$/twice/' | g hash-object -t commit -w --stdin)
+g tag twice "$twice"
+
+# A SHA-256 repo signs with gpgsig-sha256.
+repo256=$tmp/repo256
+git init -q -b main --object-format=sha256 "$repo256"
+g256() { git -C "$repo256" "$@"; }
+g256 config user.email a@x
+g256 config user.name A
+g256 config gpg.format ssh
+g256 config user.signingkey "$tmp/allowed-key.pub"
+g256 commit -q --allow-empty -m base
+g256 commit -q -S --allow-empty -m one
+
 run() { # run [script args...]: "<code>:<subject>,…|exit <n>" from the script's output, run in the repo
 	local out code
 	out=$(cd "$repo" && bash "$script" "$@" 2>/dev/null)
@@ -86,6 +110,12 @@ record '|exit 0' 'only the range is checked' "$(run --allowed-signers "$tmp/allo
 record 'N:merge|exit 1' 'a merge commit is checked too' "$(run --allowed-signers "$tmp/allowed_signers" base merge)"
 record 'G' 'the fake gpg makes the PGP commit read good' "$(g log -1 --format=%G? pgp)"
 record 'G-not-ssh:pgp|exit 1' 'a good OpenPGP signature is not an SSH one' "$(run --allowed-signers "$tmp/allowed_signers" base pgp)"
+record 'G' 'git reads the two-header commit good on its PGP header' "$(g log -1 --format=%G? both)"
+record 'G-not-ssh:both|exit 1' 'an SSH header git did not verify does not count' "$(run --allowed-signers "$tmp/allowed_signers" good both)"
+record '2' 'the repeated-header commit has two gpgsig headers' "$(g cat-file commit twice | grep -c '^gpgsig ')"
+record 'exit 1' 'a repeated signature header fails' "$(run --allowed-signers "$tmp/allowed_signers" good twice | sed 's/.*|//')"
+record '|exit 0' 'a SHA-256 repo checks gpgsig-sha256' \
+	"$(repo=$repo256 run --allowed-signers "$tmp/allowed_signers" HEAD~1 HEAD)"
 
 g config gpg.ssh.allowedSignersFile "$tmp/allowed_signers"
 record '|exit 0' 'the file defaults to gpg.ssh.allowedSignersFile' "$(run base good)"

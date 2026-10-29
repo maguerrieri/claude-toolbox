@@ -9,7 +9,10 @@
 # only when git reads its signature as good from a key the file lists
 # (%G? = G) and the signature is an SSH one: an allowed-signers file lists
 # SSH keys, so an OpenPGP or X.509 signature that a local keyring happens to
-# trust doesn't pass. Prints one line per commit that fails,
+# trust doesn't pass. The header git verified must hold one SSH signature,
+# and any other signature header must be SSH too, so an SSH-looking header
+# git ignored (gpgsig-sha256 in a SHA-1 repo) can't stand in for the one it
+# checked. Prints one line per commit that fails,
 # "<sha> <code> <subject>", where <code> is git's %G? letter (N unsigned or
 # unverifiable, U a key the file doesn't list, B bad, E can't check, X/Y
 # expired, R revoked) or G-not-ssh, and exits 1 when any fails. Exits 0
@@ -54,6 +57,30 @@ head=$2
 case $signers in /*) ;; *) signers=$PWD/$signers ;; esac
 [ -r "$signers" ] && [ -s "$signers" ] || fail_setup "allowed-signers file $signers is missing, unreadable or empty"
 
+# git verifies the signature header of the repo's own hash: gpgsig in a
+# SHA-1 repo, gpgsig-sha256 in a SHA-256 one.
+case $(git rev-parse --show-object-format) in
+sha1) native=gpgsig ;;
+sha256) native=gpgsig-sha256 ;;
+*) fail_setup "unknown object format" ;;
+esac
+
+ssh_signed() { # ssh_signed <sha>: the header git verified is one SSH signature, and every other is SSH too
+	local obj line count=0
+	obj=$(git cat-file commit "$1") || return 1
+	# The headers end at the first blank line. A signature's continuation
+	# lines start with a space, so only a header's own first line matches.
+	while IFS= read -r line; do
+		case $line in
+		'gpgsig '* | 'gpgsig-sha256 '*)
+			[ "${line#* }" = '-----BEGIN SSH SIGNATURE-----' ] || return 1
+			[ "${line%% *}" = "$native" ] && count=$((count + 1))
+			;;
+		esac
+	done <<<"${obj%%$'\n\n'*}"
+	[ "$count" -eq 1 ]
+}
+
 base_sha=$(git rev-parse --verify -q "$base^{commit}") || fail_setup "$base is not a commit"
 head_sha=$(git rev-parse --verify -q "$head^{commit}") || fail_setup "$head is not a commit"
 
@@ -66,13 +93,7 @@ bad=0
 while IFS=' ' read -r sha code subject; do
 	total=$((total + 1))
 	if [ "$code" = G ]; then
-		# The headers end at the first blank line; a signature's continuation
-		# lines start with a space, so only the commit's own gpgsig header
-		# can match at the start of a line.
-		obj=$(git cat-file commit "$sha")
-		case $'\n'"${obj%%$'\n\n'*}"$'\n' in
-		*$'\ngpgsig -----BEGIN SSH SIGNATURE-----\n'* | *$'\ngpgsig-sha256 -----BEGIN SSH SIGNATURE-----\n'*) continue ;;
-		esac
+		ssh_signed "$sha" && continue
 		code=G-not-ssh
 	fi
 	bad=$((bad + 1))
