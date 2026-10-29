@@ -18,8 +18,9 @@
 # expired, R revoked) or G-not-ssh, and exits 1 when any fails. Exits 0
 # when every commit passes. <file> defaults to git's
 # gpg.ssh.allowedSignersFile. Exits 2 on a usage or setup error: no
-# allowed-signers file, a missing or empty one, a ref that doesn't resolve,
-# or an empty range.
+# allowed-signers file, a missing or empty one, one inside a checkout of
+# this repo (the branch being checked could add its own key to it), a ref
+# that doesn't resolve, or an empty range.
 #
 # Why both checks: with no file configured git reads every SSH signature as
 # N, and with a missing or empty one as U (checked on git 2.54), so a
@@ -68,6 +69,28 @@ fi
 [ -n "$signers" ] || fail_setup "no allowed-signers file: pass --allowed-signers <file> or set gpg.ssh.allowedSignersFile"
 case $signers in /*) ;; *) signers=$rel_to/$signers ;; esac
 [ -r "$signers" ] && [ -s "$signers" ] || fail_setup "allowed-signers file $signers is missing, unreadable or empty"
+
+# The list must live outside every checkout of this repo: a file in one is
+# repo content, which the branch being checked can change to admit its own
+# key. Follow symlinks to the real file before comparing.
+canon_dir() { (cd "$1" 2>/dev/null && pwd -P); }
+real=$signers
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+	[ -L "$real" ] || break
+	target=$(readlink "$real")
+	case $target in /*) real=$target ;; *) real=$(dirname "$real")/$target ;; esac
+done
+[ -L "$real" ] && fail_setup "allowed-signers file $signers is a symlink chain too deep to follow"
+real_dir=$(canon_dir "$(dirname "$real")") || fail_setup "can't resolve the directory of $signers"
+real=$real_dir/$(basename "$real")
+while IFS= read -r line; do
+	case $line in
+	'worktree '*)
+		wt=$(canon_dir "${line#worktree }") || continue
+		case $real in "$wt"/*) fail_setup "allowed-signers file $signers is inside this repo's checkout $wt, where the branch being checked can change it; keep the list outside the repo" ;; esac
+		;;
+	esac
+done < <(git worktree list --porcelain)
 
 # git verifies the signature header of the repo's own hash: gpgsig in a
 # SHA-1 repo, gpgsig-sha256 in a SHA-256 one.
