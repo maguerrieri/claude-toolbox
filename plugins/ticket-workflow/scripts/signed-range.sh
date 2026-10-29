@@ -27,7 +27,7 @@
 # misconfigured check fails closed. Only a listed key reads G.
 #
 # The docs run it as `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/signed-range.sh" …`,
-# the same way as role-marker.sh.
+# the same way as role-marker.sh. Needs git 2.36+ (worktree list -z).
 set -euo pipefail
 
 # Check the objects a push sends, never local replacements for them
@@ -76,7 +76,7 @@ case $signers in /*) ;; *) signers=$rel_to/$signers ;; esac
 # key (a tracked symlink retargeted to another list, say). So every hop of
 # the path's symlink chain, and every directory above each hop, must
 # resolve outside them all.
-canon_dir() { (cd "$1" 2>/dev/null && pwd -P); }
+canon_dir() { (cd -P -- "$1" 2>/dev/null && pwd -P); }
 
 # Fail closed: a listing that fails, or a checkout that exists but can't be
 # resolved, stops the check rather than skipping that checkout.
@@ -92,37 +92,50 @@ add_checkout() { # add_checkout <checkout path>
 top=$(git rev-parse --show-toplevel 2>/dev/null) && add_checkout "$top"
 listing=$(mktemp)
 trap 'rm -f "$listing"' EXIT
-git worktree list --porcelain -z >"$listing" || fail_setup "can't list this repo's checkouts"
+git worktree list --porcelain -z >"$listing" || fail_setup "can't list this repo's checkouts (git worktree list -z needs git 2.36+)"
 while IFS= read -r -d '' line; do
 	case $line in 'worktree '*) add_checkout "${line#worktree }" ;; esac
 done <"$listing"
 
-check_hop() { # check_hop <absolute path>: no step of it is looked up inside a checkout
-	local comps prefix= c ck i
-	IFS=/ read -r -a comps <<<"$1"
-	# Each directory prefix is where the next component is looked up. A step
-	# out with .. is safe: a checkout can't change its own parent.
-	for ((i = 1; i < ${#comps[@]} - 1; i++)); do
-		prefix=$prefix/${comps[i]}
-		[ "${comps[i + 1]}" = .. ] && continue
-		if c=$(canon_dir "$prefix"); then
-			for ck in ${checkouts[@]+"${checkouts[@]}"}; do
-				case $c in "$ck" | "$ck"/*) fail_setup "allowed-signers file $signers is reached through this repo's checkout $ck, where the branch being checked can change it; keep the list and its path outside the repo" ;; esac
-			done
-		elif [ -e "$prefix" ]; then
-			fail_setup "can't resolve $prefix on the way to $signers"
-		fi
+# Resolve the path one component at a time, as the kernel does: each
+# component is looked up in the physical directory reached so far, which
+# must lie outside every checkout, and a symlink met on the way is replaced
+# by its target's components. So no file, symlink or directory link in a
+# checkout can steer the lookup, at any hop. A step out with .. moves to the
+# physical parent, which a checkout can't change.
+in_checkout() { # in_checkout <physical dir>
+	local ck
+	for ck in ${checkouts[@]+"${checkouts[@]}"}; do
+		case $1 in "$ck" | "$ck"/*) return 0 ;; esac
 	done
+	return 1
 }
-hop=$signers
-check_hop "$hop"
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-	[ -L "$hop" ] || break
-	target=$(readlink "$hop")
-	case $target in /*) hop=$target ;; *) hop=$(dirname "$hop")/$target ;; esac
-	check_hop "$hop"
+todo=()
+IFS=/ read -r -a todo <<<"$signers"
+cur= # the physical directory reached so far; empty is /
+links=0
+i=0
+while [ "$i" -lt "${#todo[@]}" ]; do
+	comp=${todo[i]}
+	i=$((i + 1))
+	case $comp in
+	'' | .) continue ;;
+	..) cur=${cur%/*}; continue ;;
+	esac
+	in_checkout "${cur:-/}" && fail_setup "allowed-signers file $signers is reached through this repo's checkout ${cur:-/}, where the branch being checked can change it; keep the list and its path outside the repo"
+	if [ -L "$cur/$comp" ]; then
+		links=$((links + 1))
+		[ "$links" -le 40 ] || fail_setup "too many symlinks on the way to $signers"
+		target=$(readlink "$cur/$comp")
+		tcomps=()
+		IFS=/ read -r -a tcomps <<<"$target"
+		case $target in /*) cur= ;; esac
+		todo=(${tcomps[@]+"${tcomps[@]}"} "${todo[@]:i}")
+		i=0
+	else
+		cur=$cur/$comp
+	fi
 done
-[ -L "$hop" ] && fail_setup "allowed-signers file $signers is a symlink chain too deep to follow"
 
 # git verifies the signature header of the repo's own hash: gpgsig in a
 # SHA-1 repo, gpgsig-sha256 in a SHA-256 one.

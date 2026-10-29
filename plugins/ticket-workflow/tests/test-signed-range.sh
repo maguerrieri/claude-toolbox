@@ -3,7 +3,7 @@
 # before a signed fast-forward merge: which commits pass, which fail and how
 # they're listed, and the setup errors. Signs commits with two throwaway SSH
 # keys made here, one listed in the allowed-signers file and one not, in a
-# scratch repo that ignores the user's git config. Needs git 2.34+ and
+# scratch repo that ignores the user's git config. Needs git 2.36+ and
 # ssh-keygen (OpenSSH 8.2+).
 #
 #   bash plugins/ticket-workflow/tests/test-signed-range.sh
@@ -152,6 +152,19 @@ record '|exit 2' 'a directory link in the checkout to a list outside' "$(run --a
 ln -s "$repo/tracked_link" "$tmp/link_to_link"
 record '|exit 2' 'a symlink outside to a symlink in the checkout' "$(run --allowed-signers "$tmp/link_to_link" base good)"
 rm "$repo/tracked_link" "$repo/dir_link" "$tmp/link_to_link"
+# A .. after a link that points into the checkout lands in the checkout,
+# though a logical cd reads it as the link's own parent.
+ln -s "$repo/sub" "$tmp/sub_link"
+record '|exit 2' '.. after a link into the checkout' "$(run --allowed-signers "$tmp/sub_link/../in_repo_signers" base good)"
+# A directory link outside whose chain passes through a link in the
+# checkout and ends outside: the checkout's link can be retargeted.
+mkdir "$tmp/outside_dir2"
+cp "$tmp/allowed_signers" "$tmp/outside_dir2/signers"
+ln -s "$tmp/outside_dir2" "$repo/hop2"
+ln -s "$repo/hop2" "$tmp/hop1"
+record '|exit 2' 'a chain through a link in the checkout' "$(run --allowed-signers "$tmp/hop1/signers" base good)"
+record '|exit 0' 'the same list reached directly' "$(run --allowed-signers "$tmp/outside_dir2/signers" base good)"
+rm "$tmp/sub_link" "$tmp/hop1" "$repo/hop2"
 g worktree add -q --detach "$tmp/other-checkout" good
 cp "$tmp/allowed_signers" "$tmp/other-checkout/wt_signers"
 record '|exit 2' 'a list inside another worktree of the repo' "$(run --allowed-signers "$tmp/other-checkout/wt_signers" base good)"
