@@ -141,6 +141,17 @@ ln -s "$repo/in_repo_signers" "$tmp/link_signers"
 record '|exit 2' 'a symlink outside to a list inside the checkout' "$(run --allowed-signers "$tmp/link_signers" base good)"
 ln -s "$tmp/allowed_signers" "$tmp/link_outside"
 record '|exit 0' 'a symlink to a list outside the checkout' "$(run --allowed-signers "$tmp/link_outside" base good)"
+# A symlink or a directory link inside the checkout, pointing outside: the
+# branch can retarget either to another list.
+ln -s "$tmp/allowed_signers" "$repo/tracked_link"
+record '|exit 2' 'a symlink in the checkout to a list outside' "$(run --allowed-signers "$repo/tracked_link" base good)"
+mkdir "$tmp/outside_dir"
+cp "$tmp/allowed_signers" "$tmp/outside_dir/signers"
+ln -s "$tmp/outside_dir" "$repo/dir_link"
+record '|exit 2' 'a directory link in the checkout to a list outside' "$(run --allowed-signers "$repo/dir_link/signers" base good)"
+ln -s "$repo/tracked_link" "$tmp/link_to_link"
+record '|exit 2' 'a symlink outside to a symlink in the checkout' "$(run --allowed-signers "$tmp/link_to_link" base good)"
+rm "$repo/tracked_link" "$repo/dir_link" "$tmp/link_to_link"
 g worktree add -q --detach "$tmp/other-checkout" good
 cp "$tmp/allowed_signers" "$tmp/other-checkout/wt_signers"
 record '|exit 2' 'a list inside another worktree of the repo' "$(run --allowed-signers "$tmp/other-checkout/wt_signers" base good)"
