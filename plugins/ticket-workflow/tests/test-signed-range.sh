@@ -125,13 +125,26 @@ cp "$tmp/allowed_signers" "$tmp/rel_signers"
 record '|exit 0' 'a relative path resolves from the current directory' "$(run --allowed-signers ../rel_signers base good)"
 
 # A relative config value resolves against the top level, as git resolves it.
-cp "$tmp/allowed_signers" "$repo/top_signers"
 mkdir "$repo/sub"
-g config gpg.ssh.allowedSignersFile top_signers
+g config gpg.ssh.allowedSignersFile ../rel_signers
 record 'G' 'git reads a relative config path from the top level' "$(cd "$repo/sub" && git log -1 --format=%G? good)"
 record 'exit 0' 'so does the script, run from a subdirectory' \
 	"$(cd "$repo/sub" && bash "$script" base good 2>/dev/null; echo "exit $?")"
+
+# A list inside any checkout of the repo is content the branch can change.
+cp "$tmp/allowed_signers" "$repo/in_repo_signers"
+g config gpg.ssh.allowedSignersFile in_repo_signers
+record '|exit 2' 'a configured list inside the checkout' "$(run base good)"
 g config --unset gpg.ssh.allowedSignersFile
+record '|exit 2' 'a passed list inside the checkout' "$(run --allowed-signers "$repo/sub/../in_repo_signers" base good)"
+ln -s "$repo/in_repo_signers" "$tmp/link_signers"
+record '|exit 2' 'a symlink outside to a list inside the checkout' "$(run --allowed-signers "$tmp/link_signers" base good)"
+ln -s "$tmp/allowed_signers" "$tmp/link_outside"
+record '|exit 0' 'a symlink to a list outside the checkout' "$(run --allowed-signers "$tmp/link_outside" base good)"
+g worktree add -q --detach "$tmp/other-checkout" good
+cp "$tmp/allowed_signers" "$tmp/other-checkout/wt_signers"
+record '|exit 2' 'a list inside another worktree of the repo' "$(run --allowed-signers "$tmp/other-checkout/wt_signers" base good)"
+g worktree remove --force "$tmp/other-checkout"
 
 g config log.showSignature true
 record '|exit 0' 'log.showSignature adds no lines' "$(run --allowed-signers "$tmp/allowed_signers" base good)"
