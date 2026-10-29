@@ -88,13 +88,13 @@ The session needs a signing key (the owner's through 1Password, which asks them 
      tip=$(git rev-parse origin/<branch>) && echo "pinned base: $base  branch tip: $tip"
    ```
 
-   Use those printed `<base>` and `<tip>` SHAs from here on, never `origin/<base_branch>` or `origin/<branch>` again: another checkout of this repo can move the shared remote-tracking refs between steps. When `git merge-base --is-ancestor <base> <tip>` holds, the branch is already on the base: land `<tip>` as it is. Otherwise it needs a rebase, which re-signs every commit. That's FINISH's to do only for a linear branch: when `git rev-list --merges <base>..<tip>` prints anything, a rebase would flatten or skip those merges and can silently drop changes made in one, so the branch goes back to its owner as for a branch another session owns (below), where the update is reviewed again.
+   Use those printed `<base>` and `<tip>` SHAs from here on, never `origin/<base_branch>` or `origin/<branch>` again: another checkout of this repo can move the shared remote-tracking refs between steps. When `git merge-base --is-ancestor <base> <tip>` holds, the branch is already on the base: land `<tip>` as it is. Otherwise it needs a rebase, which re-signs every commit. That holds only for a linear branch: when `git rev-list --merges <base>..<tip>` prints anything, any rebase, here or in its owner's restack, would flatten those merges and can silently drop a change made in one. So report such a branch `blocked:` for an update by hand, as START's *Signed commits* bullet does, and stop.
    - **A linear branch this session owns** (its own START worktree, clean and at `<tip>`): `git rebase --gpg-sign <base>`. Pass `--gpg-sign`, since a plain rebase drops the signatures unless `commit.gpgsign` is on. On a conflict, `git rebase --abort` and stop: resolving it is START's job.
-   - **A branch another session owns** (EPIC Step 7, or a grant held outside the implementer), or one with merges: never rebase it here. Post `restack: <base_branch> moved; restack #<pr> onto <base_branch>` on the PR (START Step 8's moved form) and land it once its owner has restacked and it is green again. EPIC Step 7 waits as it does for any restack; a solo finish reports the request and stops.
-2. **Pin the head, and update the PR's head if step 1 rebased.** `<head>` is `HEAD` after a rebase, else `<tip>`. Resolve it to a SHA once:
+   - **A linear branch another session owns** (EPIC Step 7, or a grant held outside the implementer): never rebase it here. Post `restack: <base_branch> moved; restack #<pr> onto <base_branch>` on the PR (START Step 8's moved form) and land it once its owner has restacked and it is green again. EPIC Step 7 waits as it does for any restack; a solo finish reports the request and stops.
+2. **Pin the head, and update the PR's head if step 1 rebased.** `<head>` is the rebased `HEAD` of the worktree step 1 rebased in, else `<tip>`. Resolve it to a SHA once, in that worktree when it rebased, since another checkout's `HEAD` is a different commit:
 
    ```bash
-   sha=$(git rev-parse <head>) && echo "head to land: $sha"
+   sha=$(git -C <worktree> rev-parse HEAD) && echo "head to land: $sha"   # after a rebase; else sha=<tip>
    git push --force-with-lease="refs/heads/<branch>:<tip>" origin "${sha}:refs/heads/<branch>"   # only when step 1 rebased
    ```
 
@@ -111,7 +111,11 @@ The session needs a signing key (the owner's through 1Password, which asks them 
 
    ```bash
    sha=<the SHA step 2 printed>
-   [ "$(gh pr view <pr> --json headRefOid -q .headRefOid)" = "$sha" ] && git push origin "${sha}:refs/heads/<base_branch>"
+   if [ "$(gh pr view <pr> --json headRefOid -q .headRefOid)" = "$sha" ]; then
+     git push origin "${sha}:refs/heads/<base_branch>"
+   else
+     echo "the PR's head moved; start again at step 1" >&2; false
+   fi
    ```
 
    On a mismatch, stop: the head moved after the check, so start again at step 1. A base pushed to a commit that isn't the PR's head leaves the PR open, and moving the head onto it afterwards makes GitHub close the PR rather than mark it merged, and a PR whose head is already in its base can't be reopened (maguerrieri/home#93). The push carries no force flag, so the remote takes only a fast-forward. Refused as not a fast-forward → the base moved since step 1: start again at step 1. Refused by a rule naming a required status check → read that check on the verified SHA itself, every page of its check runs (`bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{repo}/commits/<sha>/check-runs' --key check_runs | jq -r '.[] | "\(.name) \(.status) \(.conclusion)"'`), plus `commits/<sha>/status` for a commit status. Queued or in progress means wait for it and push again, which isn't a failure. Failed stops here, as above. Absent means no run of it reports on that SHA, so waiting won't help: report it as a setup block naming the check, and stop. Refused by any other rule on the base → report the refusal as it reads and stop: the credential the rule allows is the repo owner's setup.
