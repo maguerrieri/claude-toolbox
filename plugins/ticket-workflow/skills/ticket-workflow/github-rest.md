@@ -210,10 +210,11 @@ zero, the request failed: take `REVIEW_BOT`'s no-bot fallback as for any failed 
 gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
 
-**Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged. Permission rules
-match commands literally, so one written for `gh pr merge` doesn't match this command: an allow
-rule doesn't pre-approve it (a standing allow for the cloud names this command), and a deny or
-ask rule binds it anyway, as the next paragraph says.
+**Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged, and a repo set to
+`Merge: signed fast-forward` never takes this call (FINISH Step 2, *Signed fast-forward*).
+Permission rules match commands literally, so one written for `gh pr merge` doesn't match this
+command: an allow rule doesn't pre-approve it (a standing allow for the cloud names this
+command), and a deny or ask rule binds it anyway, as the next paragraph says.
 ```bash
 gh api -X PUT 'repos/{owner}/{repo}/pulls/<pr>/merge' -f merge_method=rebase
 ```
