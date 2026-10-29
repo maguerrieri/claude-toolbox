@@ -70,37 +70,59 @@ fi
 case $signers in /*) ;; *) signers=$rel_to/$signers ;; esac
 [ -r "$signers" ] && [ -s "$signers" ] || fail_setup "allowed-signers file $signers is missing, unreadable or empty"
 
-# The list must live outside every checkout of this repo: a file in one is
+# The list must live outside every checkout of this repo, and so must every
+# step that leads to it: a file, a symlink or a directory in a checkout is
 # repo content, which the branch being checked can change to admit its own
-# key. Follow symlinks to the real file before comparing.
+# key (a tracked symlink retargeted to another list, say). So every hop of
+# the path's symlink chain, and every directory above each hop, must
+# resolve outside them all.
 canon_dir() { (cd "$1" 2>/dev/null && pwd -P); }
-real=$signers
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-	[ -L "$real" ] || break
-	target=$(readlink "$real")
-	case $target in /*) real=$target ;; *) real=$(dirname "$real")/$target ;; esac
-done
-[ -L "$real" ] && fail_setup "allowed-signers file $signers is a symlink chain too deep to follow"
-real_dir=$(canon_dir "$(dirname "$real")") || fail_setup "can't resolve the directory of $signers"
-real=$real_dir/$(basename "$real")
+
 # Fail closed: a listing that fails, or a checkout that exists but can't be
 # resolved, stops the check rather than skipping that checkout.
-outside_checkout() { # outside_checkout <checkout path>
+checkouts=()
+add_checkout() { # add_checkout <checkout path>
 	local wt
-	if ! wt=$(canon_dir "$1"); then
-		# A checkout whose directory is gone (git calls it prunable) can't hold the file.
-		[ -e "$1" ] && fail_setup "can't resolve this repo's checkout $1"
-		return 0
-	fi
-	case $real in "$wt"/*) fail_setup "allowed-signers file $signers is inside this repo's checkout $wt, where the branch being checked can change it; keep the list outside the repo" ;; esac
+	if wt=$(canon_dir "$1"); then
+		checkouts+=("$wt")
+	elif [ -e "$1" ]; then
+		fail_setup "can't resolve this repo's checkout $1"
+	fi # A checkout whose directory is gone (git calls it prunable) can't hold anything.
 }
-top=$(git rev-parse --show-toplevel 2>/dev/null) && outside_checkout "$top"
+top=$(git rev-parse --show-toplevel 2>/dev/null) && add_checkout "$top"
 listing=$(mktemp)
 trap 'rm -f "$listing"' EXIT
 git worktree list --porcelain -z >"$listing" || fail_setup "can't list this repo's checkouts"
 while IFS= read -r -d '' line; do
-	case $line in 'worktree '*) outside_checkout "${line#worktree }" ;; esac
+	case $line in 'worktree '*) add_checkout "${line#worktree }" ;; esac
 done <"$listing"
+
+check_hop() { # check_hop <absolute path>: no step of it is looked up inside a checkout
+	local comps prefix= c ck i
+	IFS=/ read -r -a comps <<<"$1"
+	# Each directory prefix is where the next component is looked up. A step
+	# out with .. is safe: a checkout can't change its own parent.
+	for ((i = 1; i < ${#comps[@]} - 1; i++)); do
+		prefix=$prefix/${comps[i]}
+		[ "${comps[i + 1]}" = .. ] && continue
+		if c=$(canon_dir "$prefix"); then
+			for ck in ${checkouts[@]+"${checkouts[@]}"}; do
+				case $c in "$ck" | "$ck"/*) fail_setup "allowed-signers file $signers is reached through this repo's checkout $ck, where the branch being checked can change it; keep the list and its path outside the repo" ;; esac
+			done
+		elif [ -e "$prefix" ]; then
+			fail_setup "can't resolve $prefix on the way to $signers"
+		fi
+	done
+}
+hop=$signers
+check_hop "$hop"
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+	[ -L "$hop" ] || break
+	target=$(readlink "$hop")
+	case $target in /*) hop=$target ;; *) hop=$(dirname "$hop")/$target ;; esac
+	check_hop "$hop"
+done
+[ -L "$hop" ] && fail_setup "allowed-signers file $signers is a symlink chain too deep to follow"
 
 # git verifies the signature header of the repo's own hash: gpgsig in a
 # SHA-1 repo, gpgsig-sha256 in a SHA-256 one.
