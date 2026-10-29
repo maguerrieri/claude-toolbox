@@ -6,12 +6,12 @@
 #   gh-verified.sh <base> <head>
 #
 # Asks GitHub for the verification of each commit in <base>..<head>, merges
-# included (repos/{owner}/{repo}/commits/<sha>, so the commits must be
-# pushed first). Prints "<sha> <reason> <subject>" for each one GitHub
+# included (repos/<owner>/<repo>/commits/<sha>, the repo origin points at,
+# so the commits must be pushed there first). Prints "<sha> <reason> <subject>" for each one GitHub
 # doesn't mark verified, and exits 1 when any isn't. Exits 0 when all are.
 # Exits 2 on a usage or setup error: a ref that doesn't resolve, an empty
-# range, a shallow clone (its walk can hide commits a push would land), or
-# a GitHub read that fails.
+# range, a shallow clone (its walk can hide commits a push would land), an
+# origin URL it can't read owner/repo from, or a GitHub read that fails.
 #
 # It is a courtesy, not the enforcement: GitHub accepts a key registered on
 # any GitHub account, so a commit it calls verified can still be one a
@@ -38,12 +38,19 @@ head_sha=$(git rev-parse --verify -q "$2^{commit}") || fail_setup "$2 is not a c
 shas=$(git rev-list "$base_sha..$head_sha") || fail_setup "git rev-list $1..$2 failed"
 [ -n "$shas" ] || fail_setup "no commits in $1..$2"
 
+# Ask about the repo the commits were pushed to, origin's, not gh's default
+# repo (in a fork that's upstream, which doesn't have them).
+url=$(git remote get-url origin 2>/dev/null) || fail_setup "no origin remote to read owner/repo from"
+repo=$(printf '%s' "$url" | sed -E 's#^(https?|ssh)://([^@/]+@)?[^/]+/##; s#^[^@/]+@[^:]+:##; s#\.git$##; s#/$##')
+case $repo in [!/]*/[!/]*) ;; *) fail_setup "can't read owner/repo from origin's URL $url" ;; esac
+
 total=0
 bad=0
 while IFS= read -r sha; do
 	total=$((total + 1))
-	verdict=$("$gh_bin" api "repos/{owner}/{repo}/commits/$sha" \
-		--jq '"\(.commit.verification.verified) \(.commit.verification.reason)"') ||
+	# </dev/null: a gh that reads stdin would swallow the rest of the list.
+	verdict=$("$gh_bin" api "repos/$repo/commits/$sha" \
+		--jq '"\(.commit.verification.verified) \(.commit.verification.reason)"' </dev/null) ||
 		fail_setup "can't read $sha's verification from GitHub; push it first"
 	case $verdict in "true "*) continue ;; esac
 	bad=$((bad + 1))
