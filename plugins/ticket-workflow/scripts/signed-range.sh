@@ -76,7 +76,7 @@ case $signers in /*) ;; *) signers=$rel_to/$signers ;; esac
 # key (a tracked symlink retargeted to another list, say). So every hop of
 # the path's symlink chain, and every directory above each hop, must
 # resolve outside them all.
-canon_dir() { (cd -P -- "$1" 2>/dev/null && pwd -P); }
+canon_dir() { (cd -P -- "$1" 2>/dev/null && env pwd -P); } # external pwd: getcwd names the directory as stored, so case-insensitive volumes compare right
 
 # Fail closed: a listing that fails, or a checkout that exists but can't be
 # resolved, stops the check rather than skipping that checkout.
@@ -122,7 +122,11 @@ while [ "$i" -lt "${#todo[@]}" ]; do
 	'' | .) continue ;;
 	..) cur=${cur%/*}; continue ;;
 	esac
-	in_checkout "${cur:-/}" && fail_setup "allowed-signers file $signers is reached through this repo's checkout ${cur:-/}, where the branch being checked can change it; keep the list and its path outside the repo"
+	# Compare the directory as the filesystem names it, not as typed: on a
+	# case-insensitive volume /USERS/... reaches /Users/....
+	pc=$(canon_dir "${cur:-/}") || fail_setup "can't resolve ${cur:-/} on the way to $signers"
+	in_checkout "$pc" && fail_setup "allowed-signers file $signers is reached through this repo's checkout $pc, where the branch being checked can change it; keep the list and its path outside the repo"
+	cur=${pc%/}
 	if [ -L "$cur/$comp" ]; then
 		links=$((links + 1))
 		[ "$links" -le 40 ] || fail_setup "too many symlinks on the way to $signers"

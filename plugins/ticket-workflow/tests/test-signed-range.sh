@@ -165,6 +165,12 @@ ln -s "$repo/hop2" "$tmp/hop1"
 record '|exit 2' 'a chain through a link in the checkout' "$(run --allowed-signers "$tmp/hop1/signers" base good)"
 record '|exit 0' 'the same list reached directly' "$(run --allowed-signers "$tmp/outside_dir2/signers" base good)"
 rm "$tmp/sub_link" "$tmp/hop1" "$repo/hop2"
+# On a case-insensitive volume (macOS's default) a path typed in another
+# case reaches the checkout too; a case-sensitive one can't test this.
+upper=$(printf '%s' "$repo" | tr '[:lower:]' '[:upper:]')
+if [ -d "$upper" ]; then
+	record '|exit 2' 'a list inside the checkout, typed in another case' "$(run --allowed-signers "$upper/in_repo_signers" base good)"
+fi
 g worktree add -q --detach "$tmp/other-checkout" good
 cp "$tmp/allowed_signers" "$tmp/other-checkout/wt_signers"
 record '|exit 2' 'a list inside another worktree of the repo' "$(run --allowed-signers "$tmp/other-checkout/wt_signers" base good)"
