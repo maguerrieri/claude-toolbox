@@ -300,7 +300,7 @@ thread in one response, as `{resolved, outdated, path, line, comment_ids: [...]}
 thread's first comment first (the join takes the first one still present, in case a reviewer
 deleted the opening comment). It isn't paged: it ignores `per_page` (checked on #204, 11 threads
 with `per_page=1`). Join it to the PR's review comments for the fields the GraphQL query returned
-(needs standalone `jq`, like the round count):
+(needs standalone `jq`, like the fallback round count):
 
 ```bash
 threads=$(gh api 'repos/{owner}/{repo}/pulls/<pr>/ccr/review_threads')
