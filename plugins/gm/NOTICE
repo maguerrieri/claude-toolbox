@@ -9,7 +9,10 @@ MIT license does not cover these files.
                           (c) Shawn Tomkin, licensed CC BY 4.0
                           https://www.ironswornrpg.com/
                           A curated, condensed and reformatted subset;
-                          changes were made.
+                          changes were made. Its Ask the Oracle tables
+                          (oracles/moves/ask-the-oracle/) are taken from
+                          Datasworn's JSON edition (tag v0.1.0-prerelease,
+                          commit e643a75), converted to Markdown.
 
 - adapters/starforged/  — the Ironsworn: Starforged SRD
                           (c) 2022 Shawn Tomkin, licensed CC BY 4.0
