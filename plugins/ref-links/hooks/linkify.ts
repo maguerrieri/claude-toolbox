@@ -1,0 +1,571 @@
+// The pure half of ref-links: find the #N references in a reply's markdown,
+// decide which repo each one means, and write them back as GitHub links.
+// No `$` here, so the tests exercise it directly.
+
+import type { Repo } from '../types'
+
+/** What a reference resolves against: the session's repo and the known ones. */
+export type LinkContext = {
+  current: Repo | null
+  known: readonly Repo[]
+}
+
+/** A LinkContext indexed for lookups; build it once per change, not per reply. */
+export type RepoIndex = {
+  current: Repo | null
+  /** Every known repo and the current one, lowercased. */
+  repos: ReadonlySet<string>
+  /** The repos under each lowercased repo name. */
+  byName: ReadonlyMap<string, readonly Repo[]>
+}
+
+const OWNER = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})'
+const NAME = '[A-Za-z0-9._-]{1,100}'
+const OWNER_REPO = new RegExp(`^(${OWNER})/(${NAME})$`)
+const REPO_NAME = new RegExp(`^${NAME}$`)
+
+// A remote on github.com: scp-style `git@github.com:o/r`, or a URL over
+// https, ssh (port 443's ssh.github.com too) or git. Any other host, or an
+// ssh alias that hides the host, isn't GitHub as far as we can tell.
+const GITHUB_REMOTE = new RegExp(
+  '^(?:(?:https?|ssh|git|git\\+ssh)://(?:[^@/\\s]+@)?(?:www\\.|ssh\\.)?github\\.com(?::\\d+)?/' +
+    '|(?:[^@/\\s:]+@)?github\\.com:)' +
+    `(${OWNER})/(${NAME}?)(?:\\.git)?/?$`,
+  'i',
+)
+
+/** `owner/repo` for a GitHub remote URL, or null for anything else. */
+export function parseGitHubRemote(url: string): Repo | null {
+  const m = GITHUB_REMOTE.exec(url.trim())
+  return m ? `${m[1]}/${m[2]}` : null
+}
+
+/** One list of repos: valid `owner/repo` only, case-insensitively unique, sorted. */
+export function mergeRepos(repos: Iterable<string>): Repo[] {
+  const byKey = new Map<string, Repo>()
+  for (const raw of repos) {
+    const repo = raw.trim()
+    if (OWNER_REPO.test(repo) && !byKey.has(repo.toLowerCase())) byKey.set(repo.toLowerCase(), repo)
+  }
+  return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, repo]) => repo)
+}
+
+/** The context indexed for linkify; the current repo counts as known. */
+export function repoIndex(context: LinkContext): RepoIndex {
+  const all = mergeRepos(context.current === null ? context.known : [...context.known, context.current])
+  const byName = new Map<string, Repo[]>()
+  for (const repo of all) {
+    const name = repo.slice(repo.indexOf('/') + 1).toLowerCase()
+    byName.set(name, [...(byName.get(name) ?? []), repo])
+  }
+  return { current: context.current, repos: new Set(all.map(repo => repo.toLowerCase())), byName }
+}
+
+// What may stand right before a reference (or before the repo word that
+// leads one): the start, whitespace, or punctuation that opens or separates.
+// Anything else (a letter, `/`, `&`, `-`, `.`) means the # is part of a word,
+// a path or an entity.
+const LEFT = /[\s([{<>"'*_~`,;:!?|—–“‘]/
+const TOKEN_CHAR = /[A-Za-z0-9._/-]/
+// What may close around the word before the #: emphasis, code, a parenthesis.
+const WRAPPER = /[*_`)]/
+// A `_` may close emphasis right after the number (`_www #8_`), but not run
+// on into a word (`#8_foo`).
+const REF = /#([1-9][0-9]{0,6})(?![A-Za-z0-9]|_+[A-Za-z0-9])/g
+
+type Range = readonly [start: number, end: number]
+
+/**
+ * The reply's markdown with every #N reference drawn as a link to its issue
+ * or PR. What the rules can't place, or would place ambiguously, is left as
+ * written: a wrong link is worse than none.
+ */
+export function linkify(text: string, index: RepoIndex): string {
+  if (!/#[1-9]/.test(text)) return text
+
+  const isProtected = protectedRanges(text)
+  let out = ''
+  let copied = 0
+
+  for (const m of text.matchAll(REF)) {
+    const hash = m.index
+    const end = hash + m[0].length
+    if (isProtected(hash, end)) continue
+
+    const link = resolve(text, hash, Number(m[1]), index, isProtected)
+    // `![…](…)` draws as an image: leave the reference as written.
+    if (link === null || text[link.start - 1] === '!') continue
+
+    out += text.slice(copied, link.start) + `[${text.slice(link.start, end)}](${link.url})`
+    copied = end
+  }
+
+  return copied === 0 ? text : out + text.slice(copied)
+}
+
+type Link = { start: number; url: string }
+
+function resolve(
+  text: string,
+  hash: number,
+  n: number,
+  index: RepoIndex,
+  isProtected: (start: number, end: number) => boolean,
+): Link | null {
+  // The word before the #, directly attached or one space back, and maybe
+  // wrapped (`**www** #8`, `` `www` #8 ``). A wrapped word stays outside the
+  // link, which then covers the #N alone.
+  const isSpaced = text[hash - 1] === ' '
+  let tokenEnd = isSpaced ? hash - 1 : hash
+  let wrapped = 0
+  while (wrapped < 3 && WRAPPER.test(text[tokenEnd - 1] ?? '')) {
+    tokenEnd--
+    wrapped++
+  }
+  let start = tokenEnd
+  while (start > 0 && TOKEN_CHAR.test(text[start - 1] ?? '')) start--
+  while (wrapped > 0 && start < tokenEnd && text[start] === '_') start++
+  // A wrapper closes one that opens just before the word; unmatched, those
+  // characters are the word's own (`octo/widget_#12`).
+  const opening = [...text.slice(tokenEnd, tokenEnd + wrapped)].reverse().join('').replace(/\)/g, '(')
+  if (wrapped > 0 && text.slice(Math.max(0, start - wrapped), start) !== opening) {
+    tokenEnd += wrapped
+    wrapped = 0
+    start = tokenEnd
+    while (start > 0 && TOKEN_CHAR.test(text[start - 1] ?? '')) start--
+  }
+  const outer = start - wrapped
+  // Underscores opening emphasis around the whole reference (`_www #8_`)
+  // aren't part of the word either.
+  if (wrapped === 0 && (start === 0 || LEFT.test(text[start - 1] ?? ''))) {
+    while (start < tokenEnd - 1 && text[start] === '_') start++
+  }
+  const token = text.slice(start, tokenEnd)
+  const isWord =
+    token !== '' &&
+    !token.endsWith('.') &&
+    (outer === 0 || LEFT.test(text[outer - 1] ?? '')) &&
+    (wrapped > 0 || !isProtected(start, tokenEnd))
+  const linkStart = wrapped > 0 ? hash : start
+
+  if (isWord) {
+    const named = OWNER_REPO.exec(token)
+    if (named) {
+      // `owner/repo#N` is GitHub's own spelling: always that repo. With a
+      // space, an a/b word may be a branch or a path (`origin/main #219`)
+      // as easily as a repo, so only a repo we know of counts. Any other
+      // leaves the #N unlinked: neither repo is a safe guess.
+      const repo = `${named[1]}/${named[2]}`
+      return !isSpaced || index.repos.has(repo.toLowerCase()) ? { start: linkStart, url: issueUrl(repo, n) } : null
+    }
+    const repos = REPO_NAME.test(token) ? index.byName.get(token.toLowerCase()) : undefined
+    if (repos !== undefined) {
+      const repo = pick(repos, index.current)
+      return repo === null ? null : { start: linkStart, url: issueUrl(repo, n) }
+    }
+  }
+
+  // A bare #N, or one after a word that names no known repo: the current repo.
+  const before = text[hash - 1]
+  if (index.current === null || (before !== undefined && !LEFT.test(before))) return null
+  return { start: hash, url: issueUrl(index.current, n) }
+}
+
+/** The one repo a name means, preferring the current repo's owner; else null. */
+function pick(repos: readonly Repo[], current: Repo | null): Repo | null {
+  if (repos.length === 1) return repos[0] ?? null
+  const owner = current?.split('/')[0]?.toLowerCase()
+  const mine = repos.filter(repo => repo.split('/')[0]?.toLowerCase() === owner)
+  return mine.length === 1 ? (mine[0] ?? null) : null
+}
+
+function issueUrl(repo: Repo, n: number): string {
+  return `https://github.com/${repo}/issues/${n}`
+}
+
+// ---------------------------------------------------------------------------
+// The parts of the markdown no reference is looked for in: fenced and
+// indented code blocks, headings, link reference definitions, code spans,
+// links, autolinks and HTML tags, bare URLs, and backslash escapes.
+
+// Containers. A line's blockquote markers, each with the one space or tab it
+// takes, leave its body; the list markers at the start of the body (`- `,
+// `1. `, `- - `) leave its content, and their width is the column the item's
+// later lines are indented to. Every block pattern below reads the content,
+// and a fence remembers its container: the quote depth, and the item's column
+// when it opened inside a list item. It closes only there, and ends with it.
+// Its opener and closer sit at most three columns past that column; a deeper
+// one is text. Only the innermost item is tracked: past it, a fence runs on,
+// which leaves code unlinked rather than links in code.
+const QUOTE = /^(?: {0,3}>[ \t]?)*/
+const LIST_MARKERS = /^(?:[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]+|$))*/
+const FENCE = /^[ \t]*(`{3,}|~{3,})(.*)$/
+const FENCE_CLOSE = /^[ \t]*(`{3,}|~{3,})[ \t]*$/
+const HEADING = /^ {0,3}#{1,6}(?:\s|$)/
+// A paragraph underlined with `=` or `-` is a heading too; a line of three or
+// more `-`, `*` or `_` with nothing under it to underline is a break, and a
+// block may start after it.
+const SETEXT_UNDERLINE = /^[ \t]*(?:=+|-+)[ \t]*$/
+const THEMATIC = /^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$/
+// Four columns in, after a blank line, a heading or the start, is code; a
+// list item that deep inside an open list is a nested list. A list's own
+// paragraph that deep is taken for code too: a missed link is the safe way to
+// be wrong.
+const INDENTED = /^(?: {4}| {0,3}\t)/
+const DEFINITION = /^ {0,3}\[((?:[^[\]\\]|\\.)+)\]:/
+// A definition's title may sit alone on the next line.
+const TITLE_LINE = /^[ \t]*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\((?:[^()\\]|\\.)*\))[ \t]*$/
+// HTML blocks, whose lines draw as raw HTML. `<pre>`, `<script>`, `<style>`
+// and `<textarea>` run to their closing tag, a comment to its `-->`, and a
+// block-level tag's block to the next blank line.
+const HTML_RAW = /^ {0,3}<(pre|script|style|textarea)(?:[\s>]|$)/i
+const HTML_COMMENT = /^ {0,3}<!--/
+const HTML_BLOCK = new RegExp(
+  '^ {0,3}</?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|' +
+    'dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|' +
+    'iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|' +
+    'table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:[\\s>]|/>|$)',
+  'i',
+)
+
+/** How an HTML block opening on this line ends: a pattern, or null for a blank line; undefined when none opens. */
+function htmlBlockEnd(content: string): RegExp | null | undefined {
+  const raw = HTML_RAW.exec(content)?.[1]
+  if (raw !== undefined) return new RegExp(`</${raw}>`, 'i')
+  if (HTML_COMMENT.test(content)) return /-->/
+  return HTML_BLOCK.test(content) ? null : undefined
+}
+
+/** The columns of indentation a line starts with, a tab to the next stop of 4. */
+function indentOf(line: string): number {
+  let column = 0
+  for (const c of line) {
+    if (c === ' ') column++
+    else if (c === '\t') column += 4 - (column % 4)
+    else break
+  }
+  return column
+}
+const AUTOLINK_OR_TAG = /<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|\/?[A-Za-z][^<>]*)>/y
+const BARE_URL = /(?:(?:https?|ftp|file):\/\/|www\.)[^\s<>]*/iy
+
+function protectedRanges(text: string): (start: number, end: number) => boolean {
+  const ranges: Range[] = []
+  const prose: Range[] = []
+  const definitions = new Set<string>()
+
+  // Lines first: code and HTML blocks, headings and definitions are whole lines.
+  type Container = { depth: number; column: number }
+  let fence: (Container & { char: string; length: number; start: number }) | null = null
+  let html: { end: RegExp | null; depth: number; start: number } | null = null
+  let indented: number | null = null
+  let item: Container | null = null
+  type Paragraph = Container & { start: number }
+  let paragraph: Paragraph | null = null
+  let codeMayStart = true
+  let wasBlank = true
+  let wasDefinition = false
+  let quoteDepth = 0
+  let proseStart = 0
+  let offset = 0
+  for (const line of text.split('\n')) {
+    const lineEnd = offset + line.length
+    const quote = QUOTE.exec(line)?.[0] ?? ''
+    const body = line.slice(quote.length)
+    const markers = LIST_MARKERS.exec(body)?.[0] ?? ''
+    const content = body.slice(markers.length)
+    const depth = quote.split('>').length - 1
+    const indent = indentOf(body)
+    // A line of bare `>` is a blank line inside the quote, and a deeper quote
+    // opens a container a code block may start in.
+    const isBlank = body.trim() === ''
+    if (depth > quoteDepth) codeMayStart = true
+    quoteDepth = depth
+    let endsBlock = false
+    let isDefinition = false
+    let nextParagraph: Paragraph | null = null
+
+    // Leaving the quote or the list item a fence opened in ends it, closed or
+    // not. A line indented less than the item leaves it after a blank line,
+    // or when it starts a fence, heading or item of its own; plain text right
+    // after a code line is where renderers differ, so it stays code.
+    const leavesItem =
+      fence !== null &&
+      depth === fence.depth &&
+      !isBlank &&
+      indent < fence.column &&
+      (wasBlank || markers !== '' || FENCE.test(content) || HEADING.test(content))
+    if (fence !== null && (depth < fence.depth || leavesItem)) {
+      ranges.push([fence.start, offset])
+      if (fence.column > 0) item = null
+      fence = null
+      proseStart = offset
+      codeMayStart = true
+    }
+    if (html !== null && depth < html.depth) {
+      ranges.push([html.start, offset])
+      html = null
+      proseStart = offset
+      codeMayStart = true
+    }
+    if (indented !== null && !isBlank && !INDENTED.test(body)) {
+      ranges.push([indented, offset])
+      indented = null
+      proseStart = offset
+    }
+
+    if (fence !== null) {
+      const isCloser = depth === fence.depth && indent - fence.column <= 3
+      const marker = isCloser ? FENCE_CLOSE.exec(body)?.[1] : undefined
+      if (marker !== undefined && marker[0] === fence.char && marker.length >= fence.length) {
+        ranges.push([fence.start, lineEnd])
+        fence = null
+        proseStart = lineEnd + 1
+        endsBlock = true
+      }
+    } else if (html !== null) {
+      if (html.end === null ? isBlank : html.end.test(line)) {
+        // A blank line ends the block before it; a closing tag, with its line.
+        const end = html.end === null ? offset : lineEnd
+        ranges.push([html.start, end])
+        html = null
+        proseStart = end === offset ? offset : lineEnd + 1
+        endsBlock = true
+      }
+    } else if (indented === null) {
+      // An indented block comes first: a fence four columns in, after a
+      // blank line, is that block's text, not a fence. A list marker that
+      // deep is a nested item only inside an open list.
+      const itemOpen = item !== null && item.depth === depth
+      const itemColumn = item?.column ?? 0
+      if (codeMayStart && !isBlank && INDENTED.test(body) && (markers === '' || !itemOpen)) {
+        prose.push([proseStart, offset])
+        indented = offset
+      } else if (
+        paragraph !== null &&
+        depth === paragraph.depth &&
+        indent >= paragraph.column &&
+        indent - paragraph.column <= 3 &&
+        SETEXT_UNDERLINE.test(body)
+      ) {
+        // A setext heading: the paragraph above, underlined.
+        prose.push([proseStart, paragraph.start])
+        ranges.push([paragraph.start, lineEnd])
+        proseStart = lineEnd + 1
+        endsBlock = true
+      } else if (indent - (itemOpen && indent >= itemColumn ? itemColumn : 0) <= 3 && THEMATIC.test(body)) {
+        endsBlock = true
+        if (item !== null && indent < item.column) item = null
+      } else {
+        // The item a line opens, or the one it stays in: a line indented less
+        // than the item's column ends it after a blank line (before one, it
+        // may be the item's paragraph running on).
+        if (markers !== '') item = { depth, column: markers.length }
+        else if (item !== null && (depth !== item.depth || (!isBlank && indent < item.column && wasBlank))) item = null
+        const inItem: boolean = item !== null && item.depth === depth && indent >= item.column
+        const column: number = markers !== '' || inItem ? (item?.column ?? 0) : 0
+
+        const opener = FENCE.exec(content)
+        const marker = opener?.[1]
+        const isOpener =
+          marker !== undefined &&
+          (markers !== '' ? indentOf(content) : indent - column) <= 3 &&
+          !(marker[0] === '`' && opener?.[2]?.includes('`'))
+        const htmlEnd = htmlBlockEnd(content)
+        const label = DEFINITION.exec(content)?.[1]
+        if (isOpener) {
+          prose.push([proseStart, offset])
+          fence = { char: marker[0] ?? '`', length: marker.length, depth, column, start: offset }
+        } else if (htmlEnd !== undefined) {
+          prose.push([proseStart, offset])
+          if (htmlEnd !== null && htmlEnd.test(line)) {
+            ranges.push([offset, lineEnd])
+            proseStart = lineEnd + 1
+            endsBlock = true
+          } else {
+            html = { end: htmlEnd, depth, start: offset }
+          }
+        } else if (HEADING.test(content) || label !== undefined || (wasDefinition && TITLE_LINE.test(content))) {
+          if (label !== undefined) definitions.add(normalizeLabel(label))
+          isDefinition = label !== undefined
+          prose.push([proseStart, offset])
+          ranges.push([offset, lineEnd])
+          proseStart = lineEnd + 1
+          endsBlock = HEADING.test(content)
+        } else if (!isBlank) {
+          // A paragraph line: a new item's starts a paragraph of its own.
+          nextParagraph = markers === '' && paragraph !== null ? paragraph : { depth, column, start: offset }
+        }
+      }
+    }
+
+    paragraph = nextParagraph
+    codeMayStart = isBlank || endsBlock
+    wasBlank = isBlank
+    wasDefinition = isDefinition
+    offset = lineEnd + 1
+  }
+  if (fence !== null) ranges.push([fence.start, text.length])
+  else if (html !== null) ranges.push([html.start, text.length])
+  else if (indented !== null) ranges.push([indented, text.length])
+  else prose.push([proseStart, text.length])
+
+  // Then the inline constructs, inside each stretch of prose, a paragraph at
+  // a time so a stray backtick can't pair across a blank line.
+  for (const [from, to] of prose) {
+    let paragraphStart = from
+    for (const blank of text.slice(from, to).matchAll(/\n[ \t]*\n/g)) {
+      inlineRanges(text, paragraphStart, from + blank.index, definitions, ranges)
+      paragraphStart = from + blank.index + blank[0].length
+    }
+    inlineRanges(text, paragraphStart, to, definitions, ranges)
+  }
+
+  return (start, end) => ranges.some(([a, b]) => start < b && a < end)
+}
+
+function inlineRanges(text: string, from: number, to: number, definitions: ReadonlySet<string>, ranges: Range[]): void {
+  let i = from
+  while (i < to) {
+    const c = text[i]
+    if (c === '\\') {
+      ranges.push([i, i + 2])
+      i += 2
+    } else if (c === '`') {
+      let run = i
+      while (run < to && text[run] === '`') run++
+      const width = run - i
+      const close = findBacktickRun(text, run, to, width)
+      if (close === -1) {
+        i = run
+      } else {
+        ranges.push([i, close + width])
+        i = close + width
+      }
+    } else if (c === '[' || (c === '!' && text[i + 1] === '[')) {
+      const linkEnd = matchLink(text, c === '!' ? i + 1 : i, to, definitions)
+      if (linkEnd === -1) {
+        i++
+      } else {
+        ranges.push([i, linkEnd])
+        i = linkEnd
+      }
+    } else if (c === '<') {
+      i = skipMatch(AUTOLINK_OR_TAG, text, i, to, ranges)
+    } else if (/[hHfFwW]/.test(c ?? '') && !/[A-Za-z0-9]/.test(text[i - 1] ?? '')) {
+      i = skipMatch(BARE_URL, text, i, to, ranges)
+    } else {
+      i++
+    }
+  }
+}
+
+/** Protects a sticky pattern's match at `i` (within `to`); where to go on. */
+function skipMatch(pattern: RegExp, text: string, i: number, to: number, ranges: Range[]): number {
+  pattern.lastIndex = i
+  const m = pattern.exec(text)
+  if (m === null || pattern.lastIndex > to) return i + 1
+  ranges.push([i, pattern.lastIndex])
+  return pattern.lastIndex
+}
+
+/** Where the next run of exactly `width` backticks starts, or -1. */
+function findBacktickRun(text: string, from: number, to: number, width: number): number {
+  let i = from
+  while (i < to) {
+    if (text[i] !== '`') {
+      i++
+      continue
+    }
+    let run = i
+    while (run < to && text[run] === '`') run++
+    if (run - i === width) return i
+    i = run
+  }
+  return -1
+}
+
+/**
+ * The end of a link starting at the `[` at `open`: `[text](dest)`,
+ * `[text][ref]`, or `[ref]` alone when the text defines `ref`; else -1.
+ */
+function matchLink(text: string, open: number, to: number, definitions: ReadonlySet<string>): number {
+  const close = matchBracket(text, open, to, '[', ']')
+  if (close === -1) return -1
+  const next = text[close + 1]
+  if (next === '(') {
+    let end = matchDestination(text, close + 1, to)
+    if (end === -1) end = matchBracket(text, close + 1, to, '(', ')')
+    return end === -1 ? -1 : end + 1
+  }
+  if (next === '[') {
+    const end = matchBracket(text, close + 1, to, '[', ']')
+    return end === -1 ? -1 : end + 1
+  }
+  return definitions.has(normalizeLabel(text.slice(open + 1, close))) ? close + 1 : -1
+}
+
+/**
+ * The `)` that closes an inline link's `(dest "title")` at `open`, or -1.
+ * The title is read on its own, so a parenthesis inside its quotes doesn't
+ * count toward the destination's nesting.
+ */
+function matchDestination(text: string, open: number, to: number): number {
+  let i = skipSpace(text, open + 1, to)
+  if (text[i] === '<') {
+    i++
+    while (i < to && text[i] !== '>' && text[i] !== '\n') i += text[i] === '\\' ? 2 : 1
+    if (text[i] !== '>') return -1
+    i++
+  } else {
+    let depth = 0
+    for (; i < to; i++) {
+      const c = text[i] ?? ''
+      if (c === '\\') i++
+      else if (c === '(') depth++
+      else if (c === ')' && depth-- === 0) break
+      else if (/\s/.test(c)) break
+    }
+  }
+  i = skipSpace(text, i, to)
+  const quote = text[i]
+  if (quote === '"' || quote === "'" || quote === '(') {
+    const closer = quote === '(' ? ')' : quote
+    i++
+    while (i < to && text[i] !== closer) i += text[i] === '\\' ? 2 : 1
+    if (i >= to) return -1
+    i = skipSpace(text, i + 1, to)
+  }
+  return text[i] === ')' ? i : -1
+}
+
+function skipSpace(text: string, i: number, to: number): number {
+  while (i < to && /\s/.test(text[i] ?? '')) i++
+  return i
+}
+
+function matchBracket(text: string, open: number, to: number, left: string, right: string): number {
+  let depth = 0
+  for (let i = open; i < to; i++) {
+    const c = text[i]
+    if (c === '\\') {
+      i++
+    } else if (c === '`' && left === '[') {
+      // A code span binds tighter than a label's brackets: `[a `]` b](x)`.
+      let run = i
+      while (run < to && text[run] === '`') run++
+      const close = findBacktickRun(text, run, to, run - i)
+      i = (close === -1 ? run : close + (run - i)) - 1
+    } else if (c === left) {
+      depth++
+    } else if (c === right && --depth === 0) {
+      return i
+    }
+  }
+  return -1
+}
+
+/** A reference label as CommonMark matches it: trimmed, spaces collapsed, any case. */
+function normalizeLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase()
+}
