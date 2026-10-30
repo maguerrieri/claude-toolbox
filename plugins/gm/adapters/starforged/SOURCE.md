@@ -18,7 +18,7 @@ It comes from the machine-readable edition published by **Datasworn** (https://g
 
 `sheet-template.md` is hand-written, since each character's sheet is copied from it, but its SRD lines (the stats and their descriptions, the condition meters, impacts, legacy tracks and the STARSHIP's integrity) must match the data verbatim: the importer fails, `--check` included, if one doesn't.
 
-Changes made: the JSON is converted to Markdown tables and rules files; Datasworn's cross-references are rewritten as this adapter's file paths; nothing is added to or omitted from the moves, assets, tables or truths. To regenerate, or to check the tree against the pin, run `plugins/gm/tools/datasworn-import` (or `--check`); `--help` says how to move the pin.
+Changes made: the JSON is converted to Markdown tables and rules files; Datasworn's cross-references are rewritten as this adapter's file paths; nothing is added to or omitted from the moves, assets, tables or truths. To regenerate, or to check the tree against the pin, run `plugins/gm/tools/datasworn-import --ruleset starforged` (or `--check`); `--help` says how to move the pin.
 
 ## The Starforged Rulebook (CC BY-NC-SA 4.0)
 

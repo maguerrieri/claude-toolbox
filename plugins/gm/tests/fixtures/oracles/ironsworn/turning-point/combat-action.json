@@ -1,0 +1,24 @@
+{
+  "id": "oracle_rollable:classic/turning_point/combat_action",
+  "die": "1d100",
+  "rows": [
+    {"max": 3, "result": "Compel a surrender."},
+    {"max": 6, "result": "Coordinate with allies."},
+    {"max": 9, "result": "Gather reinforcements."},
+    {"max": 13, "result": "Seize something or someone."},
+    {"max": 17, "result": "Provoke a reckless response."},
+    {"max": 21, "result": "Intimidate or frighten."},
+    {"max": 25, "result": "Reveal a surprising truth."},
+    {"max": 29, "result": "Shift focus to someone or something else."},
+    {"max": 33, "result": "Destroy something, or render it useless."},
+    {"max": 39, "result": "Take a decisive action."},
+    {"max": 45, "result": "Reinforce defenses."},
+    {"max": 52, "result": "Ready an action."},
+    {"max": 60, "result": "Use the terrain to gain advantage."},
+    {"max": 68, "result": "Leverage the advantage of a weapon or ability."},
+    {"max": 78, "result": "Create an opportunity."},
+    {"max": 89, "result": "Attack with precision."},
+    {"max": 99, "result": "Attack with power."},
+    {"max": 100, "result": "Take a completely unexpected action."}
+  ]
+}

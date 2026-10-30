@@ -5,11 +5,26 @@ The Ironsworn-family adapters bundled with this plugin include game content
 from works by Shawn Tomkin, under Creative Commons licenses. The repository's
 MIT license does not cover these files.
 
-- adapters/ironsworn/   — derived from the Ironsworn SRD
-                          (c) Shawn Tomkin, licensed CC BY 4.0
+- adapters/ironsworn/   — the Ironsworn SRD
+                          (c) 2018 Shawn Tomkin, licensed CC BY 4.0
                           https://www.ironswornrpg.com/
-                          A curated, condensed and reformatted subset;
-                          changes were made.
+                          Converted from Datasworn's JSON edition
+                          (https://github.com/rsek/datasworn, tag
+                          v0.1.0-prerelease, commit e643a75) by
+                          tools/datasworn-import; changes were made
+                          (format conversion, cross-reference paths, and
+                          one corrected truth range).
+
+                          Except: rules/truths.md, oracles/truths/,
+                          rules/regions.md and rules/encounters.md (from the
+                          same Datasworn file, as are the test fixtures
+                          in tests/fixtures/oracles/ironsworn/truths/), and
+                          rules/campaign-launch.md and
+                          rules/character-creation.md (adapted by hand),
+                          all from the Ironsworn Rulebook, chapters 2, 4,
+                          5 and 7 (c) 2018 Shawn Tomkin, licensed
+                          CC BY-NC-SA 4.0; changes were made. Those files
+                          are licensed CC BY-NC-SA 4.0.
 
 - adapters/starforged/  — the Ironsworn: Starforged SRD
                           (c) 2022 Shawn Tomkin, licensed CC BY 4.0
