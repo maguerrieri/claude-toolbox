@@ -16,8 +16,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   a scope addition, a name, feedback) one spawn edge down, as soon as the
   owner says it: a `request:` with their words to the implementer you
   spawned, or to the coordinator whose epic holds the PR, naming the child
-  (a cloud edge carries it as `messaging.md` says). The child records and
-  lands it (the profile's `REVIEW_BOT`, *Owner requests*,
+  (a cloud edge carries it as `messaging.md` says). The child lands it
+  (the profile's `REVIEW_BOT`, *Owner requests*,
   and `messaging.md`). Don't wait for a hand-back or raise a cap for it:
   only automated review rounds count.
 

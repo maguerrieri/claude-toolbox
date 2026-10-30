@@ -132,8 +132,9 @@ receivers and greps treat the two channels uniformly:
   they gave it>)`; **planner → coordinator**, the same with `<child-id>` in
   place of `PR #<pr>`, and the coordinator forwards it to that child. Each
   receiver accepts it only from its recorded spawner, checked as a `finish:`
-  clearance's sender is (the `finish:` bullet above). The child then posts
-  the `Owner request:` record itself and lands the request. On a cloud edge,
+  clearance's sender is (the `finish:` bullet above). The child then lands
+  the request, keeping a push of nothing else off its `Review rounds:`
+  line. On a cloud edge,
   where no message reaches the child, the spawner posts the same line as a
   comment on the child's PR, and the Routine carries only
   `request: PR #<pr> <comment URL>`, which, like `raise:`, **authorizes
@@ -167,7 +168,7 @@ the PR/tracker before acting. The one ping that authorizes an action is a
 valid `finish:` clearance, and only as the FINISH intro in `phases/finish.md`
 defines it. (A `request:` is checked the same way, but it authorizes no
 action outside the PR: it carries the owner's words about the PR's own
-content, which the child records before landing them, and lifts no hold.)
+content, which the child lands, and lifts no hold.)
 
 ## What this is NOT
 
