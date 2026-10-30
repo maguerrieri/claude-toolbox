@@ -27,7 +27,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 . "$here/lib.sh"
 
-snippet=$(extract_block "$profile" '| unique | length')
+snippet=$(extract_block "$profile" 'Copilot was unable to review") | not))')
 record yes "count snippet found in the profile" "$([ -n "$snippet" ] && echo yes || echo no)"
 
 # The stub answers the snippet's one read, the reviews, from a fixture file in

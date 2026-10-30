@@ -261,11 +261,14 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   on the same head) is not a round, and neither is an *unable to review* body or a review of an
   **owner push** (*Owner requests*, the next bullet): only the rounds automated review drives
   count. **The PR body's `Review rounds:` line is the count.** The session that owns the PR keeps
-  it: as soon as it reads a round's review, before answering it, it adds one to the line's `<n>`
-  and rewrites the line (*The cap* has its shape), so the line is never a round behind. Everyone
-  else takes `<n>` from the line, never from a recount: a later turn, a resumed or re-briefed
-  session, a coordinator, the gates. The owner trusts the owning session to keep it, as it already
-  rewrites the line every round, so there is no separate record of which pushes were skipped.
+  it, as it already rewrites the line every round: each time a round's review lands, it adds one
+  to the line's `<n>` (*The cap* has the line's shape). It counts a head once: a review it reads
+  again, after a compaction or a second PR event, changes nothing. When it can't tell whether the
+  line already counts the newest review, it compares `<n>` plus the tail's `<k>` (0 with no tail,
+  *The cap*) with the recount below: equal means the line counts it, and each head short is one
+  still to count. Everyone else takes `<n>` from the line, never from a recount: a later turn, a
+  resumed or re-briefed session, a coordinator, the gates. There is no separate record of which
+  pushes were skipped: the owner trusts the owning session to keep the line.
 
   **Re-derive the count only when the line is missing or unreadable** (a PR opened before the line
   existed, a body rewritten by hand), and only as the owning session, which then writes the result
@@ -340,6 +343,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     land nothing but owner requests, so an unreviewed CI fix or restack in between makes it an
     ordinary round. The bot's review of it leaves the line's `<n>` alone, and the child adds one to
     the line's `owner pushes not counted` tail instead (*The cap*), so the skip shows on the PR.
+    When the child can't tell whether a reviewed head was an owner push (a compaction or a fresh
+    container lost what it pushed), it counts the round: erring high is the safe direction, as
+    with the recount.
   - **A head that carries anything else as well** (a fix for a bot or self-review finding, a CI
     fix, a restack, a conflict merge) is an ordinary round. The request rides in the round those
     fixes cost anyway, so a request never hides a fix and never costs a round either.
