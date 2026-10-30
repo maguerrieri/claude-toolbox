@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/affluence/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Brokers"},
+    {"max": 20, "result": "Crowns"},
+    {"max": 30, "result": "Lords"},
+    {"max": 40, "result": "Merchants"},
+    {"max": 50, "result": "Monarchs"},
+    {"max": 60, "result": "Mongers"},
+    {"max": 70, "result": "Patrons"},
+    {"max": 80, "result": "Princes"},
+    {"max": 90, "result": "Scions"},
+    {"max": 100, "result": "Regents"}
+  ]
+}

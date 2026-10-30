@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/outlander",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Beast Hunter"},
+    {"max": 40, "result": "Explorer"},
+    {"max": 60, "result": "Fisher / Hunter / Trapper"},
+    {"max": 80, "result": "Navigator / Guide"},
+    {"max": 100, "result": "Scout"}
+  ]
+}

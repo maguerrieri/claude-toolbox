@@ -1,0 +1,30 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Colossal bones"},
+    {"max": 10, "result": "Copse of diseased trees"},
+    {"max": 15, "result": "Destructive trail of a monstrous beast"},
+    {"max": 18, "result": "Eldritch monument"},
+    {"max": 21, "result": "Exhumed or upturned graves"},
+    {"max": 24, "result": "Field of crude grave markers"},
+    {"max": 27, "result": "Forlorn remains of a violent battle"},
+    {"max": 32, "result": "Foul nest or lair of a monstrous beast"},
+    {"max": 35, "result": "Gravity-defying terrain or water"},
+    {"max": 43, "result": "Imposing, skull-shaped outcrop"},
+    {"max": 46, "result": "Inscrutable iron pillars"},
+    {"max": 51, "result": "Large cairn built of skulls and bones"},
+    {"max": 56, "result": "Large pile of bones and offal"},
+    {"max": 61, "result": "Lifeless settlement"},
+    {"max": 64, "result": "Noxious, sludge-filled waterway or pool"},
+    {"max": 67, "result": "Oversized insect mound"},
+    {"max": 72, "result": "Rotting corpse of a monstrous beast"},
+    {"max": 75, "result": "Silent, abandoned settlement"},
+    {"max": 78, "result": "Smoking meteorite scar"},
+    {"max": 81, "result": "Stinking, sulfurous pit"},
+    {"max": 84, "result": "Titanic machine"},
+    {"max": 89, "result": "Foreboding Cave (`oracles/cave/`)"},
+    {"max": 94, "result": "Grounded Shipwreck (`oracles/shipwreck/`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

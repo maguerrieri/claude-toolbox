@@ -1,0 +1,28 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/inland_cave/peril",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Lurking Threat (`oracles/cave/lurking-threat.md`)"},
+    {"max": 24, "result": "Aggressive creature"},
+    {"max": 28, "result": "Bewildering paths"},
+    {"max": 32, "result": "Blocked or barricaded path"},
+    {"max": 36, "result": "Cleverly camouflaged predator"},
+    {"max": 39, "result": "Confounding puzzle"},
+    {"max": 43, "result": "Crumbling cave floor"},
+    {"max": 46, "result": "Disorienting smoke or steam"},
+    {"max": 50, "result": "Falling rocks"},
+    {"max": 54, "result": "Flooding"},
+    {"max": 58, "result": "Grueling conditions"},
+    {"max": 62, "result": "Lost gear or supplies"},
+    {"max": 65, "result": "Party member causes trouble"},
+    {"max": 69, "result": "Precipitous climb or descent"},
+    {"max": 72, "result": "Swarming creatures"},
+    {"max": 75, "result": "Toxic or corrosive environment"},
+    {"max": 78, "result": "Trap or alarm"},
+    {"max": 82, "result": "Treacherous footing"},
+    {"max": 85, "result": "Unfriendly explorers"},
+    {"max": 88, "result": "Venomous creature"},
+    {"max": 94, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

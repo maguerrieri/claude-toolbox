@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/type",
+  "die": "1d100",
+  "rows": [
+    {"max": 60, "result": "Sea Cave — Caves of watery passages; carved by the tides"},
+    {"max": 100, "result": "Inland Cave — Caves of echoing stone; plunging deep into the earth"}
+  ]
+}

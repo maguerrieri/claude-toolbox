@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:sundered_isles/island/visible_habitation/reaches",
+  "die": "1d100",
+  "rows": [
+    {"max": 65, "result": "No signs of habitation"},
+    {"max": 70, "result": "Inland smoke"},
+    {"max": 75, "result": "Coastal boats"},
+    {"max": 80, "result": "Seaside camp"},
+    {"max": 95, "result": "Seaside settlement"},
+    {"max": 100, "result": "Multiple visible communities or extensive cultivation"}
+  ]
+}

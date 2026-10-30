@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/loyalty/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Allies"},
+    {"max": 20, "result": "Bulwarks"},
+    {"max": 30, "result": "Caretakers"},
+    {"max": 40, "result": "Guardians"},
+    {"max": 50, "result": "Loyalists"},
+    {"max": 60, "result": "Sentinels"},
+    {"max": 70, "result": "Sentries"},
+    {"max": 80, "result": "Shields"},
+    {"max": 90, "result": "Wardens"},
+    {"max": 100, "result": "Watchers"}
+  ]
+}

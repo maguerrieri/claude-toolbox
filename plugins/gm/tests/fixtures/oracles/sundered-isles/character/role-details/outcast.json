@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/outcast",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Apostate"},
+    {"max": 20, "result": "Castaway"},
+    {"max": 30, "result": "Deserter / Mutineer"},
+    {"max": 40, "result": "Exile"},
+    {"max": 50, "result": "Fugitive"},
+    {"max": 60, "result": "Hermit"},
+    {"max": 70, "result": "Orphan"},
+    {"max": 80, "result": "Refugee"},
+    {"max": 90, "result": "Urchin"},
+    {"max": 100, "result": "Vagabond"}
+  ]
+}

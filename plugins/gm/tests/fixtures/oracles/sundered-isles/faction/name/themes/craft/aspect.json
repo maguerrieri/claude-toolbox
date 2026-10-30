@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/craft/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Adamantine"},
+    {"max": 20, "result": "Brass"},
+    {"max": 30, "result": "Copper"},
+    {"max": 40, "result": "Anchored"},
+    {"max": 50, "result": "Ember"},
+    {"max": 60, "result": "Forgeborn"},
+    {"max": 70, "result": "Iron"},
+    {"max": 80, "result": "Ironwrought"},
+    {"max": 90, "result": "Quicksilver"},
+    {"max": 100, "result": "Tempered"}
+  ]
+}

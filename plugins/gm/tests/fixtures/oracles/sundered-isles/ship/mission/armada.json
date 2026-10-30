@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/mission/armada",
+  "die": "1d100",
+  "rows": [
+    {"max": 12, "result": "Blockade a location"},
+    {"max": 24, "result": "Break a blockade"},
+    {"max": 32, "result": "Attack a Location"},
+    {"max": 38, "result": "Evacuate a location"},
+    {"max": 40, "result": "Transport people"},
+    {"max": 42, "result": "Transport cargo"},
+    {"max": 44, "result": "Conduct trade"},
+    {"max": 48, "result": "Hunt creatures"},
+    {"max": 60, "result": "Patrol an area"},
+    {"max": 62, "result": "Explore or travel to an area"},
+    {"max": 80, "result": "Engage an enemy"},
+    {"max": 82, "result": "Conduct piracy"},
+    {"max": 84, "result": "Conduct diplomacy"},
+    {"max": 94, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

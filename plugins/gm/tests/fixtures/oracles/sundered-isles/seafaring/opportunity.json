@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:sundered_isles/seafaring/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Cache of cargo or supplies"},
+    {"max": 8, "result": "Chance for a moment of inner peace"},
+    {"max": 12, "result": "Clear passage through otherwise perilous seas"},
+    {"max": 16, "result": "Clue offers insight into a current quest or mystery"},
+    {"max": 20, "result": "Clue to a foe's nature or vulnerabilities"},
+    {"max": 24, "result": "Creatures show the way or offer inspiration"},
+    {"max": 28, "result": "Crewmember offers insight or proposes a clever plan"},
+    {"max": 32, "result": "Crewmember reveals a helpful skill or background"},
+    {"max": 36, "result": "Crewmembers support or validate your leadership"},
+    {"max": 40, "result": "Foe inadvertently reveals themselves or tips their hand"},
+    {"max": 44, "result": "Fortuitous wind or current speeds your way"},
+    {"max": 48, "result": "Friendly community in sight"},
+    {"max": 52, "result": "Friendly ship crosses your path"},
+    {"max": 56, "result": "Good omens offer encouragement"},
+    {"max": 60, "result": "Ideal weather takes hold"},
+    {"max": 64, "result": "Impressive vista offers comfort or inspiration"},
+    {"max": 68, "result": "Lookout pinpoints a lurking foe"},
+    {"max": 72, "result": "Message or map with useful information"},
+    {"max": 76, "result": "Occasion for celebration or remembrance with the crew"},
+    {"max": 80, "result": "Opening to escape or avoid foes"},
+    {"max": 84, "result": "Plea for help from a potential benefactor"},
+    {"max": 88, "result": "Refuge offers a place to hide, plan, or recover"},
+    {"max": 92, "result": "Ship and crew perform beyond expectations"},
+    {"max": 96, "result": "Shipwreck or derelict ripe for the picking"},
+    {"max": 100, "result": "Source of fresh provisions"}
+  ]
+}

@@ -54,9 +54,11 @@ A meaning/inspiration oracle may be **split across tables read together** (e.g. 
 
 ## Composition (`extends:`)
 
-An adapter may `extends:` a base adapter (e.g. `ironsworn` and `starforged` both extend `ironsworn-core`). The core resolves the chain **parent → child**:
+An adapter may `extends:` a base adapter (e.g. `ironsworn` and `starforged` both extend `ironsworn-core`, and `sundered-isles` extends `starforged`). The core resolves the chain **parent → child**:
 - **Manifest keys:** the child overrides the parent on collision (child wins).
 - **Data files** (`oracles/`, `rules/`): unioned **by path** under those dirs — the child adds new files and overrides any the parent defined at the same path.
+
+So a child replaces a parent's table by shipping one at the same path, and every reference to the parent's table then reaches the child's. There is no way to delete a parent's file: to retire one, the child ships a one-entry table at its path that names the replacement. `sundered-isles` does both for the Starforged tables Sundered Isles replaces (see its `adapter.md`).
 
 A base adapter may be marked `abstract: true` in its front-matter (not playable on its own — a campaign must name a concrete variant that extends it); a variant supplies the genre data. The `generic` adapter uses no `extends`.
 
@@ -71,7 +73,7 @@ A base adapter may be marked `abstract: true` in its front-matter (not playable 
 | `rules/character-creation.md` | walks its steps to build the character, instead of the generic concept-and-name flow |
 | `rules/sector-creation.md` | walks its steps to build the starting location, writing what it makes to the campaign's state files |
 
-`starforged` ships all four; `generic` and `ironsworn` ship none and keep the generic flow. The files are prose the core follows, like the rest of an adapter: steps, and the tables to roll for each.
+`starforged` ships all four, and `sundered-isles` overrides all four with its own (its starting location is a chart of islands, not a sector); `generic` and `ironsworn` ship none and keep the generic flow. The files are prose the core follows, like the rest of an adapter: steps, and the tables to roll for each.
 
 ## Visibility (the GM screen)
 

@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:sundered_isles/seafaring/waypoints/known_waters/margins",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "**Sails, ho!**\nShip (`oracles/ship/`)"},
+    {"max": 30, "result": "**Changing weather**\nWeather (`oracles/weather/`)"},
+    {"max": 50, "result": "**Instance (choose one)**\n* Seafaring Details (`oracles/seafaring/details.md`)\n* Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 60, "result": "**Lost souls**\nShipwreck (`oracles/shipwreck/`)"},
+    {"max": 70, "result": "**Relic of the past**\nRuin (`oracles/ruin/`)"},
+    {"max": 85, "result": "**Character focus**\nInterlude Scene (`oracles/misc/interlude-scene.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/details_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Arcane trap"},
+    {"max": 10, "result": "Bloody trail leads belowdecks"},
+    {"max": 15, "result": "Crawling with insects"},
+    {"max": 20, "result": "Crew held in thrall to sorcerous powers"},
+    {"max": 23, "result": "Diseased or corrupted crew"},
+    {"max": 26, "result": "Dreadful phantom whispers"},
+    {"max": 29, "result": "Fearsome creatures among the shadows"},
+    {"max": 32, "result": "Illusionary facade"},
+    {"max": 35, "result": "Lower decks strung with webs"},
+    {"max": 40, "result": "Marked with eldritch symbols"},
+    {"max": 45, "result": "Protected by a monstrous beast"},
+    {"max": 48, "result": "Putrefied provisions"},
+    {"max": 53, "result": "Reanimating crew"},
+    {"max": 56, "result": "Ritual circle or altar"},
+    {"max": 59, "result": "Rotting stench"},
+    {"max": 62, "result": "Scorched black by fire"},
+    {"max": 65, "result": "Sentient or living ship"},
+    {"max": 68, "result": "Sorcerous commander"},
+    {"max": 73, "result": "Spectral haunts"},
+    {"max": 76, "result": "Spreading decay"},
+    {"max": 79, "result": "Strewn with rusting cages and chains"},
+    {"max": 84, "result": "Swarming with large rats"},
+    {"max": 87, "result": "Transforming crew"},
+    {"max": 92, "result": "Truth revealed under moonlight"},
+    {"max": 95, "result": "Victims entombed within ship structure"},
+    {"max": 100, "result": "Warnings scrawled in blood"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/rebellion/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Crows"},
+    {"max": 20, "result": "Gulls"},
+    {"max": 30, "result": "Marauders"},
+    {"max": 40, "result": "Outcasts"},
+    {"max": 50, "result": "Pirates"},
+    {"max": 60, "result": "Reavers"},
+    {"max": 70, "result": "Drifters"},
+    {"max": 80, "result": "Relics"},
+    {"max": 90, "result": "Shards"},
+    {"max": 100, "result": "Tempests"}
+  ]
+}

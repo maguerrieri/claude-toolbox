@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/merchant",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Barkeep"},
+    {"max": 40, "result": "Fence"},
+    {"max": 60, "result": "Moneylender"},
+    {"max": 80, "result": "Shopkeeper"},
+    {"max": 100, "result": "Traveling merchant"}
+  ]
+}

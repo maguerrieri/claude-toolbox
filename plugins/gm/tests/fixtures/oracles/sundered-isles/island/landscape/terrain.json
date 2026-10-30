@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:sundered_isles/island/landscape/terrain",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Sodden — Low-lying wetlands"},
+    {"max": 20, "result": "Flat — Expansive plains"},
+    {"max": 30, "result": "Rolling — Hills or dunes"},
+    {"max": 40, "result": "Elevated — Sheer cliffs rising to a mesa or plateau"},
+    {"max": 50, "result": "Sloped — Terrain rising gradually to a prominent ridge or peak"},
+    {"max": 70, "result": "Rugged — Varied terrain of craggy hills and dramatic rock formations"},
+    {"max": 90, "result": "Mountainous — Imposing heights and deep valleys"},
+    {"max": 100, "result": "Volcanic — Active volcanoes and lava fields"}
+  ]
+}

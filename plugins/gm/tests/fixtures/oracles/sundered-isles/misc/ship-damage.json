@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/ship_damage",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Bothersome Damage: Shaken morale\nBad Damage: Breaking morale\nCritical Damage: Broken morale"},
+    {"max": 20, "result": "Bothersome Damage: Minor casualties\nBad Damage: Severe casualties\nCritical Damage: Horrible casualties"},
+    {"max": 30, "result": "Bothersome Damage: Tangled rigging\nBad Damage: Fraying rigging\nCritical Damage: Broken rigging"},
+    {"max": 40, "result": "Bothersome Damage: Weakened mast\nBad Damage: Splintering mast\nCritical Damage: Broken mast"},
+    {"max": 50, "result": "Bothersome Damage: Fouled sail\nBad Damage: Torn sail\nCritical Damage: Mangled sail"},
+    {"max": 55, "result": "Bothersome Damage: Damaged rudder\nBad Damage: Jammed rudder\nCritical Damage: Broken rudder"},
+    {"max": 65, "result": "Bothersome Damage: Fire on deck\nBad Damage: Fire below decks\nCritical Damage: Burning magazine"},
+    {"max": 75, "result": "Bothersome Damage: Swamped deck\nBad Damage: Flooded bilge\nCritical Damage: Keeling over"},
+    {"max": 80, "result": "Bothersome Damage: Dismounted cannons\nBad Damage: Damaged cannons\nCritical Damage: Destroyed cannons"},
+    {"max": 90, "result": "Bothersome Damage: Battered hull\nBad Damage: Buckling hull\nCritical Damage: Breached hull"},
+    {"max": 95, "result": "Bothersome Damage: Damaged compartment,  module, or support vehicle\nBad Damage: Failing compartment, module, or support vehicle\nCritical Damage: Broken compartment, module, or support vehicle"},
+    {"max": 100, "result": "Roll twice; if the same result, step up the severity"}
+  ]
+}

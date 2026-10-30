@@ -1,0 +1,25 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/mission/large",
+  "die": "1d100",
+  "rows": [
+    {"max": 2, "result": "Blockade a location"},
+    {"max": 4, "result": "Break a blockade"},
+    {"max": 6, "result": "Attack a Location"},
+    {"max": 8, "result": "Evacuate a location"},
+    {"max": 14, "result": "Transport people"},
+    {"max": 22, "result": "Transport cargo"},
+    {"max": 30, "result": "Conduct trade"},
+    {"max": 36, "result": "Hunt creatures"},
+    {"max": 42, "result": "Patrol an area"},
+    {"max": 48, "result": "Explore or travel to an area"},
+    {"max": 58, "result": "Engage an enemy"},
+    {"max": 70, "result": "Conduct piracy"},
+    {"max": 74, "result": "Conduct diplomacy"},
+    {"max": 76, "result": "Conduct espionage"},
+    {"max": 78, "result": "Conduct research"},
+    {"max": 80, "result": "Deliver item or message"},
+    {"max": 84, "result": "Smuggle contraband"},
+    {"max": 94, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

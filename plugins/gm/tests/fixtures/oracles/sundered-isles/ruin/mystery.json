@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/ruin/mystery",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Calamitous downfall — What brought this place to ruin?"},
+    {"max": 20, "result": "Cultural legacy — What unique beliefs or customs were practiced here?"},
+    {"max": 30, "result": "Enemy schemes — What purpose does a foe or rival have in this place?"},
+    {"max": 40, "result": "Enigmatic waymarker — What greater site or discovery does this place lead to?"},
+    {"max": 50, "result": "Fabled relic — What legendary artifact or treasure is held here?"},
+    {"max": 60, "result": "Heroes' rest — What legendary figure is entombed here?"},
+    {"max": 70, "result": "Lost people — What became of the people who once inhabited this site?"},
+    {"max": 80, "result": "Personal heritage — What connection does this place have to your culture or calling?"},
+    {"max": 90, "result": "Unfulfilled promise — What forsaken vow or lost destiny hangs heavy over this place?"},
+    {"max": 100, "result": "Unusual purpose — What unexpected function did this site serve?"}
+  ]
+}

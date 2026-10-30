@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:sundered_isles/getting_underway/take_command/crew_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Bound to the ship, unable to sail another"},
+    {"max": 10, "result": "Bound to the will of a dreadful artifact"},
+    {"max": 15, "result": "Built or augmented with strange technologies"},
+    {"max": 20, "result": "Cursed with foreknowledge of a dreadful fate"},
+    {"max": 25, "result": "Hunted by a vengeful sea beast"},
+    {"max": 30, "result": "In the service of a malevolent god or entity"},
+    {"max": 40, "result": "Obsessed with superstitious routines and rituals"},
+    {"max": 45, "result": "Once dead, now cursed with unnatural life"},
+    {"max": 50, "result": "Plagued with unnatural sickness"},
+    {"max": 60, "result": "Suffers a jinxed reputation, and forsaken by others"},
+    {"max": 65, "result": "Suffers an insatiable need"},
+    {"max": 75, "result": "Survivors of an attack by a horrifying foe or monstrous beast"},
+    {"max": 85, "result": "Tattooed with elaborate mystical wards"},
+    {"max": 95, "result": "Tormented by unforgiving spirits"},
+    {"max": 100, "result": "True nature revealed under moonlight"}
+  ]
+}

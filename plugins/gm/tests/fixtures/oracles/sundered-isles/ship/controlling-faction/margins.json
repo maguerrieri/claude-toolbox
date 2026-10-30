@@ -1,0 +1,9 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/controlling_faction/margins",
+  "die": "1d100",
+  "rows": [
+    {"max": 45, "result": "Known faction"},
+    {"max": 70, "result": "Unknown faction"},
+    {"max": 100, "result": "Independent"}
+  ]
+}

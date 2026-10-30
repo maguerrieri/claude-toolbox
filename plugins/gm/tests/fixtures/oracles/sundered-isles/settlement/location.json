@@ -1,0 +1,9 @@
+{
+  "id": "oracle_rollable:sundered_isles/settlement/location",
+  "die": "1d100",
+  "rows": [
+    {"max": 60, "result": "Shore — Where land meets the sea"},
+    {"max": 80, "result": "Inland — Within the island interior"},
+    {"max": 100, "result": "Waterside — By a major inland waterway"}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:sundered_isles/treasure/value/small",
+  "die": "1d100",
+  "rows": [
+    {"max": 80, "result": "Trifle — One Precious Item (`oracles/treasure/precious-items.md`)"},
+    {"max": 100, "result": "Stash — Roll the action die and reveal that many Precious Items (`oracles/treasure/precious-items.md`)"}
+  ]
+}

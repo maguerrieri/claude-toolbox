@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/sea/feature_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Bewitching illusion"},
+    {"max": 10, "result": "Bloody water"},
+    {"max": 15, "result": "Bones of a colossal beast"},
+    {"max": 20, "result": "Corpses encrusted with sea life"},
+    {"max": 25, "result": "Creepy echoes"},
+    {"max": 30, "result": "Drowned corpses come to life"},
+    {"max": 35, "result": "Eldritch symbols"},
+    {"max": 40, "result": "Fouled water"},
+    {"max": 45, "result": "Frozen water"},
+    {"max": 50, "result": "Ghastly reflections in the water"},
+    {"max": 55, "result": "Impenetrable darkness"},
+    {"max": 60, "result": "Lights snuffed out"},
+    {"max": 65, "result": "Monstrous water-dwelling predator"},
+    {"max": 70, "result": "Rotting stench"},
+    {"max": 75, "result": "Sea creatures mutated by darkness"},
+    {"max": 80, "result": "Spectral manifestation"},
+    {"max": 85, "result": "Unnatural cold"},
+    {"max": 90, "result": "Unnaturally rising water"},
+    {"max": 95, "result": "Unseen entities grab hold"},
+    {"max": 100, "result": "Water above, stone below"}
+  ]
+}

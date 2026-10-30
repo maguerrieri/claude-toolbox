@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/treasure/location_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Banished to the realm of the dead"},
+    {"max": 10, "result": "Consumed by a monstrous beast"},
+    {"max": 15, "result": "Entombed in a crypt or graveyard"},
+    {"max": 30, "result": "Held aboard a cursed ship"},
+    {"max": 35, "result": "Locked in a mechanized vault"},
+    {"max": 50, "result": "Lost in the heart of a trackless jungle"},
+    {"max": 65, "result": "Mired in a forsaken swamp"},
+    {"max": 80, "result": "Safeguarded in a monstrous beast's lair"},
+    {"max": 90, "result": "Sealed in the bowels of a raging volcano"},
+    {"max": 100, "result": "Sunk to the depths of an abyssal trench"}
+  ]
+}

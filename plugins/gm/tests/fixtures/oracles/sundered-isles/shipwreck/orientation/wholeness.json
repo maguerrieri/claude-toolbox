@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:sundered_isles/shipwreck/orientation/wholeness",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Broken and missing large sections"},
+    {"max": 20, "result": "Broken and scattered"},
+    {"max": 45, "result": "Split in two"},
+    {"max": 70, "result": "Somewhat intact, but fragile"},
+    {"max": 90, "result": "Mostly intact"},
+    {"max": 100, "result": "Wholly intact"}
+  ]
+}
