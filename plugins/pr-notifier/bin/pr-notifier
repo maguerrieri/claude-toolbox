@@ -107,7 +107,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-older_than_a_minute() { [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }
+older_than() { [ -n "$(find "$1" -maxdepth 0 -mmin +"$2" 2>/dev/null)" ]; } # older_than <path> <minutes>
+older_than_a_minute() { older_than "$1" 1; }
 
 take_over() { # take_over <the dead holder's pid, or "" for none>: removes a dead holder's lock
 	# Takeovers run one at a time, and each re-reads the holder inside its own
@@ -131,8 +132,10 @@ lock() { # lock <seconds to wait>: 0 once held, 1 if another command holds it
 	mkdir -p "$home" || die "can't create $home"
 	while ! mkdir "$lock_dir" 2>/dev/null; do
 		holder=$(cat "$lock_dir/pid" 2>/dev/null)
-		if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-			take_over "$holder" # its holder died
+		if [ -n "$holder" ] && { ! kill -0 "$holder" 2>/dev/null || older_than "$lock_dir" 30; }; then
+			# Its holder died, or held it far longer than any command runs: a
+			# dead holder whose pid another process now has.
+			take_over "$holder"
 			! mkdir "$lock_dir" 2>/dev/null || break
 		elif [ -z "$holder" ] && older_than_a_minute "$lock_dir"; then
 			take_over "" # a holder that died between mkdir and writing its pid
@@ -346,35 +349,39 @@ poll_feed() { # marks subscribed PRs whose notification thread moved as dirty
 	}
 	local lm_new matched
 	lm_new=$(awk -F': *' 'tolower($1) == "last-modified" { sub(/^[^:]*: */, ""); print; exit }' "$raw.lf")
-	matched=$(jq -r --slurpfile reg "$work_registry" '
+	# A subscribed PR's thread marks it to be read only when its updated_at
+	# moved past the one last seen: since repeats for up to an hour, so the
+	# same thread comes back on every 200 until then.
+	jq -c --slurpfile reg "$work_registry" '
 		($reg[0].subscriptions | map(.pr) | unique) as $subs
 		| [ .[] | select(.subject.type? == "PullRequest")
+			| (.updated_at // "") as $at
 			| (.subject.url // "") | capture("/repos/(?<p>[^/]+/[^/]+)/pulls/(?<n>[0-9]+)$")?
-			| "\(.p | ascii_downcase)#\(.n)" | select(. as $r | $subs | index($r)) ] | unique | .[]' "$body")
+			| {pr: "\(.p | ascii_downcase)#\(.n)", at: $at} | select(.pr as $r | $subs | index($r)) ]
+		| group_by(.pr) | map(max_by(.at))' "$body" >"$run_tmp/threads.json"
 	# since moves at most hourly, so the URL usually repeats and a quiet poll
 	# can still be a 304; when it moves, it goes to a little before this poll,
 	# since a thread's updated_at can trail its event.
-	local since_epoch
+	local since_epoch matched
 	since_epoch=$(jq -nr --arg s "$since" '$s | try fromdateiso8601 catch 0')
 	[ $((now - since_epoch)) -lt 3600 ] || since=$(iso $((now - 300)))
-	edit "$work_state" --arg lm "$lm_new" --arg since "$since" --arg m "$matched" '
+	matched=$(jq -r --slurpfile st "$work_state" \
+		'[.[] | select(.at == "" or .at > ($st[0].prs[.pr].thread_at // ""))] | length' "$run_tmp/threads.json")
+	edit "$work_state" --arg lm "$lm_new" --arg since "$since" --slurpfile th "$run_tmp/threads.json" '
 		.feed += {last_modified: (if $lm == "" then null else $lm end), since: $since}
-		| reduce ($m | split("\n")[] | select(. != "")) as $r (.; .prs[$r].dirty = true)'
-	log "poll status=200 threads=$(jq length "$body") matched=$(printf '%s' "$matched" | grep -c .)"
+		| reduce $th[0][] as $t (.;
+			if $t.at == "" or $t.at > (.prs[$t.pr].thread_at // "") then .prs[$t.pr] += {dirty: true, thread_at: $t.at} else . end)'
+	log "poll status=200 threads=$(jq length "$body") matched=$matched"
 }
 
 # --- check: examining a PR ------------------------------------------------
 
-my_login() { # the sessions' own login, cached for a day
-	local login at
-	login=$(jq -r '.me.login // empty' "$work_state")
-	at=$(jq -r '.me.at // 0' "$work_state")
-	if [ -z "$login" ] || [ $((now - at)) -ge 86400 ]; then
-		login=$("$gh_bin" api user --jq .login </dev/null 2>/dev/null) || login=
-		[ -n "$login" ] || return 1
-		edit "$work_state" --arg l "$login" --argjson t "$now" '.me = {login: $l, at: $t}'
-	fi
-	printf '%s' "$login"
+my_login= # read once per run, never cached across runs: owner-check reads it
+# live too, and the two must agree on who the sessions are
+read_my_login() {
+	[ -n "$my_login" ] && return 0
+	my_login=$("$gh_bin" api user --jq .login </dev/null 2>/dev/null) || my_login=
+	[ -n "$my_login" ]
 }
 
 owner_status() { # owner_status <owner>/<repo> <login>: owner-check's exit code
@@ -395,11 +402,29 @@ owner_status() { # owner_status <owner>/<repo> <login>: owner-check's exit code
 	echo "$code"
 }
 
+edit_authors() { # comment node ids on stdin: prints {node id: {login, type}} for each one GraphQL names an editor of
+	local args=() id
+	while IFS= read -r id; do
+		[[ $id =~ ^[A-Za-z0-9_=-]+$ ]] && args+=(-f "ids[]=$id")
+	done
+	if [ "${#args[@]}" -eq 0 ]; then
+		echo '{}'
+		return
+	fi
+	local out
+	out=$("$gh_bin" api graphql "${args[@]}" -f query='query($ids:[ID!]!){nodes(ids:$ids){... on IssueComment{id editor{login __typename}}}}' \
+		--jq '[.data.nodes[]? | select(. != null and .editor != null)
+			| {(.id): {login: .editor.login, type: (if .editor.__typename == "Bot" then "Bot" else "User" end)}}] | add // {}' \
+		</dev/null 2>/dev/null) || out=
+	[ -n "$out" ] || out='{}'
+	jq -c 'if type == "object" then . else {} end' <<<"$out" 2>/dev/null || echo '{}'
+}
+
 examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read failed
-	local ref=$1 repo_path=${1%#*} n=${1##*#} me baseline login owners result
+	local ref=$1 repo_path=${1%#*} n=${1##*#} baseline login owners editors result
 	baseline=$(jq -r --arg r "$ref" '[.subscriptions[] | select(.pr == $r) | .subscribed_at] | min // empty' "$work_registry")
 	[ -n "$baseline" ] || return 0
-	me=$(my_login) || {
+	read_my_login || {
 		log "examine pr=$ref error=\"can't read the sessions' own login\""
 		return 1
 	}
@@ -416,15 +441,18 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	}
 	jq --arg r "$ref" '.prs[$r] // {}' "$work_state" >"$run_tmp/ps.json"
 	set -- --slurpfile tl "$run_tmp/tl.json" --slurpfile pr "$run_tmp/pr.json" --slurpfile psf "$run_tmp/ps.json" \
-		--arg me "$me" --argjson bots "$review_bots" --arg baseline "$baseline" --argjson now "$now" \
+		--arg me "$my_login" --argjson bots "$review_bots" --arg baseline "$baseline" --argjson now "$now" \
 		--argjson retry_window "$retry_window"
+	# Who edited each comment edited since it was last seen: the REST timeline
+	# names only its author. An editor that can't be read is retried.
+	editors=$(edit_authors < <(jq -nr --arg phase edits --argjson editors '{}' --argjson owners '{}' "$@" -f "$examine_jq"))
 	owners='{}'
 	while IFS= read -r login; do
 		[ -n "$login" ] || continue
 		owners=$(jq -c --arg l "$(lc "$login")" --argjson c "$(owner_status "$repo_path" "$login")" '.[$l] = $c' <<<"$owners")
-	done < <(jq -nr --arg phase need --argjson owners '{}' "$@" -f "$examine_jq")
+	done < <(jq -nr --arg phase need --argjson editors "$editors" --argjson owners '{}' "$@" -f "$examine_jq")
 	result=$run_tmp/result.json
-	jq -n --arg phase result --argjson owners "$owners" "$@" -f "$examine_jq" >"$result" || {
+	jq -n --arg phase result --argjson editors "$editors" --argjson owners "$owners" "$@" -f "$examine_jq" >"$result" || {
 		log "examine pr=$ref error=\"filter failed\""
 		return 1
 	}
@@ -435,7 +463,7 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	edit "$work_state" --arg r "$ref" --slurpfile res "$result" --slurpfile reg "$work_registry" \
 		--argjson now "$now" --arg pr_url "$(jq -r '.html_url // ""' "$run_tmp/pr.json")" '
 		$res[0] as $x
-		| .prs[$r] = ($x.ps + {last_swept: $now, dirty: false})
+		| .prs[$r] = ($x.ps + {last_swept: $now, dirty: false} | del(.failing_since, .failing_reported))
 		| reduce ($reg[0].subscriptions[] | select(.pr == $r)) as $s (.;
 			reduce ($x.events[] | select(.at >= $s.subscribed_at)) as $e (.;
 				.pending[$s.session_id] //= {first_at: $now, events: []}
@@ -460,9 +488,27 @@ examine_due() { # every subscribed PR that is dirty or due a sweep
 		"$work_registry" >"$run_tmp/due"
 	while IFS= read -r ref; do
 		[ -n "$ref" ] || continue
-		# A failed read leaves the PR dirty, so the next check tries again.
-		examine "$ref" || edit "$work_state" --arg r "$ref" '.prs[$r].dirty = true'
+		examine "$ref" || pr_unreadable "$ref"
 	done <"$run_tmp/due"
+}
+
+pr_unreadable() { # pr_unreadable <ref>: after a failed read
+	# A failed read leaves the PR marked, so the next check tries again, until
+	# it has failed for hold_bound: then it is reported once and falls back to
+	# the sweep, so a PR that is gone (or was never a PR) costs one read per
+	# sweep, not one a minute.
+	local mins
+	edit "$work_state" --arg r "$1" --argjson now "$now" --argjson bound "$hold_bound" '
+		.prs[$r].failing_since //= $now
+		| if $now - .prs[$r].failing_since < $bound then .prs[$r].dirty = true
+		  else .prs[$r] += {dirty: false, last_swept: $now} end'
+	mins=$(jq -r --arg r "$1" --argjson now "$now" --argjson bound "$hold_bound" '.prs[$r]
+		| if ($now - .failing_since) >= $bound and (.failing_reported | not)
+		  then (($now - .failing_since) / 60 | floor) else empty end' "$work_state")
+	[ -n "$mins" ] || return 0
+	log "stale pr=$1 unreadable=${mins}m"
+	echo "pr-notifier: $1 has been unreadable for ${mins}m; its subscribers hear nothing until it reads again; see $log_file" >&2
+	edit "$work_state" --arg r "$1" '.prs[$r].failing_reported = true'
 }
 
 # --- check: delivery --------------------------------------------------------
@@ -551,7 +597,12 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
 		# A refused resume keeps its prompt for the next wake, which then
-		# delivers both; the template makes that harmless.
+		# delivers both; the template makes that harmless. Each retry would
+		# queue one more copy, so retries back off: 5, 10, 20, 40, then 60
+		# minutes apart.
+		edit "$work_state" --arg s "$sid" --argjson now "$now" '
+			.pending[$s].wake_failures = ((.pending[$s].wake_failures // 0) + 1)
+			| .pending[$s].next_wake_at = $now + ([300 * pow(2; .pending[$s].wake_failures - 1), 3600] | min)'
 		hold "$sid" "wake-failed"
 		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
 		return 1
@@ -571,7 +622,12 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 }
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind inflight updated tries
+	local sid=$1 cfg row id cwd pid status st kind inflight updated tries next
+	next=$(jq -r --arg s "$sid" '.pending[$s].next_wake_at // 0 | floor' "$work_state")
+	if [ "$now" -lt "$next" ]; then
+		hold "$sid" "wake-backoff until $(iso "$next")"
+		return
+	fi
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	row=$(session_row "$cfg" "$sid") || {
 		hold "$sid" listing-failed

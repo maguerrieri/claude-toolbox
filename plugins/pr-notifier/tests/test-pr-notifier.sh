@@ -43,7 +43,7 @@ cat >"$tmp/bin/gh" <<'GH_EOF'
 printf '%s\n' "$*" >>"$STUB/gh.log"
 [ "$1" = api ] || exit 1
 shift
-inc= hdr= ep= filter= slurp=
+inc= hdr= ep= filter= slurp= ids=()
 while [ $# -gt 0 ]; do
 	case $1 in
 	-i) inc=1; shift ;;
@@ -52,6 +52,10 @@ while [ $# -gt 0 ]; do
 	--slurp) slurp=1; shift ;;
 	--jq | -q) filter=$2; shift 2 ;;
 	--hostname) shift 2 ;;
+	-f | -F)
+		case $2 in "ids[]="*) ids+=("${2#ids\[\]=}") ;; esac
+		shift 2
+		;;
 	*) ep=$1; shift ;;
 	esac
 done
@@ -64,6 +68,18 @@ notifications*)
 		"$status" "$(cat "$STUB/feed.interval" 2>/dev/null || echo 60)" "$(cat "$STUB/feed.lm")"
 	[ "$status" != 304 ] || { echo 'gh: HTTP 304' >&2; exit 1; }
 	out=$(cat "$STUB/feed.json")
+	;;
+graphql)
+	# Each comment's editor from $STUB/editor-<node id> ("<login> <User|Bot>"), else none.
+	[ ! -f "$STUB/graphql.fail" ] || { echo 'gh: HTTP 502' >&2; exit 1; }
+	out=$(for id in "${ids[@]}"; do
+		if [ -f "$STUB/editor-$id" ]; then
+			read -r l t <"$STUB/editor-$id"
+			jq -n --arg id "$id" --arg l "$l" --arg t "$t" '{id: $id, editor: {login: $l, __typename: $t}}'
+		else
+			jq -n --arg id "$id" '{id: $id, editor: null}'
+		fi
+	done | jq -s '{data: {nodes: .}}')
 	;;
 user)
 	[ ! -f "$STUB/user.fail" ] || { echo 'gh: HTTP 401' >&2; exit 1; }
@@ -132,7 +148,11 @@ pr() { # pr <n> <open|closed|merged> [at]
 comment() { # comment <pr> <id> <login> <type> <created> [updated] [body]
 	jq -n --argjson pr "$1" --argjson id "$2" --arg u "$3" --arg t "$4" --arg c "$5" --arg up "${6:-$5}" \
 		--arg b "${7:-a comment}" '{event: "commented", id: $id, user: {login: $u, type: $t}, actor: {login: $u},
-		html_url: "https://github.com/o/r/pull/\($pr)#issuecomment-\($id)", created_at: $c, updated_at: $up, body: $b}'
+		html_url: "https://github.com/o/r/pull/\($pr)#issuecomment-\($id)", node_id: "IC_\($id)",
+		created_at: $c, updated_at: $up, body: $b}'
+}
+editor() { # editor <comment id> <login> [User|Bot]: who GraphQL says last edited it
+	echo "$2 ${3:-User}" >"$STUB/editor-IC_$1"
 }
 review() { # review <pr> <id> <login> <type> <submitted>
 	jq -n --argjson pr "$1" --argjson id "$2" --arg u "$3" --arg t "$4" --arg s "$5" \
@@ -364,6 +384,7 @@ record 'o/r#7@aaaaaaaa' 'and the subscription survives the held close' "$(subs)"
 # Edits of comments posted before the subscription.
 reset
 pre=$(iso $((T0 - 300)))
+editor 101 mari; editor 102 eve
 timeline 7 "$(comment 7 101 mari User "$pre")" "$(comment 7 102 eve User "$pre")"
 nt "$T" check
 record 0 'unedited comments from before the subscription wake nothing' "$(wakes)"
@@ -381,6 +402,7 @@ record yes "the stranger's edit settles after the retry window" "$(logged 'key=c
 
 # Ownership is never pinned to a comment: an edit is checked like a new item.
 reset
+editor 101 mari
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
 record 1 "an owner's comment wakes" "$(wakes)"
@@ -391,9 +413,49 @@ nt $((T + 4000)) check
 record 1 'once that login loses admin, its edit wakes nothing after the cache expires' "$(wakes)"
 record yes 'because the edit got a fresh owner check' "$(has "$STUB/gh.log" 'collaborators/mari/permission')"
 
+# An edit is its editor's, not its author's.
+reset
+timeline 7 "$(comment 7 101 mari User "$pre")" "$(comment 7 102 eve User "$pre")"
+nt "$T" check
+editor 101 wes
+editor 102 mari
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 100)))")" "$(comment 7 102 eve User "$pre" "$(iso $((T + 100)))")"
+nt $((T + 400)) check
+record 1 "an edit of the owner's comment by someone else wakes nothing; the owner's edit of anyone's does" "$(wakes)"
+record '- edited https://github.com/o/r/pull/7#issuecomment-102' 'naming the comment the owner edited' "$(prompt | tail -n 1)"
+record yes 'and the log credits the editor' "$(logged 'key=comment:102 actor=mari verdict=keep reason="owner (edited)"')"
+record yes 'the other edit too' "$(logged 'key=comment:101 actor=wes verdict=drop')"
+
+reset
+timeline 7 "$(comment 7 101 mari User "$pre")"
+nt "$T" check
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 100)))")"
+nt $((T + 400)) check
+record 0 'an edit whose editor GraphQL names nobody for wakes nothing yet' "$(wakes)"
+record yes 'and is rechecked' "$(logged 'key=comment:101 actor=mari verdict=drop reason="edit, editor unread; rechecked')"
+editor 101 mari
+nt $((T + 700)) check
+record 1 'until the editor reads, inside the window' "$(wakes)"
+
+# Each edit gets its own recheck window.
+reset
+editor 101 mari
+touch "$STUB/perm-mari.fail"
+timeline 7 "$(comment 7 101 mari User "$pre")"
+nt "$T" check
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 100)))")"
+nt $((T + 400)) check
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 1900)))")"
+nt $((T + 2200)) check
+record no 'a second edit inside the first edit'"'"'s window is not settled with it' "$(logged 'settled')"
+rm "$STUB/perm-mari.fail"
+nt $((T + 2500)) check
+record 1 'and wakes once the owner check reads' "$(wakes)"
+
 # An owner check that fails for a whole retry window settles that edit only.
 reset
 touch "$STUB/perm-mari.fail"
+editor 101 mari
 timeline 7 "$(comment 7 101 mari User "$pre")"
 nt "$T" check
 timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 100)))")"
@@ -406,6 +468,7 @@ nt $((T + 2800)) check
 record 1 'but the next edit of that comment is checked afresh, and wakes' "$(wakes)"
 
 reset
+editor 101 mari
 timeline 7 "$(comment 7 101 mari User "$(iso $((T0 - 300)))" "$(iso $((T0 + 60)))")"
 nt "$T" check
 record '- edited https://github.com/o/r/pull/7#issuecomment-101' 'an edit already made when the notifier first reads the comment wakes too' "$(prompt | tail -n 1)"
@@ -502,9 +565,15 @@ timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
 record '1|1' 'a refused resume keeps the event' "$(wakes)|$(held)"
 record yes 'and logs why' "$(logged 'wake-failed session=aaaaaaaa rc=1 detail="Workspace not trusted.')"
-echo 0 >"$STUB/resume.rc"
 nt $((T + 60)) check
-record '2|0' 'and the next check delivers it' "$(wakes)|$(held)"
+record 1 'retries back off, so refused prompts don'"'"'t pile up a minute at a time' "$(wakes)"
+nt $((T + 300)) check
+record 2 'the retry comes five minutes later' "$(wakes)"
+nt $((T + 700)) check
+record 2 'and the next one ten minutes after that' "$(wakes)"
+echo 0 >"$STUB/resume.rc"
+nt $((T + 900)) check
+record '3|0' 'which delivers it' "$(wakes)|$(held)"
 
 reset
 echo '{"broken": ' >"$STUB/agents.json"
@@ -549,7 +618,7 @@ record yes 'and is logged' "$(logged 'poll status=304')"
 nt $((T + 100)) check
 record no 'X-Poll-Interval is honored: no poll before it passes' "$(has "$STUB/gh.log" notifications)"
 echo 200 >"$STUB/feed.status"
-jq -n '[{reason: "author", subject: {type: "PullRequest", url: "https://api.github.com/repos/O/R/pulls/7"}},
+jq -n '[{reason: "author", updated_at: "2026-10-31T22:45:00Z", subject: {type: "PullRequest", url: "https://api.github.com/repos/O/R/pulls/7"}},
 	{reason: "author", subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/99"}}]' >"$STUB/feed.json"
 timeline 7 "$(comment 7 101 mari User "$(iso $((T + 90)))")"
 nt $((T + 130)) check
@@ -557,6 +626,12 @@ record 1 'a thread on a subscribed PR has it read at once, without waiting for t
 record yes 'and the log counts the match' "$(logged 'poll status=200 threads=2 matched=1')"
 record "$(iso $((T - 300)))" 'a 200 within the hour leaves since alone, so the URL repeats' \
 	"$(jq -r '.feed.since' "$PR_NOTIFIER_HOME/state.json")"
+: >"$STUB/gh.log"
+nt $((T + 200)) check
+record no 'the same thread on the next 200 marks nothing: its updated_at hasn'"'"'t moved' "$(has "$STUB/gh.log" 'pulls/7')"
+jq '.[0].updated_at = "2026-10-31T23:00:00Z"' "$STUB/feed.json" >"$STUB/feed.json.new" && mv "$STUB/feed.json.new" "$STUB/feed.json"
+nt $((T + 270)) check
+record yes 'a moved one does' "$(has "$STUB/gh.log" 'pulls/7')"
 
 # A notification that never comes: the sweep still finds the owner's event.
 reset
@@ -572,7 +647,7 @@ reset
 echo 200 >"$STUB/feed.status"
 nt "$T" check
 : >"$STUB/gh.log"
-jq -n '[{reason: "author", subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/7"}}]' >"$STUB/feed.json"
+jq -n '[{reason: "author", updated_at: "2026-11-01T00:30:00Z", subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/7"}}]' >"$STUB/feed.json"
 timeline 7 "$(comment 7 101 mari User "$(iso $((T + 3600)))")"
 nt $((T + 10800)) check
 record yes 'after three hours down, the poll asks from before the last one' "$(has "$STUB/gh.log" "since=$(iso $((T - 300)))")"
@@ -617,6 +692,30 @@ nt "$T" check
 record 1 "a dead holder's lock is taken over" "$(wakes)"
 record no 'and released afterwards' "$([ -d "$PR_NOTIFIER_HOME/lock" ] && echo yes || echo no)"
 record no 'with no takeover left behind' "$([ -d "$PR_NOTIFIER_HOME/lock.takeover" ] && echo yes || echo no)"
+
+reset
+mkdir "$PR_NOTIFIER_HOME/lock" && echo $$ >"$PR_NOTIFIER_HOME/lock/pid"
+touch -t 202001010000 "$PR_NOTIFIER_HOME/lock"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record 1 'a lock held for over half an hour is taken over, even if its pid is alive (reused)' "$(wakes)"
+
+# A PR that can't be read.
+reset
+rm "$STUB/pr-7.json"
+nt "$T" check 2>/dev/null
+: >"$STUB/gh.log"
+nt $((T + 60)) check 2>/dev/null
+record yes 'an unreadable PR is retried on the next check' "$(has "$STUB/gh.log" 'pulls/7')"
+nt $((T + 1801)) check 2>"$tmp/err"
+record yes 'once it has failed past the bound, it is reported' "$(has "$tmp/err" 'o/r#7 has been unreadable for 30m')"
+record yes 'and logged' "$(logged 'stale pr=o/r#7 unreadable=30m')"
+: >"$STUB/gh.log"
+nt $((T + 1861)) check 2>"$tmp/err"
+record 'no|' 'then it falls back to the sweep, reported once' "$(has "$STUB/gh.log" 'pulls/7')|$(cat "$tmp/err")"
+pr 7 open
+nt $((T + 2200)) check
+record null 'a later good read clears it' "$(jq -r '.prs["o/r#7"].failing_since' "$PR_NOTIFIER_HOME/state.json")"
 
 reset
 mkdir "$PR_NOTIFIER_HOME/lock" "$PR_NOTIFIER_HOME/lock.takeover" && echo $$ >"$PR_NOTIFIER_HOME/lock/pid"
