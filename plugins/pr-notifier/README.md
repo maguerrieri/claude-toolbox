@@ -60,8 +60,10 @@ macOS user and shared by all of that user's config roots:
 - `notifier.log`: append-only, one line per poll, filtered event (kept or dropped, and
   why), hold, wake, unsubscribe and stale hold. The launchd job rotates it past 1 MiB,
   keeping one old copy as `notifier.log.1`.
-- `job.log` and `job.last`: the launchd job's own output (including `check`'s stderr,
-  rotated the same way) and its last run's outcome ([INSTALL.md](INSTALL.md)).
+- `job.log`, `job.last` and `jq-path`: the launchd job's own output (including
+  `check`'s stderr, rotated the same way), its last run's outcome, and the `jq` the
+  install found on `wake_path`, which the job reads `config.json` with
+  ([INSTALL.md](INSTALL.md)).
 - `lock/`: held by any command that writes, so a `subscribe` never races a `check`.
   `subscribe` and `unsubscribe` wait up to five minutes for it; `check` skips its turn
   if it's held. A lock whose holder died, or that has been held over 30 minutes (a dead

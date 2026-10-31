@@ -13,6 +13,7 @@ checklist below once per Mac.
 | The stable CLI path | `~/.local/bin/pr-notifier` | `scripts/install.sh`, from `scripts/pr-notifier-shim.sh` |
 | The job script | `~/.local/libexec/pr-notifier-job` | `install.sh`, from `scripts/pr-notifier-job.sh` |
 | `wake_path` | `~/.local/state/pr-notifier/config.json` | `install.sh`, captured from bot's login shell |
+| The `jq` the job reads `config.json` with | `~/.local/state/pr-notifier/jq-path` | `install.sh`: the one `wake_path` finds |
 | The launchd job | `/Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist` | Mari, as root (step 2) |
 | Logs | `~/.local/state/pr-notifier/`: `notifier.log` (the CLI), `job.log` and `job.last` (the job) | the notifier, as bot |
 
