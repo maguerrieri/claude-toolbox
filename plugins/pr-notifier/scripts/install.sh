@@ -24,8 +24,9 @@
 #                         /Library/LaunchDaemons: it runs with nobody logged
 #                         in and comes back after a reboot. Installing it
 #                         needs root, so this only checks it and says what's
-#                         next (INSTALL.md, step 2). It removes a user-domain
-#                         agent left from --domain user.
+#                         next (INSTALL.md, step 2). Once the LaunchDaemon
+#                         is loaded, it removes a user-domain agent left from
+#                         --domain user.
 #   user                  a user-domain agent in ~/Library/LaunchAgents with
 #                         LimitLoadToSessionType Background, bootstrapped into
 #                         user/<uid> with no root. Not known to survive a
@@ -37,14 +38,41 @@
 # uninstall removes the user-domain agent, the job script and the shim, and
 # keeps the state directory (subscriptions, logs, config.json).
 #
+# A copy in a plugin cache first hands over to the newest copy in any of the
+# user's config roots (~/.claude, ~/.claude-*), as the shim does for the CLI.
+#
 # Test seams: PR_NOTIFIER_HOME (the state directory, as for the CLI),
 # PR_NOTIFIER_LAUNCHCTL (replaces launchctl), PR_NOTIFIER_SECURITY (replaces
-# /usr/bin/security) and PR_NOTIFIER_DAEMON_DIR (replaces
+# /usr/bin/security), PR_NOTIFIER_DSCL (replaces /usr/bin/dscl, which names
+# the account's login shell) and PR_NOTIFIER_DAEMON_DIR (replaces
 # /Library/LaunchDaemons).
 set -uo pipefail
 
 label=works.sprue.bot.pr-notifier
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || exit 1
+
+# Run the newest copy installed in any of this user's config roots, the one
+# the shim runs the CLI from, so the job script and plist installed here
+# match that CLI. Only a copy in a plugin cache hands over; one run from a
+# checkout (or a test) is the copy its caller means.
+case $here in
+*/plugins/cache/maguerrieri-toolbox/pr-notifier/*/scripts)
+	if [ -z "${PR_NOTIFIER_INSTALL_NEWEST:-}" ]; then
+		newest=$(
+			for f in "$HOME"/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier/*/scripts/install.sh \
+				"$HOME"/.claude-*/plugins/cache/maguerrieri-toolbox/pr-notifier/*/scripts/install.sh; do
+				[ -f "$f" ] || continue
+				v=${f%/scripts/install.sh}
+				printf '%s %s\n' "${v##*/}" "$f"
+			done | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 | cut -d' ' -f2-
+		)
+		if [ -n "$newest" ] && [ "$newest" != "$here/install.sh" ]; then
+			PR_NOTIFIER_INSTALL_NEWEST=1 exec bash "$newest" "$@"
+		fi
+	fi
+	;;
+esac
+
 shim_src=$here/pr-notifier-shim.sh
 job_src=$here/pr-notifier-job.sh
 
@@ -59,7 +87,12 @@ launchctl=${PR_NOTIFIER_LAUNCHCTL:-launchctl}
 security=${PR_NOTIFIER_SECURITY:-/usr/bin/security}
 uid=$(id -u)
 user=$(id -un)
-login_shell=${SHELL:-/bin/zsh}
+# The account's own login shell, not whatever SHELL the caller inherited:
+# it's what the PATH is captured from, and the plist carries it.
+dscl=${PR_NOTIFIER_DSCL:-/usr/bin/dscl}
+login_shell=
+[ ! -x "$dscl" ] || login_shell=$("$dscl" . -read "/Users/$user" UserShell 2>/dev/null | sed -n 's/^UserShell: //p')
+login_shell=${login_shell:-${SHELL:-/bin/zsh}}
 # The plist's own PATH only has to find what the job script runs before it
 # switches to wake_path (id, mkdir, wc, mv, date, sed).
 plist_path=/usr/bin:/bin:/usr/sbin:/sbin
@@ -207,8 +240,10 @@ clean_path() { # clean_path <PATH>: its absolute entries, each once, in order
 }
 
 missing_tools() { # missing_tools <PATH>: the notifier's tools that PATH doesn't find
+	# The system's basic tools too: the CLI and the job script run on this
+	# PATH, and so does every session it wakes.
 	local tool
-	for tool in claude gh jq bash; do
+	for tool in claude gh jq bash sed awk date mv mkdir; do
 		PATH=$1 command -v "$tool" >/dev/null 2>&1 || printf '%s ' "$tool"
 	done
 }
@@ -301,9 +336,14 @@ cmd_install() {
 
 	if [ "$domain" = system ]; then
 		if agent_present; then
-			unload "user/$uid/$label" || die "couldn't boot out the user-domain agent"
-			rm -f "$agent" || die "can't remove $agent"
-			echo "removed the user-domain agent ($agent): the LaunchDaemon replaces it"
+			if [ -e "$daemon" ] && loaded "system/$label"; then
+				unload "user/$uid/$label" || die "couldn't boot out the user-domain agent"
+				rm -f "$agent" || die "can't remove $agent"
+				echo "removed the user-domain agent ($agent): the LaunchDaemon replaces it"
+			else
+				# Removing it now would leave nothing running check.
+				echo "kept the user-domain agent until the LaunchDaemon is installed and loaded; run this again after that"
+			fi
 		fi
 		if [ ! -e "$daemon" ]; then
 			echo "next: the LaunchDaemon isn't installed. Mari installs it as root (INSTALL.md, step 2), then runs: $0 status"
@@ -452,8 +492,8 @@ cmd_status() {
 
 cmd_uninstall() {
 	[ "$uid" != 0 ] || die "run this as the user whose sessions the notifier serves, not root"
-	if [ -e "$daemon" ]; then
-		die "the LaunchDaemon ($daemon) is still installed, and would keep running a job that's gone; Mari removes it first (INSTALL.md, Uninstall), then run this again"
+	if [ -e "$daemon" ] || loaded "system/$label"; then
+		die "the LaunchDaemon ($daemon, system/$label) is still installed or loaded, and would keep running a job that's gone; Mari removes it first (INSTALL.md, Uninstall), then run this again"
 	fi
 	if [ -e "$agent" ] || loaded "user/$uid/$label"; then
 		unload "user/$uid/$label" || die "couldn't boot out the user-domain agent"
