@@ -46,7 +46,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   `~/.local/bin/pr-notifier`; it polls the account's GitHub notifications and
   sweeps each subscribed PR, filters on the PR's timeline (a stranger's comment
   wakes nothing), and resumes the session with a fixed wake prompt carrying only
-  URLs. Its launchd install is separate (#295). See
+  URLs. A launchd job runs it every minute; installing that job is a checklist,
+  [its INSTALL.md](plugins/pr-notifier/INSTALL.md), around `scripts/install.sh`. See
   [its README](plugins/pr-notifier/README.md).
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
