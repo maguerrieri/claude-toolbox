@@ -1,0 +1,680 @@
+#!/usr/bin/env bash
+# pr-notifier: wake the local Claude Code session that owns a PR when the
+# owner or a configured review bot acts on it, or when it merges or closes.
+# The plugin's README has the design; skills/pr-notifier/SKILL.md has the
+# contract sessions rely on (the stable path and the wake prompt).
+#
+#   pr-notifier subscribe <owner>/<repo>#<n> [--session <id>] [--name <name>]
+#   pr-notifier unsubscribe <owner>/<repo>#<n> [--session <id>]
+#   pr-notifier status [--json]
+#   pr-notifier check
+#
+# State lives in $PR_NOTIFIER_HOME (default ~/.local/state/pr-notifier), for
+# the one macOS user the notifier serves: registry.json (subscriptions),
+# state.json (cursors and held events), config.json (optional settings),
+# notifier.log (append-only), and lock/ (held by any command that writes).
+#
+# Test seams: PR_NOTIFIER_GH, PR_NOTIFIER_CLAUDE and PR_NOTIFIER_OWNER_CHECK
+# replace gh, claude and owner-check.sh; PR_NOTIFIER_NOW fixes the clock
+# (epoch seconds).
+set -uo pipefail
+
+self=${BASH_SOURCE[0]}
+while [ -L "$self" ]; do
+	link=$(readlink "$self")
+	case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+root=$(cd "$(dirname "$self")/.." && pwd) || exit 1
+
+home=${PR_NOTIFIER_HOME:-$HOME/.local/state/pr-notifier}
+registry=$home/registry.json
+state_file=$home/state.json
+config_file=$home/config.json
+log_file=$home/notifier.log
+lock_dir=$home/lock
+examine_jq=$root/lib/examine.jq
+
+gh_bin=${PR_NOTIFIER_GH:-gh}
+claude_bin=${PR_NOTIFIER_CLAUDE:-claude}
+owner_check=${PR_NOTIFIER_OWNER_CHECK:-$root/scripts/owner-check.sh}
+
+now=${PR_NOTIFIER_NOW:-$(date -u +%s)}
+case $now in '' | *[!0-9]*) echo "pr-notifier: PR_NOTIFIER_NOW must be epoch seconds" >&2 && exit 2 ;; esac
+
+usage() {
+	cat >&2 <<'USAGE_EOF'
+usage: pr-notifier subscribe <owner>/<repo>#<n> [--session <id>] [--name <name>]
+       pr-notifier unsubscribe <owner>/<repo>#<n> [--session <id>]
+       pr-notifier status [--json]
+       pr-notifier check
+USAGE_EOF
+	exit 2
+}
+
+die() {
+	echo "pr-notifier: $*" >&2
+	exit 1
+}
+
+command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
+
+iso() { jq -nr --argjson t "$1" '$t | todate'; }
+now_iso=$(iso "$now")
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+log() { # log <word> [k=v ...]: one line in notifier.log
+	printf '%s %s\n' "$now_iso" "$*" >>"$log_file"
+}
+
+# --- settings -------------------------------------------------------------
+
+default_bots='["copilot-pull-request-reviewer[bot]","Copilot","chatgpt-codex-connector[bot]"]'
+
+setting() { # setting <key> <default>: config.json's value, else the default
+	local v=
+	[ -f "$config_file" ] &&
+		v=$(jq -r --arg k "$1" '.[$k] // empty | if type == "array" then tojson else tostring end' "$config_file" 2>/dev/null)
+	printf '%s' "${v:-$2}"
+}
+
+number_setting() { # number_setting <key> <default>: a whole number of seconds
+	local v
+	v=$(setting "$1" "$2")
+	case $v in '' | *[!0-9]*) v=$2 ;; esac
+	printf '%s' "$v"
+}
+
+load_settings() {
+	review_bots=$(setting review_bots "$default_bots")
+	jq -e 'type == "array" and all(.[]; type == "string")' >/dev/null 2>&1 <<<"$review_bots" ||
+		review_bots=$default_bots
+	sweep_interval=$(number_setting sweep_interval 300)
+	hold_bound=$(number_setting hold_bound 1800)
+	idle_grace=$(number_setting idle_grace 600)
+	retry_window=$(number_setting retry_window 1800)
+	owner_ttl=$(number_setting owner_ttl 3600)
+	# The woken session's tool PATH is whatever PATH its waker passes (the
+	# spike's Trap 2), so it is one install-wide value, never a session's.
+	wake_path=$(setting wake_path "$PATH")
+}
+
+# --- files and the lock ---------------------------------------------------
+
+run_tmp=
+cleanup() {
+	[ -z "$run_tmp" ] || rm -rf "$run_tmp"
+	[ "${have_lock:-}" != 1 ] || rm -rf "$lock_dir"
+}
+trap cleanup EXIT
+
+have_lock=
+lock() { # lock <seconds to wait>: 0 once held, 1 if another command holds it
+	local waited=0 holder
+	mkdir -p "$home" || die "can't create $home"
+	while ! mkdir "$lock_dir" 2>/dev/null; do
+		holder=$(cat "$lock_dir/pid" 2>/dev/null)
+		if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
+			rm -rf "$lock_dir" # its holder died
+			continue
+		fi
+		if [ -z "$holder" ] && [ -n "$(find "$lock_dir" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+			rm -rf "$lock_dir" # a holder that died between mkdir and writing its pid
+			continue
+		fi
+		[ "$waited" -lt "$1" ] || return 1
+		sleep 1
+		waited=$((waited + 1))
+	done
+	have_lock=1
+	echo $$ >"$lock_dir/pid"
+}
+
+load_files() { # copies registry and state into run_tmp, creating them when missing
+	run_tmp=$(mktemp -d "${TMPDIR:-/tmp}/pr-notifier.XXXXXX") || die "can't make a temp dir"
+	work_registry=$run_tmp/registry.json
+	work_state=$run_tmp/state.json
+	if [ -f "$registry" ]; then
+		jq -e '.subscriptions | type == "array"' "$registry" >/dev/null 2>&1 ||
+			die "$registry isn't a registry; fix or remove it"
+		cp "$registry" "$work_registry"
+	else
+		printf '%s\n' '{"version":1,"subscriptions":[]}' >"$work_registry"
+	fi
+	if [ -f "$state_file" ]; then
+		jq -e 'type == "object"' "$state_file" >/dev/null 2>&1 ||
+			die "$state_file isn't a state file; fix or remove it"
+		cp "$state_file" "$work_state"
+	else
+		printf '%s\n' '{"version":1,"feed":{},"prs":{},"pending":{},"owners":{}}' >"$work_state"
+	fi
+}
+
+save() { # save <work file> <destination>: atomic replace
+	cp "$1" "$2.new.$$" && mv -f "$2.new.$$" "$2" || die "can't write $2"
+}
+
+save_files() {
+	save "$work_registry" "$registry"
+	save "$work_state" "$state_file"
+}
+
+edit() { # edit <file> <jq args...>: rewrites the file through jq
+	local f=$1
+	shift
+	jq "$@" "$f" >"$f.new" && mv -f "$f.new" "$f"
+}
+
+# --- references -----------------------------------------------------------
+
+ref_re='^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+#[0-9]+$'
+session_re='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+
+parse_ref() { # parse_ref <ref>: prints the lowercased ref, or fails
+	[[ $1 =~ $ref_re ]] || return 1
+	case ${1%#*} in */*/* | */. | */..) return 1 ;; esac
+	lc "$1"
+}
+
+short() { printf '%s' "${1:0:8}"; }
+
+# --- subscribe / unsubscribe / status --------------------------------------
+
+cmd_subscribe() {
+	local ref= sid=${CLAUDE_CODE_SESSION_ID:-} name= have_name= cfg=${CLAUDE_CONFIG_DIR:-}
+	while [ $# -gt 0 ]; do
+		case $1 in
+		--session) [ $# -ge 2 ] || usage; sid=$2; shift 2 ;;
+		--name) [ $# -ge 2 ] || usage; name=$2; have_name=1; shift 2 ;;
+		-*) usage ;;
+		*) [ -z "$ref" ] || usage; ref=$1; shift ;;
+		esac
+	done
+	[ -n "$ref" ] || usage
+	ref=$(parse_ref "$ref") || die "'$ref' isn't <owner>/<repo>#<n>"
+	[ -n "$sid" ] || die "no session id: run this from a Claude Code session (CLAUDE_CODE_SESSION_ID) or pass --session"
+	[[ $sid =~ $session_re ]] || die "'$sid' isn't a full session id"
+	sid=$(lc "$sid")
+	# Setting CLAUDE_CONFIG_DIR to the default root explicitly isn't the
+	# default root (the spike's Trap 3), so that value is recorded as unset.
+	cfg=${cfg%/}
+	[ "$cfg" != "$HOME/.claude" ] || cfg=
+	if [ -z "$have_name" ]; then
+		# Best-effort: the name is for the log and status only.
+		name=$("$claude_bin" agents --json --all 2>/dev/null </dev/null |
+			jq -r --arg s "$sid" '[.[]? | select(.sessionId == $s) | .name // empty] | last // empty' 2>/dev/null)
+	fi
+	load_settings
+	lock 60 || die "another pr-notifier command holds $lock_dir; try again"
+	load_files
+	# Two minutes of slack, so clock skew can't put a reply just after the
+	# subscribe before it; a repeated event is harmless (the wake prompt).
+	edit "$work_registry" --arg pr "$ref" --arg sid "$sid" --arg name "$name" --arg cfg "$cfg" \
+		--arg at "$(iso $((now - 120)))" '
+		(.subscriptions | map(select(.pr == $pr and .session_id == $sid)) | first) as $old
+		| .subscriptions = [.subscriptions[] | select((.pr == $pr and .session_id == $sid) | not)]
+			+ [{pr: $pr, session_id: $sid, name: $name,
+			    config_dir: (if $cfg == "" then null else $cfg end),
+			    subscribed_at: ($old.subscribed_at // $at)}]' || die "can't update the registry"
+	save "$work_registry" "$registry"
+	log "subscribe pr=$ref session=$(short "$sid") name=$(jq -rn --arg n "$name" '$n | @json') root=${cfg:-default}"
+	echo "pr-notifier: subscribed $(short "$sid") to $ref"
+}
+
+cmd_unsubscribe() {
+	local ref= sid=${CLAUDE_CODE_SESSION_ID:-}
+	while [ $# -gt 0 ]; do
+		case $1 in
+		--session) [ $# -ge 2 ] || usage; sid=$2; shift 2 ;;
+		-*) usage ;;
+		*) [ -z "$ref" ] || usage; ref=$1; shift ;;
+		esac
+	done
+	[ -n "$ref" ] || usage
+	ref=$(parse_ref "$ref") || die "'$ref' isn't <owner>/<repo>#<n>"
+	[ -n "$sid" ] || die "no session id: run this from a Claude Code session (CLAUDE_CODE_SESSION_ID) or pass --session"
+	[[ $sid =~ $session_re ]] || die "'$sid' isn't a full session id"
+	sid=$(lc "$sid")
+	lock 60 || die "another pr-notifier command holds $lock_dir; try again"
+	load_files
+	unsubscribe "$ref" "$sid" requested
+	save_files
+	echo "pr-notifier: unsubscribed $(short "$sid") from $ref"
+}
+
+unsubscribe() { # unsubscribe <ref> <session id> <reason>: drops the subscription and its held events
+	local ref=$1 sid=$2
+	jq -e --arg pr "$ref" --arg sid "$sid" 'any(.subscriptions[]; .pr == $pr and .session_id == $sid)' \
+		"$work_registry" >/dev/null || return 0
+	edit "$work_registry" --arg pr "$ref" --arg sid "$sid" \
+		'.subscriptions = [.subscriptions[] | select((.pr == $pr and .session_id == $sid) | not)]'
+	edit "$work_state" --arg pr "$ref" --arg sid "$sid" --slurpfile reg "$work_registry" '
+		if .pending[$sid] then
+			.pending[$sid].events = [.pending[$sid].events[] | select(.pr != $pr)]
+			| if (.pending[$sid].events | length) == 0 then .pending |= del(.[$sid]) else . end
+		else . end
+		| if any($reg[0].subscriptions[]; .pr == $pr) then . else .prs |= del(.[$pr]) end'
+	log "unsubscribe pr=$ref session=$(short "$sid") reason=$3"
+}
+
+cmd_status() {
+	local json=
+	case ${1:-} in --json) json=1 ;; '') ;; *) usage ;; esac
+	local reg='{"subscriptions":[]}' st='{}'
+	[ ! -f "$registry" ] || reg=$(cat "$registry")
+	[ ! -f "$state_file" ] || st=$(cat "$state_file")
+	load_settings
+	if [ -n "$json" ]; then
+		jq -n --argjson reg "$reg" --argjson st "$st" \
+			'{subscriptions: $reg.subscriptions, pending: ($st.pending // {}), feed: ($st.feed // {})}'
+		return
+	fi
+	jq -nr --argjson reg "$reg" --argjson st "$st" --argjson now "$now" --argjson bound "$hold_bound" '
+		def ago($t): "\((($now - $t) / 60) | floor)m";
+		($st.pending // {}) as $p
+		| "pr-notifier: \($reg.subscriptions | length) subscription(s), \($p | length) session(s) with held events",
+		  ($reg.subscriptions[] | "subscription \(.pr) session=\(.session_id[0:8]) name=\(.name | @json) root=\(.config_dir // "default") since=\(.subscribed_at)"),
+		  ($p | to_entries[] | "held session=\(.key[0:8]) events=\(.value.events | length) for=\(ago(.value.first_at)) last=\(.value.last_hold // "none")\(if $now - .value.first_at >= $bound then " STALE" else "" end)"),
+		  (($st.feed // {}) | "feed last=\(.last_poll_iso // "never") status=\(.last_status // "none")")'
+}
+
+# --- check: the feed --------------------------------------------------------
+
+poll_feed() { # marks subscribed PRs whose notification thread moved as dirty
+	local next lm since raw status interval body_start body
+	next=$(jq -r '.feed.next_poll_at // 0' "$work_state")
+	if [ "$now" -lt "$next" ]; then
+		log "poll skipped=interval next=$(iso "$next")"
+		return 0
+	fi
+	lm=$(jq -r '.feed.last_modified // empty' "$work_state")
+	since=$(jq -r '.feed.since // empty' "$work_state")
+	# The URL stays the same between 200s, so If-Modified-Since can answer 304.
+	[ -n "$since" ] || since=$(iso $((now - 86400)))
+	raw=$run_tmp/feed.raw
+	if [ -n "$lm" ]; then
+		"$gh_bin" api -i -H "If-Modified-Since: $lm" "notifications?all=true&per_page=50&since=$since" \
+			</dev/null >"$raw" 2>"$run_tmp/feed.err"
+	else
+		"$gh_bin" api -i "notifications?all=true&per_page=50&since=$since" </dev/null >"$raw" 2>"$run_tmp/feed.err"
+	fi
+	tr -d '\r' <"$raw" >"$raw.lf"
+	status=$(awk 'NR == 1 { print $2; exit }' "$raw.lf")
+	interval=$(awk -F': *' 'tolower($1) == "x-poll-interval" { print $2; exit }' "$raw.lf")
+	case $interval in '' | *[!0-9]*) interval=60 ;; esac
+	edit "$work_state" --arg s "${status:-none}" --arg iso "$now_iso" --argjson next $((now + interval)) \
+		'.feed += {last_status: $s, last_poll_iso: $iso, next_poll_at: $next}'
+	case $status in
+	304)
+		log "poll status=304"
+		return 0
+		;;
+	200) ;;
+	*)
+		log "poll error status=${status:-none} detail=$(head -c 200 "$run_tmp/feed.err" | jq -Rrs '@json')"
+		return 1
+		;;
+	esac
+	body_start=$(awk 'NF == 0 { print NR + 1; exit }' "$raw.lf")
+	body=$run_tmp/feed.json
+	tail -n +"${body_start:-1}" "$raw.lf" >"$body"
+	if grep -qi '^link:.*rel="next"' "$raw.lf"; then
+		# More than one page: read them all, unconditionally.
+		"$gh_bin" api --paginate --slurp "notifications?all=true&per_page=50&since=$since" </dev/null \
+			>"$body.all" 2>>"$run_tmp/feed.err" && jq 'flatten' "$body.all" >"$body" ||
+			log "poll error detail=\"later pages unreadable; first page only\""
+	fi
+	jq -e 'type == "array"' "$body" >/dev/null 2>&1 || {
+		log "poll error detail=\"body isn't a thread list\""
+		return 1
+	}
+	local lm_new matched
+	lm_new=$(awk -F': *' 'tolower($1) == "last-modified" { sub(/^[^:]*: */, ""); print; exit }' "$raw.lf")
+	matched=$(jq -r --slurpfile reg "$work_registry" '
+		($reg[0].subscriptions | map(.pr) | unique) as $subs
+		| [ .[] | select(.subject.type? == "PullRequest")
+			| (.subject.url // "") | capture("/repos/(?<p>[^/]+/[^/]+)/pulls/(?<n>[0-9]+)$")?
+			| "\(.p | ascii_downcase)#\(.n)" | select(. as $r | $subs | index($r)) ] | unique | .[]' "$body")
+	# Re-poll from a little before this poll, since a thread's updated_at can
+	# trail its event.
+	edit "$work_state" --arg lm "$lm_new" --arg since "$(iso $((now - 300)))" --arg m "$matched" '
+		.feed += {last_modified: (if $lm == "" then null else $lm end), since: $since}
+		| reduce ($m | split("\n")[] | select(. != "")) as $r (.; .prs[$r].dirty = true)'
+	log "poll status=200 threads=$(jq length "$body") matched=$(printf '%s' "$matched" | grep -c .)"
+}
+
+# --- check: examining a PR ------------------------------------------------
+
+my_login() { # the sessions' own login, cached for a day
+	local login at
+	login=$(jq -r '.me.login // empty' "$work_state")
+	at=$(jq -r '.me.at // 0' "$work_state")
+	if [ -z "$login" ] || [ $((now - at)) -ge 86400 ]; then
+		login=$("$gh_bin" api user --jq .login </dev/null 2>/dev/null) || login=
+		[ -n "$login" ] || return 1
+		edit "$work_state" --arg l "$login" --argjson t "$now" '.me = {login: $l, at: $t}'
+	fi
+	printf '%s' "$login"
+}
+
+owner_status() { # owner_status <owner>/<repo> <login>: owner-check's exit code
+	local key code
+	key="$1:$(lc "$2")"
+	if [ $((now - $(jq -r --arg k "$key" '.owners[$k] // 0' "$work_state"))) -lt "$owner_ttl" ]; then
+		echo 0
+		return
+	fi
+	code=$(awk -v k="$key" '$1 == k { print $2; exit }' "$run_tmp/owner-memo" 2>/dev/null)
+	if [ -z "$code" ]; then
+		OWNER_CHECK_GH=$gh_bin bash "$owner_check" -R "$1" "$2" </dev/null >/dev/null 2>>"$run_tmp/owner-check.err"
+		code=$?
+		printf '%s %s\n' "$key" "$code" >>"$run_tmp/owner-memo"
+		# Only a yes is cached: a no may be a failed read, retried next time.
+		[ "$code" -ne 0 ] || edit "$work_state" --arg k "$key" --argjson t "$now" '.owners[$k] = $t'
+	fi
+	echo "$code"
+}
+
+examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read failed
+	local ref=$1 path=${1%#*} n=${1##*#} me baseline login owners result
+	me=$(my_login) || {
+		log "examine pr=$ref error=\"can't read the sessions' own login\""
+		return 1
+	}
+	"$gh_bin" api "repos/$path/pulls/$n" </dev/null >"$run_tmp/pr.json" 2>"$run_tmp/err" &&
+		jq -e 'type == "object" and has("state")' "$run_tmp/pr.json" >/dev/null 2>&1 || {
+		log "examine pr=$ref error=\"PR unreadable\" detail=$(head -c 200 "$run_tmp/err" | jq -Rrs '@json')"
+		return 1
+	}
+	"$gh_bin" api "repos/$path/issues/$n/timeline?per_page=100" --paginate --slurp </dev/null \
+		>"$run_tmp/tl.json" 2>"$run_tmp/err" &&
+		jq -e 'type == "array"' "$run_tmp/tl.json" >/dev/null 2>&1 || {
+		log "examine pr=$ref error=\"timeline unreadable\" detail=$(head -c 200 "$run_tmp/err" | jq -Rrs '@json')"
+		return 1
+	}
+	ps=$(jq -c --arg r "$ref" '.prs[$r] // {}' "$work_state")
+	baseline=$(jq -r --arg r "$ref" '[.subscriptions[] | select(.pr == $r) | .subscribed_at] | min // empty' "$work_registry")
+	[ -n "$baseline" ] || return 0
+	jq --arg r "$ref" '.prs[$r] // {}' "$work_state" >"$run_tmp/ps.json"
+	set -- --slurpfile tl "$run_tmp/tl.json" --slurpfile pr "$run_tmp/pr.json" --slurpfile psf "$run_tmp/ps.json" \
+		--arg me "$me" --argjson bots "$review_bots" --arg baseline "$baseline" --argjson now "$now" \
+		--argjson retry_window "$retry_window"
+	owners='{}'
+	while IFS= read -r login; do
+		[ -n "$login" ] || continue
+		owners=$(jq -c --arg l "$(lc "$login")" --argjson c "$(owner_status "$path" "$login")" '.[$l] = $c' <<<"$owners")
+	done < <(jq -nr --arg phase need --argjson owners '{}' "$@" -f "$examine_jq")
+	result=$run_tmp/result.json
+	jq -n --arg phase result --argjson owners "$owners" "$@" -f "$examine_jq" >"$result" || {
+		log "examine pr=$ref error=\"filter failed\""
+		return 1
+	}
+	jq -r --arg r "$ref" '.log[] | "event pr=\($r) key=\(.key) actor=\(.actor) verdict=\(.verdict) reason=\(.reason | @json)"' \
+		"$result" | while IFS= read -r line; do log "$line"; done
+	# The new cursor, then the events, fanned out to each subscription that
+	# was in place when the event happened.
+	edit "$work_state" --arg r "$ref" --slurpfile res "$result" --slurpfile reg "$work_registry" \
+		--argjson now "$now" --arg pr_url "$(jq -r '.html_url // ""' "$run_tmp/pr.json")" '
+		$res[0] as $x
+		| .prs[$r] = ($x.ps + {last_swept: $now, dirty: false})
+		| reduce ($reg[0].subscriptions[] | select(.pr == $r)) as $s (.;
+			reduce ($x.events[] | select(.at >= $s.subscribed_at)) as $e (.;
+				.pending[$s.session_id] //= {first_at: $now, events: []}
+				| if any(.pending[$s.session_id].events[]; .pr == $r and .key == $e.key) then .
+				  else .pending[$s.session_id].events += [$e + {pr: $r, pr_url: $pr_url, pr_state: $x.ps.pr_state}] end))'
+	# A subscription made after the PR closed would never hear of it.
+	local closed sid
+	closed=$(jq -r '.ps.closed_at // empty' "$result")
+	[ -n "$closed" ] || return 0
+	jq -r --arg r "$ref" --arg c "$closed" \
+		'.subscriptions[] | select(.pr == $r and .subscribed_at > $c) | .session_id' "$work_registry" >"$run_tmp/closed-subs"
+	while IFS= read -r sid; do
+		[ -z "$sid" ] || unsubscribe "$ref" "$sid" closed-before-subscribe
+	done <"$run_tmp/closed-subs"
+}
+
+examine_due() { # every subscribed PR that is dirty or due a sweep
+	local ref
+	jq -r --slurpfile st "$work_state" --argjson now "$now" --argjson every "$sweep_interval" '
+		.subscriptions | map(.pr) | unique | .[]
+		| select(($st[0].prs[.] // {}) as $p | ($p.dirty == true) or ($now - ($p.last_swept // 0) >= $every))' \
+		"$work_registry" >"$run_tmp/due"
+	while IFS= read -r ref; do
+		[ -n "$ref" ] || continue
+		# A failed read leaves the PR dirty, so the next check tries again.
+		examine "$ref" || edit "$work_state" --arg r "$ref" '.prs[$r].dirty = true'
+	done <"$run_tmp/due"
+}
+
+# --- check: delivery --------------------------------------------------------
+
+run_claude() { # run_claude <config dir or ""> <claude args...>: in the wake environment
+	local cfg=$1
+	shift
+	if [ -n "$cfg" ]; then
+		(cd / && env -u CLAUDE_SESSION_ID -u CLAUDE_CODE_SESSION_ID CLAUDE_CONFIG_DIR="$cfg" \
+			PATH="$wake_path" "$claude_path" "$@" </dev/null)
+	else
+		# Unset, never set to ~/.claude: the spike's Trap 3.
+		(cd / && env -u CLAUDE_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CONFIG_DIR \
+			PATH="$wake_path" "$claude_path" "$@" </dev/null)
+	fi
+}
+
+agents() { # agents <config dir or ""> [fresh]: the root's claude agents listing, once per run
+	local f
+	f=$run_tmp/agents.$(printf '%s' "${1:-default}" | cksum | cut -d' ' -f1).json
+	[ -z "${2:-}" ] || rm -f "$f"
+	if [ ! -f "$f" ]; then
+		run_claude "$1" agents --json --all >"$f.tmp" 2>/dev/null &&
+			jq -e 'type == "array"' "$f.tmp" >/dev/null 2>&1 || {
+			rm -f "$f.tmp"
+			return 1
+		}
+		mv -f "$f.tmp" "$f"
+	fi
+	cat "$f"
+}
+
+# A row's fields are joined by US (\x1f), not a tab: read collapses runs of a
+# whitespace IFS, so an empty pid would shift the fields after it.
+us=$'\x1f'
+
+session_row() { # session_row <config dir> <session id> [fresh]: "<short> <cwd> <pid> <status> <state>", US-joined
+	local listing
+	listing=$(agents "$1" "${3:-}") || return 2
+	jq -r --arg s "$2" '[.[] | select(.sessionId == $s)] | last // empty
+		| [.id // "", .cwd // "", (.pid // "" | tostring), .status // "", .state // ""] | join("\u001f")' <<<"$listing"
+}
+
+job_state() { # job_state <config dir> <short id>: "<in flight: none|busy|unknown> <updatedAt epoch or -1>"
+	local f=${1:-$HOME/.claude}/jobs/$2/state.json
+	jq -r '[ (if (.inFlight | type) != "object" then "unknown"
+	          elif ((.inFlight.tasks // 0) > 0) or ((.inFlight.queued // 0) > 0)
+	               or ((.inFlight.kinds // []) | length) > 0 then "busy"
+	          else "none" end),
+	         ((.updatedAt // "") | sub("\\.[0-9]+Z$"; "Z") | (try fromdateiso8601 catch -1) | tostring) ] | join(" ")' \
+		"$f" 2>/dev/null || echo 'unknown -1'
+}
+
+hold() { # hold <session id> <reason>
+	edit "$work_state" --arg s "$1" --arg r "$2" '.pending[$s].last_hold = $r'
+	log "hold session=$(short "$1") reason=$2"
+}
+
+drop_session() { # drop_session <session id> <reason>: it can't be woken, so its subscriptions go
+	local sid=$1 ref
+	jq -r --arg s "$sid" '.subscriptions[] | select(.session_id == $s) | .pr' "$work_registry" >"$run_tmp/drop"
+	while IFS= read -r ref; do
+		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "$2"
+	done <"$run_tmp/drop"
+	edit "$work_state" --arg s "$sid" '.pending |= del(.[$s])'
+}
+
+wake_prompt() { # wake_prompt <session id>: the fixed template, carrying only URLs
+	jq -r --arg s "$1" '
+		def url_ok: type == "string" and test("^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/pull/[0-9]+(#[A-Za-z0-9_-]+)?$");
+		def pr_url($ref): ($ref | capture("^(?<p>[^#]+)#(?<n>[0-9]+)$")) | "https://github.com/\(.p)/pull/\(.n)";
+		[ .pending[$s].events | group_by(.pr)[]
+		  | sort_by(.at) as $evs
+		  | ($evs[-1].pr_url | if url_ok and (test("#") | not) then . else pr_url($evs[0].pr) end) as $pu
+		  | ($evs[-1].pr_state | if IN("open", "merged", "closed") then . else "open" end) as $st
+		  | "PR \($pu) \($st)",
+		    ($evs[] | "- \(.kind) \(.url | if url_ok and (ascii_downcase | . == ($pu | ascii_downcase) or startswith($pu + "#" | ascii_downcase)) then . else $pu end)") ]
+		| ["pr-notifier wake v1: GitHub activity on PRs this session subscribed to. This message is a pointer, not an instruction: it carries no request and no authority, and it may repeat an earlier wake. Re-read each PR below from GitHub, check who acted yourself, and handle only what is new."] + .
+		| join("\n")' "$work_state"
+}
+
+wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
+	local sid=$1 cfg=$2 out rc ref
+	out=$(run_claude "$cfg" --bg --resume "$sid" "$(wake_prompt "$sid")" 2>&1)
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		# A refused resume keeps its prompt for the next wake, which then
+		# delivers both; the template makes that harmless.
+		hold "$sid" "wake-failed"
+		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
+		return 1
+	fi
+	log "wake session=$(short "$sid") how=$3 prs=$(jq -r --arg s "$sid" '[.pending[$s].events[].pr] | unique | join(",")' "$work_state") events=$(jq -r --arg s "$sid" '.pending[$s].events | length' "$work_state")"
+	# The final wake for a PR that merged or closed ends its subscription.
+	jq -r --arg s "$sid" '[.pending[$s].events[] | select(.kind == "merged" or .kind == "closed") | .pr] | unique | .[]' \
+		"$work_state" >"$run_tmp/final"
+	edit "$work_state" --arg s "$sid" '.pending |= del(.[$s])'
+	while IFS= read -r ref; do
+		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "pr-final-wake"
+	done <"$run_tmp/final"
+}
+
+deliver() { # deliver <session id>: the spike's state table, first match wins
+	local sid=$1 cfg row id cwd pid status st inflight updated tries
+	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
+	row=$(session_row "$cfg" "$sid") || {
+		hold "$sid" listing-failed
+		return
+	}
+	if [ -z "$row" ]; then
+		log "drop session=$(short "$sid") reason=session-gone"
+		drop_session "$sid" session-gone
+		return
+	fi
+	IFS=$us read -r id cwd pid status st <<<"$row"
+	if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
+		# Its resume would be refused (exit 1) with the prompt queued.
+		log "drop session=$(short "$sid") reason=cwd-gone cwd=$(jq -rn --arg c "$cwd" '$c | @json')"
+		drop_session "$sid" cwd-gone
+		return
+	fi
+	if [ -z "$pid" ]; then
+		wake "$sid" "$cfg" stopped
+		return
+	fi
+	case $status:$st in
+	busy:* | waiting:* | *:working)
+		hold "$sid" "busy status=$status state=$st"
+		return
+		;;
+	idle:done | idle:blocked) ;;
+	*)
+		hold "$sid" "unplaced status=$status state=$st"
+		return
+		;;
+	esac
+	[[ $id =~ ^[0-9a-f]{8}$ ]] || {
+		hold "$sid" "bad short id"
+		return
+	}
+	read -r inflight updated <<<"$(job_state "$cfg" "$id")"
+	if [ "$inflight" != none ]; then
+		# A stop would kill that work; an unreadable inFlight counts as work.
+		hold "$sid" "in-flight=$inflight"
+		return
+	fi
+	# Attached viewers: the stop disconnects one, and attachment isn't visible
+	# from outside the daemon. So a live session gets a quiet period after its
+	# last activity before it is stopped.
+	if [ "$updated" -ge 0 ] && [ $((now - updated)) -lt "$idle_grace" ]; then
+		hold "$sid" "recent-activity"
+		return
+	fi
+	# Re-read right before the stop, to narrow the window for a new turn.
+	row=$(session_row "$cfg" "$sid" fresh) || {
+		hold "$sid" listing-failed
+		return
+	}
+	IFS=$us read -r id cwd pid status st <<<"$row"
+	read -r inflight updated <<<"$(job_state "$cfg" "$id")"
+	case $status:$st:$inflight in
+	idle:done:none | idle:blocked:none) ;;
+	*)
+		hold "$sid" "changed status=$status state=$st in-flight=$inflight"
+		return
+		;;
+	esac
+	if ! run_claude "$cfg" stop "$id" >/dev/null 2>&1; then
+		hold "$sid" stop-failed
+		return
+	fi
+	# --resume on a live session forks a copy, so wait until it is stopped.
+	tries=0
+	while :; do
+		row=$(session_row "$cfg" "$sid" fresh) || row=
+		IFS=$us read -r id cwd pid status st <<<"$row"
+		[ -n "$row" ] && [ -z "$pid" ] && break
+		tries=$((tries + 1))
+		if [ "$tries" -ge 10 ]; then
+			hold "$sid" stop-pending
+			return
+		fi
+		sleep 1
+	done
+	wake "$sid" "$cfg" live-idle
+}
+
+report_stale() {
+	local line
+	jq -r --argjson now "$now" --argjson bound "$hold_bound" '
+		.pending | to_entries[] | select(($now - .value.first_at) >= $bound and (.value.stale_reported | not))
+		| "\(.key) \((($now - .value.first_at) / 60) | floor) \(.value.last_hold // "none" | gsub(" "; "_"))"' \
+		"$work_state" >"$run_tmp/stale"
+	while read -r sid mins why; do
+		[ -n "$sid" ] || continue
+		log "stale session=$(short "$sid") held=${mins}m reason=$why"
+		echo "pr-notifier: events for session $(short "$sid") held ${mins}m (last: $why); see $log_file" >&2
+		edit "$work_state" --arg s "$sid" '.pending[$s].stale_reported = true'
+	done <"$run_tmp/stale"
+}
+
+cmd_check() {
+	[ $# -eq 0 ] || usage
+	load_settings
+	if ! lock 0; then
+		mkdir -p "$home" && log "check skipped=locked"
+		return 0
+	fi
+	load_files
+	claude_path=$(command -v "$claude_bin" 2>/dev/null) || claude_path=$claude_bin
+	if jq -e '(.subscriptions | length) == 0' "$work_registry" >/dev/null &&
+		jq -e '(.pending // {} | length) == 0' "$work_state" >/dev/null; then
+		log "check skipped=no-subscriptions"
+		save_files
+		return 0
+	fi
+	poll_feed
+	examine_due
+	local sid
+	jq -r '.pending // {} | keys[]' "$work_state" >"$run_tmp/sessions"
+	while IFS= read -r sid; do
+		[ -n "$sid" ] || continue
+		deliver "$sid"
+	done <"$run_tmp/sessions"
+	report_stale
+	save_files
+}
+
+case ${1:-} in
+subscribe) shift; cmd_subscribe "$@" ;;
+unsubscribe) shift; cmd_unsubscribe "$@" ;;
+status) shift; cmd_status "$@" ;;
+check) shift; cmd_check "$@" ;;
+*) usage ;;
+esac
