@@ -71,7 +71,8 @@ PR https://github.com/<owner>/<repo>/pull/<n> <open|merged|closed>
 - The first line is fixed text. Match on its prefix, `pr-notifier wake v1:`; a change
   to the shape gets a new version number.
 - One `PR` block per PR with news, sorted by `<owner>/<repo>#<n>`: the PR's URL and its
-  state when the newest event was read.
+  state as the notifier last read it (a held `closed` event can sit under a PR that has
+  since reopened).
 - One `- <kind> <url>` line per event, oldest first. `comment` is a top-level comment,
   `review` a review, a line comment, or Codex's completed summary, `edited` an owner's
   edited comment, and `merged` / `closed` the PR's own state (its URL is the PR's).
