@@ -45,14 +45,16 @@ macOS user and shared by all of that user's config roots:
   launch dir and no `PATH` (the spike's *Subscribe: what to record*).
 - `state.json`: the feed's cursor (`Last-Modified`, `since`, the next poll time), each
   PR's cursor (timeline items seen, owner checks being retried, tracked comments, last
-  sweep), the sessions' own login, cached owner checks, and the events held per session.
+  sweep, its notification thread's last `updated_at`, and how long its reads have
+  failed), cached owner checks, and the events held per session (with any wake backoff).
 - `config.json`: optional settings (below).
 - `notifier.log`: append-only, one line per poll, filtered event (kept or dropped, and
   why), hold, wake, unsubscribe and stale hold. It isn't rotated; the install can add
   that.
 - `lock/`: held by any command that writes, so a `subscribe` never races a `check`.
   `subscribe` and `unsubscribe` wait up to five minutes for it; `check` skips its turn
-  if it's held. A lock whose holder died is taken over, one contender at a time
+  if it's held. A lock whose holder died, or that has been held over 30 minutes (a dead
+  holder whose pid another process now has), is taken over, one contender at a time
   (`lock.takeover/`), so two can't both take it.
 
 Files are replaced atomically (written beside, then moved).
@@ -67,13 +69,17 @@ Files are replaced atomically (written beside, then moved).
    moves only on a 200, and at most hourly (to five minutes before that poll, since a
    thread's `updated_at` can trail its event), so the URL usually repeats and a 304
    stays possible, and a restart catches up from the last 200. A thread on a subscribed
-   PR marks that PR to be read.
+   PR marks that PR to be read when its `updated_at` has moved past the one last seen,
+   since the same thread comes back on every 200 while `since` holds.
 2. **Read every PR that is marked, or due a sweep** (`sweep_interval`, five minutes):
    the PR itself and its issue timeline. The sweep is what makes a missed notification
    harmless. The spike couldn't yet say whether the owner's reviews and line comments
    move the notification thread (its Q4 owner rows wait on Mari's actions on #296), so
    the feed is only the fast path, and every subscribed PR is read on the sweep whether
-   or not a notification came. A failed read leaves the PR marked for the next check.
+   or not a notification came. A failed read leaves the PR marked for the next check,
+   until it has failed for `hold_bound`: then it's reported once (log and stderr) and
+   read only on the sweep, so a PR that's gone, or a ref that was never a PR, costs one
+   read per sweep. A good read clears it.
 3. **Filter** each new timeline item (below), and queue each kept event for every
    subscription that existed when it happened.
 4. **Deliver** what each session has queued (below), one wake per session however many
@@ -81,8 +87,9 @@ Files are replaced atomically (written beside, then moved).
 5. **Report** holds older than `hold_bound`.
 
 Rate cost: one feed request a minute, plus two or three requests per subscribed PR per
-sweep (the PR, its timeline pages, and owner checks for new logins), all on the token
-the user's other sessions share.
+sweep (the PR, its timeline pages, and owner checks for new logins), and one GraphQL
+query for a PR whose comments were edited, all on the token the user's other sessions
+share.
 
 ## The filter
 
@@ -92,7 +99,7 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
 
 | Actor | Verdict |
 |---|---|
-| The sessions' own login (`gh api user`, cached a day) | dropped |
+| The sessions' own login (`gh api user`, read once per check, as owner-check reads it) | dropped |
 | A configured review bot, which GitHub also types `Bot` | kept |
 | Any other `Bot`, or a login that isn't a user login's shape | dropped at once |
 | `owner-check.sh -R <owner>/<repo> <login>` exits 0 | kept (the owner) |
@@ -114,12 +121,16 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
 - Codex's clean result edits its old summary comment and adds a 👍, and neither is a
   new timeline item. The filter tracks that comment's `codex-review-state` line and
   keeps the edit as a `review` when it reaches a new completed state.
-- An owner's comment edited after the earliest subscription is kept as `edited`, even
-  one posted before it. A comment with no record of an earlier edit counts as last
-  edited when it was created. **Each edit is decided like a new item**: its own owner
-  check (the same cached one) and recheck window. No comment pins its author's
-  ownership, so an admin whose access is revoked stops waking sessions once the cache
-  expires, and a failed read can't silence a comment's later edits.
+- **A comment edited by the owner** after the earliest subscription is kept as
+  `edited`, whoever wrote it and even if it was posted before. The REST timeline names
+  only a comment's author, so the notifier asks GraphQL for each edited comment's
+  `editor` (one query per PR with edits) and decides the edit by the editor: a write
+  collaborator editing the owner's comment wakes nothing. A comment with no record of an
+  earlier edit counts as last edited when it was created. **Each edit is decided like a
+  new item**: its own owner check (the same cached one) and its own recheck window,
+  which an unread editor also gets. No comment pins anyone's ownership, so an admin
+  whose access is revoked stops waking sessions once the cache expires, and a failed
+  read can't silence a comment's later edits.
 
 ## Delivery
 
@@ -152,9 +163,10 @@ spike's Trap 2). First match wins:
   any unsent typing); the conversation itself is kept, and `claude attach` reconnects.
 - Checking and stopping aren't atomic: a turn can start between the re-read and the
   stop. The re-read narrows that window; it can't close it.
-- A refused resume keeps the events for the next check, and Claude Code keeps the
-  refused prompt to deliver with the next wake. The wake prompt is written so getting it
-  twice is harmless.
+- A refused resume keeps the events, and Claude Code keeps the refused prompt to
+  deliver with the next wake. The wake prompt is written so getting it twice is
+  harmless, but each retry would queue one more copy, so retries back off: 5, 10, 20
+  and 40 minutes, then hourly, until one is accepted.
 - **Bounded holds.** Holds rest on Claude Code's internal job state, which can change
   between versions. A session held past `hold_bound` (30 minutes) gets one `stale` log
   line and one stderr line from `check`, and stays held; `status` marks it `STALE`.

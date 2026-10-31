@@ -1,9 +1,12 @@
 # examine.jq: one PR's issue timeline and state, turned into wake events.
 #
-# bin/pr-notifier runs it twice per examined PR, with --arg phase:
+# bin/pr-notifier runs it three times per examined PR, with --arg phase:
+#   edits   prints the node ids (one per line) of comments edited after the
+#           baseline, whose editor the notifier then reads through GraphQL
+#           (the REST timeline names a comment's author, never its editor)
 #   need    prints the logins (one per line) whose owner-check result the
-#           filter needs: new items, at or after the baseline, by an actor
-#           that is neither the sessions' own login nor a configured bot
+#           filter needs (needs_owner): new items, and edits, by an actor that
+#           is neither the sessions' own login nor any bot
 #   result  prints {ps, events, log}: the PR's new cursor, the events to
 #           queue, and one record per filtered item for the log
 #
@@ -16,6 +19,7 @@
 #   $baseline      --arg: the earliest subscribed_at of the PR's subscriptions
 #   $now           --argjson: epoch seconds
 #   $retry_window  --argjson: seconds a failed owner check is retried
+#   $editors       --argjson: {comment node id: {login, type}} (need, result)
 #   $owners        --argjson: {lowercased login: owner-check exit code} (result)
 #
 # The filter reads the timeline, never the notification: a notification
@@ -45,8 +49,8 @@ def items:
     | if $e.event == "commented" then
         {key: "comment:\($e.id)", kind: "comment", actor: ($e.user.login // ""),
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.created_at // ""),
-         id: ($e.id | tostring), updated_at: ($e.updated_at // $e.created_at // ""),
-         codex: ($e | codex_state)}
+         id: ($e.id | tostring), node_id: ($e.node_id // ""),
+         updated_at: ($e.updated_at // $e.created_at // ""), codex: ($e | codex_state)}
       elif $e.event == "reviewed" and (($e.state // "") | lc) != "pending" then
         {key: "review:\($e.id)", kind: "review", actor: ($e.user.login // ""),
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.submitted_at // "")}
@@ -69,18 +73,6 @@ def class($i):
     elif $i.type == "Bot" or ($a | test("^[a-z0-9][a-z0-9-]{0,38}$") | not) then "other-bot"
     else "check" end;
 
-def verdict($i):
-  class($i) as $c
-  | if $c == "own" then {keep: false, reason: "own login", settle: true}
-    elif $c == "unknown" then {keep: false, reason: "no actor", settle: true}
-    elif $c == "other-bot" then {keep: false, reason: "a bot or app not configured", settle: true}
-    elif $c == "bot" then {keep: true, reason: "review bot"}
-    else ($owners[$i.actor | lc]) as $o
-      | if $o == 0 then {keep: true, reason: "owner"}
-        elif $o == 3 then {keep: false, reason: "same-account login (owner-check 3)", settle: true}
-        else {keep: false, reason: "not the owner (owner-check \($o // "not run"))", settle: false} end
-    end;
-
 def record($i; $verdict; $reason):
   {key: $i.key, actor: ($i.actor // ""), verdict: $verdict, reason: $reason};
 
@@ -90,26 +82,59 @@ def record($i; $verdict; $reason):
 | items as $items
 | [ $items[] | select($seenset[.key] | not) ] as $new
 | ($ps.comments // {}) as $tracked
-# A new item at or after the baseline: the first pass below decides it.
+| ($editors // {}) as $editors
+# A new item at or after the baseline: the first pass decides it.
 | def fresh($i): ($seenset[$i.key] | not) and $i.at >= $baseline;
 # A comment's updated_at as last recorded. One with no entry was last seen
 # unedited, so its creation time stands in.
   def prev_updated($i): (($tracked[$i.id] // {}).updated_at) // $i.at;
-# An edit after the baseline of a comment the first pass doesn't decide. Each
-# edit gets its own owner check, the same cached one a new item gets: no
-# comment pins its author's ownership, so a revoked admin stops waking
-# sessions once the cache expires, and a failed read never sticks.
-  def edit_candidate($i):
-    $i.kind == "comment" and $i.codex == null and class($i) == "check" and (fresh($i) | not)
+# A comment edited after the baseline that the first pass doesn't decide
+# (Codex's summary has its own rule). The edit is its editor's, whoever wrote
+# the comment, and is decided like a new item: its own owner check, the same
+# cached one, and its own recheck window. No comment pins anyone's ownership.
+  def edited($i):
+    $i.kind == "comment" and $i.codex == null and (fresh($i) | not)
     and $i.updated_at >= $baseline and $i.updated_at != prev_updated($i);
-  if $phase == "need" then
-    [ ($new[] | select(.at >= $baseline) | select(class(.) == "check") | .actor),
-      ($items[] | select(edit_candidate(.)) | .actor) ]
+# The edit as an item of its editor's, or null while the editor is unread.
+  def edit($i): ($editors[$i.node_id] // null) as $ed
+    | if $ed == null then null else $i + {actor: ($ed.login // ""), type: ($ed.type // "")} end;
+# The one rule for who needs an owner check, shared by the need and result
+# phases: an item the filter decides, by a login that is neither the
+# sessions' own nor a bot's.
+  def needs_owner($i): class($i) == "check";
+  def verdict($i):
+    class($i) as $c
+    | if $c == "own" then {keep: false, reason: "own login", settle: true}
+      elif $c == "unknown" then {keep: false, reason: "no actor", settle: true}
+      elif $c == "other-bot" then {keep: false, reason: "a bot or app not configured", settle: true}
+      elif $c == "bot" then {keep: true, reason: "review bot"}
+      elif needs_owner($i) then
+        ($owners[$i.actor | lc]) as $o
+        | if $o == 0 then {keep: true, reason: "owner"}
+          elif $o == 3 then {keep: false, reason: "same-account login (owner-check 3)", settle: true}
+          else {keep: false, reason: "not the owner (owner-check \($o // "not run"))", settle: false} end
+      else {keep: false, reason: "unclassified", settle: true} end;
+# A failed or negative owner check on an edit: the recorded updated_at stays
+# put, so the edit is seen again, until the window for this very edit ends.
+  def retry_edit($i; $why):
+    ($tracked[$i.id] // {}) as $old
+    | if $old.edit_retry == null or $old.edit_retry_for != $i.updated_at then
+        .comments[$i.id] = {updated_at: prev_updated($i), edit_retry: $now, edit_retry_for: $i.updated_at}
+        | .log += [record($i; "drop"; "\($why); rechecked for \($retry_window)s")]
+      elif $now - $old.edit_retry >= $retry_window then
+        .comments[$i.id] = {updated_at: $i.updated_at}
+        | .log += [record($i; "drop"; "\($why); settled")]
+      else . end;
+  if $phase == "edits" then
+    $items[] | select(edited(.)) | .node_id | select(. != "")
+  elif $phase == "need" then
+    [ ($new[] | select(.at >= $baseline) | select(needs_owner(.)) | .actor),
+      ($items[] | select(edited(.)) | edit(.) // empty | select(needs_owner(.)) | .actor) ]
     | unique_by(lc) | .[]
   else
     ($pr[0] // {}) as $p
     | reduce $new[] as $i (
-        {seen: [], retry: ($ps.retry // {}), comments: ($ps.comments // {}), events: [], log: []};
+        {seen: [], retry: ($ps.retry // {}), comments: $tracked, events: [], log: []};
         if $i.at < $baseline then
           # Before every subscription: never an event. A bot's comment is still
           # tracked, so a later edit of Codex's summary is caught.
@@ -148,13 +173,10 @@ def record($i; $verdict; $reason):
         end)
     # Edits of comments the first pass didn't decide, including ones posted
     # before the subscription: Codex's summary reaching a new completed state,
-    # or an edit after the baseline that the owner check (edit_candidate)
-    # says is the owner's. An edit is decided like a new item, and the entry
-    # records only the comment's updated_at (and Codex's state), never who
-    # owns it.
+    # or an edit by the owner, whoever wrote the comment. A comment's entry
+    # records only its updated_at (and Codex's state), never who owns it.
     | reduce ($items[] | select(.kind == "comment") | select(fresh(.) | not)) as $i (.;
         (.comments[$i.id]) as $c
-        | ($tracked[$i.id] // {}) as $old
         | if $i.codex != null then
             if $c != null and $i.codex != $c.codex then
               .comments[$i.id] += {codex: $i.codex, updated_at: $i.updated_at}
@@ -163,25 +185,23 @@ def record($i; $verdict; $reason):
                   | .log += [record($i; "keep"; "review bot (Codex summary completed)")]
                 else . end
             else . end
-          elif edit_candidate($i) | not then .
+          elif edited($i) | not then .
           else
-            ($owners[$i.actor | lc]) as $o
-            | if $o == 0 then
-                .comments[$i.id] = {updated_at: $i.updated_at}
-                | .events += [{key: "edit:\($i.id):\($i.updated_at)", kind: "edited", url: $i.url, at: $i.updated_at}]
-                | .log += [record($i; "keep"; "owner (edited)")]
-              elif $o == 3 then
-                .comments[$i.id] = {updated_at: $i.updated_at}
-                | .log += [record($i; "drop"; "edit by a same-account login (owner-check 3)")]
-              elif $old.edit_retry == null then
-                # As for a new item: a failed read is retried, so the recorded
-                # updated_at stays put and the edit is seen again.
-                .comments[$i.id] = {updated_at: prev_updated($i), edit_retry: $now}
-                | .log += [record($i; "drop"; "edit, not the owner (owner-check \($o // "not run")); rechecked for \($retry_window)s")]
-              elif $now - $old.edit_retry >= $retry_window then
-                .comments[$i.id] = {updated_at: $i.updated_at}
-                | .log += [record($i; "drop"; "edit, not the owner (owner-check \($o // "not run")); settled")]
-              else . end
+            edit($i) as $e
+            | if $e == null then retry_edit($i; "edit, editor unread")
+              else
+                verdict($e) as $v
+                | if $v.keep and $v.reason == "owner" then
+                    .comments[$i.id] = {updated_at: $i.updated_at}
+                    | .events += [{key: "edit:\($i.id):\($i.updated_at)", kind: "edited", url: $i.url, at: $i.updated_at}]
+                    | .log += [record($e; "keep"; "owner (edited)")]
+                  elif $v.keep or $v.settle then
+                    # A bot's edit, or one by the sessions' own login: nothing
+                    # to wake for (Codex's summary has its own rule above).
+                    .comments[$i.id] = {updated_at: $i.updated_at}
+                    | .log += [record($e; "drop"; "edit: \(if $v.keep then "by a bot" else $v.reason end)")]
+                  else retry_edit($e; "edit, \($v.reason)") end
+              end
           end)
     # The PR's own state: a merge or a close wakes whoever did it.
     | (if $p.merged == true then {key: "state:merged:\($p.merged_at)", kind: "merged", at: ($p.merged_at // "")}
