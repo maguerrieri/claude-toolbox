@@ -50,8 +50,10 @@ macOS user and shared by all of that user's config roots:
 - `notifier.log`: append-only, one line per poll, filtered event (kept or dropped, and
   why), hold, wake, unsubscribe and stale hold. It isn't rotated; the install can add
   that.
-- `lock/`: held by any command that writes, so a `subscribe` never races a `check`. A
-  lock whose holder died is taken over.
+- `lock/`: held by any command that writes, so a `subscribe` never races a `check`.
+  `subscribe` and `unsubscribe` wait up to five minutes for it; `check` skips its turn
+  if it's held. A lock whose holder died is taken over, one contender at a time
+  (`lock.takeover/`), so two can't both take it.
 
 Files are replaced atomically (written beside, then moved).
 
@@ -92,6 +94,7 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
 |---|---|
 | The sessions' own login (`gh api user`, cached a day) | dropped |
 | A configured review bot, which GitHub also types `Bot` | kept |
+| Any other `Bot`, or a login that isn't a user login's shape | dropped at once |
 | `owner-check.sh -R <owner>/<repo> <login>` exits 0 | kept (the owner) |
 | It exits 3 (the sessions post as the owner's account) | dropped |
 | Anything else | dropped |
@@ -104,6 +107,8 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
   is checked again on each read of its PR for `retry_window` (30 minutes) before it
   settles. Only a yes is cached (for `owner_ttl`, an hour). So a GitHub hiccup during an
   owner check delays the owner's event instead of losing it.
+- A review's own line comments can also appear as `line-commented` items; those whose
+  review is on the timeline are left to that review, so one review is one event.
 - The PR's own state: a merge or a close is kept whoever did it, as `merged` or
   `closed`.
 - Codex's clean result edits its old summary comment and adds a 👍, and neither is a
@@ -126,6 +131,7 @@ spike's Trap 2). First match wins:
 | No row for the session | unsubscribe it, drop its events |
 | The row's `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
 | Stopped: no `pid` | `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy) |
+| Live, and not a `background` session (a terminal someone is at) | hold: a stop would end it under them |
 | `status` `busy` or `waiting`, or `state` `working` | hold |
 | Any other live state but idle with `state` `done` or `blocked` | hold |
 | `inFlight` has tasks, queued input or any kind (monitors included), or can't be read | hold |

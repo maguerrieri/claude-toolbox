@@ -107,6 +107,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
+older_than_a_minute() { [ -n "$(find "$1" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }
+
+take_over() { # take_over <the dead holder's pid, or "" for none>: removes a dead holder's lock
+	# Takeovers run one at a time, and each re-reads the holder inside its own
+	# turn, so two contenders that both saw the dead holder can't both remove
+	# the lock: the second sees the first's live pid and leaves it.
+	if ! mkdir "$lock_dir.takeover" 2>/dev/null; then
+		! older_than_a_minute "$lock_dir.takeover" || rmdir "$lock_dir.takeover" 2>/dev/null
+		return
+	fi
+	if [ "$(cat "$lock_dir/pid" 2>/dev/null)" = "$1" ]; then
+		if [ -n "$1" ] || older_than_a_minute "$lock_dir"; then
+			rm -rf "$lock_dir"
+		fi
+	fi
+	rmdir "$lock_dir.takeover"
+}
+
 have_lock=
 lock() { # lock <seconds to wait>: 0 once held, 1 if another command holds it
 	local waited=0 holder
@@ -114,12 +132,11 @@ lock() { # lock <seconds to wait>: 0 once held, 1 if another command holds it
 	while ! mkdir "$lock_dir" 2>/dev/null; do
 		holder=$(cat "$lock_dir/pid" 2>/dev/null)
 		if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-			rm -rf "$lock_dir" # its holder died
-			continue
-		fi
-		if [ -z "$holder" ] && [ -n "$(find "$lock_dir" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-			rm -rf "$lock_dir" # a holder that died between mkdir and writing its pid
-			continue
+			take_over "$holder" # its holder died
+			! mkdir "$lock_dir" 2>/dev/null || break
+		elif [ -z "$holder" ] && older_than_a_minute "$lock_dir"; then
+			take_over "" # a holder that died between mkdir and writing its pid
+			! mkdir "$lock_dir" 2>/dev/null || break
 		fi
 		[ "$waited" -lt "$1" ] || return 1
 		sleep 1
@@ -204,7 +221,7 @@ cmd_subscribe() {
 			jq -r --arg s "$sid" '[.[]? | select(.sessionId == $s) | .name // empty] | last // empty' 2>/dev/null)
 	fi
 	load_settings
-	lock 60 || die "another pr-notifier command holds $lock_dir; try again"
+	lock 300 || die "another pr-notifier command has held $lock_dir for five minutes; try again"
 	load_files
 	# Two minutes of slack, so clock skew can't put a reply just after the
 	# subscribe before it; a repeated event is harmless (the wake prompt).
@@ -234,7 +251,7 @@ cmd_unsubscribe() {
 	[ -n "$sid" ] || die "no session id: run this from a Claude Code session (CLAUDE_CODE_SESSION_ID) or pass --session"
 	[[ $sid =~ $session_re ]] || die "'$sid' isn't a full session id"
 	sid=$(lc "$sid")
-	lock 60 || die "another pr-notifier command holds $lock_dir; try again"
+	lock 300 || die "another pr-notifier command has held $lock_dir for five minutes; try again"
 	load_files
 	unsubscribe "$ref" "$sid" requested
 	save_files
@@ -320,7 +337,7 @@ poll_feed() { # marks subscribed PRs whose notification thread moved as dirty
 	if grep -qi '^link:.*rel="next"' "$raw.lf"; then
 		# More than one page: read them all, unconditionally.
 		"$gh_bin" api --paginate --slurp "notifications?all=true&per_page=50&since=$since" </dev/null \
-			>"$body.all" 2>>"$run_tmp/feed.err" && jq 'flatten' "$body.all" >"$body" ||
+			>"$body.all" 2>>"$run_tmp/feed.err" && jq 'flatten' "$body.all" >"$body.flat" && mv -f "$body.flat" "$body" ||
 			log "poll error detail=\"later pages unreadable; first page only\""
 	fi
 	jq -e 'type == "array"' "$body" >/dev/null 2>&1 || {
@@ -379,25 +396,24 @@ owner_status() { # owner_status <owner>/<repo> <login>: owner-check's exit code
 }
 
 examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read failed
-	local ref=$1 path=${1%#*} n=${1##*#} me baseline login owners result
+	local ref=$1 repo_path=${1%#*} n=${1##*#} me baseline login owners result
+	baseline=$(jq -r --arg r "$ref" '[.subscriptions[] | select(.pr == $r) | .subscribed_at] | min // empty' "$work_registry")
+	[ -n "$baseline" ] || return 0
 	me=$(my_login) || {
 		log "examine pr=$ref error=\"can't read the sessions' own login\""
 		return 1
 	}
-	"$gh_bin" api "repos/$path/pulls/$n" </dev/null >"$run_tmp/pr.json" 2>"$run_tmp/err" &&
+	"$gh_bin" api "repos/$repo_path/pulls/$n" </dev/null >"$run_tmp/pr.json" 2>"$run_tmp/err" &&
 		jq -e 'type == "object" and has("state")' "$run_tmp/pr.json" >/dev/null 2>&1 || {
 		log "examine pr=$ref error=\"PR unreadable\" detail=$(head -c 200 "$run_tmp/err" | jq -Rrs '@json')"
 		return 1
 	}
-	"$gh_bin" api "repos/$path/issues/$n/timeline?per_page=100" --paginate --slurp </dev/null \
+	"$gh_bin" api "repos/$repo_path/issues/$n/timeline?per_page=100" --paginate --slurp </dev/null \
 		>"$run_tmp/tl.json" 2>"$run_tmp/err" &&
 		jq -e 'type == "array"' "$run_tmp/tl.json" >/dev/null 2>&1 || {
 		log "examine pr=$ref error=\"timeline unreadable\" detail=$(head -c 200 "$run_tmp/err" | jq -Rrs '@json')"
 		return 1
 	}
-	ps=$(jq -c --arg r "$ref" '.prs[$r] // {}' "$work_state")
-	baseline=$(jq -r --arg r "$ref" '[.subscriptions[] | select(.pr == $r) | .subscribed_at] | min // empty' "$work_registry")
-	[ -n "$baseline" ] || return 0
 	jq --arg r "$ref" '.prs[$r] // {}' "$work_state" >"$run_tmp/ps.json"
 	set -- --slurpfile tl "$run_tmp/tl.json" --slurpfile pr "$run_tmp/pr.json" --slurpfile psf "$run_tmp/ps.json" \
 		--arg me "$me" --argjson bots "$review_bots" --arg baseline "$baseline" --argjson now "$now" \
@@ -405,7 +421,7 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	owners='{}'
 	while IFS= read -r login; do
 		[ -n "$login" ] || continue
-		owners=$(jq -c --arg l "$(lc "$login")" --argjson c "$(owner_status "$path" "$login")" '.[$l] = $c' <<<"$owners")
+		owners=$(jq -c --arg l "$(lc "$login")" --argjson c "$(owner_status "$repo_path" "$login")" '.[$l] = $c' <<<"$owners")
 	done < <(jq -nr --arg phase need --argjson owners '{}' "$@" -f "$examine_jq")
 	result=$run_tmp/result.json
 	jq -n --arg phase result --argjson owners "$owners" "$@" -f "$examine_jq" >"$result" || {
@@ -483,11 +499,11 @@ agents() { # agents <config dir or ""> [fresh]: the root's claude agents listing
 # whitespace IFS, so an empty pid would shift the fields after it.
 us=$'\x1f'
 
-session_row() { # session_row <config dir> <session id> [fresh]: "<short> <cwd> <pid> <status> <state>", US-joined
+session_row() { # session_row <config dir> <session id> [fresh]: "<short> <cwd> <pid> <status> <state> <kind>", US-joined
 	local listing
 	listing=$(agents "$1" "${3:-}") || return 2
 	jq -r --arg s "$2" '[.[] | select(.sessionId == $s)] | last // empty
-		| [.id // "", .cwd // "", (.pid // "" | tostring), .status // "", .state // ""] | join("\u001f")' <<<"$listing"
+		| [.id // "", .cwd // "", (.pid // "" | tostring), .status // "", .state // "", .kind // ""] | join("\u001f")' <<<"$listing"
 }
 
 job_state() { # job_state <config dir> <short id>: "<in flight: none|busy|unknown> <updatedAt epoch or -1>"
@@ -550,7 +566,7 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 }
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st inflight updated tries
+	local sid=$1 cfg row id cwd pid status st kind inflight updated tries
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	row=$(session_row "$cfg" "$sid") || {
 		hold "$sid" listing-failed
@@ -561,7 +577,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		drop_session "$sid" session-gone
 		return
 	fi
-	IFS=$us read -r id cwd pid status st <<<"$row"
+	IFS=$us read -r id cwd pid status st kind <<<"$row"
 	if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
 		# Its resume would be refused (exit 1) with the prompt queued.
 		log "drop session=$(short "$sid") reason=cwd-gone cwd=$(jq -rn --arg c "$cwd" '$c | @json')"
@@ -570,6 +586,12 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	fi
 	if [ -z "$pid" ]; then
 		wake "$sid" "$cfg" stopped
+		return
+	fi
+	if [ "$kind" != background ]; then
+		# A live terminal session: someone is at it, and a stop would end it
+		# under them. Its events wait until it exits.
+		hold "$sid" "live ${kind:-unknown-kind} session"
 		return
 	fi
 	case $status:$st in
@@ -605,7 +627,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		hold "$sid" listing-failed
 		return
 	}
-	IFS=$us read -r id cwd pid status st <<<"$row"
+	IFS=$us read -r id cwd pid status st kind <<<"$row"
 	read -r inflight updated <<<"$(job_state "$cfg" "$id")"
 	case $status:$st:$inflight in
 	idle:done:none | idle:blocked:none) ;;
@@ -622,7 +644,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	tries=0
 	while :; do
 		row=$(session_row "$cfg" "$sid" fresh) || row=
-		IFS=$us read -r id cwd pid status st <<<"$row"
+		IFS=$us read -r id cwd pid status st kind <<<"$row"
 		[ -n "$row" ] && [ -z "$pid" ] && break
 		tries=$((tries + 1))
 		if [ "$tries" -ge 10 ]; then

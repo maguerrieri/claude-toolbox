@@ -151,6 +151,8 @@ agent() { # agent <stopped|busy|working|idle-done|idle-blocked> [session id] [cw
 		  elif $k == "busy" then {pid: 41, status: "busy", state: "working"}
 		  elif $k == "working" then {pid: 41, status: "idle", state: "working"}
 		  elif $k == "idle-done" then {pid: 41, status: "idle", state: "done"}
+		  elif $k == "interactive" then {pid: 41, status: "idle", state: "done", kind: "interactive"}
+		  elif $k == "interactive-exited" then {state: "done", kind: "interactive"}
 		  else {pid: 41, status: "idle", state: "blocked"} end'
 }
 agents() { # agents <row json...>
@@ -250,6 +252,26 @@ record yes "the bot's own post is dropped as such" "$(logged 'key=comment:103 ac
 record yes 'a stranger is dropped by owner-check' "$(logged 'key=comment:102 actor=eve verdict=drop reason="not the owner (owner-check 1); rechecked')"
 record yes 'so is a user account named like a bot' "$(logged 'key=review:104 actor=Copilot verdict=drop')"
 record 0 'and nothing is held' "$(held)"
+
+reset
+timeline 7 "$(comment 7 105 'github-actions[bot]' Bot "$T1")"
+: >"$STUB/gh.log"
+nt "$T" check
+record 0 'an unconfigured bot wakes nothing' "$(wakes)"
+record yes 'and settles at once' "$(logged 'key=comment:105 actor=github-actions[bot] verdict=drop reason="a bot or app not configured"')"
+record no 'without an owner check' "$(has "$STUB/gh.log" 'collaborators')"
+
+reset
+line() { # line <comment id> <review id>: a line-commented timeline item
+	jq -n --argjson c "$1" --argjson r "$2" '{event: "line-commented", comments: [{id: $c, pull_request_review_id: $r,
+		user: {login: "mari", type: "User"}, created_at: "'"$T1"'", html_url: "https://github.com/o/r/pull/7#discussion_r\($c)"}]}'
+}
+timeline 7 "$(review 7 401 mari User "$T1")" "$(line 501 401)" "$(line 502 401)" "$(line 503 999)"
+nt "$T" check
+record '- review https://github.com/o/r/pull/7#pullrequestreview-401
+- review https://github.com/o/r/pull/7#discussion_r503' \
+	"a review's own line comments add no lines; a line comment whose review isn't listed does" "$(prompt | tail -n 2)"
+record 4 'one block, two event lines' "$(prompt | wc -l | tr -d ' ' | awk '{ print $1 + 1 }')"
 
 reset
 timeline 7 "$(comment 7 101 mari User "$T1")" "$(review 7 201 Copilot Bot "$(iso $((T0 + 70)))")" \
@@ -393,6 +415,13 @@ deliver_case idle-done $((T - 3600)) none
 record '0|1' 'no job state to read: held as in flight' "$(wakes)|$(held)"
 record yes 'and logged as unknown' "$(logged 'reason=in-flight=unknown')"
 
+deliver_case interactive $((T - 3600))
+record '0|1' 'a live interactive session is never stopped: held' "$(wakes)|$(held)"
+record no 'no stop is sent to it' "$(has "$STUB/claude.log" stop)"
+agents "$(agent interactive-exited)"
+nt $((T + 60)) check
+record 1 'once it has exited, it is resumed' "$(wakes)"
+
 reset
 agents "$(agent stopped "$SID" "$tmp/gone")"
 timeline 7 "$(comment 7 101 mari User "$T1")"
@@ -526,6 +555,17 @@ echo "$dead" >"$PR_NOTIFIER_HOME/lock/pid"
 nt "$T" check
 record 1 "a dead holder's lock is taken over" "$(wakes)"
 record no 'and released afterwards' "$([ -d "$PR_NOTIFIER_HOME/lock" ] && echo yes || echo no)"
+record no 'with no takeover left behind' "$([ -d "$PR_NOTIFIER_HOME/lock.takeover" ] && echo yes || echo no)"
+
+reset
+mkdir "$PR_NOTIFIER_HOME/lock" "$PR_NOTIFIER_HOME/lock.takeover" && echo $$ >"$PR_NOTIFIER_HOME/lock/pid"
+nt "$T0" subscribe o/r#8 --session "$SID" >/dev/null 2>&1 &
+waiter=$!
+sleep 2
+record 'o/r#7@aaaaaaaa' 'subscribe waits while a live command holds the lock' "$(subs)"
+rm -rf "$PR_NOTIFIER_HOME/lock" "$PR_NOTIFIER_HOME/lock.takeover"
+wait "$waiter"
+record 'o/r#7@aaaaaaaa,o/r#8@aaaaaaaa' 'and subscribes once it is released' "$(subs)"
 
 reset
 nt "$T0" unsubscribe o/r#7 --session "$SID" >/dev/null
