@@ -9,9 +9,9 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
-  list pulls in every plugin below except `gm` and `provenance`. Install this
-  one to get the default set. New default plugins added to this repo should
-  also be added to its dependencies.
+  list pulls in every plugin below except `gm`, `provenance` and
+  `pr-notifier`. Install this one to get the default set. New default plugins
+  added to this repo should also be added to its dependencies.
 - **conventions** — cross-repo development conventions: commit-message and
   PR-title formats, and a portable repository-instruction policy built around a canonical root
   `AGENTS.md`, with a pure `CLAUDE.md` import shim as an optional fallback.
@@ -39,6 +39,15 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   issue instead; a thread started on an untracked ask files its issue and takes it
   on), an issue's thread starts on a branch named after the issue
   (`claude/<n>-<slug>`, plus the harness's suffix), and `/role` does nothing.
+- **pr-notifier** — a token-free local program that wakes the background session
+  that owns a PR when the repo's owner or a configured review bot (Copilot, Codex)
+  acts on it, or when it merges or closes, even after that session handed back
+  and was stopped. Sessions subscribe through its stable path,
+  `~/.local/bin/pr-notifier`; it polls the account's GitHub notifications and
+  sweeps each subscribed PR, filters on the PR's timeline (a stranger's comment
+  wakes nothing), and resumes the session with a fixed wake prompt carrying only
+  URLs. Its launchd install is separate (#295). See
+  [its README](plugins/pr-notifier/README.md).
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
@@ -110,8 +119,8 @@ the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
-five default plugins (`gm` and `provenance` aren't `defaults` dependencies;
-install them separately).
+five default plugins (`gm`, `provenance` and `pr-notifier` aren't `defaults`
+dependencies; install them separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these
