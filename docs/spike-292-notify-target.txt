@@ -1,0 +1,1 @@
+Throwaway notification target for the #292 spike. Closed unmerged; delete with its branch.
