@@ -334,9 +334,13 @@ poll_feed() { # marks subscribed PRs whose notification thread moved as dirty
 		| [ .[] | select(.subject.type? == "PullRequest")
 			| (.subject.url // "") | capture("/repos/(?<p>[^/]+/[^/]+)/pulls/(?<n>[0-9]+)$")?
 			| "\(.p | ascii_downcase)#\(.n)" | select(. as $r | $subs | index($r)) ] | unique | .[]' "$body")
-	# Re-poll from a little before this poll, since a thread's updated_at can
-	# trail its event.
-	edit "$work_state" --arg lm "$lm_new" --arg since "$(iso $((now - 300)))" --arg m "$matched" '
+	# since moves at most hourly, so the URL usually repeats and a quiet poll
+	# can still be a 304; when it moves, it goes to a little before this poll,
+	# since a thread's updated_at can trail its event.
+	local since_epoch
+	since_epoch=$(jq -nr --arg s "$since" '$s | try fromdateiso8601 catch 0')
+	[ $((now - since_epoch)) -lt 3600 ] || since=$(iso $((now - 300)))
+	edit "$work_state" --arg lm "$lm_new" --arg since "$since" --arg m "$matched" '
 		.feed += {last_modified: (if $lm == "" then null else $lm end), since: $since}
 		| reduce ($m | split("\n")[] | select(. != "")) as $r (.; .prs[$r].dirty = true)'
 	log "poll status=200 threads=$(jq length "$body") matched=$(printf '%s' "$matched" | grep -c .)"
