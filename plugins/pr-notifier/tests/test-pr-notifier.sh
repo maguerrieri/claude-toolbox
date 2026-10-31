@@ -379,6 +379,18 @@ record 2 'a second edit wakes again' "$(wakes)"
 nt $((T + 2500)) check
 record yes "the stranger's edit settles after the retry window" "$(logged 'key=comment:102 actor=eve verdict=drop reason="edit, not the owner (owner-check 1); settled"')"
 
+# Ownership is never pinned to a comment: an edit is checked like a new item.
+reset
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record 1 "an owner's comment wakes" "$(wakes)"
+echo read >"$STUB/perm-mari"
+timeline 7 "$(comment 7 101 mari User "$T1" "$(iso $((T + 3700)))")"
+: >"$STUB/gh.log"
+nt $((T + 4000)) check
+record 1 'once that login loses admin, its edit wakes nothing after the cache expires' "$(wakes)"
+record yes 'because the edit got a fresh owner check' "$(has "$STUB/gh.log" 'collaborators/mari/permission')"
+
 # An owner check that fails for a whole retry window settles that edit only.
 reset
 touch "$STUB/perm-mari.fail"

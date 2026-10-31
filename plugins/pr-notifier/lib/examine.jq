@@ -95,12 +95,13 @@ def record($i; $verdict; $reason):
 # A comment's updated_at as last recorded. One with no entry was last seen
 # unedited, so its creation time stands in.
   def prev_updated($i): (($tracked[$i.id] // {}).updated_at) // $i.at;
-# An edit after the baseline of a comment the first pass doesn't decide, by a
-# login whose ownership isn't known yet: it needs an owner check.
+# An edit after the baseline of a comment the first pass doesn't decide. Each
+# edit gets its own owner check, the same cached one a new item gets: no
+# comment pins its author's ownership, so a revoked admin stops waking
+# sessions once the cache expires, and a failed read never sticks.
   def edit_candidate($i):
     $i.kind == "comment" and $i.codex == null and class($i) == "check" and (fresh($i) | not)
-    and $i.updated_at >= $baseline and $i.updated_at != prev_updated($i)
-    and (($tracked[$i.id] // {}).owner == null);
+    and $i.updated_at >= $baseline and $i.updated_at != prev_updated($i);
   if $phase == "need" then
     [ ($new[] | select(.at >= $baseline) | select(class(.) == "check") | .actor),
       ($items[] | select(edit_candidate(.)) | .actor) ]
@@ -128,7 +129,7 @@ def record($i; $verdict; $reason):
               | .events += [{key: $i.key, kind: $i.kind, url: $i.url, at: $i.at}]
               | .log += [record($i; "keep"; $v.reason)]
               | if $i.kind == "comment" then
-                  .comments[$i.id] = {updated_at: $i.updated_at, codex: $i.codex, owner: ($v.reason == "owner")}
+                  .comments[$i.id] = {updated_at: $i.updated_at, codex: $i.codex}
                 else . end
             elif $v.settle then
               .seen += [$i.key] | .log += [record($i; "drop"; $v.reason)]
@@ -147,14 +148,14 @@ def record($i; $verdict; $reason):
         end)
     # Edits of comments the first pass didn't decide, including ones posted
     # before the subscription: Codex's summary reaching a new completed state,
-    # or a comment by the owner changing after the baseline.
+    # or an edit after the baseline that the owner check (edit_candidate)
+    # says is the owner's. An edit is decided like a new item, and the entry
+    # records only the comment's updated_at (and Codex's state), never who
+    # owns it.
     | reduce ($items[] | select(.kind == "comment") | select(fresh(.) | not)) as $i (.;
         (.comments[$i.id]) as $c
         | ($tracked[$i.id] // {}) as $old
-        | def edited($why):
-            .events += [{key: "edit:\($i.id):\($i.updated_at)", kind: "edited", url: $i.url, at: $i.updated_at}]
-            | .log += [record($i; "keep"; $why)];
-          if $i.codex != null then
+        | if $i.codex != null then
             if $c != null and $i.codex != $c.codex then
               .comments[$i.id] += {codex: $i.codex, updated_at: $i.updated_at}
               | if ($i.codex | endswith(":completed")) then
@@ -162,27 +163,23 @@ def record($i; $verdict; $reason):
                   | .log += [record($i; "keep"; "review bot (Codex summary completed)")]
                 else . end
             else . end
-          elif class($i) != "check" or $i.updated_at < $baseline or $i.updated_at == prev_updated($i) then .
-          elif $old.owner == true then
-            .comments[$i.id] = $old + {updated_at: $i.updated_at} | edited("owner (edited)")
-          elif $old.owner == false then
-            .comments[$i.id] = $old + {updated_at: $i.updated_at}
+          elif edit_candidate($i) | not then .
           else
             ($owners[$i.actor | lc]) as $o
             | if $o == 0 then
-                .comments[$i.id] = {updated_at: $i.updated_at, owner: true} | edited("owner (edited)")
+                .comments[$i.id] = {updated_at: $i.updated_at}
+                | .events += [{key: "edit:\($i.id):\($i.updated_at)", kind: "edited", url: $i.url, at: $i.updated_at}]
+                | .log += [record($i; "keep"; "owner (edited)")]
               elif $o == 3 then
-                .comments[$i.id] = {updated_at: $i.updated_at, owner: false}
+                .comments[$i.id] = {updated_at: $i.updated_at}
                 | .log += [record($i; "drop"; "edit by a same-account login (owner-check 3)")]
               elif $old.edit_retry == null then
                 # As for a new item: a failed read is retried, so the recorded
                 # updated_at stays put and the edit is seen again.
-                .comments[$i.id] = {updated_at: prev_updated($i), owner: null, edit_retry: $now}
+                .comments[$i.id] = {updated_at: prev_updated($i), edit_retry: $now}
                 | .log += [record($i; "drop"; "edit, not the owner (owner-check \($o // "not run")); rechecked for \($retry_window)s")]
               elif $now - $old.edit_retry >= $retry_window then
-                # Only this edit settles: ownership stays unknown, so the
-                # next edit of the comment gets a fresh owner check.
-                .comments[$i.id] = {updated_at: $i.updated_at, owner: null}
+                .comments[$i.id] = {updated_at: $i.updated_at}
                 | .log += [record($i; "drop"; "edit, not the owner (owner-check \($o // "not run")); settled")]
               else . end
           end)
