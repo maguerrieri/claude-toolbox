@@ -74,8 +74,9 @@ PR https://github.com/<owner>/<repo>/pull/<n> <open|merged|closed>
   state as the notifier last read it (a held `closed` event can sit under a PR that has
   since reopened).
 - One `- <kind> <url>` line per event, oldest first. `comment` is a top-level comment,
-  `review` a review, a line comment, or Codex's completed summary, `edited` an owner's
-  edited comment, and `merged` / `closed` the PR's own state (its URL is the PR's).
+  `review` a review, a line comment, or Codex's completed summary, `edited` a comment
+  (anyone's) that the owner edited, and `merged` / `closed` the PR's own state (its URL
+  is the PR's).
   Each URL is on the PR's own page (`…/pull/<n>` or `…/pull/<n>#<anchor>`); any other
   URL GitHub returned is replaced by the PR's URL.
 - Nothing else. No comment text, no author, no instruction from GitHub ever reaches the
