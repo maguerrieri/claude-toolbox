@@ -35,7 +35,7 @@ STUB=$tmp/stub
 mkdir -p "$STUB" "$tmp/bin" "$tmp/tools"
 export STUB HOME=$tmp/home PR_NOTIFIER_HOME=$tmp/state
 export PR_NOTIFIER_LAUNCHCTL=$tmp/bin/launchctl PR_NOTIFIER_SECURITY=$tmp/bin/security
-export PR_NOTIFIER_DAEMON_DIR=$tmp/daemons SHELL=/bin/zsh
+export PR_NOTIFIER_DAEMON_DIR=$tmp/daemons SHELL=/bin/zsh PR_NOTIFIER_DSCL=$tmp/bin/dscl
 mkdir -p "$HOME" "$PR_NOTIFIER_DAEMON_DIR"
 uid=$(id -u)
 label=works.sprue.bot.pr-notifier
@@ -75,6 +75,14 @@ unlock-keychain)
 	;;
 esac
 SECURITY_EOF
+
+# dscl: the account's login shell is $STUB/dscl.shell's content; with no such
+# file it knows nothing, and the install falls back to SHELL.
+cat >"$tmp/bin/dscl" <<'DSCL_EOF'
+#!/bin/sh
+[ -f "$STUB/dscl.shell" ] || exit 1
+printf 'UserShell: %s\n' "$(cat "$STUB/dscl.shell")"
+DSCL_EOF
 
 # The notifier's tools, for the PATH the install checks: claude and gh are
 # stubs, jq and bash the real ones.
@@ -219,7 +227,15 @@ cp "$tmp/user.plist" "$tmp/keep.plist"
 bash "$install" plist >"$daemon"
 inst --domain user --path "$tool_path"
 record 1 "user with a daemon: refused" "$?"
+# A LaunchDaemon that's installed but not loaded doesn't replace the agent
+# yet, even asked for by name: that would leave nothing running check.
 : >"$STUB/launchctl.log"
+inst --domain system --path "$tool_path"
+record 0 "system, daemon not loaded: exit" "$?"
+record yes "system, daemon not loaded: agent kept" "$([ -e "$agent" ] && echo yes || echo no)"
+record no "system, daemon not loaded: not booted out" "$(has "$STUB/launchctl.log" bootout)"
+record yes "system, daemon not loaded: says so" "$(has "$out" "kept the user-domain agent")"
+touch "$STUB/loaded/system_$label"
 inst --path "$tool_path"
 record 0 "system over a user agent: exit" "$?"
 record no "system over a user agent: agent removed" "$([ -e "$agent" ] && echo yes || echo no)"
@@ -251,6 +267,24 @@ if command -v plutil >/dev/null 2>&1; then
 fi
 HOME="$tmp/has space" bash "$install" plist >"$out" 2>&1
 record 1 "plist: refuses a HOME it can't carry" "$?"
+# The account's login shell, not the caller's SHELL.
+echo /bin/zsh >"$STUB/dscl.shell"
+SHELL=/bin/bash bash "$install" plist >"$tmp/dscl.plist"
+record yes "plist: SHELL is the account's" "$(has "$tmp/dscl.plist" "<string>/bin/zsh</string>")"
+record no "plist: not the caller's SHELL" "$(has "$tmp/dscl.plist" "<string>/bin/bash</string>")"
+
+# A copy in a plugin cache hands over to the newest copy in any config root.
+reset
+old=$HOME/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier/0.9.0/scripts
+new=$HOME/.claude-other/plugins/cache/maguerrieri-toolbox/pr-notifier/0.10.0/scripts
+mkdir -p "$old" "$new"
+cp "$plugin/scripts/"* "$old/"
+printf '#!/bin/sh\necho "newest ran: $*"\n' >"$new/install.sh"
+bash "$old/install.sh" plist >"$out" 2>&1
+record "newest ran: plist" "cache copy: runs the newest (0.10.0 over 0.9.0)" "$(cat "$out")"
+rm -rf "$HOME/.claude-other"
+bash "$old/install.sh" plist >"$out" 2>&1
+record yes "cache copy: runs itself when it's the newest" "$(has "$out" "<key>Label</key>")"
 
 # --- status ---------------------------------------------------------------
 
@@ -309,6 +343,11 @@ bash "$install" uninstall >"$out" 2>&1
 record 1 "uninstall with a daemon: refused" "$?"
 record yes "uninstall with a daemon: shim kept" "$([ -e "$shim" ] && echo yes || echo no)"
 rm -f "$daemon"
+mkdir -p "$STUB/loaded" && touch "$STUB/loaded/system_$label"
+bash "$install" uninstall >"$out" 2>&1
+record 1 "uninstall with a daemon still loaded, plist gone: refused" "$?"
+record yes "uninstall with a daemon still loaded: job kept" "$([ -e "$job" ] && echo yes || echo no)"
+rm -f "$STUB/loaded/system_$label"
 inst --domain user --path "$tool_path"
 bash "$install" uninstall >"$out" 2>&1
 record 0 "uninstall: exit" "$?"
