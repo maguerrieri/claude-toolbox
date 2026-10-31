@@ -15,7 +15,7 @@ the notification target was the throwaway PR #296. Timestamps are UTC.
 
 | # | Question | Answer |
 |---|---|---|
-| 1 | Idle stop | Yes, but **8 hours, not 1, for every `bot` session**: bot runs with `remoteControlAtStartup: true`, and a Remote Control-bridged session gets the longer limit. An unbridged one stops after 1 hour. Attached, pinned, and sessions with background work in flight are never stopped. (read; TBD tested) |
+| 1 | Idle stop | Yes, but **8 hours, not 1, for every `bot` session**: bot runs with `remoteControlAtStartup: true`, and a Remote Control-bridged session gets the longer limit. An unbridged one stops after 1 hour. Attached and pinned sessions, and ones with background work in flight, are never stopped. (read; the 1-hour stop tested) |
 | 2 | Resume from launchd | Works from a real launchd job in `user/502` and from `env -i`, with no TTY and no direnv; keeps the id, name and row. Three traps: **any flag next to `--resume` starts a copy**, **the job's `PATH` becomes the woken session's tool `PATH`**, and **setting `CLAUDE_CONFIG_DIR=~/.claude` is not the same as leaving it unset** (the resume is refused). Locked keychain: untested. (tested) |
 | 3 | Waking a live, idle session | `--resume` on a live session **forks a copy**; `claude respawn` restarts it but **takes no prompt**. What works: `claude stop` then `--resume` (context kept; an attached viewer is disconnected), or typing into a pty-held `claude attach` (in place, but fragile). (tested) |
 | 4 | Which notifications arrive | TBD per event. `X-Poll-Interval: 60`; a conditional request's 304 costs no rate limit; the bot's own posts don't appear; every bot-PR thread so far has `reason: author`. (tested) |
@@ -48,12 +48,25 @@ stopped. The daemon log agrees: `2ad34855` sat idle for 409 minutes (08:42–15:
 retire, while the only `idle 60m` retires were `stale-spare` ones (a spare process claimed
 by a session that never wrote job state).
 
-**Test (TBD).** Three sessions launched at 17:18:4x, each answering one word and then idle:
-`e71c5d32` (bridged, the default), and `330343df` and `f65c5d81` (launched with
-`--settings '{"remoteControlAtStartup": false}'`, so unbridged). TBD: results at ~18:20.
+**Test.** Three sessions launched at 17:18:45–17:18:51, each answering one word and then
+idle: `e71c5d32` (bridged, the default), and `330343df` and `f65c5d81` (launched with
+`--settings '{"remoteControlAtStartup": false}'`, so unbridged). Their job state last
+changed at 17:18:49–17:18:54. The two unbridged ones were retired at 18:19:16, 60 minutes
+22 seconds later, on the first sweep past the hour:
 
-**After a stop**, `claude agents --json --all` keeps the row with its last `state`
-(`done` or `blocked`) and sets `status` and `pid` to `null` (tested with `claude stop`):
+```
+[2026-10-31T18:19:16.111Z] [bg] bg retire 330343df: settled, idle 60m
+[2026-10-31T18:19:16.113Z] [bg] bg retire f65c5d81: settled, idle 60m
+[2026-10-31T18:19:16.200Z] [bg] bg settled f65c5d81 (done)
+[2026-10-31T18:19:16.200Z] [bg] bg settled 330343df (done)
+```
+
+The bridged one was still live at 18:19 and TBD later. (`f65c5d81` was meant to be pinned
+as well; see *Pinning* for why it wasn't, so it is a second unpinned sample.)
+
+**After a stop or a retire**, `claude agents --json --all` keeps the row with its last
+`state` (`done` or `blocked`) and sets `status` and `pid` to `null`. The job directory stays,
+so the session can be resumed:
 
 ```json
 {"id":"0f43a5bc","name":"spike-292 resume T4","state":"done","status":null,"pid":null}
