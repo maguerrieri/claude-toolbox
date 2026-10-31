@@ -49,7 +49,8 @@ key() { printf '%s' "$1" | tr '/' '_'; }
 case $1 in
 print)
 	[ -f "$STUB/loaded/$(key "$2")" ] || { echo "Could not find service" >&2; exit 113; }
-	printf '%s = {\n\tstate = running\n\truns = 3\n\tlast exit code = %s\n}\n' "$2" "$(cat "$STUB/exit" 2>/dev/null || echo 0)"
+	printf '%s = {\n\tstate = running\n\truns = 3\n\tlast exit code = %s\n\tendpoints = {\n\t\tstate = active\n\t}\n}\n' \
+		"$2" "$(cat "$STUB/exit" 2>/dev/null || echo 0)"
 	;;
 bootstrap) touch "$STUB/loaded/$(key "$2/works.sprue.bot.pr-notifier")" ;;
 bootout) rm -f "$STUB/loaded/$(key "$2")" ;;
@@ -196,12 +197,21 @@ record yes "user, second run: ok" "$(has "$out" "is installed and loaded")"
 rm -f "$STUB/loaded/user_${uid}_$label"
 inst --domain user --path "$tool_path"
 record 2 "user, unloaded: bootstraps again" "$(bootstraps)"
-printf '<!-- old -->\n' >>"$agent"
+sed 's|<integer>60</integer>|<integer>120</integer>|' "$agent" >"$agent.new" && mv "$agent.new" "$agent"
 : >"$STUB/launchctl.log"
 inst --domain user --path "$tool_path"
 record yes "user, changed: boots out first" "$(head -n 1 "$STUB/launchctl.log" | grep -q "^bootout user/$uid/$label" && echo yes || echo no)"
 record yes "user, changed: rewritten" "$(same "$agent" "$tmp/user.plist")"
 record 1 "user, changed: bootstraps once" "$(bootstraps)"
+
+# With no --domain, a re-run (after an update, or from a status hint) keeps
+# the fallback's agent rather than tearing it down for a missing daemon.
+: >"$STUB/launchctl.log"
+inst --path "$tool_path"
+record 0 "fallback re-run: exit" "$?"
+record yes "fallback re-run: agent kept" "$([ -e "$agent" ] && echo yes || echo no)"
+record no "fallback re-run: not booted out" "$(has "$STUB/launchctl.log" bootout)"
+record yes "fallback re-run: ok" "$(has "$out" "ok: the user-domain agent $label is installed and loaded")"
 
 # The two domains never both hold the job.
 cp "$tmp/user.plist" "$tmp/keep.plist"
@@ -213,6 +223,13 @@ inst --path "$tool_path"
 record 0 "system over a user agent: exit" "$?"
 record no "system over a user agent: agent removed" "$([ -e "$agent" ] && echo yes || echo no)"
 record yes "system over a user agent: booted out" "$(has "$STUB/launchctl.log" "bootout user/$uid/$label")"
+
+# An agent still loaded after its plist was deleted is still an agent.
+touch "$STUB/loaded/user_${uid}_$label"
+st_out=$(bash "$install" status 2>&1)
+record yes "loaded agent, no plist: status says both" "$(printf '%s' "$st_out" | grep -qF "FAIL: both the LaunchDaemon" && echo yes || echo no)"
+inst --path "$tool_path"
+record no "loaded agent, no plist: install unloads it" "$([ -e "$STUB/loaded/user_${uid}_$label" ] && echo yes || echo no)"
 
 # --- the plist ------------------------------------------------------------
 
@@ -250,7 +267,7 @@ printf '%s ran check\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$PR_NOTIFIER_HOME/job
 st
 record 0 "status, installed: exit" "$?"
 record yes "status, installed: ok" "$(has "$out" "status: ok")"
-record yes "status, installed: loaded" "$(has "$out" "ok: system/$label is loaded: state=running runs=3 last-exit=0")"
+record yes "status, installed: loaded, nested states left out" "$(grep -qx "ok: system/$label is loaded: state=running runs=3 last-exit=0" "$out" && echo yes || echo no)"
 record yes "status, installed: names the keychain" "$(has "$out" "unlocks the default keychain, $STUB/kc")"
 
 echo 1 >"$STUB/exit"
@@ -262,6 +279,11 @@ printf '%s skipped: no wake_path\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$PR_NOTIF
 st
 record 1 "status, job skipping: exit" "$?"
 record yes "status, job skipping: says why" "$(has "$out" "skipped check: ")"
+
+printf '%s check failed: exit 1 (see job.log)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$PR_NOTIFIER_HOME/job.last"
+st
+record 1 "status, check failing: exit" "$?"
+record yes "status, check failing: says so" "$(has "$out" "FAIL: the job's last check failed")"
 
 printf '2026-01-01T00:00:00Z ran check\n' >"$PR_NOTIFIER_HOME/job.last"
 st
@@ -327,6 +349,14 @@ record / "job: from /" "$(sed -n 's/^pwd=//p' "$STUB/cli")"
 record "<unset>" "job: no CLAUDE_CONFIG_DIR" "$(sed -n 's/^cfg=//p' "$STUB/cli")"
 record yes "job: unlocks the default keychain, empty password" "$(has "$STUB/security.log" "unlock-keychain -p  $STUB/kc")"
 record yes "job: job.last" "$(has "$PR_NOTIFIER_HOME/job.last" "ran check")"
+
+reset
+fake_cli
+printf 'exit 3\n' >>"$shim"
+config "$wake"
+run_job
+record 3 "job, check fails: exit is check's" "$?"
+record yes "job, check fails: job.last" "$(has "$PR_NOTIFIER_HOME/job.last" "check failed: exit 3")"
 
 reset
 fake_cli

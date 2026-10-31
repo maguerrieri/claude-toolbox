@@ -15,8 +15,10 @@
 #   wake_path in config.json          one full PATH, captured from the user's
 #                                     login shell (or --path), which the job
 #                                     and every woken session get
-# and then the launchd job, by domain:
-#   system (the default)  a LaunchDaemon with UserName set to this user, in
+# and then the launchd job, by domain. With no --domain it keeps the job
+# that's there: user when the user-domain agent is installed and the
+# LaunchDaemon isn't, else system.
+#   system                a LaunchDaemon with UserName set to this user, in
 #                         /Library/LaunchDaemons: it runs with nobody logged
 #                         in and comes back after a reboot. Installing it
 #                         needs root, so this only checks it and says what's
@@ -162,10 +164,14 @@ unload() { # unload <domain>/<label>: boots it out and waits until it's gone
 }
 
 job_info() { # job_info <domain>/<label>: "state=… runs=… last-exit=…", or nothing if it isn't loaded
+	# The service's own fields are indented one tab; nested blocks (its
+	# endpoints, say) have state lines of their own, a tab deeper.
+	local tab
+	tab=$(printf '\t')
 	"$launchctl" print "$1" 2>/dev/null | sed -n \
-		-e 's/^[[:space:]]*state = \(.*\)$/state=\1/p' \
-		-e 's/^[[:space:]]*runs = \(.*\)$/runs=\1/p' \
-		-e 's/^[[:space:]]*last exit code = \(.*\)$/last-exit=\1/p' | paste -sd' ' -
+		-e "s/^${tab}state = \(.*\)\$/state=\1/p" \
+		-e "s/^${tab}runs = \(.*\)\$/runs=\1/p" \
+		-e "s/^${tab}last exit code = \(.*\)\$/last-exit=\1/p" | paste -sd' ' -
 }
 
 # --- files ------------------------------------------------------------------
@@ -229,8 +235,14 @@ set_wake_path() { # set_wake_path <PATH>: config.json's wake_path, other keys ke
 
 # --- commands ---------------------------------------------------------------
 
+agent_present() { [ -e "$agent" ] || loaded "user/$uid/$label"; }
+
 parse_domain() { # parse_domain <args...>: sets domain (and wanted_path, for install)
-	domain=system
+	# With no --domain, keep the job that's there: the user-domain agent when
+	# it's installed and the LaunchDaemon isn't, else the LaunchDaemon. So a
+	# re-run after an update, or one a status hint suggests, never tears down
+	# the fallback's only job.
+	if [ ! -e "$daemon" ] && agent_present; then domain=user; else domain=system; fi
 	wanted_path=
 	while [ $# -gt 0 ]; do
 		case $1 in
@@ -250,7 +262,7 @@ parse_domain() { # parse_domain <args...>: sets domain (and wanted_path, for ins
 }
 
 cmd_install() {
-	local raw path missing
+	local raw new_path missing
 	[ "$uid" != 0 ] || die "run this as the user whose sessions the notifier serves, not root; INSTALL.md has the one root step"
 	command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
 	[ -f "$shim_src" ] && [ -f "$job_src" ] || die "can't find the shim or the job script next to $0"
@@ -262,17 +274,17 @@ cmd_install() {
 		raw=$(capture_path)
 		[ -n "$raw" ] || die "couldn't read $login_shell's login PATH; pass one with --path"
 	fi
-	path=$(clean_path "$raw")
-	missing=$(missing_tools "$path")
+	new_path=$(clean_path "$raw")
+	missing=$(missing_tools "$new_path")
 	[ -z "$missing" ] ||
-		die "the PATH to install ($path) doesn't find: $missing; install them or pass a PATH that does with --path"
+		die "the PATH to install ($new_path) doesn't find: $missing; install them or pass a PATH that does with --path"
 
 	put "$shim_src" "$shim"
 	put "$job_src" "$job"
-	set_wake_path "$path"
+	set_wake_path "$new_path"
 
 	if [ "$domain" = system ]; then
-		if [ -e "$agent" ]; then
+		if agent_present; then
 			unload "user/$uid/$label" || die "couldn't boot out the user-domain agent"
 			rm -f "$agent" || die "can't remove $agent"
 			echo "removed the user-domain agent ($agent): the LaunchDaemon replaces it"
@@ -292,7 +304,7 @@ cmd_install() {
 	if [ -e "$daemon" ]; then
 		die "the LaunchDaemon ($daemon) is installed, and the two would both run the job; Mari removes it first (INSTALL.md, Uninstall)"
 	fi
-	if [ -f "$agent" ] && cmp -s "$run_tmp/plist" "$agent"; then
+	if [ -f "$agent" ] && same_plist "$run_tmp/plist" "$agent"; then
 		if loaded "user/$uid/$label"; then
 			echo "ok: the user-domain agent $label is installed and loaded"
 			return 0
@@ -309,7 +321,7 @@ cmd_install() {
 }
 
 cmd_status() {
-	local fails=0 info path missing last ts age
+	local fails=0 info wake missing last ts age
 	ok() { echo "ok: $*"; }
 	warn() { echo "warn: $*"; }
 	fail() {
@@ -329,22 +341,22 @@ cmd_status() {
 	copy "$shim" "$shim_src"
 	copy "$job" "$job_src"
 
-	path=$(current_wake_path)
-	if [ -z "$path" ]; then
+	wake=$(current_wake_path)
+	if [ -z "$wake" ]; then
 		fail "no wake_path in $config; run: $0"
 	else
-		missing=$(missing_tools "$path")
+		missing=$(missing_tools "$wake")
 		if [ -n "$missing" ]; then
-			fail "wake_path ($path) doesn't find: $missing"
+			fail "wake_path ($wake) doesn't find: $missing"
 		else
-			ok "wake_path is $path"
+			ok "wake_path is $wake"
 		fi
 	fi
 
 	render_plist system >"$run_tmp/system" || exit 1
 	render_plist user >"$run_tmp/user" || exit 1
-	if [ -e "$daemon" ] && [ -e "$agent" ]; then
-		fail "both the LaunchDaemon ($daemon) and the user-domain agent ($agent) are installed; run: $0 (it removes the agent)"
+	if [ -e "$daemon" ] && agent_present; then
+		fail "both the LaunchDaemon ($daemon) and the user-domain agent (user/$uid/$label) are installed; run: $0 (it removes the agent)"
 	fi
 	loaded_info() { # loaded_info <domain>/<label> <what to run when it isn't loaded>
 		info=$(job_info "$1")
@@ -363,9 +375,15 @@ cmd_status() {
 			fail "$daemon differs from this version's (see: $0 plist); Mari reinstalls it (INSTALL.md, step 2)"
 		fi
 		loaded_info "system/$label" "Mari loads it (INSTALL.md, step 2)"
-	elif [ -e "$agent" ]; then
-		if cmp -s "$run_tmp/user" "$agent"; then ok "$agent matches this version's"; else warn "$agent differs from this version's; run: $0 --domain user"; fi
-		loaded_info "user/$uid/$label" "run: $0 --domain user"
+	elif agent_present; then
+		if [ ! -e "$agent" ]; then
+			fail "user/$uid/$label is loaded, but $agent is gone; run: $0 --domain user"
+		elif same_plist "$run_tmp/user" "$agent"; then
+			ok "$agent matches this version's"
+		else
+			warn "$agent differs from this version's; run: $0"
+		fi
+		loaded_info "user/$uid/$label" "run: $0"
 		warn "the user-domain agent isn't known to come back after a reboot without a login; the LaunchDaemon (INSTALL.md) is the default"
 	else
 		fail "no launchd job: neither $daemon nor $agent exists (INSTALL.md, steps 1 and 2)"
@@ -390,6 +408,7 @@ cmd_status() {
 		age=$(jq -nr --arg t "$ts" --argjson now "$(date -u +%s)" '$now - ($t | fromdateiso8601)' 2>/dev/null) || age=
 		case $last in
 		*" skipped: "*) fail "the job's last run skipped check: $last" ;;
+		*" check failed: "*) fail "the job's last check failed: $last" ;;
 		*)
 			if [ -z "$age" ] || [ "$age" -gt 300 ]; then
 				warn "the job's last run was ${age:-?}s ago ($last); it runs every 60 seconds"
