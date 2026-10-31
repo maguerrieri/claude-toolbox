@@ -35,9 +35,13 @@ def codex_state:
 
 # The timeline items that can wake a session, normalized. A single line
 # comment is a review too; a reply in a thread can surface as line-commented.
+# A line comment whose review is itself on the timeline is that review's,
+# so one review wakes one line however many comments it carries.
 def items:
-  [ ($tl[0] // []) | (if type == "array" then flatten else [] end) | .[]
-    | select(type == "object") as $e
+  ($tl[0] // []) | (if type == "array" then flatten else [] end) as $all
+  | ([ $all[] | select(type == "object" and .event == "reviewed") | .id | tostring ]
+     | map({(.): true}) | add // {}) as $reviews
+  | [ $all[] | select(type == "object") as $e
     | if $e.event == "commented" then
         {key: "comment:\($e.id)", kind: "comment", actor: ($e.user.login // ""),
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.created_at // ""),
@@ -48,23 +52,28 @@ def items:
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.submitted_at // "")}
       elif $e.event == "line-commented" then
         ($e.comments // [])[] | select(type == "object")
+        | select($reviews[(.pull_request_review_id // "") | tostring] | not)
         | {key: "review_comment:\(.id)", kind: "review", actor: (.user.login // ""),
            type: (.user.type // ""), url: (.html_url // ""), at: (.created_at // "")}
       else empty end ];
 
 # A configured bot must also be typed Bot by GitHub, so a user account that
 # takes a bot's display login (e.g. "Copilot") is checked like anyone else.
+# Any other Bot, or a login owner-check would refuse on its format alone,
+# settles at once rather than being rechecked for the retry window.
 def class($i):
   ($i.actor | lc) as $a
   | if $a == "" then "unknown"
     elif $a == ($me | lc) then "own"
     elif $i.type == "Bot" and (($bots | map(lc) | index($a)) != null) then "bot"
+    elif $i.type == "Bot" or ($a | test("^[a-z0-9][a-z0-9-]{0,38}$") | not) then "other-bot"
     else "check" end;
 
 def verdict($i):
   class($i) as $c
   | if $c == "own" then {keep: false, reason: "own login", settle: true}
     elif $c == "unknown" then {keep: false, reason: "no actor", settle: true}
+    elif $c == "other-bot" then {keep: false, reason: "a bot or app not configured", settle: true}
     elif $c == "bot" then {keep: true, reason: "review bot"}
     else ($owners[$i.actor | lc]) as $o
       | if $o == 0 then {keep: true, reason: "owner"}
