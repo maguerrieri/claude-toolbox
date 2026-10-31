@@ -349,6 +349,41 @@ pr 7 closed "$(iso $((T0 - 600)))"
 nt "$T" check
 record '0|' 'a subscription made after the PR closed is dropped without a wake' "$(wakes)|$(subs)"
 
+reset
+agents "$(agent busy)"
+pr 7 closed "$(iso $((T0 + 90)))"
+nt "$T" check
+record '0|1' 'a close while the session is busy is held' "$(wakes)|$(held)"
+pr 7 open
+agents "$(agent stopped)"
+nt $((T + 400)) check
+record 'PR https://github.com/o/r/pull/7 open|- closed https://github.com/o/r/pull/7' \
+	'reopened before delivery: the wake shows the PR as last read' "$(prompt | tail -n 2 | paste -sd'|' -)"
+record 'o/r#7@aaaaaaaa' 'and the subscription survives the held close' "$(subs)"
+
+# Edits of comments posted before the subscription.
+reset
+pre=$(iso $((T0 - 300)))
+timeline 7 "$(comment 7 101 mari User "$pre")" "$(comment 7 102 eve User "$pre")"
+nt "$T" check
+record 0 'unedited comments from before the subscription wake nothing' "$(wakes)"
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 100)))")" "$(comment 7 102 eve User "$pre" "$(iso $((T + 100)))")"
+nt $((T + 400)) check
+record 1 "the owner's later edit of one wakes" "$(wakes)"
+record '- edited https://github.com/o/r/pull/7#issuecomment-101' 'as an edit, and the stranger'"'"'s edit adds nothing' "$(prompt | tail -n 1)"
+nt $((T + 800)) check
+record 1 'the same edit wakes once' "$(wakes)"
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 900)))")" "$(comment 7 102 eve User "$pre" "$(iso $((T + 100)))")"
+nt $((T + 1200)) check
+record 2 'a second edit wakes again' "$(wakes)"
+nt $((T + 2500)) check
+record yes "the stranger's edit settles after the retry window" "$(logged 'key=comment:102 actor=eve verdict=drop reason="edit, not the owner (owner-check 1); settled"')"
+
+reset
+timeline 7 "$(comment 7 101 mari User "$(iso $((T0 - 300)))" "$(iso $((T0 + 60)))")"
+nt "$T" check
+record '- edited https://github.com/o/r/pull/7#issuecomment-101' 'an edit already made when the notifier first reads the comment wakes too' "$(prompt | tail -n 1)"
+
 codex() { # codex <created> <updated> <status> [commit]
 	comment 7 301 'chatgpt-codex-connector[bot]' Bot "$1" "$2" "<!-- codex-pull-request-review-summary -->
 <!-- codex-review-state:v1 {\"code_review\":{\"commit_sha\":\"${4:-abc}\",\"status\":\"$3\"}} -->
