@@ -1,0 +1,21 @@
+name: pr-notifier CI
+
+on:
+  push:
+    paths:
+      - "plugins/pr-notifier/**"
+      - "plugins/ticket-workflow/scripts/owner-check.sh"
+      - ".github/workflows/pr-notifier-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/pr-notifier/**"
+      - "plugins/ticket-workflow/scripts/owner-check.sh"
+      - ".github/workflows/pr-notifier-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notifier tests (stubbed gh and claude; also checks the vendored owner-check.sh)
+        run: bash plugins/pr-notifier/tests/test-pr-notifier.sh
