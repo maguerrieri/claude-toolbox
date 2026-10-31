@@ -15,6 +15,8 @@
 #   wake_path in config.json          one full PATH, captured from the user's
 #                                     login shell (or --path), which the job
 #                                     and every woken session get
+#   jq-path (state directory)         the jq that PATH finds, which the job
+#                                     reads config.json with
 # and then the launchd job, by domain. With no --domain it keeps the job
 # that's there: user when the user-domain agent is installed and the
 # LaunchDaemon isn't, else system.
@@ -48,6 +50,7 @@ job_src=$here/pr-notifier-job.sh
 
 state=${PR_NOTIFIER_HOME:-$HOME/.local/state/pr-notifier}
 config=$state/config.json
+jq_path=$state/jq-path
 shim=$HOME/.local/bin/pr-notifier
 job=$HOME/.local/libexec/pr-notifier-job
 agent=$HOME/Library/LaunchAgents/$label.plist
@@ -233,6 +236,18 @@ set_wake_path() { # set_wake_path <PATH>: config.json's wake_path, other keys ke
 	echo "set wake_path in $config to $1"
 }
 
+set_jq_path() { # set_jq_path <PATH>: records the jq that PATH finds, for the job to read config.json with
+	local found
+	found=$(PATH=$1 command -v jq) || die "no jq on $1"
+	if [ -f "$jq_path" ] && [ "$(cat "$jq_path")" = "$found" ]; then
+		echo "ok: $jq_path is current"
+		return
+	fi
+	printf '%s\n' "$found" >"$jq_path.install.$$" && mv -f "$jq_path.install.$$" "$jq_path" ||
+		die "can't write $jq_path"
+	echo "set $jq_path to $found"
+}
+
 # --- commands ---------------------------------------------------------------
 
 agent_present() { [ -e "$agent" ] || loaded "user/$uid/$label"; }
@@ -282,6 +297,7 @@ cmd_install() {
 	put "$shim_src" "$shim"
 	put "$job_src" "$job"
 	set_wake_path "$new_path"
+	set_jq_path "$new_path"
 
 	if [ "$domain" = system ]; then
 		if agent_present; then
@@ -351,6 +367,13 @@ cmd_status() {
 		else
 			ok "wake_path is $wake"
 		fi
+	fi
+	last=
+	[ ! -f "$jq_path" ] || last=$(cat "$jq_path")
+	if [ -n "$last" ] && [ -x "$last" ]; then
+		ok "the job reads config.json with $last"
+	else
+		warn "no usable jq in $jq_path, so the job looks for one in /usr/bin, /bin, /opt/homebrew/bin and /usr/local/bin; run: $0"
 	fi
 
 	render_plist system >"$run_tmp/system" || exit 1

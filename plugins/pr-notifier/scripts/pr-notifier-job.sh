@@ -9,9 +9,10 @@
 #   2. unlocks that user's default keychain, whose password is empty
 #      (maguerrieri/claude-config#132, #144), and skips the run if that
 #      fails: claude finds no login in a locked keychain;
-#   3. sets PATH to the install's wake_path from config.json, since that PATH
-#      becomes every woken session's tool PATH (the spike's Trap 2), and
-#      skips the run if there is none;
+#   3. sets PATH to the install's wake_path from config.json (read with the
+#      jq the install recorded in jq-path), since that PATH becomes every
+#      woken session's tool PATH (the spike's Trap 2), and skips the run if
+#      there is none;
 #   4. runs "$HOME/.local/bin/pr-notifier" check, from /, with no
 #      CLAUDE_CONFIG_DIR (each subscription carries its own: the spike's
 #      Trap 3).
@@ -75,8 +76,13 @@ fi
 
 # The PATH: config.json's wake_path, which the install captured from the
 # user's login shell. No fallback: a PATH guessed here would stay with every
-# session this run wakes.
-jq=$(PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin command -v jq) || jq=
+# session this run wakes. Reading it takes jq, which may live only on that
+# PATH, so the install records the one it found there in jq-path.
+jq=
+[ ! -f "$state/jq-path" ] || IFS= read -r jq <"$state/jq-path" || :
+if [ -z "$jq" ] || [ ! -x "$jq" ]; then
+	jq=$(PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin command -v jq) || jq=
+fi
 wake_path=
 if [ -n "$jq" ] && [ -f "$state/config.json" ]; then
 	wake_path=$("$jq" -r '.wake_path // empty | strings' "$state/config.json" 2>/dev/null) || wake_path=
