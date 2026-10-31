@@ -261,7 +261,8 @@ the bot is expected not to appear.
 
 **Review bots on bot PRs today.** Copilot's ruleset auto-request fires even on a draft.
 Codex reviews when a PR is opened for review, when a draft is marked ready (not on a draft),
-or on `@codex review`; on a clean review it edits one summary comment
+on new commits to a PR it reviews (its summary's *Review trigger* column read `New commits`
+for #298's second head), or on `@codex review`. On a clean review it edits one summary comment
 (`<!-- codex-pull-request-review-summary -->`, with a `codex-review-state` JSON line) and adds
 a 👍.
 
