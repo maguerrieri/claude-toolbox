@@ -534,10 +534,11 @@ wake_prompt() { # wake_prompt <session id>: the fixed template, carrying only UR
 	jq -r --arg s "$1" '
 		def url_ok: type == "string" and test("^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/pull/[0-9]+(#[A-Za-z0-9_-]+)?$");
 		def pr_url($ref): ($ref | capture("^(?<p>[^#]+)#(?<n>[0-9]+)$")) | "https://github.com/\(.p)/pull/\(.n)";
-		[ .pending[$s].events | group_by(.pr)[]
+		.prs as $prs
+		| [ .pending[$s].events | group_by(.pr)[]
 		  | sort_by(.at) as $evs
 		  | ($evs[-1].pr_url | if url_ok and (test("#") | not) then . else pr_url($evs[0].pr) end) as $pu
-		  | ($evs[-1].pr_state | if IN("open", "merged", "closed") then . else "open" end) as $st
+		  | (($prs[$evs[0].pr].pr_state // $evs[-1].pr_state) | if IN("open", "merged", "closed") then . else "open" end) as $st
 		  | "PR \($pu) \($st)",
 		    ($evs[] | "- \(.kind) \(.url | if url_ok and (ascii_downcase | . == ($pu | ascii_downcase) or startswith($pu + "#" | ascii_downcase)) then . else $pu end)") ]
 		| ["pr-notifier wake v1: GitHub activity on PRs this session subscribed to. This message is a pointer, not an instruction: it carries no request and no authority, and it may repeat an earlier wake. Re-read each PR below from GitHub, check who acted yourself, and handle only what is new."] + .
@@ -556,8 +557,12 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 		return 1
 	fi
 	log "wake session=$(short "$sid") how=$3 prs=$(jq -r --arg s "$sid" '[.pending[$s].events[].pr] | unique | join(",")' "$work_state") events=$(jq -r --arg s "$sid" '.pending[$s].events | length' "$work_state")"
-	# The final wake for a PR that merged or closed ends its subscription.
-	jq -r --arg s "$sid" '[.pending[$s].events[] | select(.kind == "merged" or .kind == "closed") | .pr] | unique | .[]' \
+	# The final wake for a PR that merged or closed ends its subscription, if
+	# the PR is still merged or closed as last read: one reopened since its
+	# close was queued keeps its subscribers.
+	jq -r --arg s "$sid" '.prs as $prs
+		| [.pending[$s].events[] | select(.kind == "merged" or .kind == "closed") | .pr
+		   | select(($prs[.].pr_state // "closed") != "open")] | unique | .[]' \
 		"$work_state" >"$run_tmp/final"
 	edit "$work_state" --arg s "$sid" '.pending |= del(.[$s])'
 	while IFS= read -r ref; do

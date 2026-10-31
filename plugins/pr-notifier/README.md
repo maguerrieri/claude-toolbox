@@ -114,7 +114,10 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
 - Codex's clean result edits its old summary comment and adds a 👍, and neither is a
   new timeline item. The filter tracks that comment's `codex-review-state` line and
   keeps the edit as a `review` when it reaches a new completed state.
-- An owner's edited comment is kept as `edited`.
+- An owner's comment edited after the earliest subscription is kept as `edited`, even
+  one posted before it. A comment with no record of an earlier edit counts as last
+  edited when it was created; an edit by a login not yet known to be the owner gets the
+  same owner check and recheck window as a new item.
 
 ## Delivery
 
@@ -154,7 +157,8 @@ spike's Trap 2). First match wins:
   between versions. A session held past `hold_bound` (30 minutes) gets one `stale` log
   line and one stderr line from `check`, and stays held; `status` marks it `STALE`.
 - After a wake that carried a `merged` or `closed` event, that PR's subscription for
-  the session ends.
+  the session ends, unless the PR has reopened since (as last read), and the wake's
+  `PR` line shows that state.
 
 ## The wake prompt
 
