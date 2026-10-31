@@ -12,6 +12,10 @@ It is a plain local process: no model, no tokens. It runs as the macOS user whos
 sessions it serves, polls that user's GitHub account through `gh`, and resumes
 sessions through `claude`.
 
+**Installing it** (#295): a launchd job runs it every minute, as the `bot` user, from a
+LaunchDaemon. [INSTALL.md](INSTALL.md) has the checklist Mari runs, what
+`scripts/install.sh` writes, and why the job is a LaunchDaemon.
+
 ## Files
 
 | Path | What |
@@ -20,8 +24,12 @@ sessions through `claude`.
 | `lib/examine.jq` | The filter: one PR's issue timeline and state, turned into wake events |
 | `scripts/owner-check.sh` | Vendored from ticket-workflow (#291), below |
 | `scripts/pr-notifier-shim.sh` | What the install copies to the stable path |
+| `scripts/install.sh` | The install: the shim, the job script, `wake_path`, and the launchd job |
+| `scripts/pr-notifier-job.sh` | What launchd runs: keychain, `PATH`, log rotation, then `check` |
+| `INSTALL.md` | Mari's install checklist, and why the job is a LaunchDaemon |
 | `skills/pr-notifier/SKILL.md` | When sessions call it, and the wake prompt's exact shape |
 | `tests/test-pr-notifier.sh` | Tests against stubbed `gh` and `claude` |
+| `tests/test-install.sh` | Tests of the install and the job against stubbed `launchctl` and `security` |
 
 ## The stable path
 
@@ -31,7 +39,8 @@ The install (#295) copies `scripts/pr-notifier-shim.sh` there. The shim runs the
 `pr-notifier/<version>/bin/pr-notifier` it finds under any of the user's config roots
 (`~/.claude/plugins/cache/maguerrieri-toolbox/…` and `~/.claude-*/plugins/cache/…`),
 so an update needs no reinstall. `PR_NOTIFIER_ROOT` pins a plugin directory instead (a
-checkout, or a test). The launchd job runs `"$HOME/.local/bin/pr-notifier" check`.
+checkout, or a test). The launchd job runs `"$HOME/.local/bin/pr-notifier" check`, through
+the job script the install writes to `~/.local/libexec/pr-notifier-job` ([INSTALL.md](INSTALL.md)).
 
 ## State
 
@@ -49,8 +58,10 @@ macOS user and shared by all of that user's config roots:
   failed), cached owner checks, and the events held per session (with any wake backoff).
 - `config.json`: optional settings (below).
 - `notifier.log`: append-only, one line per poll, filtered event (kept or dropped, and
-  why), hold, wake, unsubscribe and stale hold. It isn't rotated; the install can add
-  that.
+  why), hold, wake, unsubscribe and stale hold. The launchd job rotates it past 1 MiB,
+  keeping one old copy as `notifier.log.1`.
+- `job.log` and `job.last`: the launchd job's own output (including `check`'s stderr,
+  rotated the same way) and its last run's outcome ([INSTALL.md](INSTALL.md)).
 - `lock/`: held by any command that writes, so a `subscribe` never races a `check`.
   `subscribe` and `unsubscribe` wait up to five minutes for it; `check` skips its turn
   if it's held. A lock whose holder died, or that has been held over 30 minutes (a dead
@@ -197,8 +208,8 @@ is the contract ticket-workflow (#294) codes against. It opens with
 | `hold_bound` | `1800` | Seconds before a held session is reported stale |
 | `wake_path` | the notifier's own `PATH` | The `PATH` every `claude` call, and so every woken session, gets |
 
-The install sets `wake_path` (or the job's own `PATH`) to the user's full login-shell
-`PATH`, captured once.
+The install sets `wake_path` to the user's full login-shell `PATH`, captured once, and
+the launchd job runs `check` with it as its own `PATH` too.
 
 ## owner-check.sh is vendored
 
@@ -216,17 +227,17 @@ other matches. `PR_NOTIFIER_OWNER_CHECK` points the notifier at another copy.
 
 ```bash
 bash plugins/pr-notifier/tests/test-pr-notifier.sh
+bash plugins/pr-notifier/tests/test-install.sh
 ```
 
 They run the CLI against stubbed `gh` and `claude` (and the real vendored
-`owner-check.sh` on the `gh` stub), in CI through `.github/workflows/pr-notifier-ci.yml`.
+`owner-check.sh` on the `gh` stub), and the install and the job script against stubbed
+`launchctl` and `security`, in CI through `.github/workflows/pr-notifier-ci.yml`.
 
 ## Not here
 
 - ticket-workflow subscribing at START, handling the wake prompt, and unsubscribing at
   FINISH: #294.
-- The launchd job, its install script (which writes the shim and the `PATH`), and the
-  checklist Mari runs: #295.
 - Delivering in place into a live session (typing into a pty-held `claude attach`), the
   only alternative to stop-and-resume the spike found. It drives the interactive UI and
   can collide with someone typing, so it waits until stop-and-resume proves too
