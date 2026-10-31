@@ -73,8 +73,10 @@ when the job exits.
 Run every step from a `sudo -iu bot` shell, except step 2 (root, in your own shell) and
 step 5's reboot.
 
-**In each new bot shell**, first define `pni`, which runs `install.sh` from the newest
-copy of the plugin in bot's default config root, where step 1 installs it:
+**In each new bot shell**, first define `pni`, which runs `install.sh` from bot's
+default config root, where step 1 installs the plugin. That copy hands over to the newest
+copy in any of bot's config roots (`~/.claude`, `~/.claude-*`), the one the shim runs the
+CLI from:
 
 ```zsh
 pni() {
@@ -96,7 +98,8 @@ pni
 It prints a line per piece (`wrote …`, `set wake_path …`), then `next: the LaunchDaemon
 isn't installed`. Check the `wake_path` it printed: it's what every woken session's tools
 will see. If it's wrong, run `pni --path '<the PATH>'`. It stops without writing anything
-if that `PATH` doesn't find `claude`, `gh`, `jq` and `bash`.
+if that `PATH` doesn't find `claude`, `gh`, `jq`, `bash` and the basic system tools
+(`sed`, `awk`, `date`, `mv`, `mkdir`).
 
 ### 2. The LaunchDaemon (your own shell, as root)
 
@@ -268,4 +271,5 @@ It needs no root: it writes `~/Library/LaunchAgents/works.sprue.bot.pr-notifier.
 bootstraps it into `user/<uid>`, the route the spike tested. It isn't known to come back
 after a reboot, so check with `pni status` after one, and run `pni` again from a bot
 shell if it didn't. From then on a plain `pni` keeps the agent. To go back, install the
-LaunchDaemon (step 2), then run `pni`: once the LaunchDaemon exists, it removes the agent.
+LaunchDaemon (step 2), then run `pni`: once the LaunchDaemon is loaded, it removes the
+agent, and until then it keeps the agent running.
