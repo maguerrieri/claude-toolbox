@@ -46,9 +46,10 @@ rotate "$state/job.log"
 rotate "$state/notifier.log"
 exec >>"$state/job.log" 2>&1
 
-# job.last holds this run's outcome, one line, for the install's status:
-# a run that goes on to check logs nothing here, so job.log alone can't
-# tell a job that recovered from one still skipping.
+# job.last holds this run's outcome, one line, for the install's status
+# (ran check, check failed, or skipped): a run whose check succeeds logs
+# nothing in job.log, so job.log alone can't tell a job that recovered from
+# one still failing.
 last() {
 	printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >"$state/job.last.tmp" &&
 		mv -f "$state/job.last.tmp" "$state/job.last"
@@ -94,5 +95,11 @@ fi
 
 unset CLAUDE_CONFIG_DIR CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
 cd / || exit 1
-last "ran check"
-exec "$cli" check
+"$cli" check
+rc=$?
+if [ "$rc" = 0 ]; then
+	last "ran check"
+else
+	last "check failed: exit $rc (see job.log)"
+fi
+exit "$rc"
