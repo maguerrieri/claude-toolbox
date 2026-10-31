@@ -89,7 +89,8 @@ prompt and delivers it with the next wake, and two polls can name one event.
 ## When a wake is held
 
 A session that is busy, mid-turn, or has background work in flight isn't interrupted:
-its events wait for the next poll. A live, idle session is stopped and resumed (resuming
+its events wait for the next poll. Nor is a live terminal (non-background) session,
+which someone is at; it is woken once it exits. A live, idle session is stopped and resumed (resuming
 a live session would fork a copy), but only after ten minutes without activity, since
 the stop disconnects anyone attached to it. A hold that lasts past 30 minutes is
 reported in the log and by `check` on stderr. The plugin's README has the full table.
