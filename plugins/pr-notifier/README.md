@@ -116,9 +116,10 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
   keeps the edit as a `review` when it reaches a new completed state.
 - An owner's comment edited after the earliest subscription is kept as `edited`, even
   one posted before it. A comment with no record of an earlier edit counts as last
-  edited when it was created; an edit by a login not yet known to be the owner gets the
-  same owner check and recheck window as a new item. A settled edit leaves the author's
-  ownership unknown, so a failed read can't silence the comment's later edits.
+  edited when it was created. **Each edit is decided like a new item**: its own owner
+  check (the same cached one) and recheck window. No comment pins its author's
+  ownership, so an admin whose access is revoked stops waking sessions once the cache
+  expires, and a failed read can't silence a comment's later edits.
 
 ## Delivery
 
