@@ -465,6 +465,8 @@ timeline 7 "$(comment 7 101 mari User "$(iso $((T + 90)))")"
 nt $((T + 130)) check
 record 1 'a thread on a subscribed PR has it read at once, without waiting for the sweep' "$(wakes)"
 record yes 'and the log counts the match' "$(logged 'poll status=200 threads=2 matched=1')"
+record "$(iso $((T - 300)))" 'a 200 within the hour leaves since alone, so the URL repeats' \
+	"$(jq -r '.feed.since' "$PR_NOTIFIER_HOME/state.json")"
 
 # A notification that never comes: the sweep still finds the owner's event.
 reset

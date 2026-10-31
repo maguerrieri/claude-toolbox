@@ -62,9 +62,10 @@ Files are replaced atomically (written beside, then moved).
 1. **Poll the feed**, unless `X-Poll-Interval` (60 seconds) hasn't passed since the
    last poll: `GET /notifications?all=true&since=…` with `If-Modified-Since`, so a quiet
    minute is a 304, which the spike found doesn't count against the rate limit. `since`
-   only moves on a 200 (to five minutes before that poll, since a thread's `updated_at`
-   can trail its event), so the URL repeats and a 304 stays possible, and a restart
-   catches up from the last 200. A thread on a subscribed PR marks that PR to be read.
+   moves only on a 200, and at most hourly (to five minutes before that poll, since a
+   thread's `updated_at` can trail its event), so the URL usually repeats and a 304
+   stays possible, and a restart catches up from the last 200. A thread on a subscribed
+   PR marks that PR to be read.
 2. **Read every PR that is marked, or due a sweep** (`sweep_interval`, five minutes):
    the PR itself and its issue timeline. The sweep is what makes a missed notification
    harmless. The spike couldn't yet say whether the owner's reviews and line comments
