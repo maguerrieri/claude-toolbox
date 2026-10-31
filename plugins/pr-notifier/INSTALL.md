@@ -37,8 +37,8 @@ nothing. It never runs as root: the one root step is a paste (step 2).
    subscription records its own, and setting `~/.claude` explicitly breaks the default
    root (Trap 3). On start after downtime, `check` catches up from its cursor.
 
-`job.last` holds the last run's outcome (`ran check`, or `skipped: <why>`), which
-`install.sh status` reads.
+`job.last` holds the last run's outcome (`ran check`, `check failed: exit <n>`, or
+`skipped: <why>`), which `install.sh status` reads.
 
 ## Why a LaunchDaemon
 
@@ -72,19 +72,30 @@ when the job exits.
 Run every step from a `sudo -iu bot` shell, except step 2 (root, in your own shell) and
 step 5's reboot.
 
+**In each new bot shell**, first define `pni`, which runs `install.sh` from the newest
+copy of the plugin in bot's default config root, where step 1 installs it:
+
+```zsh
+pni() {
+  local v
+  v=$(ls ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier 2>/dev/null | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
+  [ -n "$v" ] || { echo "pr-notifier isn't installed in ~/.claude; see step 1" >&2; return 1; }
+  bash ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier/$v/scripts/install.sh "$@"
+}
+```
+
 ### 1. bot's side
 
 ```zsh
 claude plugin marketplace update maguerrieri-toolbox
 claude plugin install pr-notifier@maguerrieri-toolbox
-v=$(ls ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
-bash ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier/$v/scripts/install.sh
+pni
 ```
 
 It prints a line per piece (`wrote …`, `set wake_path …`), then `next: the LaunchDaemon
 isn't installed`. Check the `wake_path` it printed: it's what every woken session's tools
-will see. If it's wrong, run the last line again with `--path '<the PATH>'`. It stops
-without writing anything if that `PATH` doesn't find `claude`, `gh`, `jq` and `bash`.
+will see. If it's wrong, run `pni --path '<the PATH>'`. It stops without writing anything
+if that `PATH` doesn't find `claude`, `gh`, `jq` and `bash`.
 
 ### 2. The LaunchDaemon (your own shell, as root)
 
@@ -145,13 +156,12 @@ job runs at once, then every 60 seconds.
 ### 3. Check that it runs
 
 ```zsh
-v=$(ls ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
-bash ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier/$v/scripts/install.sh status
+pni status
 ```
 
 Expect `status: ok`, with `system/works.sprue.bot.pr-notifier is loaded: state=…
 runs=… last-exit=0` and `the job's last run: … ran check`. Any `FAIL` line says what to
-fix. With nothing subscribed yet, `notifier.log` gains a `check skipped=no-subscriptions`
+fix; `job.last` also records a `check` that failed (`check failed: exit …`). With nothing subscribed yet, `notifier.log` gains a `check skipped=no-subscriptions`
 line a minute.
 
 ### 4. Test a resume from the LaunchDaemon
@@ -216,10 +226,11 @@ claude-config's `AGENTS.md`, *The `bot` macOS user*.
 
 ## After a plugin update
 
-The CLI needs nothing: the shim runs the newest installed copy. `install.sh status`
-(step 3) says when the job script or the shim differs from the newest version's; run
-step 1's last two lines again. If it says the LaunchDaemon's plist differs, run step 2
-again with this file's new block.
+The CLI needs nothing: the shim runs the newest installed copy. `pni status` (step 3)
+says when the job script or the shim differs from the newest version's; run `pni` again.
+With no `--domain`, `pni` keeps whichever job is installed, so this is the same on the
+fallback. If `status` says the LaunchDaemon's plist differs, run step 2 again with this
+file's new block.
 
 ## Uninstall
 
@@ -234,8 +245,7 @@ sudo rm /Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist
 Then from a bot shell:
 
 ```zsh
-v=$(ls ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
-bash ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier/$v/scripts/install.sh uninstall
+pni uninstall
 ```
 
 It refuses while the LaunchDaemon's plist is still there. It removes the job script and
@@ -249,13 +259,12 @@ If step 4 shows a LaunchDaemon can't resume sessions, uninstall the LaunchDaemon
 lines above), then from a bot shell:
 
 ```zsh
-v=$(ls ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)
-bash ~/.claude/plugins/cache/maguerrieri-toolbox/pr-notifier/$v/scripts/install.sh --domain user
+pni --domain user
 ```
 
 It needs no root: it writes `~/Library/LaunchAgents/works.sprue.bot.pr-notifier.plist`
 (the same job, with `LimitLoadToSessionType` `Background` in place of `UserName`) and
 bootstraps it into `user/<uid>`, the route the spike tested. It isn't known to come back
-after a reboot, so check with `install.sh status` after one, and run that line again from
-a bot shell if it didn't. `install.sh` (the default, `--domain system`) removes the agent
-again when you go back to the LaunchDaemon.
+after a reboot, so check with `pni status` after one, and run `pni` again from a bot
+shell if it didn't. From then on a plain `pni` keeps the agent. To go back, install the
+LaunchDaemon (step 2), then run `pni`: once the LaunchDaemon exists, it removes the agent.
