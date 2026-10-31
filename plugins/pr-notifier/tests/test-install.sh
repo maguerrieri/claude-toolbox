@@ -109,11 +109,12 @@ record yes "install: job is the plugin's job script" "$(same "$job" "$job_src")"
 record "$wake" "install: wake_path is the PATH, cleaned" "$(wake_path)"
 record yes "install: says the LaunchDaemon is Mari's next step" "$(has "$out" "next: the LaunchDaemon isn't installed")"
 record 0 "install: system domain bootstraps nothing" "$(bootstraps)"
+record "$(PATH=$wake command -v jq)" "install: records the jq wake_path finds" "$(cat "$PR_NOTIFIER_HOME/jq-path")"
 
 inst --path "$tool_path"
 record 0 "second install: exit" "$?"
 record no "second install: writes nothing" "$(grep -qE '^(wrote|set) ' "$out" && echo yes || echo no)"
-record 3 "second install: three pieces current" "$(grep -c '^ok: .* current' "$out")"
+record 4 "second install: four pieces current" "$(grep -c '^ok: .* current' "$out")"
 
 # The PATH: absolute entries only, each once, in order.
 reset
@@ -349,6 +350,22 @@ record / "job: from /" "$(sed -n 's/^pwd=//p' "$STUB/cli")"
 record "<unset>" "job: no CLAUDE_CONFIG_DIR" "$(sed -n 's/^cfg=//p' "$STUB/cli")"
 record yes "job: unlocks the default keychain, empty password" "$(has "$STUB/security.log" "unlock-keychain -p  $STUB/kc")"
 record yes "job: job.last" "$(has "$PR_NOTIFIER_HOME/job.last" "ran check")"
+
+# A jq only wake_path finds: the job reads config.json with the one the
+# install recorded, not with whatever its bootstrap PATH finds.
+reset
+fake_cli
+config "$wake"
+mkdir -p "$tmp/ownjq"
+printf '#!/bin/sh\necho used >>"%s"\nexec "%s" "$@"\n' "$STUB/ownjq.log" "$(command -v jq)" >"$tmp/ownjq/jq"
+chmod +x "$tmp/ownjq/jq"
+echo "$tmp/ownjq/jq" >"$PR_NOTIFIER_HOME/jq-path"
+run_job
+record 0 "job, recorded jq: runs" "$?"
+record yes "job, recorded jq: used it" "$(has "$STUB/ownjq.log" used)"
+echo "$tmp/gone/jq" >"$PR_NOTIFIER_HOME/jq-path"
+run_job
+record 0 "job, recorded jq gone: falls back to a bootstrap jq" "$?"
 
 reset
 fake_cli
