@@ -437,6 +437,15 @@ editor 101 mari
 nt $((T + 700)) check
 record 1 'until the editor reads, inside the window' "$(wakes)"
 
+reset
+timeline 7 "$(comment 7 102 eve User "$T1")"
+nt "$T" check
+editor 102 mari
+timeline 7 "$(comment 7 102 eve User "$T1" "$(iso $((T + 100)))")"
+nt $((T + 400)) check
+record 1 "the owner's edit of a stranger's comment still being rechecked wakes at once" "$(wakes)"
+record '- edited https://github.com/o/r/pull/7#issuecomment-102' 'as an edit' "$(prompt | tail -n 1)"
+
 # Each edit gets its own recheck window.
 reset
 editor 101 mari
@@ -492,6 +501,26 @@ record 1 'a later edit to a running review wakes nothing' "$(wakes)"
 timeline 7 "$(codex "$(iso $((T0 - 900)))" "$(iso $((T + 1300)))" completed def)"
 nt $((T + 1600)) check
 record 2 'and its completion for a new commit wakes again' "$(wakes)"
+
+forged() { # forged <login> <type> <created> <updated> <commit>: a Codex summary's text in someone else's comment
+	codex "$3" "$4" completed "$5" | jq --arg u "$1" --arg t "$2" '.user = {login: $u, type: $t} | .id = 302
+		| .html_url = "https://github.com/o/r/pull/7#issuecomment-302" | .node_id = "IC_302"'
+}
+reset
+editor 302 eve
+timeline 7 "$(comment 7 302 eve User "$(iso $((T0 - 900)))")"
+nt "$T" check
+timeline 7 "$(comment 7 302 eve User "$(iso $((T0 - 900)))" "$(iso $((T + 100)))")"
+nt $((T + 400)) check
+timeline 7 "$(forged eve User "$(iso $((T0 - 900)))" "$(iso $((T + 300)))" a2)"
+nt $((T + 450)) check
+timeline 7 "$(forged eve User "$(iso $((T0 - 900)))" "$(iso $((T + 500)))" a3)"
+nt $((T + 800)) check
+record 0 "a stranger's comment carrying a Codex summary's text wakes nothing, however often it changes" "$(wakes)"
+reset
+timeline 7 "$(forged 'some-app[bot]' Bot "$T1" "$T1" a1)"
+nt "$T" check
+record 0 "nor does an unconfigured app's" "$(wakes)"
 
 # --- delivery states ----------------------------------------------------------
 

@@ -120,9 +120,12 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
   `closed`.
 - Codex's clean result edits its old summary comment and adds a 👍, and neither is a
   new timeline item. The filter tracks that comment's `codex-review-state` line and
-  keeps the edit as a `review` when it reaches a new completed state.
+  keeps the edit as a `review` when it reaches a new completed state. Only a configured
+  bot's comment is read this way: the same text in anyone else's comment is an ordinary
+  comment, so it can't be forged into a wake.
 - **A comment edited by the owner** after the earliest subscription is kept as
-  `edited`, whoever wrote it and even if it was posted before. The REST timeline names
+  `edited`, whoever wrote it, even if it was posted before, and even while the comment
+  itself is still being rechecked (a stranger's, say). The REST timeline names
   only a comment's author, so the notifier asks GraphQL for each edited comment's
   `editor` (one query per PR with edits) and decides the edit by the editor: a write
   collaborator editing the owner's comment wakes nothing. A comment with no record of an
