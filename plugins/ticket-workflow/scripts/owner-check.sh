@@ -4,7 +4,7 @@
 # skills/ticket-workflow/, and for anything else that must tell the owner's
 # comments from a stranger's.
 #
-#   owner-check.sh [-R <owner>/<repo>] <login>
+#   owner-check.sh [-R [<host>/]<owner>/<repo>] <login>
 #
 # Reads GitHub's permission (repos/<owner>/<repo>/collaborators/<login>/permission)
 # for <login> and for the sessions' own login (`gh api user`), and exits:
@@ -21,20 +21,25 @@
 # Why the sessions' login must not have admin: it could grant admin to
 # another account, so then nobody else is trusted.
 #
-# <login> is checked against GitHub's login format before it reaches a URL or
-# the shell, and logins compare case-insensitively. -R defaults to the repo
-# origin points at. One line on stderr says why. Standalone on purpose (gh
-# only, plus git for the origin default), so another plugin can call or vendor
-# it. OWNER_CHECK_GH overrides the gh binary (tests).
+# <login> must be a GitHub login's characters (alphanumerics and hyphens, not
+# leading, at most 39) before it reaches a URL or the shell, so a [bot] login
+# never does, and logins compare case-insensitively. Both reads go to the
+# repo's own host: -R's <host>/ prefix (gh's default host without one), or,
+# with no -R, the host and owner/repo origin points at, so a repo on another
+# GitHub host is never checked against a github.com namesake. One line on
+# stderr says why. Standalone on purpose (gh only, plus git for the origin
+# default), so another plugin can call or vendor it. OWNER_CHECK_GH overrides
+# the gh binary (tests).
 set -uo pipefail
 
+usage="usage: owner-check.sh [-R [<host>/]<owner>/<repo>] <login>"
 untrusted() {
 	echo "owner-check.sh: $*" >&2
 	exit 1
 }
 
-login_re='^[A-Za-z0-9](-?[A-Za-z0-9])*$'
-valid_login() { # a GitHub login: alphanumerics and single inner hyphens, at most 39
+login_re='^[A-Za-z0-9][A-Za-z0-9-]*$'
+valid_login() { # a GitHub login's characters: alphanumerics and hyphens, not leading, at most 39
 	[ "${#1}" -le 39 ] && [[ $1 =~ $login_re ]]
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
@@ -45,25 +50,48 @@ have_login=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-R)
-		[ $# -ge 2 ] || untrusted "usage: owner-check.sh [-R <owner>/<repo>] <login>"
+		[ $# -ge 2 ] || untrusted "$usage"
 		repo=$2
 		shift 2
 		;;
 	*)
-		[ -z "$have_login" ] || untrusted "usage: owner-check.sh [-R <owner>/<repo>] <login>"
+		[ -z "$have_login" ] || untrusted "$usage"
 		login=$1
 		have_login=1
 		shift
 		;;
 	esac
 done
-[ -n "$have_login" ] || untrusted "usage: owner-check.sh [-R <owner>/<repo>] <login>"
+[ -n "$have_login" ] || untrusted "$usage"
 valid_login "$login" || untrusted "'$login' is not a GitHub user login, so it isn't trusted"
 
-if [ -z "$repo" ]; then
+host=
+if [ -n "$repo" ]; then
+	case $repo in */*/*) host=${repo%%/*} repo=${repo#*/} ;; esac
+else
 	url=$(git remote get-url origin 2>/dev/null) || untrusted "no -R and no origin remote to read owner/repo from"
-	repo=$(printf '%s' "$url" | sed -E 's#^(https?|ssh)://([^@/]+@)?[^/]+/##; s#^[^@/]+@[^:]+:##; s#\.git$##; s#/$##')
+	case $url in
+	*://*) # scheme://[user@]host[:port]/owner/repo
+		rest=${url#*://}
+		authority=${rest%%/*}
+		path=${rest#"$authority"}
+		path=${path#/}
+		authority=${authority##*@}
+		host=${authority%%:*}
+		;;
+	*:*) # scp-like [user@]host:owner/repo
+		authority=${url%%:*}
+		path=${url#*:}
+		host=${authority##*@}
+		;;
+	*) untrusted "can't read owner/repo from origin's URL $url" ;;
+	esac
+	path=${path%/}
+	repo=${path%.git}
+	[ -n "$host" ] || untrusted "can't read the host from origin's URL $url"
 fi
+host_re='^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'
+[ -z "$host" ] || [[ $host =~ $host_re ]] || untrusted "'$host' is not a host name"
 repo_owner=${repo%%/*}
 repo_name=${repo#*/}
 name_re='^[A-Za-z0-9._-]+$'
@@ -74,16 +102,25 @@ fi
 
 gh_bin=${OWNER_CHECK_GH:-gh}
 
+api() { # api <endpoint> <jq filter>: one GitHub REST read, on the repo's host
+	# </dev/null: gh never needs stdin here.
+	if [ -n "$host" ]; then
+		"$gh_bin" api "$1" --hostname "$host" --jq "$2" </dev/null 2>/dev/null
+	else
+		"$gh_bin" api "$1" --jq "$2" </dev/null 2>/dev/null
+	fi
+}
+
 permission() { # permission <login>: GitHub's legacy role (admin/write/read/none), or fails
 	local out
-	# </dev/null: gh never needs stdin here. A failed read prints its error
-	# body on stdout too, so only the exit status says it worked.
-	out=$("$gh_bin" api "repos/$repo/collaborators/$1/permission" --jq .permission </dev/null 2>/dev/null) || return 1
+	# A failed read prints its error body on stdout too, so only the exit
+	# status says it worked.
+	out=$(api "repos/$repo/collaborators/$1/permission" .permission) || return 1
 	[ -n "$out" ] || return 1
 	printf '%s' "$out"
 }
 
-me=$("$gh_bin" api user --jq .login </dev/null 2>/dev/null) || untrusted "can't read the sessions' own login (gh api user)"
+me=$(api user .login) || untrusted "can't read the sessions' own login (gh api user)"
 valid_login "$me" || untrusted "the sessions' own login '$me' isn't a GitHub user login"
 me_perm=$(permission "$me") || untrusted "can't read $me's permission on $repo"
 

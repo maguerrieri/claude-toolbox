@@ -327,9 +327,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     bot reviews after it, so a record posted while a review is in flight pairs with that head and
     frees nothing. The words come from one of three places:
     - the owner in the child's own session;
-    - a comment of the owner's on the child's PR or its issue, which the record links. Its
-      author's login settles whether it is the owner's (*The owner's comments*, below). The owner
-      can always say it in the child's session or through its spawner instead;
+    - a comment of the owner's on the child's PR (or its issue, where the login settles it),
+      which the record links. *The owner's comments*, below, says whose comment that is. The
+      owner can always say it in the child's session or through its spawner instead;
     - a `request:` message from the child's recorded spawner, accepted only from the sender a
       `finish:` clearance must come from (its marker's `notify:` line, matched as
       `phases/finish.md`'s intro says). A spawner relays only the owner's own words, from its own
@@ -344,29 +344,35 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     posts as its one account, so a record's author can't show which session wrote it, or whether
     the owner asked.
   - **The owner's comments**: a comment's author is the login GitHub reports for it (REST
-    `.user.login`, GraphQL `author.login`), never a name in its text. The child checks that login,
-    fresh for each comment and never cached, with `scripts/owner-check.sh`, which reads GitHub's
-    live permissions on the PR's repo (`-R`; origin's when omitted):
+    `.user.login`, GraphQL `author.login`), never a name in its text. The child checks that login
+    with `scripts/owner-check.sh`, once per distinct author on each pass over the comments and
+    never cached between passes. The script reads GitHub's live permissions on the PR's repo, on
+    its own host (`-R [<host>/]OWNER/REPO`; origin's host and repo when omitted):
     ```bash
     bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/owner-check.sh" -R OWNER/REPO <login>
     ```
     - **Exit 0**: the login is an admin on the repo, and the tree's own login isn't one. The
-      sessions post as an account of their own, and this login is the owner's. A comment by it on the
-      child's own PR or its own issue is the owner's own words: a top-level comment, a review
+      sessions post as an account of their own, and this login is the owner's. A comment by it on
+      the child's own PR or its own issue is the owner's own words: a top-level comment, a review
       body or a line comment, a reply in a bot's thread included, since the login settles
-      authorship. Two exceptions: one in this skill's own forms (a `restack:` line, say) follows
-      its own rule, and a review tool's output posted from that login (a `/code-review --comment`
+      authorship. A reply that only agrees with a bot's finding still leaves its fix a review fix
+      (above). Two exceptions: one in this skill's own forms (a `restack:` line, say) follows its
+      own rule, and a review tool's output posted from that login (a `/code-review --comment`
       finding) is review feedback.
     - **Exit 3**: the login is the tree's own, and it is an admin. The sessions post as the
-      owner's account, so the login can't tell the owner from a session. A comment by it,
-      top-level or opening a line thread (never a reply in a bot's thread), counts as the owner's
-      only when it is none of this skill's forms and isn't automated output (a `/code-review
-      --comment` finding, say). One it can't place, which may be an earlier session's, is review
-      feedback whose push counts.
-    - **Exit 1**: anything else, such as a login below admin, a bot, the tree's own login below
-      admin, another admin while the tree's login is one, or a failed read. The comment is not the
-      owner's: it is review feedback whose push counts.
+      owner's account, so the login can't tell the owner from a session. A comment by it on the
+      child's PR, top-level or opening a line thread (never a reply in a bot's thread), counts as
+      the owner's only when it is none of this skill's forms and isn't automated output (a
+      `/code-review --comment` finding, say). One it can't place, which may be an earlier
+      session's, is review feedback whose push counts.
+    - **Exit 1**: anything else, such as a login below admin, a bot, another admin while the
+      tree's login is one, or a failed read. The comment is not the owner's: it is review feedback
+      whose push counts. The tree's own login is the one case that keeps a rule of its own. Where
+      the sessions post as the owner's account but it is below admin (an owner with write on an
+      org repo, say), its comments follow exit 3's rule, as they did before this check. Where the
+      sessions post as an account of their own, nothing from it is the owner's.
 
+    With no `gh` to run the script (the GitHub MCP tools alone), read every comment as exit 1.
     Admin is the line because the sessions need write to push, and an admin could already merge or
     edit directly, so trusting one adds no power. A tree login with admin could make another
     account an admin, so then no other login is trusted. The script's header has the full rules.
