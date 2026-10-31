@@ -180,7 +180,9 @@ def record($i; $verdict; $reason):
                 .comments[$i.id] = {updated_at: prev_updated($i), owner: null, edit_retry: $now}
                 | .log += [record($i; "drop"; "edit, not the owner (owner-check \($o // "not run")); rechecked for \($retry_window)s")]
               elif $now - $old.edit_retry >= $retry_window then
-                .comments[$i.id] = {updated_at: $i.updated_at, owner: false}
+                # Only this edit settles: ownership stays unknown, so the
+                # next edit of the comment gets a fresh owner check.
+                .comments[$i.id] = {updated_at: $i.updated_at, owner: null}
                 | .log += [record($i; "drop"; "edit, not the owner (owner-check \($o // "not run")); settled")]
               else . end
           end)

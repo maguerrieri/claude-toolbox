@@ -379,6 +379,20 @@ record 2 'a second edit wakes again' "$(wakes)"
 nt $((T + 2500)) check
 record yes "the stranger's edit settles after the retry window" "$(logged 'key=comment:102 actor=eve verdict=drop reason="edit, not the owner (owner-check 1); settled"')"
 
+# An owner check that fails for a whole retry window settles that edit only.
+reset
+touch "$STUB/perm-mari.fail"
+timeline 7 "$(comment 7 101 mari User "$pre")"
+nt "$T" check
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 100)))")"
+nt $((T + 400)) check
+nt $((T + 2400)) check
+record 0 'an edit whose owner check fails for the whole window wakes nothing' "$(wakes)"
+rm "$STUB/perm-mari.fail"
+timeline 7 "$(comment 7 101 mari User "$pre" "$(iso $((T + 2500)))")"
+nt $((T + 2800)) check
+record 1 'but the next edit of that comment is checked afresh, and wakes' "$(wakes)"
+
 reset
 timeline 7 "$(comment 7 101 mari User "$(iso $((T0 - 300)))" "$(iso $((T0 + 60)))")"
 nt "$T" check
