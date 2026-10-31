@@ -41,6 +41,11 @@
       "description": "End-to-end issue workflow (make/start/finish/spawn/epic) with a pluggable tracker (GitHub Issues or Jira) and profile"
     },
     {
+      "name": "pr-notifier",
+      "source": "./plugins/pr-notifier",
+      "description": "Wakes the local session that owns a PR when the owner or a configured review bot acts on it, or when it merges or closes"
+    },
+    {
       "name": "provenance",
       "source": {
         "source": "github",
