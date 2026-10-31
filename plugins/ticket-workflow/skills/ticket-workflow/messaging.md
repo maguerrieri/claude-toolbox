@@ -208,8 +208,13 @@ content, which the child records before landing them, and lifts no hold.)
   user (the owner's own shell, say, while the tree runs as a bot user)
   reaches the tree only through the durable record, and only through the
   parts honored whoever wrote them: a raise on the PR's `Review rounds:`
-  line, and PR comments, which are read as review feedback. What's taken only
-  from the tree's own login (the profile's `REVIEW_BOT`, *Owner requests*,
+  line, and PR comments, which are read as review feedback. A comment from a
+  login `scripts/owner-check.sh` accepts as the owner's (an admin on the
+  repo, while the tree's login isn't one) is read as the owner's request
+  instead, about that PR's content only (the profile's `REVIEW_BOT`, *The
+  owner's comments*), so the owner's own account can steer a child's PR from
+  a comment. What's taken only from the tree's own login (the records and
+  cloud `request:` comments of the profile's `REVIEW_BOT`, *Owner requests*,
   and EPIC Step 6's `request:` markers) isn't taken from another login. To
   act inside the tree, the owner attaches to one of its sessions as its user.
 - Not load-bearing — a harness without SendMessage (older build, restricted
