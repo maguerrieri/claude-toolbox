@@ -45,12 +45,17 @@ def items:
   ($tl[0] // []) | (if type == "array" then flatten else [] end) as $all
   | ([ $all[] | select(type == "object" and .event == "reviewed") | .id | tostring ]
      | map({(.): true}) | add // {}) as $reviews
+  | ($bots | map(lc)) as $bots_lc
   | [ $all[] | select(type == "object") as $e
     | if $e.event == "commented" then
         {key: "comment:\($e.id)", kind: "comment", actor: ($e.user.login // ""),
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.created_at // ""),
          id: ($e.id | tostring), node_id: ($e.node_id // ""),
-         updated_at: ($e.updated_at // $e.created_at // ""), codex: ($e | codex_state)}
+         updated_at: ($e.updated_at // $e.created_at // ""),
+         # Only a configured bot's comment can be a Codex summary: anyone can
+         # post one's text, so a stranger's copy is an ordinary comment.
+         codex: (if ($e.user.type // "") == "Bot" and ($bots_lc | index(($e.user.login // "") | lc)) != null
+                 then ($e | codex_state) else null end)}
       elif $e.event == "reviewed" and (($e.state // "") | lc) != "pending" then
         {key: "review:\($e.id)", kind: "review", actor: ($e.user.login // ""),
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.submitted_at // "")}
@@ -83,17 +88,18 @@ def record($i; $verdict; $reason):
 | [ $items[] | select($seenset[.key] | not) ] as $new
 | ($ps.comments // {}) as $tracked
 | ($editors // {}) as $editors
-# A new item at or after the baseline: the first pass decides it.
-| def fresh($i): ($seenset[$i.key] | not) and $i.at >= $baseline;
 # A comment's updated_at as last recorded. One with no entry was last seen
 # unedited, so its creation time stands in.
-  def prev_updated($i): (($tracked[$i.id] // {}).updated_at) // $i.at;
-# A comment edited after the baseline that the first pass doesn't decide
-# (Codex's summary has its own rule). The edit is its editor's, whoever wrote
-# the comment, and is decided like a new item: its own owner check, the same
-# cached one, and its own recheck window. No comment pins anyone's ownership.
+| def prev_updated($i): (($tracked[$i.id] // {}).updated_at) // $i.at;
+# A comment edited after the baseline (Codex's summary has its own rule),
+# whether or not its creation is decided yet: a stranger's comment still being
+# rechecked can carry the owner's edit. The edit is its editor's, whoever
+# wrote the comment, and is decided apart from the comment: its own owner
+# check, the same cached one, and its own recheck window. No comment pins
+# anyone's ownership. (The result phase skips an edit the first pass already
+# covered, by the updated_at it just recorded.)
   def edited($i):
-    $i.kind == "comment" and $i.codex == null and (fresh($i) | not)
+    $i.kind == "comment" and $i.codex == null
     and $i.updated_at >= $baseline and $i.updated_at != prev_updated($i);
 # The edit as an item of its editor's, or null while the editor is unread.
   def edit($i): ($editors[$i.node_id] // null) as $ed
@@ -171,11 +177,11 @@ def record($i; $verdict; $reason):
                 else . end
             end
         end)
-    # Edits of comments the first pass didn't decide, including ones posted
-    # before the subscription: Codex's summary reaching a new completed state,
-    # or an edit by the owner, whoever wrote the comment. A comment's entry
-    # records only its updated_at (and Codex's state), never who owns it.
-    | reduce ($items[] | select(.kind == "comment") | select(fresh(.) | not)) as $i (.;
+    # Edits, including of comments posted before the subscription or still
+    # being rechecked: Codex's summary reaching a new completed state, or an
+    # edit by the owner, whoever wrote the comment. A comment's entry records
+    # only its updated_at (and Codex's state), never who owns it.
+    | reduce ($items[] | select(.kind == "comment")) as $i (.;
         (.comments[$i.id]) as $c
         | if $i.codex != null then
             if $c != null and $i.codex != $c.codex then
@@ -185,7 +191,9 @@ def record($i; $verdict; $reason):
                   | .log += [record($i; "keep"; "review bot (Codex summary completed)")]
                 else . end
             else . end
-          elif edited($i) | not then .
+          # The first pass just kept this comment as it now reads: its event
+          # covers the edit.
+          elif (edited($i) | not) or $i.updated_at == ($c // {}).updated_at then .
           else
             edit($i) as $e
             | if $e == null then retry_edit($i; "edit, editor unread")
