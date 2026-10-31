@@ -74,20 +74,20 @@ else
 	*://*) # scheme://[user@]host[:port]/owner/repo
 		rest=${url#*://}
 		authority=${rest%%/*}
-		path=${rest#"$authority"}
-		path=${path#/}
+		url_path=${rest#"$authority"}
+		url_path=${url_path#/}
 		authority=${authority##*@}
 		host=${authority%%:*}
 		;;
 	*:*) # scp-like [user@]host:owner/repo
 		authority=${url%%:*}
-		path=${url#*:}
+		url_path=${url#*:}
 		host=${authority##*@}
 		;;
 	*) untrusted "can't read owner/repo from origin's URL $url" ;;
 	esac
-	path=${path%/}
-	repo=${path%.git}
+	url_path=${url_path%/}
+	repo=${url_path%.git}
 	[ -n "$host" ] || untrusted "can't read the host from origin's URL $url"
 fi
 host_re='^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'
