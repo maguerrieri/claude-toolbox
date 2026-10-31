@@ -15,10 +15,10 @@ the notification target was the throwaway PR #296. Timestamps are UTC.
 
 | # | Question | Answer |
 |---|---|---|
-| 1 | Idle stop | Yes, but **8 hours, not 1, for every `bot` session**: bot runs with `remoteControlAtStartup: true`, and a Remote Control-bridged session gets the longer limit. An unbridged one stops after 1 hour. Attached and pinned sessions, and ones with background work in flight, are never stopped. (read; the 1-hour stop tested) |
+| 1 | Idle stop | Yes, but **8 hours, not 1, for every `bot` session**: bot runs with `remoteControlAtStartup: true`, and a Remote Control-bridged session gets the longer limit. An unbridged one stops after 1 hour. Attached and pinned sessions, and ones with background work in flight, are never stopped. (read; tested: the 1-hour stop, and a bridged session still live after 5 hours) |
 | 2 | Resume from launchd | Works from a real launchd job in `user/502` and from `env -i`, with no TTY and no direnv; keeps the id, name and row. Three traps: **any flag next to `--resume` starts a copy**, **the job's `PATH` becomes the woken session's tool `PATH`**, and **setting `CLAUDE_CONFIG_DIR=~/.claude` is not the same as leaving it unset** (the resume is refused). Locked keychain: untested. (tested) |
 | 3 | Waking a live, idle session | `--resume` on a live session **forks a copy**; `claude respawn` restarts it but **takes no prompt**. What works: `claude stop` then `--resume` (context kept; an attached viewer is disconnected), or typing into a pty-held `claude attach` (in place, but fragile). (tested) |
-| 4 | Which notifications arrive | TBD per event. `X-Poll-Interval: 60`; a conditional request's 304 costs no rate limit; the bot's own posts don't appear; every bot-PR thread so far has `reason: author`. (tested) |
+| 4 | Which notifications arrive | Copilot's and Codex's reviews appear within about 20 seconds, as `reason: author`. The bot's own posts don't appear. `X-Poll-Interval` is 60, and a conditional request's 304 costs no rate limit. **The owner-side events (Mari's comments, reviews, a merge) are still pending**, waiting on Mari's actions on #296. (tested; owner rows pending) |
 | 5 | Harness PR events in a local session | **No.** The subscription tool exists only on the cloud harness's MCP server; `ReadNotifications` stayed empty through all of #296's activity. The epic does not need rescoping. (tested + read) |
 
 ## 1. The idle stop
@@ -61,8 +61,9 @@ changed at 17:18:49–17:18:54. The two unbridged ones were retired at 18:19:16,
 [2026-10-31T18:19:16.200Z] [bg] bg settled 330343df (done)
 ```
 
-The bridged one was still live at 18:19 and TBD later. (`f65c5d81` was meant to be pinned
-as well; see *Pinning* for why it wasn't, so it is a second unpinned sample.)
+The bridged one was still live at 22:19, five hours idle. The spike didn't run to its
+eight-hour mark. (`f65c5d81` was meant to be pinned as well; see *Pinning* for why it
+wasn't, so it is a second unpinned sample.)
 
 **After a stop or a retire**, `claude agents --json --all` keeps the row with its last
 `state` (`done` or `blocked`) and sets `status` and `pid` to `null`. The job directory stays,
@@ -194,9 +195,10 @@ change; event times come from each PR's timeline.
 - **A 304 costs no rate limit.** Ten conditional requests in a row all returned
   `304 Not Modified`, and core `used` went from 740 to 741, a change other bot sessions'
   calls account for (they share the token's 5,000/hour).
-- **In practice most polls return 200.** With about ten bot PRs active, the feed's
-  `Last-Modified` moved nearly every minute (TBD: 200 vs 304 counts over the spike). One
-  request a minute is 60 of the 5,000/hour either way.
+- **Busy minutes return 200, quiet ones 304.** Of the 299 polls from 17:17 to 22:17, 15
+  returned 200, all between 17:17 and 17:36 while about ten bot PRs were active; once bot's
+  sessions went quiet, every poll was a 304. One request a minute is 60 of the 5,000/hour
+  either way.
 - **The bot's own posts don't appear.** A comment by `sprue-works-bot` on #296 at 17:30:20
   left the thread's `updated_at` unchanged.
 - **A notification says when, not what.** A thread carries `reason`, `updated_at`,
@@ -209,13 +211,20 @@ change; event times come from each PR's timeline.
 | Codex summary comment (after *ready for review*) | 17:18:30 | yes | `author` | 17:18:36 | 17:19:05 | the Codex comment |
 | Codex 👍 reaction (review done, no findings) | 17:19:49 | yes | `author` | 17:19:49 | 17:20:06 | unchanged |
 | Bot's own comment | 17:30:20 | **no** | | | | |
-| Mari: top-level comment | TBD | | | | | |
-| Mari: line comment | TBD | | | | | |
-| Mari: review, comment | TBD | | | | | |
-| Mari: review, request changes | TBD | | | | | |
-| Mari: review, approve | TBD | | | | | |
-| Merge (Mari, on another bot PR) | TBD | | | | | |
-| Close (by the bot itself) | TBD | | | | | |
+| Mari: top-level comment | pending | | | | | |
+| Mari: line comment | pending | | | | | |
+| Mari: review, comment | pending | | | | | |
+| Mari: review, request changes | pending | | | | | |
+| Mari: review, approve | pending | | | | | |
+| Merge (Mari, on any bot PR) | pending | | | | | |
+| Close (by the bot itself) | pending | | | | | |
+
+**The owner-side rows are pending.** They need Mari's own account. The actions were requested
+on #296 at 17:18 ([the checklist](https://github.com/maguerrieri/claude-toolbox/pull/296#issuecomment-6546644542)),
+and none had happened by 22:19. No bot PR was merged in that window either. The poller keeps
+running, and these rows get filled in when the events land. The close waits until then too,
+because closing #296 would end Mari's test. Going by the bot's own comment above, a close by
+the bot is expected not to appear.
 
 **Review bots on bot PRs today.** Copilot's ruleset auto-request fires even on a draft.
 Codex reviews when a PR is opened for review, when a draft is marked ready (not on a draft),
@@ -232,7 +241,7 @@ requested the review has insufficient remaining quota.*
 
 - **Nothing arrived.** This session is a local `--bg` session (bridged). Its
   `ReadNotifications` returned `No queued notifications.` after Copilot's and Codex's reviews
-  and the comments on #296, and again after Mari's events (TBD).
+  and the comments on #296, and again at 22:19.
 - **A local session can't subscribe.** The subscription tool, `subscribe_pr_activity` (and
   `unsubscribe_pr_activity`), is served by the `claude-code-remote` MCP server, whose
   endpoint is `/v2/ccr-sessions/-/meta/mcp`. The binary attaches that server for cloud (CCR)
@@ -272,7 +281,8 @@ What the answers do to the epic's sketch:
   never show up in its feed, but keep the check anyway.
 - Codex's "no findings" is a 👍 plus an edited comment, not a new comment. Decide whether
   that should wake the session: it's the review a session waits on.
-- TBD after Mari's events: whether reviews and line comments each move the thread.
+- Still open until Mari's events land: whether owner reviews and line comments each move the
+  thread, and with which `reason`.
 
 **Deliver: the state table changes.**
 
