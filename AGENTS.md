@@ -221,6 +221,13 @@ Whatever splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0
 and a one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
 completion-criteria checklists move with their phase.
 
+The frontmatter `description` has a size limit of its own: 1024 characters, the
+Agent Skills limit on skill descriptions. #294's trigger for the pr-notifier's
+wake prompt took it to 1112 before a review caught it, and it sits at 1023 now.
+So a new trigger phrase pays for itself by trimming elsewhere in the
+description. Check the length after any edit (parse the frontmatter, as the
+`yaml` plugin's skill shows, and print `len()` of the value).
+
 ## Releasing (version bumps)
 
 Installs are **version-gated**: `/plugin marketplace update` only pulls a plugin's new
