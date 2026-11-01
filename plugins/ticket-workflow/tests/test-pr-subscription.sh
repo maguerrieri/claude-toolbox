@@ -2,11 +2,11 @@
 # Tests for scripts/pr-subscription.sh, which subscribes a session's PR to the
 # pr-notifier (START Step 7) and unsubscribes it (FINISH Step 3), through the
 # notifier's stable path. The notifier is replaced by a stub:
-#   STUB_OUT     what the stub prints for subscribe/unsubscribe
-#   STUB_RC      the exit code it gives them
-#   STUB_STATUS  what `status --json` prints; STUB_STATUS_RC its exit code
+#   STUB_OUT     what the stub prints
+#   STUB_RC      the exit code it gives
 # Every call is logged as "<args> sid=<CLAUDE_CODE_SESSION_ID>" to $STUB_ARGS.
-# The doc cases run the one-liners the docs show, pulled out of them.
+# The doc cases run the one-liners the docs show, pulled out of them. Runs
+# under macOS's bash 3.2 as well as a current bash.
 #
 #   bash plugins/ticket-workflow/tests/test-pr-subscription.sh
 set -u
@@ -24,10 +24,6 @@ stub="$tmp/home/.local/bin/pr-notifier"
 cat >"$stub" <<'STUB_EOF'
 #!/usr/bin/env bash
 printf '%s sid=%s\n' "$*" "${CLAUDE_CODE_SESSION_ID:-}" >>"$STUB_ARGS"
-if [ "$1" = status ]; then
-	printf '%s\n' "${STUB_STATUS:-}"
-	exit "${STUB_STATUS_RC:-0}"
-fi
 [ -z "${STUB_OUT:-}" ] || printf '%s\n' "$STUB_OUT"
 exit "${STUB_RC:-0}"
 STUB_EOF
@@ -44,7 +40,8 @@ run() {
 	while [ $# -gt 0 ] && [ "$1" != -- ]; do vars+=("$1"); shift; done
 	shift
 	: >"$STUB_ARGS"
-	out=$(env -i PATH="$PATH" HOME="$tmp/home" STUB_ARGS="$STUB_ARGS" "${vars[@]}" \
+	# ${vars[@]+...}: bash 3.2 calls an empty array unbound under set -u.
+	out=$(env -i PATH="$PATH" HOME="$tmp/home" STUB_ARGS="$STUB_ARGS" ${vars[@]+"${vars[@]}"} \
 		bash "$script" "$@" 2>"$tmp/err")
 	rc=$?
 	calls=$(cat "$STUB_ARGS")
@@ -76,8 +73,8 @@ for bad in https://github.example.com/o/r/pull/7 https://github.com/o/r/issues/7
 done
 run CLAUDE_CODE_SESSION_ID=$sid -- subscribe o/r#1 o/r#2
 record 2 "two PRs" "$rc"
-run CLAUDE_CODE_SESSION_ID=$sid -- subscribe o/r#1 --all
-record 2 "--all is for unsubscribe only" "$rc"
+run CLAUDE_CODE_SESSION_ID=$sid -- unsubscribe o/r#1 --all
+record "2 0" "an option, such as the old --all" "$rc $(lines "$calls")"
 run CLAUDE_CODE_SESSION_ID=$sid -- resubscribe o/r#1
 record 2 "an unknown subcommand" "$rc"
 
@@ -85,7 +82,9 @@ record 2 "an unknown subcommand" "$rc"
 
 run CLAUDE_CODE_SESSION_ID=$sid CLAUDE_CODE_REMOTE=true -- subscribe o/r#1
 record "0 0" "a cloud session skips, without calling the notifier" "$rc $(lines "$calls")"
-record yes "the cloud skip says why" "$(case $out in *"cloud session"*) echo yes ;; *) echo "no: $out" ;; esac)"
+cloud_said=no
+case $out in *"cloud session"*) cloud_said=yes ;; esac
+record yes "the cloud skip says why" "$cloud_said"
 
 mv "$stub" "$tmp/stub.away"
 run CLAUDE_CODE_SESSION_ID=$sid -- subscribe o/r#1
@@ -93,8 +92,8 @@ record 0 "no notifier installed: exit 0" "$rc"
 record "pr-subscription: pr-notifier isn't installed here ($tmp/home/.local/bin/pr-notifier), so o/r#1 wasn't subscribed; nothing wakes this session on it" \
 	"no notifier installed: one plain line" "$out"
 record "" "no notifier installed: nothing on stderr" "$(cat "$tmp/err")"
-run CLAUDE_CODE_SESSION_ID=$sid -- unsubscribe o/r#1 --all
-record 0 "no notifier installed: unsubscribe --all skips too" "$rc"
+run CLAUDE_CODE_SESSION_ID=$sid -- unsubscribe o/r#1
+record 0 "no notifier installed: unsubscribe skips too" "$rc"
 mv "$tmp/stub.away" "$stub"
 
 # The stable path, and only the stable path: no notifier there means none.
@@ -118,32 +117,7 @@ record "pr-subscription: pr-notifier subscribe o/r#1 failed (exit 1): pr-notifie
 run CLAUDE_CODE_SESSION_ID=$sid -- unsubscribe https://github.com/o/r/pull/9
 record "0 unsubscribe o/r#9 sid=$sid" "unsubscribe this session" "$rc $calls"
 
-other=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee
-status='{"subscriptions":[
- {"pr":"o/r#9","session_id":"'$sid'","name":"a"},
- {"pr":"o/r#10","session_id":"'$other'","name":"b"},
- {"pr":"o/r#9","session_id":"'$other'","name":"c"}],"pending":{},"feed":{}}'
-run STUB_STATUS="$status" -- unsubscribe O/R#9 --all
-record 0 "--all: exit" "$rc"
-record "status --json sid=
-unsubscribe O/R#9 --session $sid sid=
-unsubscribe O/R#9 --session $other sid=" \
-	"--all: every session on the PR (matched case-insensitively), none on another, with no session id needed" "$calls"
-record 2 "--all: one line per session" "$(lines "$out")"
-
-run STUB_STATUS='{"subscriptions":[{"pr":"o/r#10","session_id":"'$other'"}]}' -- unsubscribe o/r#9 --all
-record "0 pr-subscription: no subscriptions on o/r#9" "--all with none on the PR" "$rc $out"
-
-run STUB_STATUS='{"subscriptions":[]}' STUB_STATUS_RC=1 -- unsubscribe o/r#9 --all
-record "1 1" "--all when status fails: exit 1, no unsubscribe" "$rc $(lines "$calls")"
-
-run STUB_STATUS='not json' -- unsubscribe o/r#9 --all
-record "1 1" "--all when status isn't a listing: exit 1, no unsubscribe" "$rc $(lines "$calls")"
-
-run STUB_STATUS="$status" STUB_RC=1 -- unsubscribe o/r#9 --all
-record "1 3" "--all keeps going past a failed unsubscribe, and fails" "$rc $(lines "$calls")"
-
-# --- every run prints exactly one line, or one per session for --all -----
+# --- every run prints exactly one line ------------------------------------
 
 for args in "subscribe o/r#1" "unsubscribe o/r#1"; do
 	run CLAUDE_CODE_SESSION_ID=$sid STUB_OUT=$'line one\nline two' -- ${args}
@@ -152,22 +126,13 @@ done
 
 # --- the docs' one-liners --------------------------------------------------
 
-# Prints the first line inside a fenced code block of <file> that ends with
-# <text> (so `unsubscribe <pr url>` doesn't match the `--all` line).
-fenced_line() { # fenced_line <file> <text>
-	awk -v text="$2" '
-		/^[ \t]*```/ { in_block = !in_block; next }
-		in_block && length($0) >= length(text) &&
-			substr($0, length($0) - length(text) + 1) == text { print; exit }
-	' "$1"
-}
-
-# Runs the fenced line of <file> that ends with <text>, as the docs show it,
+# Runs the fenced line of <file> that names <text>, as the docs show it,
 # with its placeholders filled in and the plugin root pointing at this checkout.
 run_doc() { # run_doc <file> <text> [VAR=value ...]
 	local file=$1 text=$2 line
 	shift 2
-	line=$(fenced_line "$file" "$text" | sed -e 's|<pr url>|https://github.com/o/r/pull/5|g')
+	line=$(extract_block "$file" "$text" | grep -F -- "$text" | head -n 1 |
+		sed -e 's|<pr url>|https://github.com/o/r/pull/5|g')
 	record yes "doc line found: $text in ${file#"$skill"/}" "$([ -n "$line" ] && echo yes || echo no)"
 	: >"$STUB_ARGS"
 	env -i PATH="$PATH" HOME="$tmp/home" STUB_ARGS="$STUB_ARGS" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" "$@" \
@@ -181,9 +146,7 @@ run_doc "$skill/notifier.md" 'pr-subscription.sh" subscribe <pr url>' CLAUDE_COD
 record "subscribe o/r#5 sid=$sid" "notifier.md's subscribe runs as documented" "$calls"
 run_doc "$skill/notifier.md" 'pr-subscription.sh" unsubscribe <pr url>' CLAUDE_CODE_SESSION_ID=$sid
 record "unsubscribe o/r#5 sid=$sid" "notifier.md's unsubscribe runs as documented" "$calls"
-run_doc "$skill/phases/finish.md" 'pr-subscription.sh" unsubscribe <pr url> --all' \
-	STUB_STATUS='{"subscriptions":[{"pr":"o/r#5","session_id":"'$other'"}]}'
-record "status --json sid=
-unsubscribe o/r#5 --session $other sid=" "FINISH Step 3's unsubscribe --all runs as documented" "$calls"
+run_doc "$skill/phases/finish.md" 'pr-subscription.sh" unsubscribe <pr url>' CLAUDE_CODE_SESSION_ID=$sid
+record "unsubscribe o/r#5 sid=$sid" "FINISH Step 3's unsubscribe runs as documented" "$calls"
 
 finish

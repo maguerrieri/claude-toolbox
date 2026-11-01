@@ -127,10 +127,10 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ## Step 3 — Clean up the worktree
 
-If START Step 3 took its already-checked-out path (b) — the work happened in the clone itself, no worktree was created — **skip this step**: there is nothing to remove, and the command below would error. Otherwise **unsubscribe the PR from the pr-notifier first**, every session's subscription to it, since a session whose worktree is gone can't be woken (`notifier.md` has why, and why a FINISH that skips this step unsubscribes nobody). It's a no-op on cloud and where the notifier isn't installed, and a failure doesn't stop the cleanup; name it in the hand-back:
+If START Step 3 took its already-checked-out path (b) — the work happened in the clone itself, no worktree was created — **skip this step**: there is nothing to remove, and the command below would error. Otherwise **unsubscribe this session from the PR's pr-notifier wakes first**, since a session whose worktree is gone can't be woken (`notifier.md` has the rest, including what becomes of a child whose worktree a coordinator removes). It's a no-op on cloud, where the notifier isn't installed, and in a session that never subscribed; a failure doesn't stop the cleanup, but name it in the hand-back. The notifier can wait up to five minutes for its lock, so give the call a timeout longer than that:
 
 ```bash
-bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" unsubscribe <pr url> --all
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" unsubscribe <pr url>
 ```
 
 Then leave the worktree (can't remove a worktree from inside it): if the session entered via the `EnterWorktree` tool, use `ExitWorktree`; otherwise `cd` back to the main repo as below. Then remove it (`--force` if it has submodules):
