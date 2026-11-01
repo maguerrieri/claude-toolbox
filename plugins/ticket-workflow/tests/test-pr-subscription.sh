@@ -99,6 +99,9 @@ mv "$tmp/stub.away" "$stub"
 # The stable path, and only the stable path: no notifier there means none.
 run CLAUDE_CODE_SESSION_ID=$sid PR_SUBSCRIPTION_CLI="$tmp/nowhere" -- subscribe o/r#1
 record "0 0" "the override path missing reads as not installed" "$rc $(lines "$calls")"
+mkdir -p "$tmp/a-directory"
+run CLAUDE_CODE_SESSION_ID=$sid PR_SUBSCRIPTION_CLI="$tmp/a-directory" -- subscribe o/r#1
+record "0 0" "a directory at the path reads as not installed, not as a failed notifier" "$rc $(lines "$calls")"
 
 # --- failures -------------------------------------------------------------
 
