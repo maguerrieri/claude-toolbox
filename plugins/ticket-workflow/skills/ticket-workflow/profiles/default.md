@@ -611,6 +611,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 ## POST_MERGE
 - No monitoring actions. Just record "what to watch for" (the observable outcome and
   roughly when), per FINISH Step 5 in the skill's `phases/finish.md`.
+- A profile that overrides this op with actions (resolving an error-tracking group, say)
+  must make them safe to run twice for one merge. A local session that the pr-notifier wakes
+  for its PR's merge runs FINISH's cleanup through Step 5 (the skill's `notifier.md`), and
+  nothing durable shows whether the session that merged the PR already ran them.
 
 ## COMMIT_STYLE
 - Use the tracker's `COMMIT_REF` as-is (no override).
