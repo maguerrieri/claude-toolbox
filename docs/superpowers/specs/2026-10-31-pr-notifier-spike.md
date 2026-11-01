@@ -15,7 +15,7 @@ the notification target was the throwaway PR #296. Timestamps are UTC.
 
 | # | Question | Answer |
 |---|---|---|
-| 1 | Idle stop | Yes. An unbridged session is stopped after **1 hour** idle (tested). Every `bot` session is Remote Control-bridged (`remoteControlAtStartup: true`), and a bridged session gets **8 hours** (read; a bridged test session was still live after 5 hours, and the 8-hour mark wasn't observed). Attached and pinned sessions, and ones with work in flight, are skipped. The exception is **memory pressure**: then the limit drops to 60 seconds, bridged or not, and sessions holding only monitors, then pinned ones, can go too. |
+| 1 | Idle stop | Yes. An unbridged session is stopped after **1 hour** idle (tested). Every `bot` session is Remote Control-bridged (`remoteControlAtStartup: true`), and a bridged session gets **8 hours** (tested: a bridged test session was retired 8 hours 0 minutes 28 seconds after its last update). Attached and pinned sessions, and ones with work in flight, are skipped. The exception is **memory pressure**: then the limit drops to 60 seconds, bridged or not, and sessions holding only monitors, then pinned ones, can go too. |
 | 2 | Resume from launchd | Works from a real launchd job in `user/502` and from `env -i`, with no TTY and no direnv, and keeps the id, name and row (tested). Four traps: **any flag other than `--bg` next to `--resume` starts a copy**; **the job's `PATH` becomes the woken session's tool `PATH`**; **`CLAUDE_CONFIG_DIR=~/.claude` set explicitly isn't the default root**; and **a session whose cwd is gone can't be resumed**. The last two are refused with exit 1. Untested: a locked keychain, and a LaunchDaemon (maguerrieri/config#47's route). |
 | 3 | Waking a live, idle session | `--resume` on a live session **forks a copy**; `claude respawn` restarts it but **takes no prompt**. What works: `claude stop` then `--resume` (context kept; an attached viewer is disconnected), or typing into a pty-held `claude attach` (in place, but fragile). (tested) |
 | 4 | Which notifications arrive | Copilot's and Codex's reviews reach the feed, as `reason: author`. The feed's `updated_at` trailed each event by up to 20 seconds, and the 60-second poll saw them 17–50 seconds after the event. The bot's own posts don't appear. `X-Poll-Interval` is 60, and a 304 doesn't appear to count against the rate limit. **The owner-side events (Mari's comments, reviews, a merge) are still pending**, waiting on Mari's actions on #296. (tested; owner rows pending) |
@@ -69,8 +69,13 @@ changed at 17:18:49–17:18:54. The two unbridged ones were retired at 18:19:16,
 [2026-10-31T18:19:16.200Z] [bg] bg settled 330343df (done)
 ```
 
-The bridged one was still live at 22:19, five hours idle. The spike didn't run to its
-eight-hour mark. (`f65c5d81` was meant to be pinned as well; see *Pinning* for why it
+The bridged one was retired at 01:19:16 the next morning, 8 hours 0 minutes 28 seconds
+after its job state last changed:
+
+```
+[2026-11-01T01:19:16.731Z] [bg] bg retire e71c5d32: settled, idle 8h
+[2026-11-01T01:19:16.893Z] [bg] bg settled e71c5d32 (done)
+``` (`f65c5d81` was meant to be pinned as well; see *Pinning* for why it
 wasn't, so it is a second unpinned sample.)
 
 **After a stop or a retire**, `claude agents --json --all` keeps the row with its last
