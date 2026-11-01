@@ -60,7 +60,7 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = true ]; then
 fi
 
 cli=${PR_SUBSCRIPTION_CLI:-${HOME:+$HOME/.local/bin/pr-notifier}}
-if [ -z "$cli" ] || [ ! -x "$cli" ]; then
+if [ -z "$cli" ] || [ ! -f "$cli" ] || [ ! -x "$cli" ]; then
 	say "pr-notifier isn't installed here (${cli:-no HOME}), so $ref wasn't ${cmd}d; nothing wakes this session on it"
 	exit 0
 fi
