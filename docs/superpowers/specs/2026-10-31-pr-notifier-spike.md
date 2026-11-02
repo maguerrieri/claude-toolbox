@@ -18,7 +18,7 @@ the notification target was the throwaway PR #296. Timestamps are UTC.
 | 1 | Idle stop | Yes. An unbridged session is stopped after **1 hour** idle (tested). Every `bot` session is Remote Control-bridged (`remoteControlAtStartup: true`), and a bridged session gets **8 hours** (tested: a bridged test session was retired 8 hours 0 minutes 28 seconds after its last update). Attached and pinned sessions, and ones with work in flight, are skipped. The exception is **memory pressure**: then the limit drops to 60 seconds, bridged or not, and sessions holding only monitors, then pinned ones, can go too. |
 | 2 | Resume from launchd | Works from a real launchd job in `user/502` and from `env -i`, with no TTY and no direnv, and keeps the id, name and row (tested). Four traps: **any flag other than `--bg` next to `--resume` starts a copy**; **the job's `PATH` becomes the woken session's tool `PATH`**; **`CLAUDE_CONFIG_DIR=~/.claude` set explicitly isn't the default root**; and **a session whose cwd is gone can't be resumed**. The last two are refused with exit 1. Untested: a locked keychain, and a LaunchDaemon (maguerrieri/config#47's route). |
 | 3 | Waking a live, idle session | `--resume` on a live session **forks a copy**; `claude respawn` restarts it but **takes no prompt**. What works: `claude stop` then `--resume` (context kept; an attached viewer is disconnected), or typing into a pty-held `claude attach` (in place, but fragile). (tested) |
-| 4 | Which notifications arrive | Copilot's and Codex's reviews reach the feed, as `reason: author`. The feed's `updated_at` trailed each event by up to 20 seconds, and the 60-second poll saw them 17–50 seconds after the event. The bot's own posts don't appear. `X-Poll-Interval` is 60, and a 304 doesn't appear to count against the rate limit. **The owner-side events (Mari's comments, reviews, a merge) are still pending**, waiting on Mari's actions on #296. (tested; owner rows pending) |
+| 4 | Which notifications arrive | **All of them, except the bot's own.** That covers Mari's top-level comment, line comment and three review types, Copilot's and Codex's reviews, and merges, all as one PR thread. The thread's `updated_at` trails each event by up to 23 seconds, and a 60-second poll saw them 17–74 seconds after the event. The bot's own comment and close move the thread but never reach a conditional poll. A conditional 200 returns only the changed threads. `X-Poll-Interval` is 60, and a 304 doesn't appear to count against the rate limit. A merge or close by the owner wasn't observed. (tested) |
 | 5 | Harness PR events in a local session | **No.** The subscription tool exists only on the cloud harness's MCP server; `ReadNotifications` stayed empty through all of #296's activity. The epic does not need rescoping. (tested + read) |
 
 ## 1. The idle stop
@@ -230,39 +230,52 @@ change; event times come from each PR's timeline.
   every bot session shares the token's 5,000/hour. An earlier run during busy minutes saw
   ten 304s move it by one too. GitHub's REST docs say a 304 for an authorized conditional
   request doesn't count against the primary rate limit.
-- **Latency.** The feed's `updated_at` trailed each event by 0–20 seconds. The 60-second
-  poll then saw the events 17–50 seconds after they happened, and a poll that just missed
-  one would see it up to about 80 seconds later.
+- **Latency.** The feed's `updated_at` trailed each event by 0–23 seconds. The 60-second
+  poll then saw the events 17–74 seconds after they happened, and a poll that just missed
+  one would see it up to about 85 seconds later.
 - **Busy minutes return 200, quiet ones 304.** Of the 299 polls from 17:17 to 22:17, 15
   returned 200, all between 17:17 and 17:36 while about ten bot PRs were active; once bot's
   sessions went quiet, every poll was a 304. One request a minute is 60 of the 5,000/hour
   either way.
-- **The bot's own posts don't appear.** A comment by `sprue-works-bot` on #296 at 17:30:20
-  left the thread's `updated_at` unchanged.
-- **A notification says when, not what.** A thread carries `reason`, `updated_at`,
-  `subject.url` and `subject.latest_comment_url`. Its `updated_at` also moves for events that
-  aren't comments: Codex's 👍 reaction moved it with `latest_comment_url` unchanged.
+- **A conditional 200 is a delta, not the list.** When a conditional request returns 200,
+  its body holds only the threads that changed since `If-Modified-Since`. At 22:2x on Nov 2
+  that was 3 threads, where a plain request returned 37.
+- **The bot's own activity stays out of conditional polls.** Its own comment on #296 (Oct 31
+  17:30:20) and its own close of #296 (Nov 2 22:19:01) each moved the thread. A plain listing
+  shows `updated_at` about 20 seconds later, with `latest_comment_url` at the bot's comment
+  or at the PR. But neither advanced the feed's `Last-Modified`, so the next conditional
+  poll returned 304. Neither showed up in a later conditional 200's delta either. A **merge**
+  done by the bot itself does appear (two below).
+- **A notification says when, not what.**
+  - A thread carries `reason`, `updated_at`, `subject.url` and `subject.latest_comment_url`.
+  - `latest_comment_url` points at the comment for a top-level comment, and at the PR itself
+    for a merge or a close. It is `null` after a line comment or a review.
+  - `updated_at` also moves for events that aren't comments: Codex's 👍 reaction moved it
+    with `latest_comment_url` unchanged.
+  - `reason` doesn't name the event either. Every owner event read `author`, and one bot
+    merge read `state_change` while another read `author`.
 
 | Event on bot PR #296 | At | In feed? | `reason` | `updated_at` | Seen by poller | `latest_comment_url` |
 |---|---|---|---|---|---|---|
 | Copilot review (an *unable to review* body; ruleset auto-request on the draft) | 17:17:15 | yes | `author` | 17:17:35 | 17:18:05 | none |
 | Codex summary comment (after *ready for review*) | 17:18:30 | yes | `author` | 17:18:36 | 17:19:05 | the Codex comment |
 | Codex 👍 reaction (review done, no findings) | 17:19:49 | yes | `author` | 17:19:49 | 17:20:06 | unchanged |
-| Bot's own comment | 17:30:20 | **no** | | | | |
-| Mari: top-level comment | pending | | | | | |
-| Mari: line comment | pending | | | | | |
-| Mari: review, comment | pending | | | | | |
-| Mari: review, request changes | pending | | | | | |
-| Mari: review, approve | pending | | | | | |
-| Merge (Mari, on any bot PR) | pending | | | | | |
-| Close (by the bot itself) | pending | | | | | |
+| Bot's own comment | 17:30:20 | **no** (thread moved to 17:30:42, but not in any conditional poll) | `author` | | | |
+| Mari: top-level comment | Nov 2 20:38:44 | yes | `author` | 20:39:06 | 20:39:58 | the comment |
+| Mari: line comment (*Add single comment*) | 21:35:38 | yes | `author` | 21:36:02 | 21:36:22 | `null` |
+| Mari: review, comment | 21:44:53 | yes | `author` | 21:45:14 | 21:45:26 | `null` |
+| Mari: review, request changes | 21:49:14 | yes | `author` | 21:49:36 | 21:50:28 | `null` |
+| Mari: review, approve | 21:53:22 | yes | `author` | 21:53:43 | 21:54:30 | `null` |
+| Mari: `done` comment | 22:18:09 | yes | `author` | 22:18:32 | 22:18:40 | the comment |
+| Close, by the bot itself | 22:19:01 | **no** (thread moved to 22:19:22, but not in any conditional poll) | `author` | | | |
+| Merge, by the bot itself (maguerrieri/claude-config#152) | 17:51:10 | yes | `state_change` | 17:51:31 | 17:51:43 | the PR |
+| Merge, by the bot itself (maguerrieri/toolbox#883) | 20:33:09 | yes | `author` | 20:33:29 | 20:33:55 | the PR |
 
-**The owner-side rows are pending.** They need Mari's own account. The actions were requested
-on #296 at 17:18 ([the checklist](https://github.com/maguerrieri/claude-toolbox/pull/296#issuecomment-6546644542)),
-and none had happened by 22:19. No bot PR was merged in that window either. The poller keeps
-running, and these rows get filled in when the events land. The close waits until then too,
-because closing #296 would end Mari's test. Going by the bot's own comment above, a close by
-the bot is expected not to appear.
+Mari's actions ran on Nov 2, two days after the request; the rows above them are from Oct 31.
+Every owner event reached the feed, and the thread's `updated_at` trailed each by 21–23
+seconds. **A merge by the owner wasn't observed.** Every bot PR merged during the spike was
+merged by a bot session's own FINISH run, and those merges appear anyway. A close by the owner
+wasn't observed either.
 
 **Review bots on bot PRs today.** Copilot's ruleset auto-request fires even on a draft.
 Codex reviews when a PR is opened for review, when a draft is marked ready (not on a draft),
@@ -287,7 +300,8 @@ has insufficient remaining quota.*:
 
 - **Nothing arrived.** This session is a local `--bg` session (bridged). Its
   `ReadNotifications` returned `No queued notifications.` after Copilot's and Codex's reviews
-  and the comments on #296, and again at 22:19.
+  and the comments on #296, again at 22:19, and again on Nov 2 after all of Mari's
+  actions and the close.
 - **A local session can't subscribe.** The subscription tool, `subscribe_pr_activity` (and
   `unsubscribe_pr_activity`), is served by the `claude-code-remote` MCP server, whose
   endpoint is `/v2/ccr-sessions/-/meta/mcp`. The binary attaches that server for cloud (CCR)
@@ -323,15 +337,22 @@ What the answers do to the epic's sketch, section by section.
 - `If-Modified-Since` works, a 304 doesn't appear to count against the rate limit, and
   `X-Poll-Interval` is 60.
 - Expect 200s while bot is busy and 304s when it's quiet. Either way it's cheap.
-- With a 60-second poll, plan for a wake up to about 80 seconds after the event, plus the
+- **Treat a conditional 200 as a delta.** Its body holds only the threads that changed since
+  `If-Modified-Since`, so a subscribed PR missing from it hasn't changed. It hasn't gone.
+  Paginate the delta anyway, in case a busy minute fills a page.
+- **The bot never wakes itself through the feed.** Its own comments and closes don't reach a
+  conditional poll, so the notifier needs no extra step for that. Its merges do reach it,
+  and that is what lets a merge wake the session for FINISH's cleanup.
+- With a 60-second poll, plan for a wake up to about 85 seconds after the event, plus the
   wake itself.
 - Use a classic token with `repo` or `notifications` scope, as bot's `gh` login has.
   GitHub's REST docs say fine-grained and GitHub App tokens can't read this endpoint (not
   tested).
 
 **Filter: read the PR, not the notification.** A thread change carries no author and no
-event type, and its `updated_at` also moves for edits and reactions. So for each changed
-subscribed PR:
+event type. Its `reason` was `author` for every owner event, and its `latest_comment_url` is
+`null` after a review or a line comment. Its `updated_at` also moves for edits and
+reactions. So for each changed subscribed PR:
 - Read what happened since the last wake from the PR's issue timeline
   (`GET /repos/{owner}/{repo}/issues/{n}/timeline`). It lists comments, reviews (a single
   line comment is a review too), and `merged` and `closed` events, each with its actor.
@@ -342,9 +363,8 @@ subscribed PR:
   `codex-review-state` line, changing. Then decide whether it wakes the session: it's the
   review a session waits on.
 - Apply the owner and review-bot checks to each actor, and drop the bot's own items. The
-  bot's own posts never reach its feed, but its items do appear in the timeline.
-- Still open until Mari's events land: whether owner reviews and line comments each move the
-  thread, and with which `reason`.
+  bot's own posts never reach a conditional poll, but they are in the timeline, next to
+  whatever woke it.
 
 **Deliver: the state table changes.**
 
