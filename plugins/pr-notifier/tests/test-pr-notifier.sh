@@ -726,6 +726,21 @@ nt "$T" check
 record '0|1' "no socket for the session's pid: no relay, stop-then-resume" "$(relays)|$(wakes)"
 record yes 'logged' "$(logged 'reason="no socket for pid 42"')"
 
+# A socket someone else could have placed is never addressed.
+mkdir -p "$tmp/opensocks" "$tmp/linksocks"
+chmod 777 "$tmp/opensocks"
+perl -MSocket -MIO::Socket::UNIX -e 'IO::Socket::UNIX->new(Type => SOCK_STREAM, Local => shift, Listen => 1) or die "$!"' \
+	"$tmp/opensocks/41.sock"
+ln -s "$tmp/socks/41.sock" "$tmp/linksocks/41.sock"
+for d in opensocks linksocks; do
+	reset
+	agents "$(agent idle-done)"
+	job "$SID" $((T - 3600))
+	timeline 7 "$(comment 7 101 mari User "$T1")"
+	PR_NOTIFIER_SOCK_DIRS=$tmp/$d nt "$T" check
+	record '0|1' "a socket in a directory others can write, or a symlinked one, is skipped ($d)" "$(relays)|$(wakes)"
+done
+
 # With no transcript to read, the row stands in: the same pid, turned busy.
 reset
 rm "$HOME/.claude/projects/p/$SID.jsonl"
