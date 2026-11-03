@@ -18,7 +18,7 @@ the notification target was the throwaway PR #296. Timestamps are UTC.
 | 1 | Idle stop | Yes. An unbridged session is stopped after **1 hour** idle (tested). Every `bot` session is Remote Control-bridged (`remoteControlAtStartup: true`), and a bridged session gets **8 hours** (tested: a bridged test session was retired 8 hours 0 minutes 28 seconds after its last update). Attached and pinned sessions, and ones with work in flight, are skipped (read; pinning untested). The exception is **memory pressure**: then the limit drops to 60 seconds, bridged or not, and sessions holding only monitors, then pinned ones, can go too. |
 | 2 | Resume from launchd | Works from a real launchd job in `user/502` and from `env -i`, with no TTY and no direnv, and keeps the id, name and row (tested). Four traps: **any flag other than `--bg` next to `--resume` starts a copy**; **the job's `PATH` becomes the woken session's tool `PATH`**; **`CLAUDE_CONFIG_DIR=~/.claude` set explicitly isn't the default root**; and **a session whose cwd is gone can't be resumed**. The last two are refused with exit 1. Untested: a locked keychain, and a LaunchDaemon (maguerrieri/config#47's route). |
 | 3 | Waking a live, idle session | `--resume` on a live session **forks a copy**, and `claude respawn` restarts it but **takes no prompt**. **A headless relay delivers in place**: a one-shot `claude -p --safe-mode --model haiku` session `SendMessage`s the live session, at about $0.003 and 5 seconds a wake. `claude stop` then `--resume` also works, but drops in-flight work and disconnects an attached viewer. Typing into a pty-held `claude attach` works too, but it's fragile. (tested) |
-| 4 | Which notifications arrive | **All of them, except the bot's own.** That covers Mari's top-level comment, line comment and three review types, Copilot's and Codex's reviews, and merges, all as one PR thread. The thread's `updated_at` trails each event by up to 24 seconds, and a 60-second poll saw them 17–74 seconds after the event. The bot's own comment and close move the thread but never reach a conditional poll. A conditional 200 returns only the changed threads. `X-Poll-Interval` is 60, and a 304 doesn't appear to count against the rate limit. A merge or close by the owner wasn't observed. (tested) |
+| 4 | Which notifications arrive | **All of them, except the bot's own comments and closes; its merges do arrive.** That covers Mari's top-level comment, line comment and three review types, Copilot's and Codex's reviews, and merges, all as one PR thread. The thread's `updated_at` trails each event by up to 24 seconds, and a 60-second poll saw them 17–74 seconds after the event. The bot's own comment and close move the thread but never reach a conditional poll. A conditional 200 returns only the changed threads. `X-Poll-Interval` is 60, and a 304 doesn't appear to count against the rate limit. A merge or close by the owner wasn't observed. (tested) |
 | 5 | Harness PR events in a local session | **No.** The subscription tool exists only on the cloud harness's MCP server; `ReadNotifications` stayed empty through all of #296's activity. The epic does not need rescoping. (tested + read) |
 
 ## 1. The idle stop
@@ -230,12 +230,16 @@ Tested on `0f43a5bc` while it was live and idle:
   - The sender's name is auto-generated from the relay's cwd, so the receiver can't tell a
     relay from any other peer. It treats the text as a teammate's message, which is data, as
     a wake prompt should be.
-  - Addressing is by session name, which the user can rename.
+  - Addressing is by session name, which the user can rename and a forked copy can share.
   - A message to a **stopped** session only queues until it next starts, so stopped sessions
     still need the resume.
   - Not tested: a held message. A receiver in a different permission mode from the sender
-    holds cross-session messages for approval. These two were delivered, with the relay in
-    `prompting` mode and the receiver in bot's default.
+    holds cross-session messages for approval. These two were delivered, with the relay at
+    `from-mode="prompting"` and the receiver in `auto`, bot's `permissions.defaultMode`.
+    Which pairs hold is unknown. Per the `SendMessage` tool's own description, a held
+    message still counts as a successful send. The sender learns of the hold only from a
+    later `[Cross-session delivery notice]`, and a one-shot relay has exited by then. So the
+    send's result alone can't tell held from delivered.
   - Not tested: a relay while someone is attached. It restarts nothing, so the viewer should
     stay connected.
 
@@ -365,13 +369,16 @@ What the answers do to the epic's sketch, section by section.
 - **Not the launch dir.** The waker's cwd doesn't matter. What matters is the session's own
   cwd (Trap 4), and that moves with `EnterWorktree`. So read it from the session's
   `claude agents` row at wake time, not at subscribe.
-- **The session's own `PATH`.** Whatever `PATH` the waker passes becomes the woken session's
-  tool `PATH` for the rest of its process's life (Trap 2). So record `$PATH` from inside the
-  session at subscribe and pass it back on a resume. In every test the Bash tool's `$PATH`
-  was exactly the session's launch `PATH`. Drop entries that no longer exist at wake time,
-  such as a removed worktree's direnv additions. Fall back to one full `PATH` that the
-  install sets. Nothing else can be injected this way, because only `PATH` crosses a resume
-  (§2). A relay wake (below) restarts nothing, so it keeps the whole environment.
+- **The session's own `PATH`** (#305). Whatever `PATH` the waker passes becomes the woken
+  session's tool `PATH` for the rest of its process's life (Trap 2). So record `$PATH` from
+  inside the session at subscribe and pass it back on a resume. In every test the Bash tool's
+  `$PATH` was exactly the session's launch `PATH`.
+  - Pass it merged with the install's full `PATH`: the recorded entries first, then any of
+    the install's that are missing. That way a recording made under a degraded `PATH` (say, a
+    session once woken with the fallback) can't persist.
+  - Until #305 lands, use the install's `PATH` alone.
+  - Nothing else can be injected this way, because only `PATH` crosses a resume (§2).
+  - A relay wake (below) restarts nothing, so it keeps the whole environment.
 
 **Poll: confirmed.**
 - `If-Modified-Since` works, a 304 doesn't appear to count against the rate limit, and
@@ -384,8 +391,8 @@ What the answers do to the epic's sketch, section by section.
   Every merge in the spike was done by a bot session's FINISH, so a merge's actor is
   usually the bot. An actor filter that drops the bot's own items drops those merges too.
   That's right when the PR's own session merged it. But a merge another session made (a
-  coordinator's FINISH) may still need to wake the PR's session for cleanup, so #293 and #294
-  have to decide which merges wake whom.
+  coordinator's FINISH) may still need to wake the PR's session for cleanup. Which merges
+  wake whom is #305's decision.
 - With a 60-second poll, plan for a wake up to about 85 seconds after the event, plus the
   wake itself.
 - Use a classic token with `repo` or `notifications` scope, as bot's `gh` login has.
@@ -399,17 +406,17 @@ reactions. So for each changed subscribed PR:
 - Read what happened since the last wake from the PR's issue timeline
   (`GET /repos/{owner}/{repo}/issues/{n}/timeline`). It lists comments, reviews (a single
   line comment is a review too), and `merged` and `closed` events, each with its actor.
-- Check the PR's own state as well. A merge is a wake whatever else the timeline shows (the
-  merge bullet above settles whose). A close should be too, but whether an owner's close
-  reaches the feed is untested: the only close observed was the bot's own, and it never
-  reached a conditional poll.
+- Check the PR's own state as well. A merge is a wake whatever else the timeline shows; which
+  session it wakes is #305's decision (the merge bullet above). A close should be a wake
+  too, but whether an owner's close reaches the feed is untested: the only close observed
+  was the bot's own, and it never reached a conditional poll.
 - Codex's clean result is an edit of its old summary comment plus a 👍, and neither is a new
   timeline item. Catch it by the summary comment's `updated_at`, or the commit in its
   `codex-review-state` line, changing. Then decide whether it wakes the session: it's the
   review a session waits on.
-- Apply the owner and review-bot checks to each actor, and drop the bot's own items. The
-  bot's own posts never reach a conditional poll, but they are in the timeline, next to
-  whatever woke it.
+- Apply the owner and review-bot checks to each actor. Drop the bot's own comments and
+  reviews, but not its merges, which wait on #305's decision. The bot's own posts never
+  reach a conditional poll, but they are in the timeline, next to whatever woke it.
 
 **Deliver: the state table changes.**
 
@@ -423,11 +430,31 @@ Then, first match wins:
 | State | Action |
 |---|---|
 | Stopped (`pid: null`) and the row's `cwd` no longer exists | Don't resume: it is refused (exit 1) and the prompt is queued. Usually FINISH removed the worktree. Unsubscribe and log it. |
-| Stopped: `pid: null` | `claude --bg --resume <session id> "<wake prompt>"`, with **no flag but `--bg`**. Run it from any cwd, with the recorded `PATH` (else the install's) and the recorded `CLAUDE_CONFIG_DIR` (unset if it was unset). |
+| Stopped: `pid: null` | `claude --bg --resume <session id> "<wake prompt>"`, with **no flag but `--bg`**. Run it from any cwd, with the recorded `CLAUDE_CONFIG_DIR` (unset if it was unset). Use the recorded `PATH` merged with the install's (#305), or until then the install's alone. |
 | Busy: `status: "busy"` or `state: "working"` | Hold and retry on the next poll. |
-| Live with work in flight: in `state.json`, `inFlight.tasks` or `inFlight.queued` above 0, or `inFlight.kinds` not empty | Hold. A stop kills that work (background Bash, agents, monitors, session crons) and drops queued input. |
-| Live and idle: `status: "idle"`, `state` `done` or **`blocked`**, and its `cwd` exists | **Relay it in place.** Run a one-shot `claude -p --safe-mode --model haiku` that `SendMessage`s the wake prompt to the session by name. Use the recorded `CLAUDE_CONFIG_DIR` (unset if it was unset), since messaging is per root as the registry is (an assumption, untested). It costs about $0.003. `--resume` would fork, and `respawn` takes no prompt. If the send fails (no such name, refused), fall back: re-read the row and the job state, `claude stop <short id>`, then the stopped-row command. |
+| Live and idle: `status: "idle"`, `state` `done` or **`blocked`**, and its `cwd` exists | **Relay it in place (#305).** Details below the table. `--resume` would fork, and `respawn` takes no prompt. If the relay doesn't land, fall back to the next row. Before #305 lands, go straight to the next row. |
+| Fallback for a live, idle session | If `state.json` shows work in flight (`inFlight.tasks` or `inFlight.queued` above 0, or `inFlight.kinds` not empty), hold: a stop kills that work (background Bash, agents, monitors, session crons) and drops queued input. Otherwise re-read the row and the job state, `claude stop <short id>`, then the stopped-row command. |
 | Anything else: no row in `claude agents`, a live session whose `cwd` is gone, or a state not listed here | Hold and log it, under the same bound as every hold (below). |
+
+**The relay (#305).** A one-shot `claude -p --safe-mode --model haiku` sends the wake prompt
+by `SendMessage`, for about $0.003 a wake:
+1. **Resolve the address at wake time.** Take the current name from the session's
+   `claude agents` row, found by session id; the subscribe record's name may be stale. The
+   relay runs `ListAgents` first and sends only if exactly one row carries that name, the
+   same one-match rule a `finish:` clearance's sender gets. With zero matches or several, it
+   sends nothing.
+2. **Don't trust the exit code.** `claude -p` exits 0 even if the model never sends or
+   rewords the text. Run it with `--output-format json` and check the `SendMessage` tool
+   result.
+3. **Confirm it landed.** A held message, and one to a session that has just stopped, both
+   report success. So after the send, check that the session picked it up: within about 30
+   seconds its row turns `status: "busy"`, or its job state's `updatedAt` moves. If neither
+   happens, treat the wake as failed and fall back. A held message approved later then
+   repeats the wake, which the wake prompt's wording makes harmless.
+4. **Per-root scoping is untested.** The sockets live under the per-uid
+   `/tmp/cc-socks-502`, so a name may resolve across config roots. Run the relay with the
+   recorded `CLAUDE_CONFIG_DIR` (unset if it was unset), but rely on the one-match check,
+   not on the root.
 
 - **`state: "blocked"` is the main wake case, not a hold.** It means the session handed back
   waiting on the user.
@@ -441,6 +468,9 @@ Then, first match wins:
 - **The fallback stop has costs the notifier can't see.**
   - It disconnects an attached viewer, and anything Mari has typed but not sent is lost.
     Attachment isn't visible outside the daemon (§3).
+  - It replaces the session's environment. Everything but `PATH` comes back from the daemon
+    (§2), so a variable the session was launched with (`GH_CONFIG_DIR`, `TZ`, a plugin root)
+    is gone after the wake.
   - Checking and stopping aren't atomic. A turn can start between the re-read and the stop,
     from Mari typing or a cron firing. Re-reading right before the stop narrows that window
     but doesn't close it. The daemon's own retire has the same check-then-act shape.
@@ -465,29 +495,38 @@ it with the next wake. So word the prompt so that getting it twice is harmless, 
   run a job now, but not to survive a reboot without a login.
 - **maguerrieri/config#47 plans LaunchDaemons instead.** Those run bot's jobs with
   `UserName bot`, need root to install, and run without a login. Whether a resume works from
-  that context is untested (§2). It's the first thing #295 should test, with the keychain
-  unlocked at startup as config#66 set up.
-- **The job's environment.** Pass each registration's recorded `PATH` on its resume. Give the
-  job itself a full `PATH` too, as the fallback, since whatever the resume carries becomes the
-  woken session's. Don't set `CLAUDE_CONFIG_DIR` for the default root. If the job may be the first `claude` after a
-  reboot, its environment also seeds the daemon.
+  that context is untested (§2), and so is the relay. The relay matters more, because it is
+  a client of its own that needs bot's login, while a resume hands off to the running daemon.
+  #295 should test the resume there first, and #305 the relay, with the keychain unlocked at
+  startup as config#66 set up.
+- **The job's environment.** Give the job a full `PATH`, since whatever a resume carries
+  becomes the woken session's; #305 merges each registration's recorded `PATH` in front of it.
+  Don't set `CLAUDE_CONFIG_DIR` for the default root. If the job may be the first `claude`
+  after a reboot, its environment also seeds the daemon.
 
-**Children's scope.**
+**Children's scope.** #293, #294 and #295 keep the scope their PRs already have. The work
+this spike found after those were planned goes to #305.
 - **#293 (notifier):**
   - root-aware lookups;
   - the cwd check;
   - a timeline-based filter that also catches merges, closes and Codex's edited summary;
-  - the headless relay for live, idle sessions;
-  - the stop-then-resume fallback, with its in-flight check, recheck and bounded holds;
-  - a resume with no flag but `--bg`, under the session's recorded `PATH`.
+  - the stop-then-resume path, with its in-flight check, recheck and bounded holds;
+  - a resume with no flag but `--bg`, under the install's `PATH`.
 - **#294 (ticket-workflow):**
-  - The subscribe call records the session id, name, `CLAUDE_CONFIG_DIR`-if-set and `$PATH`.
-  - The wake text a session receives may arrive as a peer's message (the relay) or as a
-    resume prompt, so handle both the same way: re-read the PR, run the owner check.
+  - The subscribe call records the session id, name and `CLAUDE_CONFIG_DIR`-if-set.
   - FINISH unsubscribes before it removes the worktree, since a wake after that is refused.
   - Its hand-back state is `blocked`, which the notifier wakes.
 - **#295 (install):**
   - test the resume from a LaunchDaemon first;
-  - a full `PATH` captured at install, as the fallback when a registration has none;
+  - a full `PATH` captured at install;
   - no `CLAUDE_CONFIG_DIR` for the default root;
   - `LimitLoadToSessionType = Background` if it uses the user domain.
+- **#305 (follow-up):**
+  - the headless relay for live, idle sessions, with its one-match addressing, structured
+    result check and landed check;
+  - the per-session `PATH`: recorded at subscribe, then merged in front of the install's on a
+    resume;
+  - a session handling a wake that arrives as a peer's message the same way as a resume
+    prompt: re-read the PR, then run the owner check;
+  - which merges wake which session;
+  - testing the relay under a LaunchDaemon.
