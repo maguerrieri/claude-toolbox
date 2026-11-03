@@ -560,11 +560,16 @@ run_claude() { # run_claude <config dir or ""> <claude args...>: under wake_path
 	claude_env "$cfg" "$wake_path" "$@" </dev/null
 }
 
-agents() { # agents <config dir or ""> [fresh]: the root's claude agents listing, once per run
-	local f
+agents() { # agents <config dir or ""> [fresh]: the root's claude agents listing, reused for 15 seconds
+	# A relay can take a minute, so a listing read before one may no longer
+	# say which sessions are stopped: resuming one that has since started
+	# would fork it.
+	local f at
 	f=$run_tmp/agents.$(printf '%s' "${1:-default}" | cksum | cut -d' ' -f1).json
-	[ -z "${2:-}" ] || rm -f "$f"
+	at=$(cat "$f.at" 2>/dev/null) || at=
+	[ -z "${2:-}" ] && [ -n "$at" ] && [ $((SECONDS - at)) -le 15 ] || rm -f "$f"
 	if [ ! -f "$f" ]; then
+		echo "$SECONDS" >"$f.at"
 		run_claude "$1" agents --json --all >"$f.tmp" 2>/dev/null &&
 			jq -e 'type == "array"' "$f.tmp" >/dev/null 2>&1 || {
 			rm -f "$f.tmp"
@@ -651,6 +656,12 @@ finish_wake() { # finish_wake <session id> <how> [log detail]: the wake landed, 
 	done <"$run_tmp/final"
 }
 
+back_off() { # back_off <session id> <failures field> <next-try field>: counts a failure; the next try is 5, 10, 20, 40, then 60 minutes on
+	edit "$work_state" --arg s "$1" --arg n "$2" --arg at "$3" --argjson now "$now" '
+		.pending[$s][$n] = ((.pending[$s][$n] // 0) + 1)
+		| .pending[$s][$at] = $now + ([300 * pow(2; .pending[$s][$n] - 1), 3600] | min)'
+}
+
 wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt, under its own PATH
 	local sid=$1 cfg=$2 out rc
 	out=$(claude_env "$cfg" "$(resume_path "$sid")" --bg --resume "$sid" "$(wake_prompt "$sid")" </dev/null 2>&1)
@@ -658,11 +669,8 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 	if [ "$rc" -ne 0 ]; then
 		# A refused resume keeps its prompt for the next wake, which then
 		# delivers both; the template makes that harmless. Each retry would
-		# queue one more copy, so retries back off: 5, 10, 20, 40, then 60
-		# minutes apart.
-		edit "$work_state" --arg s "$sid" --argjson now "$now" '
-			.pending[$s].wake_failures = ((.pending[$s].wake_failures // 0) + 1)
-			| .pending[$s].next_wake_at = $now + ([300 * pow(2; .pending[$s].wake_failures - 1), 3600] | min)'
+		# queue one more copy, so retries back off.
+		back_off "$sid" wake_failures next_wake_at
 		hold "$sid" "wake-failed"
 		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
 		return 1
@@ -716,11 +724,13 @@ session_mode() { # session_mode <transcript...>: the permission mode it last rec
 landed() { # landed <message id> <transcript...>: the message is a turn in the session
 	# The receiving session writes each peer message it takes as a user turn
 	# whose origin carries the sender's msg_id. A message held for approval,
-	# refused, or queued for a session that has since stopped isn't one.
+	# refused, or queued for a session that has since stopped isn't one. A
+	# transcript that moved since it was found makes grep fail even after a
+	# match elsewhere, so its status doesn't count (pipefail).
 	local id=$1
 	shift
 	[ $# -gt 0 ] || return 1
-	grep -hF -- "$id" "$@" 2>/dev/null |
+	{ grep -hF -- "$id" "$@" 2>/dev/null || :; } |
 		jq -enR --arg m "$id" '[inputs | fromjson? | select(type == "object" and .type == "user" and .origin.msg_id? == $m)] | length > 0' >/dev/null
 }
 
@@ -731,51 +741,50 @@ relay_prompt() { # relay_prompt <address> <text>: what the relay session is aske
 		BEGIN "$2" END
 }
 
-relay_result() { # relay_result <stream-json file> <address> <text>: "ok <msg id>", or "error: <why>"
+relay_result() { # relay_result <stream-json file> <address> <text>: "ok <msg id>", "maybe: <why>" or "no: <why>"
 	# The exit code says nothing (claude -p exits 0 when the model never
 	# sends, or rewords the text), so the one SendMessage call is checked, and
-	# so is what the tool answered.
+	# so is what the tool answered. "no" is a relay that sent nothing to the
+	# session; "maybe" is one whose message may have reached it (a changed
+	# text, or no result because the relay was killed after the call).
 	jq -nrR --arg to "$2" --arg text "$3" '
 		def rstrip: sub("\\s+$"; "");
 		[inputs | fromjson? | select(type == "object")] as $m
 		| [$m[] | select(.type == "assistant") | .message.content[]? | select(type == "object" and .type == "tool_use")] as $uses
-		| if ($uses | length) != 1 then "error: \($uses | length) tool calls"
-		  elif $uses[0].name != "SendMessage" then "error: called \($uses[0].name)"
-		  elif ($uses[0].input.to // "") != $to then "error: sent to another address"
-		  elif ((($uses[0].input.message // "") | tostring | rstrip) != ($text | rstrip)) then "error: the text was changed"
+		| if ($uses | length) == 0 then "no: no tool call"
+		  elif ($uses | length) != 1 then "maybe: \($uses | length) tool calls"
+		  elif $uses[0].name != "SendMessage" then "no: called \($uses[0].name)"
+		  elif ($uses[0].input.to // "") != $to then "no: sent to another address"
 		  else
 		    ([$m[] | select(.type == "user") | .message.content[]?
 		      | select(type == "object" and .type == "tool_result" and .tool_use_id == $uses[0].id)] | first) as $r
 		    | ($r.content | if type == "array" then map(.text? // "") | join("") elif type == "string" then . else "" end) as $body
 		    | ($body | fromjson? // null) as $j
-		    | if $r == null then "error: no tool result"
-		      elif $r.is_error == true then "error: \($body | .[0:160])"
-		      elif ($j | type) != "object" or $j.success != true then "error: not sent: \($body | .[0:160])"
-		      elif (($j.msg_id | type) != "string") or ($j.msg_id | test("^[A-Za-z0-9-]+$") | not) then "error: no message id"
+		    | if $r == null then "maybe: no tool result"
+		      elif $r.is_error == true then "no: \($body | .[0:160])"
+		      elif ($j | type) != "object" or $j.success != true then "no: not sent: \($body | .[0:160])"
+		      elif ((($uses[0].input.message // "") | tostring | rstrip) != ($text | rstrip)) then "maybe: sent with the text changed"
+		      elif (($j.msg_id | type) != "string") or ($j.msg_id | test("^[A-Za-z0-9-]+$") | not) then "maybe: sent with no message id"
 		      else "ok \($j.msg_id)" end
-		  end' "$1" 2>/dev/null || echo "error: unreadable output"
+		  end' "$1" 2>/dev/null || echo "no: unreadable output"
 }
 
 relay_failed() { # relay_failed <session id> <mode> <why>: logs it and backs relays off
 	# An unconfirmed relay may still land (a held message approved later), so
-	# relays to the session back off as refused resumes do: 5, 10, 20, 40,
-	# then 60 minutes. The stop-then-resume fallback isn't held up by it.
-	edit "$work_state" --arg s "$1" --argjson now "$now" '
-		.pending[$s].relay_failures = ((.pending[$s].relay_failures // 0) + 1)
-		| .pending[$s].next_relay_at = $now + ([300 * pow(2; .pending[$s].relay_failures - 1), 3600] | min)'
+	# relays to the session back off as refused resumes do. The
+	# stop-then-resume fallback isn't held up by it.
+	back_off "$1" relay_failures next_relay_at
 	log "relay-failed session=$(short "$1") mode=$2 reason=$(jq -rn --arg r "$3" '$r | @json')"
 }
 
 relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in the live session,
-	# 1 if it wasn't sent, 2 if it was sent but no turn took it (both logged).
+	# 1 if nothing reached it, 2 if it may have but no turn took it (both logged).
 	# A one-shot headless session SendMessages the wake prompt to the
 	# session's socket. It restarts nothing, so nothing in flight is lost and
 	# an attached viewer stays connected.
 	local sid=$1 cfg=$2 pid=$3 to text res id mode waited=0 files=() f row rid rcwd rpid rstatus rst rkind
-	while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
-	mode=$(session_mode ${files[@]+"${files[@]}"})
 	to=$(session_socket "$pid") || {
-		relay_failed "$sid" "$mode" "no socket for pid $pid"
+		relay_failed "$sid" unknown "no socket for pid $pid"
 		return 1
 	}
 	text=$(wake_prompt "$sid")
@@ -786,26 +795,29 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 		--model "$relay_model" --max-turns 3 --output-format stream-json --verbose --tools SendMessage \
 		<"$run_tmp/relay.in" >"$run_tmp/relay.out" 2>"$run_tmp/relay.err"
 	res=$(relay_result "$run_tmp/relay.out" "$to" "$text")
+	while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
+	mode=$(session_mode ${files[@]+"${files[@]}"})
 	case $res in
 	"ok "*) id=${res#ok } ;;
+	maybe:*)
+		relay_failed "$sid" "$mode" "${res#maybe: }"
+		return 2
+		;;
 	*)
-		relay_failed "$sid" "$mode" "${res#error: }$(head -n 1 "$run_tmp/relay.err" | head -c 160 | sed 's/^./; &/')"
+		relay_failed "$sid" "$mode" "${res#no: }$(head -n 1 "$run_tmp/relay.err" | head -c 160 | sed 's/^./; &/')"
 		return 1
 		;;
 	esac
 	# A successful send means only that the message reached the session's
 	# inbox: one held for approval, or sent to a session that has just
 	# stopped, reports the same. So wait for the turn itself.
-	if [ ${#files[@]} -eq 0 ]; then
-		while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
-	fi
 	while :; do
 		if [ ${#files[@]} -gt 0 ]; then
 			landed "$id" "${files[@]}" && break
-		elif [ $((waited % 5)) -eq 0 ]; then
+		elif [ $((waited % 2)) -eq 0 ]; then
 			# No transcript to read (Claude Code moved it): the row, with the
 			# same pid and busy, is the weaker sign the message was taken. A
-			# listing takes a second or so, so it is read every five.
+			# listing takes about a second, so it is read every other one.
 			row=$(session_row "$cfg" "$sid" fresh) || row=
 			IFS=$us read -r rid rcwd rpid rstatus rst rkind <<<"$row"
 			[ "$rpid" = "$pid" ] && [ "$rstatus" = busy ] && break
@@ -827,11 +839,19 @@ resume_backoff() { # resume_backoff <session id>: holds it and returns 0 while a
 	hold "$1" "wake-backoff until $(iso "$next")"
 }
 
-relay_tries=3   # unconfirmed relays to a session before it waits for the fallback alone
-relay_budget=150 # seconds into a check after which no new relay starts
+relay_tries=3      # unconfirmed relays to a session before it waits for the fallback alone
+delivery_budget=150 # seconds into a check after which no delivery starts
+
+over_budget() { # over_budget <session id> [why]: holds it and returns 0 once this check has run its delivery budget
+	# Every relay, stop and resume holds the lock, which subscribe waits
+	# only five minutes for, so a long check leaves the rest to the next.
+	[ "$SECONDS" -ge "$delivery_budget" ] || return 1
+	hold "$1" "${2:+$2; }deferred: this check has run ${SECONDS}s"
+}
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
 	local sid=$1 cfg row id cwd pid status st kind next tries why
+	! over_budget "$sid" || return
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	row=$(session_row "$cfg" "$sid") || {
 		hold "$sid" listing-failed
@@ -877,22 +897,20 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		why="relay gave up after $tries unconfirmed tries"
 	elif [ "$now" -lt "$next" ]; then
 		why="relay backoff until $(iso "$next")"
-	elif [ "$SECONDS" -ge "$relay_budget" ]; then
-		# Every relay holds the lock, and subscribe waits for it only so long.
-		hold "$sid" "relay deferred: this check has run ${SECONDS}s"
-		return
 	else
 		relay "$sid" "$cfg" "$pid"
 		case $? in
 		0) return ;;
 		2)
-			# Sent but not yet a turn: it may still be taken, so the fallback
-			# that stops the session waits a pass (the relay backs off).
+			# It may have reached the session without a turn yet: it may still
+			# be taken, so the fallback that stops the session waits a check
+			# (the relay backs off).
 			hold "$sid" "relay unconfirmed; the fallback waits a pass"
 			return
 			;;
 		esac
 		why="relay not sent"
+		! over_budget "$sid" "$why" || return
 	fi
 	stop_and_resume "$sid" "$cfg" "$id" "$cwd" "$kind" "$why"
 }
