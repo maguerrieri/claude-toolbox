@@ -23,7 +23,10 @@ someone resumes it (`claude --bg --resume <sessionId>`), so an implementer whose
 `Notify:` coordinator stopped gets no reaction to `pushed:` or `blocked:` until
 then. Don't wait on one: carry on with your own issue and let the resumed
 coordinator pick up where you are from the PR and tracker, which it re-derives
-state from anyway.
+state from anyway. The pr-notifier (`notifier.md`) resumes a stopped session
+on its own PR's activity (the owner's, a review bot's, a merge or close),
+never on a ping, so a ping still waits for one of those or for someone to
+resume it.
 
 `ListAgents` lists **live** sessions only, and only this macOS user's
 (*What this is NOT*). A stopped spawner or child is missing
@@ -87,7 +90,8 @@ receivers and greps treat the two channels uniformly:
   complete — START Step 7),
   `blocked:` (stuck; say on what), `resumed:` (back in the review loop after
   a cap raise, or `resumed: request on PR #<pr>` for an owner request —
-  the `raise:` and `request:` bullets below), `filed:` (a follow-up ticket filed for
+  the `raise:` and `request:` bullets below — or `resumed: review on PR #<pr>`
+  for a bot review the pr-notifier woke it for, `notifier.md`), `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
   acceptance criteria` when it's urgent; `filed: #52 (already open), …` when
   the implementer spawn guard in `SKILL.md` redirected a spawn of an issue it
@@ -95,7 +99,8 @@ receivers and greps treat the two channels uniformly:
   allocation**: the sender never spawns the work itself (see
   `roles/implementer.md`); the receiver dedups, prioritizes, and decides
   whether/when to spawn. `merged: #<pr>` (own PR merged on a valid `finish:`
-  clearance, FINISH done) closes the loop that clearance opened; a
+  clearance, FINISH done) closes the loop that clearance opened, and also
+  follows the cleanup a pr-notifier merge wake runs (`notifier.md`); a
   coordinator sends its own spawner `merged: epic <epic-id>` the same way.
 - **Spawner → child, `finish:`:** `finish: #<pr> (grant: <how and when the
   owner gave it>)` to an implementer, or `finish: epic <epic-id> (grant: …)`
@@ -208,8 +213,13 @@ content, which the child records before landing them, and lifts no hold.)
   user (the owner's own shell, say, while the tree runs as a bot user)
   reaches the tree only through the durable record, and only through the
   parts honored whoever wrote them: a raise on the PR's `Review rounds:`
-  line, and PR comments, which are read as review feedback. What's taken only
-  from the tree's own login (the profile's `REVIEW_BOT`, *Owner requests*,
+  line, and PR comments, which are read as review feedback. A comment from a
+  login `scripts/owner-check.sh` accepts as the owner's (an admin on the
+  repo, while the tree's login isn't one) is read as the owner's request
+  instead, about that PR's content only (the profile's `REVIEW_BOT`, *The
+  owner's comments*), so the owner's own account can steer a child's PR from
+  a comment. What's taken only from the tree's own login (the records and
+  cloud `request:` comments of the profile's `REVIEW_BOT`, *Owner requests*,
   and EPIC Step 6's `request:` markers) isn't taken from another login. To
   act inside the tree, the owner attaches to one of its sessions as its user.
 - Not load-bearing — a harness without SendMessage (older build, restricted
