@@ -2,7 +2,7 @@
 
 Read-on-demand, like `messaging.md`: START Step 7 subscribes, a wake (text that opens `pr-notifier wake v1:`, as a prompt or in a cross-session message) is handled here, and FINISH Step 3 unsubscribes. Unqualified "Step N" references are START's, in `SKILL.md`; FINISH steps live in `phases/finish.md`.
 
-A local session can't see its own PR: the harness's PR events reach only cloud sessions, and a background session is stopped once it idles. The **pr-notifier** plugin (epic #290) is a token-free local program that wakes the session that subscribed a PR when one of these happens on it:
+A local session can't see its own PR: the harness's PR events reach only cloud sessions, and a background session is stopped once it idles. The **pr-notifier** plugin (epic #290) is a local program that wakes the session that subscribed a PR when one of these happens on it:
 
 - the **owner** comments, reviews, leaves a line comment, or edits a comment: a login that the notifier's copy of `scripts/owner-check.sh` exits 0 for;
 - a **configured review bot** comments or reviews (Copilot and Codex by default), or Codex's summary comment reaches a completed review;

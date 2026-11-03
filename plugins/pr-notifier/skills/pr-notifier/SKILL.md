@@ -7,7 +7,7 @@ description: 'Use when a session that opened a PR wants to be woken after it han
 
 A local Claude Code session that opened a PR can't see GitHub on its own: harness PR
 events reach only cloud sessions, and a background session is stopped after it idles.
-`pr-notifier` is a token-free local program that watches the sessions' GitHub account
+`pr-notifier` is a local program that watches the sessions' GitHub account
 and wakes the session that owns a PR when one of these happens on it:
 
 - a comment, review or line comment by the **owner**: a login the vendored
