@@ -156,8 +156,9 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
 
 Each session is looked up in its own root: `claude agents --json --all` run with the
 recorded `CLAUDE_CONFIG_DIR` (unset when it was unset), and its job state at
-`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/<short id>/state.json`. Every `claude` call
-runs from `/`, without the variables a session sets for what it starts
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/<short id>/state.json`. A listing is reused
+for at most 15 seconds within a check, since a relay can take a minute and a session that
+has started since must not be resumed (that forks it). Every `claude` call runs from `/`, without the variables a session sets for what it starts
 (`CLAUDE_CODE_SESSION_ID`, its messaging socket and token, and the like), and is killed
 after two minutes. It runs under `wake_path`, except a resume, which passes the session's
 own `PATH` (below). First match wins:
@@ -218,8 +219,9 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   SendMessage`, in the session's root, with its prompt on stdin: `--tools` takes every
   argument after it, so a prompt there would be read as a tool name. Safe mode loads no
   plugins, hooks or `CLAUDE.md`, and `--no-session-persistence` leaves no transcript. A
-  relay is killed after a minute, and none starts once a check has run 150 seconds, since
-  every relay holds the lock that `subscribe` waits only five minutes for.
+  relay is killed after a minute. Every relay, stop and resume holds the lock that
+  `subscribe` waits only five minutes for, so no delivery starts once a check has run 150
+  seconds: the rest are held for the next check.
 - **Where it sends.** To the session's own messaging socket, `<pid>.sock` for the `pid`
   its row shows, in `/tmp/cc-socks` when that directory is this user's or root's and
   private, else in `/tmp/cc-socks-<uid>`, as Claude Code places them. A directory or socket
@@ -237,15 +239,16 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   reports the same. So the notifier waits up to `relay_wait` (30 seconds) for the
   session's transcript (`projects/*/<session id>.jsonl` in its root) to show the message
   as a turn: a `user` line whose `origin.msg_id` is the relay's. Only that counts. With no
-  transcript to read (should Claude Code move it), the row stands in: the same `pid`,
-  turned `busy`. A moved `updatedAt` never counts, since a retire right after the send
+  transcript to read (should Claude Code move it), the row stands in, read every two
+  seconds: the same `pid`, turned `busy`. A moved `updatedAt` never counts, since a retire right after the send
   moves it too.
 - **When it doesn't land.** `relay-failed` in the log says why, with the session's
   permission mode, read from its transcript's last `permission-mode` line, so a hold by
-  a mode mismatch shows there. A relay that wasn't sent falls back at once. One that was
-  sent may still be taken (a held message, approved), so the session is held for that
-  check and the fallback waits for the next, by which time a session that took it is busy
-  and isn't stopped. Relays to that session then back off (5, 10, 20, 40, then 60
+  a mode mismatch shows there. A relay that sent nothing to the session (no tool call,
+  another tool or address, a send that failed) falls back at once. One whose message may
+  have reached it (sent but not yet a turn, sent with the text changed, or killed before
+  its result) may still be taken, so the session is held for that check and the fallback
+  waits for the next, by which time a session that took it is busy and isn't stopped. Relays to that session then back off (5, 10, 20, 40, then 60
   minutes), and after three that don't land, the notifier stops relaying to it until a
   wake lands: each may have reached the session after all, and a terminal session, whose
   fallback only holds, would otherwise get one an hour.

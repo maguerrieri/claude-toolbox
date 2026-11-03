@@ -115,8 +115,8 @@ GH_EOF
 # stream-json as claude -p does, and, as $STUB/relay.mode says, has the
 # session whose socket it was given take the message as a turn in its
 # transcript (ok), hold it (held), fail the send (fail), change the text
-# (reworded), call no tool (none), exit 1 (crash), or turn the row busy
-# with no transcript line (busy).
+# (reworded), call no tool (none), exit 1 (crash), be killed after its call
+# (noresult), or turn the row busy with no transcript line (busy).
 cat >"$tmp/bin/claude" <<'CLAUDE_EOF'
 #!/usr/bin/env bash
 printf '%s|cfg=%s|path=%s|sock=%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "${CLAUDE_CONFIG_DIR-<unset>}" "$PATH" \
@@ -158,6 +158,7 @@ stop)
 	jq -cn '{type: "system", subtype: "init"}'
 	jq -cn --arg to "$to" --arg m "$msg" \
 		'{type: "assistant", message: {content: [{type: "tool_use", id: "tu1", name: "SendMessage", input: {to: $to, message: $m}}]}}'
+	[ "$mode" = noresult ] && exit 0
 	jq -cn --argjson ok "$ok" --arg id "$id" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "tu1",
 		content: [{type: "text", text: ({success: $ok, message: "sent", msg_id: $id} | tojson)}]}]}}'
 	jq -cn '{type: "result", subtype: "success", total_cost_usd: 0.0003}'
@@ -628,6 +629,17 @@ record yes 'run headless and cheap, with SendMessage alone' \
 	"$(has "$STUB/claude.log" '-p --safe-mode --name pr-notifier --no-session-persistence --model haiku --max-turns 3 --output-format stream-json --verbose --tools SendMessage|')"
 record no 'with its prompt on stdin, never in its arguments' "$(grep -- '^-p ' "$STUB/claude.log" | grep -q BEGIN && echo yes || echo no)"
 
+reset
+mkdir -p "$HOME/.claude/projects/q"
+: >"$HOME/.claude/projects/q/$SID.jsonl"
+chmod 000 "$HOME/.claude/projects/q/$SID.jsonl"
+agents "$(agent idle-done)"
+settings '{"relay_wait": 0}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+chmod 600 "$HOME/.claude/projects/q/$SID.jsonl"
+record '1|0' "a second transcript that can't be read doesn't hide the turn in the first" "$(relays)|$(held)"
+
 deliver_case idle-blocked $((T - 60))
 record '1|0' 'blocked (the hand-back) and active a minute ago: relayed, since a relay stops nothing' "$(relays)|$(wakes)"
 
@@ -668,16 +680,22 @@ record '1|1' 'a failed send falls back too' "$(relays)|$(wakes)"
 record yes 'logged as not sent' "$(logged 'relay-failed session=aaaaaaaa mode=auto reason="not sent: {')"
 
 deliver_case idle-done $((T - 3600)) '' reworded
-record '1|1' 'so does a relay that changed the text' "$(relays)|$(wakes)"
-record yes 'logged' "$(logged 'reason="the text was changed"')"
+record '1|0' 'a relay that sent a changed text may have reached it, so it waits a check too' "$(relays)|$(wakes)"
+record yes 'logged' "$(logged 'reason="sent with the text changed"')"
+nt $((T + 60)) check
+record '1|1' 'then falls back' "$(relays)|$(wakes)"
+
+deliver_case idle-done $((T - 3600)) '' noresult
+record '1|0' 'so does one killed after its call, before the result' "$(relays)|$(wakes)"
+record yes 'logged' "$(logged 'reason="no tool result"')"
 
 deliver_case idle-done $((T - 3600)) '' none
 record '1|1' 'or never called SendMessage, though it exited 0' "$(relays)|$(wakes)"
-record yes 'logged' "$(logged 'reason="0 tool calls"')"
+record yes 'logged' "$(logged 'reason="no tool call"')"
 
 deliver_case idle-done $((T - 3600)) '' crash
 record '1|1' 'or failed outright' "$(relays)|$(wakes)"
-record yes 'logged with its stderr' "$(logged 'reason="0 tool calls; relay: boom"')"
+record yes 'logged with its stderr' "$(logged 'reason="no tool call; relay: boom"')"
 
 deliver_case idle-blocked $((T - 60)) '' held
 nt $((T + 60)) check
