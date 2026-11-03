@@ -11,8 +11,8 @@ description: >-
   I'm out", "handle the auth epic"). ALSO use
   whenever /make-ticket, /start-ticket, /finish-ticket, /spawn-tickets, /start-epic, or
   /spawn-epic appears anywhere in a message, even mid-sentence, and even if this skill is
-  already in context, and on a prompt or cross-session message opening "pr-notifier wake v1:".
-  Tracker-agnostic (GitHub Issues or Jira), pluggable org profiles; GitHub PRs, CI, merges via gh.
+  already in context, and on a prompt or peer message opening "pr-notifier wake v1:". GitHub
+  Issues or Jira, with org profiles; PRs, CI and merges via gh.
 ---
 
 # Ticket workflow (pluggable tracker + profile)

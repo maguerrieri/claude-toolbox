@@ -223,7 +223,8 @@ completion-criteria checklists move with their phase.
 
 The frontmatter `description` has a size limit of its own: 1024 characters, the
 Agent Skills limit on skill descriptions. #294's trigger for the pr-notifier's
-wake prompt took it to 1112 before a review caught it, and it sits at 1023 now.
+wake prompt took it to 1112 before a review caught it, and #305's widening of
+that trigger to a relayed wake took it to 1048, trimmed to 1011 now.
 So a new trigger phrase pays for itself by trimming elsewhere in the
 description. Check the length after any edit (parse the frontmatter, as the
 `yaml` plugin's skill shows, and print `len()` of the value).
