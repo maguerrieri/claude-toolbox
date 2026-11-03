@@ -665,16 +665,26 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 
 # --- check: the relay ------------------------------------------------------------
 
+private_dir() { # private_dir <dir>: a real directory, this user's or root's, that no one else can write
+	[ -d "$1" ] && [ ! -L "$1" ] || return 1
+	[ -O "$1" ] || [ -n "$(find "$1" -maxdepth 0 -user root 2>/dev/null)" ] || return 1
+	[ -z "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ]
+}
+
 session_socket() { # session_socket <pid>: a live session's messaging address, uds:<its socket>
 	# Each live session listens on <pid>.sock in its user's private socket
 	# directory, named for the pid its claude agents row shows (checked on the
 	# Mac Studio for every live row). Addressing that socket, not the session's
-	# name, can't hit another session that shares or took over the name.
+	# name, can't hit another session that shares or took over the name. The
+	# directory is /tmp/cc-socks when that is this user's or root's and
+	# private, else /tmp/cc-socks-<uid>; a directory or socket someone else
+	# could have placed (another owner, writable by others, a symlink) is
+	# skipped.
 	local d dirs
 	[[ $1 =~ ^[0-9]+$ ]] || return 1
 	IFS=: read -ra dirs <<<"${PR_NOTIFIER_SOCK_DIRS:-/tmp/cc-socks-$(id -u):/tmp/cc-socks}"
 	for d in ${dirs[@]+"${dirs[@]}"}; do
-		if [ -n "$d" ] && [ -S "$d/$1.sock" ] && [ -O "$d/$1.sock" ]; then
+		if [ -n "$d" ] && private_dir "$d" && [ ! -L "$d/$1.sock" ] && [ -S "$d/$1.sock" ] && [ -O "$d/$1.sock" ]; then
 			printf 'uds:%s/%s.sock' "$d" "$1"
 			return 0
 		fi
