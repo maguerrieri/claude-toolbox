@@ -43,14 +43,14 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   issue instead; a thread started on an untracked ask files its issue and takes it
   on), an issue's thread starts on a branch named after the issue
   (`claude/<n>-<slug>`, plus the harness's suffix), and `/role` does nothing.
-- **pr-notifier** — a token-free local program that wakes the background session
+- **pr-notifier** — a local program that wakes the background session
   that owns a PR when the repo's owner or a configured review bot (Copilot, Codex)
   acts on it, or when it merges or closes, even after that session handed back
   and was stopped. Sessions subscribe through its stable path,
   `~/.local/bin/pr-notifier`; it polls the account's GitHub notifications and
   sweeps each subscribed PR, filters on the PR's timeline (a stranger's comment
-  wakes nothing), and resumes the session with a fixed wake prompt carrying only
-  URLs. A launchd job runs it every minute; installing that job is a checklist,
+  wakes nothing), and delivers a fixed wake prompt carrying only URLs: in place to a
+  live session, by a one-shot Haiku relay's message, or by resuming a stopped one. A launchd job runs it every minute; installing that job is a checklist,
   [its INSTALL.md](plugins/pr-notifier/INSTALL.md), around `scripts/install.sh`. See
   [its README](plugins/pr-notifier/README.md).
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*

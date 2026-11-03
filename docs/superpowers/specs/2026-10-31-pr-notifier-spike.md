@@ -3,7 +3,7 @@
 **Date:** 2026-10-31
 **Issue:** #292, child 1 of epic #290 (the PR notifier)
 **Where:** the Mac Studio, as the `bot` macOS user (uid 502), Claude Code 2.1.316, `gh` as `sprue-works-bot`
-**Status:** findings; children 2–4 (#293, #294, #295) build on the *Design corrections* at the end
+**Status:** findings; children 2–4 (#293, #294, #295) and the follow-up #305 build on the *Design corrections* at the end
 
 Each question from #292 is answered below with how it was found: **tested** (run on this
 machine), **read** (read from the Claude Code 2.1.316 binary's bundled JavaScript, via
@@ -36,7 +36,9 @@ the notification target was the throwaway PR #296. Timestamps are UTC.
 Otherwise a settled session (idle, or ended its turn waiting on the user) is retired once
 its `updatedAt` is older than the threshold: **1 hour** (`pr=3600000`), or **8 hours** when
 the session is bridged to claude.ai by Remote Control (`O=o.bridgeSessionId?Math.max(e,s):e`,
-with `s` = `fr=28800000`).
+with `e` and `s` the sweep's `he` and `pe`). Each sweep sets those first,
+`let me=oCe(),he=me?Qe:pr,pe=me?Qe:fr`, so `he` is `pr` and `pe` is `fr=28800000` only
+without memory pressure (`me`). Under it, both are `Qe`, 60 seconds (below).
 
 Memory pressure (macOS memory-status pressure, or little free memory) changes that, and only
 then do these passes run:
@@ -233,10 +235,11 @@ Tested on `0f43a5bc` while it was live and idle:
   - Addressing is by session name, which the user can rename and a forked copy can share.
   - A message to a **stopped** session only queues until it next starts, so stopped sessions
     still need the resume.
-  - Not tested: a held message. A receiver in a different permission mode from the sender
-    holds cross-session messages for approval. These two were delivered, with the relay at
-    `from-mode="prompting"` and the receiver in `auto`, bot's `permissions.defaultMode`.
-    Which pairs hold is unknown. Per the `SendMessage` tool's own description, a held
+  - Not tested: a held message. Read from the `SendMessage` tool's own description: a
+    receiver in a different permission mode from the sender holds cross-session messages
+    for approval. The one pair tested, a `prompting` sender (the relay, at
+    `from-mode="prompting"`) and an `auto` receiver (bot's `permissions.defaultMode`),
+    delivered both times. Which pairs hold is unknown. Per the same description, a held
     message still counts as a successful send. The sender learns of the hold only from a
     later `[Cross-session delivery notice]`, and a one-shot relay has exited by then. So the
     send's result alone can't tell held from delivered.

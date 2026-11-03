@@ -30,10 +30,12 @@ nothing. It never runs as root: the one root step is a paste (step 2).
    `login.keychain-db` can't be unlocked by password once it's locked
    (maguerrieri/claude-config#144), and on the Mac Studio bot's is `bot.keychain-db`;
 3. sets `PATH` to `wake_path`, the `PATH` a fresh bot login shell has, captured by the
-   install. Every session the notifier wakes gets that `PATH` as its tool `PATH` for the
-   rest of its process (the #292 spike's Trap 2), so it's one value for the whole install,
-   never a session's own (which, in a session, can carry Mari's `PATH` or a worktree's
-   direnv);
+   install. Every `claude` the notifier runs gets it. A session it resumes keeps its
+   waker's `PATH` as its tool `PATH` for the rest of its process (the #292 spike's Trap 2),
+   so a resume passes the session's own `PATH`, recorded when it subscribed, with
+   `wake_path`'s other entries behind it: a session never loses a tool it had, and never
+   lacks one the install found. A relay restarts nothing, so the session keeps its own
+   environment (the [README](README.md)'s *The session's PATH*);
 4. runs `~/.local/bin/pr-notifier check` from `/`, with no `CLAUDE_CONFIG_DIR`: each
    subscription records its own, and setting `~/.claude` explicitly breaks the default
    root (Trap 3). On start after downtime, `check` catches up from its cursor.
@@ -168,11 +170,14 @@ runs=… last-exit=0` and `the job's last run: … ran check`. Any `FAIL` line s
 fix; `job.last` also records a `check` that failed (`check failed: exit …`). With nothing subscribed yet, `notifier.log` gains a `check skipped=no-subscriptions`
 line a minute.
 
-### 4. Test a resume from the LaunchDaemon
+### 4. Test a wake from the LaunchDaemon
 
-This is what the spike couldn't test. A cheap test session subscribes to a bot PR and
-stops; you comment on the PR; the job should resume it. Pick any open PR that
-`sprue-works-bot` opened, and set `pr` to it:
+This is what the spike couldn't test: a relay and a resume, each run by the LaunchDaemon.
+The relay matters more. It's a `claude` client of its own, so it needs bot's Claude login
+from the job's context, while a resume hands off to the running daemon. A cheap test
+session subscribes to a bot PR, and you comment on the PR twice: once while the session is
+live, and once after it has stopped. Pick any open PR that `sprue-works-bot` opened, and set
+`pr` to it:
 
 ```zsh
 pr='maguerrieri/claude-toolbox#296'
@@ -181,30 +186,46 @@ claude --bg -n 'pr-notifier install test' --model haiku 'Reply with one word: re
 sleep 20
 sid=$(claude agents --json --all | jq -r '[.[] | select(.name == "pr-notifier install test")] | last | .sessionId')
 ~/.local/bin/pr-notifier subscribe "$pr" --session "$sid" --name 'pr-notifier install test'
-claude stop ${sid:0:8}
+claude agents --json --all | jq --arg s "$sid" '.[] | select(.sessionId == $s) | {state, status, pid}'
 ```
 
-Now comment on that PR from your own GitHub account (anything, such as "notifier test").
-Within about two minutes, or six if the notification doesn't move (the notifier also reads
-every subscribed PR every five minutes):
+**The relay.** The session is live and idle: `"status": "idle"`, with a `pid`. Comment on
+the PR from your own GitHub account (anything, such as "notifier test 1"). Within about two
+minutes, or six if the notification doesn't move (the notifier also reads every subscribed
+PR every five minutes):
 
 ```zsh
 grep "session=${sid:0:8}" ~/.local/state/pr-notifier/notifier.log | tail -n 3
 claude agents --json --all | jq --arg s "$sid" '.[] | select(.sessionId == $s) | {state, status, pid}'
 ```
 
-Expect a `wake session=… how=stopped` line, and a `pid` on the session's row. `claude
-attach ${sid:0:8}` shows the wake prompt (`pr-notifier wake v1: …`) and its answer. Then
-clean up:
+Expect a `wake session=… how=relay … msg=…` line, and the same `pid` as before: the session
+took the wake in place. `claude attach ${sid:0:8}` shows it as a message from `pr-notifier`
+with the wake prompt (`pr-notifier wake v1: …`) inside, and the session's answer. A
+`relay-failed … reason=…` line means the relay didn't land. Record its reason in step 6.
+The notifier then falls back to stopping and resuming the session, once it has been quiet
+for ten minutes.
+
+**The resume.** Stop the session, then comment on the PR again ("notifier test 2"):
+
+```zsh
+claude stop ${sid:0:8}
+```
+
+Expect a `wake session=… how=stopped` line within the same few minutes, and a `pid` on the
+session's row again. Then clean up:
 
 ```zsh
 ~/.local/bin/pr-notifier unsubscribe "$pr" --session "$sid"
 claude stop ${sid:0:8}
 ```
 
-If no wake comes, `notifier.log` says why (`hold`, or `wake-failed … detail=…`), and
-`~/.local/state/pr-notifier/job.log` has the job's own errors. If the resume itself fails
-from the LaunchDaemon, use the fallback below and note it in step 6.
+If no wake comes, `notifier.log` says why (`hold`, `relay-failed … reason=…`, or
+`wake-failed … detail=…`), and `~/.local/state/pr-notifier/job.log` has the job's own
+errors. If the resume fails from the LaunchDaemon, use the fallback below and note it in
+step 6. If only the relay fails, wakes still arrive by stop-then-resume. Note its reason in
+step 6, and if it keeps failing, turn it off by adding `"relay": false` to
+`~/.local/state/pr-notifier/config.json` (the install keeps keys it doesn't set).
 
 ### 5. Reboot
 
@@ -224,7 +245,8 @@ logged in as bot (config#47's open question). Record it in step 6.
 ### 6. Record the results
 
 Comment on the maguerrieri/claude-config issue linked from #295 with what steps 3 to 5
-printed: the `status` summary, the `wake` line and how long it took, the reboot lines,
+printed: the `status` summary, the relay's and the resume's `wake` lines and how long
+each took, the reboot lines,
 which route you ended up on, and anything that didn't work. That issue records them in
 claude-config's `AGENTS.md`, *The `bot` macOS user*.
 

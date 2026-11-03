@@ -16,7 +16,8 @@
 #
 # Test seams: PR_NOTIFIER_GH, PR_NOTIFIER_CLAUDE and PR_NOTIFIER_OWNER_CHECK
 # replace gh, claude and owner-check.sh; PR_NOTIFIER_NOW fixes the clock
-# (epoch seconds).
+# (epoch seconds); PR_NOTIFIER_SOCK_DIRS (colon-separated) replaces the
+# directories a live session's messaging socket is looked for in.
 set -uo pipefail
 
 self=${BASH_SOURCE[0]}
@@ -73,7 +74,7 @@ default_bots='["copilot-pull-request-reviewer[bot]","Copilot","chatgpt-codex-con
 setting() { # setting <key> <default>: config.json's value, else the default
 	local v=
 	[ -f "$config_file" ] &&
-		v=$(jq -r --arg k "$1" '.[$k] // empty | if type == "array" then tojson else tostring end' "$config_file" 2>/dev/null)
+		v=$(jq -r --arg k "$1" '.[$k] | select(. != null) | if type == "array" then tojson else tostring end' "$config_file" 2>/dev/null)
 	printf '%s' "${v:-$2}"
 }
 
@@ -93,8 +94,15 @@ load_settings() {
 	idle_grace=$(number_setting idle_grace 600)
 	retry_window=$(number_setting retry_window 1800)
 	owner_ttl=$(number_setting owner_ttl 3600)
-	# The woken session's tool PATH is whatever PATH its waker passes (the
-	# spike's Trap 2), so it is one install-wide value, never a session's.
+	relay_wait=$(number_setting relay_wait 30)
+	relay_model=$(setting relay_model haiku)
+	local model_re='^[]A-Za-z0-9._[-]+$' # "]" first: inside brackets, a backslash doesn't escape it
+	[[ $relay_model =~ $model_re ]] || relay_model=haiku
+	case $(lc "$(setting relay true)") in false | 0 | no | off) relay_on=false ;; *) relay_on=true ;; esac
+	# The PATH every claude the notifier runs gets. A resumed session keeps
+	# its waker's PATH as its tool PATH (the spike's Trap 2), so a resume
+	# passes the session's own recorded PATH in front of this one
+	# (resume_path); everything else runs under this alone.
 	wake_path=$(setting wake_path "$PATH")
 }
 
@@ -228,15 +236,27 @@ cmd_subscribe() {
 	load_files
 	# Two minutes of slack, so clock skew can't put a reply just after the
 	# subscribe before it; a repeated event is harmless (the wake prompt).
+	# The caller's PATH is the session's own tool PATH when the session runs
+	# subscribe itself, from its Bash tool, and a resume carries it back in
+	# (the spike's Trap 2). It is the session's, so every one of its
+	# subscriptions gets the latest. A subscribe for another session (--session
+	# from a shell or another session) records no PATH: the caller's isn't the
+	# session's, so the one already recorded stays.
+	local own_path=
+	[ "$sid" != "$(lc "${CLAUDE_CODE_SESSION_ID:-}")" ] || own_path=${PATH:-}
 	edit "$work_registry" --arg pr "$ref" --arg sid "$sid" --arg name "$name" --arg cfg "$cfg" \
-		--arg at "$(iso $((now - 120)))" '
+		--arg at "$(iso $((now - 120)))" --arg path "$own_path" '
 		(.subscriptions | map(select(.pr == $pr and .session_id == $sid)) | first) as $old
-		| .subscriptions = [.subscriptions[] | select((.pr == $pr and .session_id == $sid) | not)]
+		| (if $path == "" then ([.subscriptions[] | select(.session_id == $sid) | .path | strings] | last)
+		   else $path end) as $p
+		| .subscriptions = [.subscriptions[] | select((.pr == $pr and .session_id == $sid) | not)
+		                    | if .session_id == $sid then .path = $p else . end]
 			+ [{pr: $pr, session_id: $sid, name: $name,
 			    config_dir: (if $cfg == "" then null else $cfg end),
+			    path: $p,
 			    subscribed_at: ($old.subscribed_at // $at)}]' || die "can't update the registry"
 	save "$work_registry" "$registry"
-	log "subscribe pr=$ref session=$(short "$sid") name=$(jq -rn --arg n "$name" '$n | @json') root=${cfg:-default}"
+	log "subscribe pr=$ref session=$(short "$sid") name=$(jq -rn --arg n "$name" '$n | @json') root=${cfg:-default} path=$(if [ -n "$own_path" ]; then printf '%s' "$own_path" | awk -F: '{ print NF " entries" }' | tr ' ' _; else echo kept; fi)"
 	echo "pr-notifier: subscribed $(short "$sid") to $ref"
 }
 
@@ -292,7 +312,7 @@ cmd_status() {
 		def ago($t): "\((($now - $t) / 60) | floor)m";
 		($st.pending // {}) as $p
 		| "pr-notifier: \($reg.subscriptions | length) subscription(s), \($p | length) session(s) with held events",
-		  ($reg.subscriptions[] | "subscription \(.pr) session=\(.session_id[0:8]) name=\(.name | @json) root=\(.config_dir // "default") since=\(.subscribed_at)"),
+		  ($reg.subscriptions[] | "subscription \(.pr) session=\(.session_id[0:8]) name=\(.name | @json) root=\(.config_dir // "default") since=\(.subscribed_at) path=\(if (.path | type) == "string" then "recorded" else "none" end)"),
 		  ($p | to_entries[] | "held session=\(.key[0:8]) events=\(.value.events | length) for=\(ago(.value.first_at)) last=\(.value.last_hold // "none")\(if $now - .value.first_at >= $bound then " STALE" else "" end)"),
 		  (($st.feed // {}) | "feed last=\(.last_poll_iso // "never") status=\(.last_status // "none")")'
 }
@@ -513,24 +533,43 @@ pr_unreadable() { # pr_unreadable <ref>: after a failed read
 
 # --- check: delivery --------------------------------------------------------
 
-run_claude() { # run_claude <config dir or ""> <claude args...>: in the wake environment
-	local cfg=$1
-	shift
+# What a session sets for the processes it starts. None of it may reach a
+# claude the notifier runs, or that claude would act as the session that ran
+# check (check is also run by hand from a session, as a test hook).
+session_vars=(CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID CLAUDE_CODE_MESSAGING_SOCKET
+	CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_BRIDGE_SESSION_ID CLAUDE_CODE_CHILD_SESSION
+	CLAUDE_CODE_SESSION_ATTENDED CLAUDE_PID CLAUDECODE CLAUDE_JOB_DIR)
+claude_timeout=120 # no claude call holds the lock longer than this
+
+claude_env() { # claude_env <config dir or ""> <PATH> <claude args...>: from /, stdin inherited
+	local cfg=$1 p=$2 cmd=(env) v
+	shift 2
+	! command -v perl >/dev/null 2>&1 || cmd=(perl -e 'alarm shift; exec @ARGV' "$claude_timeout" env)
+	for v in "${session_vars[@]}"; do cmd+=(-u "$v"); done
 	if [ -n "$cfg" ]; then
-		(cd / && env -u CLAUDE_SESSION_ID -u CLAUDE_CODE_SESSION_ID CLAUDE_CONFIG_DIR="$cfg" \
-			PATH="$wake_path" "$claude_path" "$@" </dev/null)
+		cmd+=(CLAUDE_CONFIG_DIR="$cfg")
 	else
-		# Unset, never set to ~/.claude: the spike's Trap 3.
-		(cd / && env -u CLAUDE_SESSION_ID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CONFIG_DIR \
-			PATH="$wake_path" "$claude_path" "$@" </dev/null)
+		cmd+=(-u CLAUDE_CONFIG_DIR) # unset, never set to ~/.claude: the spike's Trap 3
 	fi
+	(cd / && "${cmd[@]}" PATH="$p" "$claude_path" "$@")
 }
 
-agents() { # agents <config dir or ""> [fresh]: the root's claude agents listing, once per run
-	local f
+run_claude() { # run_claude <config dir or ""> <claude args...>: under wake_path, with no stdin
+	local cfg=$1
+	shift
+	claude_env "$cfg" "$wake_path" "$@" </dev/null
+}
+
+agents() { # agents <config dir or ""> [fresh]: the root's claude agents listing, reused for 15 seconds
+	# A relay can take a minute, so a listing read before one may no longer
+	# say which sessions are stopped: resuming one that has since started
+	# would fork it.
+	local f at
 	f=$run_tmp/agents.$(printf '%s' "${1:-default}" | cksum | cut -d' ' -f1).json
-	[ -z "${2:-}" ] || rm -f "$f"
+	at=$(cat "$f.at" 2>/dev/null) || at=
+	[ -z "${2:-}" ] && [ -n "$at" ] && [ $((SECONDS - at)) -le 15 ] || rm -f "$f"
 	if [ ! -f "$f" ]; then
+		echo "$SECONDS" >"$f.at"
 		run_claude "$1" agents --json --all >"$f.tmp" 2>/dev/null &&
 			jq -e 'type == "array"' "$f.tmp" >/dev/null 2>&1 || {
 			rm -f "$f.tmp"
@@ -591,23 +630,19 @@ wake_prompt() { # wake_prompt <session id>: the fixed template, carrying only UR
 		| join("\n")' "$work_state"
 }
 
-wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
-	local sid=$1 cfg=$2 out rc ref
-	out=$(run_claude "$cfg" --bg --resume "$sid" "$(wake_prompt "$sid")" 2>&1)
-	rc=$?
-	if [ "$rc" -ne 0 ]; then
-		# A refused resume keeps its prompt for the next wake, which then
-		# delivers both; the template makes that harmless. Each retry would
-		# queue one more copy, so retries back off: 5, 10, 20, 40, then 60
-		# minutes apart.
-		edit "$work_state" --arg s "$sid" --argjson now "$now" '
-			.pending[$s].wake_failures = ((.pending[$s].wake_failures // 0) + 1)
-			| .pending[$s].next_wake_at = $now + ([300 * pow(2; .pending[$s].wake_failures - 1), 3600] | min)'
-		hold "$sid" "wake-failed"
-		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
-		return 1
-	fi
-	log "wake session=$(short "$sid") how=$3 prs=$(jq -r --arg s "$sid" '[.pending[$s].events[].pr] | unique | join(",")' "$work_state") events=$(jq -r --arg s "$sid" '.pending[$s].events | length' "$work_state")"
+resume_path() { # resume_path <session id>: its recorded PATH, then any of wake_path's entries it lacks
+	# Absolute entries only, each once. Merging means a PATH recorded while
+	# degraded (say, by a session once woken under a bare one) can't persist.
+	local rec
+	rec=$(jq -r --arg s "$1" '[.subscriptions[] | select(.session_id == $s) | .path | strings] | last // empty' "$work_registry")
+	jq -rn --arg a "$rec" --arg b "$wake_path" '
+		[($a, $b) | split(":")[] | select(startswith("/"))]
+		| reduce .[] as $e ([]; if any(.[]; . == $e) then . else . + [$e] end) | join(":")'
+}
+
+finish_wake() { # finish_wake <session id> <how> [log detail]: the wake landed, so its events go
+	local sid=$1 ref
+	log "wake session=$(short "$sid") how=$2 prs=$(jq -r --arg s "$sid" '[.pending[$s].events[].pr] | unique | join(",")' "$work_state") events=$(jq -r --arg s "$sid" '.pending[$s].events | length' "$work_state")${3:+ $3}"
 	# The final wake for a PR that merged or closed ends its subscription, if
 	# the PR is still merged or closed as last read: one reopened since its
 	# close was queued keeps its subscribers.
@@ -621,38 +656,227 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 	done <"$run_tmp/final"
 }
 
-deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind inflight updated tries next
-	next=$(jq -r --arg s "$sid" '.pending[$s].next_wake_at // 0 | floor' "$work_state")
-	if [ "$now" -lt "$next" ]; then
-		hold "$sid" "wake-backoff until $(iso "$next")"
-		return
+back_off() { # back_off <session id> <failures field> <next-try field>: counts a failure; the next try is 5, 10, 20, 40, then 60 minutes on
+	edit "$work_state" --arg s "$1" --arg n "$2" --arg at "$3" --argjson now "$now" '
+		.pending[$s][$n] = ((.pending[$s][$n] // 0) + 1)
+		| .pending[$s][$at] = $now + ([300 * pow(2; .pending[$s][$n] - 1), 3600] | min)'
+}
+
+wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt, under its own PATH
+	local sid=$1 cfg=$2 out rc
+	out=$(claude_env "$cfg" "$(resume_path "$sid")" --bg --resume "$sid" "$(wake_prompt "$sid")" </dev/null 2>&1)
+	rc=$?
+	if [ "$rc" -ne 0 ]; then
+		# A refused resume keeps its prompt for the next wake, which then
+		# delivers both; the template makes that harmless. Each retry would
+		# queue one more copy, so retries back off.
+		back_off "$sid" wake_failures next_wake_at
+		hold "$sid" "wake-failed"
+		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
+		return 1
 	fi
+	finish_wake "$sid" "$3"
+}
+
+# --- check: the relay ------------------------------------------------------------
+
+private_dir() { # private_dir <dir>: a real directory, this user's or root's, that no one else can write
+	[ -d "$1" ] && [ ! -L "$1" ] || return 1
+	[ -O "$1" ] || [ -n "$(find "$1" -maxdepth 0 -user root 2>/dev/null)" ] || return 1
+	[ -z "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ]
+}
+
+session_socket() { # session_socket <pid>: a live session's messaging address, uds:<its socket>
+	# Each live session listens on <pid>.sock in its user's private socket
+	# directory, named for the pid its claude agents row shows (checked on the
+	# Mac Studio for every live row). Addressing that socket, not the session's
+	# name, can't hit another session that shares or took over the name. The
+	# directory is /tmp/cc-socks when that is this user's or root's and
+	# private, else /tmp/cc-socks-<uid>; a directory or socket someone else
+	# could have placed (another owner, writable by others, a symlink) is
+	# skipped.
+	local d dirs
+	[[ $1 =~ ^[0-9]+$ ]] || return 1
+	IFS=: read -ra dirs <<<"${PR_NOTIFIER_SOCK_DIRS:-/tmp/cc-socks:/tmp/cc-socks-$(id -u)}"
+	for d in ${dirs[@]+"${dirs[@]}"}; do
+		if [ -n "$d" ] && private_dir "$d" && [ ! -L "$d/$1.sock" ] && [ -S "$d/$1.sock" ] && [ -O "$d/$1.sock" ]; then
+			printf 'uds:%s/%s.sock' "$d" "$1"
+			return 0
+		fi
+	done
+	return 1
+}
+
+transcripts() { # transcripts <config dir> <session id>: the session's transcript files, one a line
+	# It sits under the project its session started in, and moves with
+	# EnterWorktree, so it is found by name.
+	find "${1:-$HOME/.claude}/projects" -mindepth 2 -maxdepth 2 -type f -name "$2.jsonl" 2>/dev/null
+}
+
+session_mode() { # session_mode <transcript...>: the permission mode it last recorded, for the log
+	local m=
+	[ $# -eq 0 ] || m=$(grep -hF '"permission-mode"' "$@" 2>/dev/null | tail -n 1 |
+		jq -r 'select(.type == "permission-mode") | .permissionMode | strings' 2>/dev/null)
+	[[ $m =~ ^[A-Za-z]+$ ]] || m=unknown
+	printf '%s' "$m"
+}
+
+landed() { # landed <message id> <transcript...>: the message is a turn in the session
+	# The receiving session writes each peer message it takes as a user turn
+	# whose origin carries the sender's msg_id. A message held for approval,
+	# refused, or queued for a session that has since stopped isn't one. A
+	# transcript that moved since it was found makes grep fail even after a
+	# match elsewhere, so its status doesn't count (pipefail).
+	local id=$1
+	shift
+	[ $# -gt 0 ] || return 1
+	{ grep -hF -- "$id" "$@" 2>/dev/null || :; } |
+		jq -enR --arg m "$id" '[inputs | fromjson? | select(type == "object" and .type == "user" and .origin.msg_id? == $m)] | length > 0' >/dev/null
+}
+
+relay_prompt() { # relay_prompt <address> <text>: what the relay session is asked to do
+	printf '%s\n' "You relay one message for pr-notifier. Call the SendMessage tool exactly once. Set its \"to\" to exactly this address:" \
+		"$1" \
+		"Set its \"message\" to exactly the text between the BEGIN and END lines below, verbatim: no added words, no quotes, nothing left out. Call no other tool, then stop." \
+		BEGIN "$2" END
+}
+
+relay_result() { # relay_result <stream-json file> <address> <text>: "ok <msg id>", "maybe: <why>" or "no: <why>"
+	# The exit code says nothing (claude -p exits 0 when the model never
+	# sends, or rewords the text), so the one SendMessage call is checked, and
+	# so is what the tool answered. "no" is a relay that sent nothing to the
+	# session; "maybe" is one whose message may have reached it (a changed
+	# text, or no result because the relay was killed after the call).
+	jq -nrR --arg to "$2" --arg text "$3" '
+		def rstrip: sub("\\s+$"; "");
+		[inputs | fromjson? | select(type == "object")] as $m
+		| [$m[] | select(.type == "assistant") | .message.content[]? | select(type == "object" and .type == "tool_use")] as $uses
+		| if ($uses | length) == 0 then "no: no tool call"
+		  elif ($uses | length) != 1 then "maybe: \($uses | length) tool calls"
+		  elif $uses[0].name != "SendMessage" then "no: called \($uses[0].name)"
+		  elif ($uses[0].input.to // "") != $to then "no: sent to another address"
+		  else
+		    ([$m[] | select(.type == "user") | .message.content[]?
+		      | select(type == "object" and .type == "tool_result" and .tool_use_id == $uses[0].id)] | first) as $r
+		    | ($r.content | if type == "array" then map(.text? // "") | join("") elif type == "string" then . else "" end) as $body
+		    | ($body | fromjson? // null) as $j
+		    | if $r == null then "maybe: no tool result"
+		      elif $r.is_error == true then "no: \($body | .[0:160])"
+		      elif ($j | type) != "object" or $j.success != true then "no: not sent: \($body | .[0:160])"
+		      elif ((($uses[0].input.message // "") | tostring | rstrip) != ($text | rstrip)) then "maybe: sent with the text changed"
+		      elif (($j.msg_id | type) != "string") or ($j.msg_id | test("^[A-Za-z0-9-]+$") | not) then "maybe: sent with no message id"
+		      else "ok \($j.msg_id)" end
+		  end' "$1" 2>/dev/null || echo "no: unreadable output"
+}
+
+relay_failed() { # relay_failed <session id> <mode> <why> [maybe]: logs it and backs relays off
+	# Relays to the session back off as refused resumes do, and the
+	# stop-then-resume fallback isn't held up by it. One whose message may
+	# have reached the session (maybe) also counts toward relay_tries: it may
+	# still land (a held message approved later), so it isn't repeated
+	# forever. One that sent nothing doesn't, so a crash or a missing socket
+	# never stops relays for good.
+	back_off "$1" relay_failures next_relay_at
+	[ "${4:-}" != maybe ] || edit "$work_state" --arg s "$1" '.pending[$s].relay_unconfirmed = ((.pending[$s].relay_unconfirmed // 0) + 1)'
+	log "relay-failed session=$(short "$1") mode=$2 reason=$(jq -rn --arg r "$3" '$r | @json')"
+}
+
+relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in the live session,
+	# 1 if nothing reached it, 2 if it may have but no turn took it (both logged).
+	# A one-shot headless session SendMessages the wake prompt to the
+	# session's socket. It restarts nothing, so nothing in flight is lost and
+	# an attached viewer stays connected.
+	local sid=$1 cfg=$2 pid=$3 to text res id mode waited=0 files=() f row rid rcwd rpid rstatus rst rkind
+	to=$(session_socket "$pid") || {
+		relay_failed "$sid" unknown "no socket for pid $pid"
+		return 1
+	}
+	text=$(wake_prompt "$sid")
+	relay_prompt "$to" "$text" >"$run_tmp/relay.in"
+	# The prompt goes on stdin: --tools takes every argument after it. A relay
+	# takes seconds, so it gets a minute, not the two other calls get.
+	claude_timeout=60 claude_env "$cfg" "$wake_path" -p --safe-mode --name pr-notifier --no-session-persistence \
+		--model "$relay_model" --max-turns 3 --output-format stream-json --verbose --tools SendMessage \
+		<"$run_tmp/relay.in" >"$run_tmp/relay.out" 2>"$run_tmp/relay.err"
+	res=$(relay_result "$run_tmp/relay.out" "$to" "$text")
+	while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
+	mode=$(session_mode ${files[@]+"${files[@]}"})
+	case $res in
+	"ok "*) id=${res#ok } ;;
+	maybe:*)
+		relay_failed "$sid" "$mode" "${res#maybe: }" maybe
+		return 2
+		;;
+	*)
+		relay_failed "$sid" "$mode" "${res#no: }$(head -n 1 "$run_tmp/relay.err" | head -c 160 | sed 's/^./; &/')"
+		return 1
+		;;
+	esac
+	# A successful send means only that the message reached the session's
+	# inbox: one held for approval, or sent to a session that has just
+	# stopped, reports the same. So wait for the turn itself.
+	while :; do
+		if [ ${#files[@]} -gt 0 ]; then
+			landed "$id" "${files[@]}" && break
+		elif [ $((waited % 2)) -eq 0 ]; then
+			# No transcript to read (Claude Code moved it): the row, with the
+			# same pid and busy, is the weaker sign the message was taken. A
+			# listing takes about a second, so it is read every other one.
+			row=$(session_row "$cfg" "$sid" fresh) || row=
+			IFS=$us read -r rid rcwd rpid rstatus rst rkind <<<"$row"
+			[ "$rpid" = "$pid" ] && [ "$rstatus" = busy ] && break
+		fi
+		if [ "$waited" -ge "$relay_wait" ]; then
+			relay_failed "$sid" "$mode" "sent as $id, but no turn took it within ${relay_wait}s (held, refused or stopped)" maybe
+			return 2
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+	finish_wake "$sid" relay "mode=$mode msg=$id cost=$(jq -nrR '[inputs | fromjson? | select(type == "object" and .type == "result") | .total_cost_usd | numbers | . * 10000 | round / 10000] | first // "unknown"' "$run_tmp/relay.out" 2>/dev/null)"
+}
+
+resume_backoff() { # resume_backoff <session id>: holds it and returns 0 while a refused resume is backing off
+	local next
+	next=$(jq -r --arg s "$1" '.pending[$s].next_wake_at // 0 | floor' "$work_state")
+	[ "$now" -lt "$next" ] || return 1
+	hold "$1" "wake-backoff until $(iso "$next")"
+}
+
+relay_tries=3      # relays that may have reached a session, unconfirmed, before it waits for the fallback alone
+delivery_budget=150 # seconds into a check after which no delivery starts
+
+over_budget() { # over_budget <session id> [why]: holds it and returns 0 once this check has run its delivery budget
+	# Every relay, stop and resume holds the lock, which subscribe waits
+	# only five minutes for, so a long check leaves the rest to the next.
+	[ "$SECONDS" -ge "$delivery_budget" ] || return 1
+	hold "$1" "${2:+$2; }deferred: this check has run ${SECONDS}s"
+}
+
+deliver() { # deliver <session id>: the spike's state table, first match wins
+	local sid=$1 cfg row id cwd pid status st kind next tries why
+	! over_budget "$sid" || return
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	row=$(session_row "$cfg" "$sid") || {
 		hold "$sid" listing-failed
 		return
 	}
 	if [ -z "$row" ]; then
-		log "drop session=$(short "$sid") reason=session-gone"
-		drop_session "$sid" session-gone
+		# No row in its root: removed, or not yet listed. Held under the
+		# bound like any hold, since a missing row may come back.
+		hold "$sid" session-gone
 		return
 	fi
 	IFS=$us read -r id cwd pid status st kind <<<"$row"
-	if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
-		# Its resume would be refused (exit 1) with the prompt queued.
-		log "drop session=$(short "$sid") reason=cwd-gone cwd=$(jq -rn --arg c "$cwd" '$c | @json')"
-		drop_session "$sid" cwd-gone
-		return
-	fi
 	if [ -z "$pid" ]; then
-		wake "$sid" "$cfg" stopped
-		return
-	fi
-	if [ "$kind" != background ]; then
-		# A live terminal session: someone is at it, and a stop would end it
-		# under them. Its events wait until it exits.
-		hold "$sid" "live ${kind:-unknown-kind} session"
+		if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
+			# Stopped, and its resume would be refused (exit 1) with the
+			# prompt queued: usually FINISH removed its worktree.
+			log "drop session=$(short "$sid") reason=cwd-gone cwd=$(jq -rn --arg c "$cwd" '$c | @json')"
+			drop_session "$sid" cwd-gone
+			return
+		fi
+		resume_backoff "$sid" || wake "$sid" "$cfg" stopped
 		return
 	fi
 	case $status:$st in
@@ -666,26 +890,70 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		return
 		;;
 	esac
+	# Live and idle, in a terminal or in the background: relay the wake in
+	# place. Neither its cwd nor its work in flight matters to the relay.
+	read -r next tries <<<"$(jq -r --arg s "$sid" '.pending[$s] | "\(.next_relay_at // 0 | floor) \(.relay_unconfirmed // 0)"' "$work_state")"
+	if [ "$relay_on" = false ]; then
+		why="relay off"
+	elif [ "$tries" -ge "$relay_tries" ]; then
+		# Each unconfirmed relay may still have reached the session, so after
+		# a few it stops trying until a wake lands and the count resets.
+		why="relay gave up after $tries unconfirmed tries"
+	elif [ "$now" -lt "$next" ]; then
+		why="relay backoff until $(iso "$next")"
+	else
+		relay "$sid" "$cfg" "$pid"
+		case $? in
+		0) return ;;
+		2)
+			# It may have reached the session without a turn yet: it may still
+			# be taken, so the fallback that stops the session waits a check
+			# (the relay backs off).
+			hold "$sid" "relay unconfirmed; the fallback waits a pass"
+			return
+			;;
+		esac
+		why="relay not sent"
+		! over_budget "$sid" "$why" || return
+	fi
+	stop_and_resume "$sid" "$cfg" "$id" "$cwd" "$kind" "$why"
+}
+
+stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd> <kind> <why no relay>: the fallback
+	local sid=$1 cfg=$2 id=$3 cwd=$4 kind=$5 why=$6 pid status st inflight updated tries row
+	if [ "$kind" != background ]; then
+		# A live terminal session: someone is at it, and a stop would end it
+		# under them. Its events wait for a relay, or until it exits.
+		hold "$sid" "$why; live ${kind:-unknown-kind} session"
+		return
+	fi
+	if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
+		# Live, but its resume would be refused once it was stopped. Held
+		# under the bound: a later relay can still reach it.
+		hold "$sid" "$why; cwd-gone cwd=$(jq -rn --arg c "$cwd" '$c | @json')"
+		return
+	fi
 	[[ $id =~ ^[0-9a-f]{8}$ ]] || {
-		hold "$sid" "bad short id"
+		hold "$sid" "$why; bad short id"
 		return
 	}
+	! resume_backoff "$sid" || return
 	read -r inflight updated <<<"$(job_state "$cfg" "$id")"
 	if [ "$inflight" != none ]; then
 		# A stop would kill that work; an unreadable inFlight counts as work.
-		hold "$sid" "in-flight=$inflight"
+		hold "$sid" "$why; in-flight=$inflight"
 		return
 	fi
 	# Attached viewers: the stop disconnects one, and attachment isn't visible
 	# from outside the daemon. So a live session gets a quiet period after its
 	# last activity before it is stopped.
 	if [ "$updated" -ge 0 ] && [ $((now - updated)) -lt "$idle_grace" ]; then
-		hold "$sid" "recent-activity"
+		hold "$sid" "$why; recent-activity"
 		return
 	fi
 	# Re-read right before the stop, to narrow the window for a new turn.
 	row=$(session_row "$cfg" "$sid" fresh) || {
-		hold "$sid" listing-failed
+		hold "$sid" "$why; listing-failed"
 		return
 	}
 	IFS=$us read -r id cwd pid status st kind <<<"$row"
@@ -693,12 +961,12 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	case $status:$st:$inflight in
 	idle:done:none | idle:blocked:none) ;;
 	*)
-		hold "$sid" "changed status=$status state=$st in-flight=$inflight"
+		hold "$sid" "$why; changed status=$status state=$st in-flight=$inflight"
 		return
 		;;
 	esac
 	if ! run_claude "$cfg" stop "$id" >/dev/null 2>&1; then
-		hold "$sid" stop-failed
+		hold "$sid" "$why; stop-failed"
 		return
 	fi
 	# --resume on a live session forks a copy, so wait until it is stopped.
@@ -709,7 +977,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		[ -n "$row" ] && [ -z "$pid" ] && break
 		tries=$((tries + 1))
 		if [ "$tries" -ge 10 ]; then
-			hold "$sid" stop-pending
+			hold "$sid" "$why; stop-pending"
 			return
 		fi
 		sleep 1
