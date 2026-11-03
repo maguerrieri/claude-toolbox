@@ -8,9 +8,10 @@ the program that does it (#293). The design follows the #292 spike's findings
 (`docs/superpowers/specs/2026-10-31-pr-notifier-spike.md`, *Design corrections for
 #290*), which this README cites as "the spike".
 
-It is a plain local process: no model, no tokens. It runs as the macOS user whose
-sessions it serves, polls that user's GitHub account through `gh`, and resumes
-sessions through `claude`.
+It is a plain local process, with no model of its own: only a relay wake (below) runs
+a short Haiku session. It runs as the macOS user whose
+sessions it serves, polls that user's GitHub account through `gh`, and wakes
+sessions through `claude`: a live one by a relay's message, a stopped one by a resume.
 
 **Installing it** (#295): a launchd job runs it every minute, as the `bot` user, from a
 LaunchDaemon. [INSTALL.md](INSTALL.md) has the checklist Mari runs, what
@@ -50,12 +51,14 @@ macOS user and shared by all of that user's config roots:
 - `registry.json`: the subscriptions. Each records the PR (`owner/repo#n`, lowercased),
   the full session id, the session's name, `CLAUDE_CONFIG_DIR` only if it was set (set
   to `~/.claude` counts as unset: the spike's Trap 3), and `subscribed_at`, two minutes
-  before the subscribe so clock skew can't hide a reply that came right after it. No
-  launch dir and no `PATH` (the spike's *Subscribe: what to record*).
+  before the subscribe so clock skew can't hide a reply that came right after it, and
+  the caller's `PATH`, which a resume passes back (*The session's PATH*). No launch dir
+  (the spike's *Subscribe: what to record*).
 - `state.json`: the feed's cursor (`Last-Modified`, `since`, the next poll time), each
   PR's cursor (timeline items seen, owner checks being retried, tracked comments, last
   sweep, its notification thread's last `updated_at`, and how long its reads have
-  failed), cached owner checks, and the events held per session (with any wake backoff).
+  failed), cached owner checks, and the events held per session (with any resume or
+  relay backoff).
 - `config.json`: optional settings (below).
 - `notifier.log`: append-only, one line per poll, filtered event (kept or dropped, and
   why), hold, wake, unsubscribe and stale hold. The launchd job rotates it past 1 MiB,
@@ -102,7 +105,8 @@ Files are replaced atomically (written beside, then moved).
 Rate cost: one feed request a minute, plus two or three requests per subscribed PR per
 sweep (the PR, its timeline pages, and owner checks for new logins), and one GraphQL
 query for a PR whose comments were edited, all on the token the user's other sessions
-share.
+share. A relay wake is a short Haiku session on the user's Claude login, $0.0003 to
+$0.0009 each.
 
 ## The filter
 
@@ -153,30 +157,40 @@ no event type (the spike's *Filter: read the PR, not the notification*). For eac
 Each session is looked up in its own root: `claude agents --json --all` run with the
 recorded `CLAUDE_CONFIG_DIR` (unset when it was unset), and its job state at
 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/<short id>/state.json`. Every `claude` call
-runs from `/`, with `CLAUDE_SESSION_ID` and `CLAUDE_CODE_SESSION_ID` removed and `PATH`
-set to `wake_path`, since that `PATH` becomes the woken session's tool `PATH` (the
-spike's Trap 2). First match wins:
+runs from `/`, without the variables a session sets for what it starts
+(`CLAUDE_CODE_SESSION_ID`, its messaging socket and token, and the like), and is killed
+after two minutes. It runs under `wake_path`, except a resume, which passes the session's
+own `PATH` (below). First match wins:
 
 | State | Action |
 |---|---|
 | The listing fails | hold |
-| No row for the session | unsubscribe it, drop its events |
-| The row's `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
-| Stopped: no `pid` | `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy) |
-| Live, and not a `background` session (a terminal someone is at) | hold: a stop would end it under them |
+| No row for the session | hold: a row can come back, and the bound reports it |
+| Stopped (no `pid`), and its `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
+| Stopped | `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy) |
 | `status` `busy` or `waiting`, or `state` `working` | hold |
 | Any other live state but idle with `state` `done` or `blocked` | hold |
+| Idle with `state` `done` or `blocked` | relay the wake in place (below); if it doesn't land, the fallback |
+
+The fallback, for a live session the relay didn't reach (or with `relay` off, or while
+relays to it back off). First match wins:
+
+| State | Action |
+|---|---|
+| Not a `background` session (a terminal someone is at) | hold: a stop would end it under them |
+| Its `cwd` is gone | hold: once stopped, it couldn't be resumed |
 | `inFlight` has tasks, queued input or any kind (monitors included), or can't be read | hold |
-| Idle, but active within `idle_grace` (ten minutes) | hold |
-| Idle with `state` `done` or `blocked` | re-read the row and job state, `claude stop <short id>`, wait until the row shows no `pid`, then resume as above |
+| Active within `idle_grace` (ten minutes) | hold |
+| Otherwise | re-read the row and job state, `claude stop <short id>`, wait until the row shows no `pid`, then resume as above |
 
 - `state` `blocked` with `status` `idle` is a session that handed back waiting on the
   user: the main thing to wake, never a reason to hold.
-- **Attached viewers.** A stop disconnects anyone attached, and attachment isn't
-  visible outside Claude Code's daemon. The policy is the idle grace: a live session is
-  stopped only after ten minutes without activity, betting that someone attached and
-  active keeps it busier than that. The cost when the bet loses is a disconnect (and
-  any unsent typing); the conversation itself is kept, and `claude attach` reconnects.
+- **Attached viewers.** The fallback's stop disconnects anyone attached, and attachment
+  isn't visible outside Claude Code's daemon. The policy is the idle grace: a live
+  session is stopped only after ten minutes without activity, betting that someone
+  attached and active keeps it busier than that. The cost when the bet loses is a
+  disconnect (and any unsent typing); the conversation itself is kept, and `claude
+  attach` reconnects.
 - Checking and stopping aren't atomic: a turn can start between the re-read and the
   stop. The re-read narrows that window; it can't close it.
 - A refused resume keeps the events, and Claude Code keeps the refused prompt to
@@ -186,15 +200,91 @@ spike's Trap 2). First match wins:
 - **Bounded holds.** Holds rest on Claude Code's internal job state, which can change
   between versions. A session held past `hold_bound` (30 minutes) gets one `stale` log
   line and one stderr line from `check`, and stays held; `status` marks it `STALE`.
+- Held events wait in `state.json` until a wake lands, apart from the timeline cursor,
+  so a held event never depends on the feed showing its PR again.
 - After a wake that carried a `merged` or `closed` event, that PR's subscription for
   the session ends, unless the PR has reopened since (as last read), and the wake's
   `PR` line shows that state.
+
+### The relay
+
+A one-shot headless session sends the wake prompt to the live session, which takes it
+as a new turn in the same process: no stop and no fork. Tested on the Mac Studio (#305),
+it cost $0.0003 to $0.0009 and about three seconds a wake.
+
+- **How it runs.** `claude -p --safe-mode --name pr-notifier --no-session-persistence
+  --model haiku --max-turns 3 --output-format stream-json --verbose --tools
+  SendMessage`, in the session's root, with its prompt on stdin: `--tools` takes every
+  argument after it, so a prompt there would be read as a tool name. Safe mode loads no
+  plugins, hooks or `CLAUDE.md`, and `--no-session-persistence` leaves no transcript.
+- **Where it sends.** To the session's own messaging socket,
+  `uds:/tmp/cc-socks-<uid>/<pid>.sock` (or the same under `/tmp/cc-socks`), for the
+  `pid` its row shows, and only to a socket this user owns. Every live row's `pid` had a
+  socket of that name, and a send to one reached that session. A name can be renamed,
+  or shared by a forked copy, but a socket can't, so the relay resolves no name and
+  needs no `ListAgents` match (the spike's suggestion).
+- **Did it send?** The exit code says nothing: `claude -p` exits 0 when the model never
+  sends, or rewords the text. So the stream must show exactly one tool call,
+  `SendMessage`, to that address, with the wake prompt unchanged, and its tool result
+  must say `success: true` with a `msg_id`.
+- **Did it land?** A successful send means only that the message reached the session's
+  inbox. One held for approval, refused, or sent to a session that has just stopped
+  reports the same. So the notifier waits up to `relay_wait` (30 seconds) for the
+  session's transcript (`projects/*/<session id>.jsonl` in its root) to show the message
+  as a turn: a `user` line whose `origin.msg_id` is the relay's. Only that counts. With no
+  transcript to read (should Claude Code move it), the row stands in: the same `pid`,
+  turned `busy`. A moved `updatedAt` never counts, since a retire right after the send
+  moves it too.
+- **When it doesn't land.** `relay-failed` in the log says why, with the session's
+  permission mode, read from its transcript's last `permission-mode` line, so a hold by
+  a mode mismatch shows there. Relays to that session then back off (5, 10, 20, 40, then
+  60 minutes), since an unconfirmed message can still arrive later (a held one,
+  approved), and the fallback runs at once.
+- **What the session sees.** `Another Claude session sent a message:`, then
+  `<cross-session-message from="uds:…" from-name="pr-notifier" from-mode="prompting">`,
+  with the wake prompt inside. `from-mode` stayed `prompting` with or without
+  `--permission-mode` on the relay, so a relay can't match a receiver's mode. The one
+  pair tested, a `prompting` sender and an `auto` receiver (bot's default), delivered.
+- **What it doesn't need.** The relay restarts nothing, so neither the session's cwd nor
+  its work in flight matters, and an attached viewer should stay connected (not tested
+  with someone watching).
+
+### The session's PATH
+
+A resumed session's tool `PATH` is whatever `PATH` its waker passes, for the rest of its
+process (the spike's Trap 2), and no other variable crosses a resume. So `subscribe`
+records the caller's `PATH`, the session's own, on every subscription of that session,
+and a resume passes it back merged with `wake_path`: the recorded entries first, then any
+of `wake_path`'s it lacks, absolute entries only, each once. That way a `PATH` recorded
+while degraded (by a session once woken under a bare one) can't persist. A subscription
+made before #305 has none and resumes under `wake_path` alone. A relay keeps the session's
+whole environment, since it restarts nothing.
+
+### Which events wake whom
+
+- **Merges and closes wake every subscribed session, whoever merged.** Every merge seen
+  so far was by the sessions' own login (a session's own FINISH, or an EPIC
+  coordinator's Step 7), so the actor can't say which session merged. A session that
+  merges its own PR isn't woken in practice: it's busy through FINISH, which
+  unsubscribes it (Step 3) before its turn ends, and that drops the held merge event. A
+  coordinator's merge of a child's PR wakes the child, which runs its own cleanup
+  (ticket-workflow's `notifier.md`), harmlessly if the coordinator already did some of
+  it.
+- **The sessions' own comments and reviews wake no one.** The filter drops the
+  sessions' login, and those posts never reach a conditional poll anyway (the spike's
+  §4). That includes another session's posts, such as a coordinator's `restack:`
+  comment or a `/code-review --comment` finding: every session posts as the one login,
+  so the notifier can't tell which one did. Those reach a session by SendMessage, as
+  ticket-workflow's messaging does, or when it next reads the PR.
+- **A close by the sessions' own login** never reaches the feed either, so the sweep
+  finds it, within `sweep_interval`.
 
 ## The wake prompt
 
 A fixed template carrying only URLs, specified in `skills/pr-notifier/SKILL.md`, which
 is the contract ticket-workflow (#294) codes against. It opens with
-`pr-notifier wake v1:`.
+`pr-notifier wake v1:`, whether a resume delivers it as the prompt or a relay delivers it
+inside a cross-session message.
 
 ## Settings
 
@@ -206,9 +296,12 @@ is the contract ticket-workflow (#294) codes against. It opens with
 | `sweep_interval` | `300` | Seconds between reads of each subscribed PR when no notification marks it |
 | `retry_window` | `1800` | Seconds an item a failed owner check dropped is checked again |
 | `owner_ttl` | `3600` | Seconds an owner check's yes is cached |
-| `idle_grace` | `600` | Seconds a live session must be quiet before it is stopped to deliver |
+| `idle_grace` | `600` | Seconds a live session must be quiet before the fallback stops it |
+| `relay` | `true` | `false` sends every live, idle session straight to the fallback |
+| `relay_model` | `haiku` | The model the relay runs |
+| `relay_wait` | `30` | Seconds a relay waits for its message to show as a turn |
 | `hold_bound` | `1800` | Seconds before a held session is reported stale |
-| `wake_path` | the notifier's own `PATH` | The `PATH` every `claude` call, and so every woken session, gets |
+| `wake_path` | the notifier's own `PATH` | The `PATH` every `claude` call gets, and the one a resume merges behind the session's own |
 
 The install sets `wake_path` to the user's full login-shell `PATH`, captured once, and
 the launchd job runs `check` with it as its own `PATH` too.
@@ -240,7 +333,9 @@ They run the CLI against stubbed `gh` and `claude` (and the real vendored
 
 - ticket-workflow subscribing at START, handling the wake prompt, and unsubscribing at
   FINISH: #294.
-- Delivering in place into a live session (typing into a pty-held `claude attach`), the
-  only alternative to stop-and-resume the spike found. It drives the interactive UI and
-  can collide with someone typing, so it waits until stop-and-resume proves too
-  disruptive.
+- Typing into a pty-held `claude attach`, the spike's other way to deliver in place. The
+  relay does the same without driving the interactive UI, where typed text can land in a
+  dialog or collide with someone typing.
+- Batching relays (one relay given every live session a check wakes). A relay costs
+  $0.0003 to $0.0009 and about three seconds, so it would save little, and it would make
+  each session's landed check harder to read.
