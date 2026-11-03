@@ -35,7 +35,12 @@ unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CLAUDE_CONFIG_DIR PR_NOTIFIER_ROO
 STUB=$tmp/stub
 export STUB HOME=$tmp/home PR_NOTIFIER_HOME=$tmp/state
 export PR_NOTIFIER_GH=$tmp/bin/gh PR_NOTIFIER_CLAUDE=$tmp/bin/claude
-mkdir -p "$tmp/bin"
+mkdir -p "$tmp/bin" "$tmp/socks"
+# Live sessions' messaging sockets: one for pid 41, the live rows' pid, and
+# none for 42.
+export PR_NOTIFIER_SOCK_DIRS="$tmp/nosuch:$tmp/socks"
+perl -MSocket -MIO::Socket::UNIX -e 'IO::Socket::UNIX->new(Type => SOCK_STREAM, Local => shift, Listen => 1) or die "$!"' \
+	"$tmp/socks/41.sock" || { echo "can't make a test socket" >&2; exit 1; }
 
 # gh: answers from fixture files in $STUB and logs every call.
 cat >"$tmp/bin/gh" <<'GH_EOF'
@@ -105,11 +110,19 @@ if [ -n "$filter" ]; then printf '%s\n' "$out" | jq -r "$filter"; else printf '%
 GH_EOF
 
 # claude: agents lists $STUB/agents[-<root basename>].json; stop drops the
-# row's pid; a resume saves its prompt and exits $STUB/resume.rc.
+# row's pid; a resume saves its prompt and exits $STUB/resume.rc. A relay
+# (-p) reads its prompt from stdin, saves it and the text it relays, prints
+# stream-json as claude -p does, and, as $STUB/relay.mode says, has the
+# session whose socket it was given take the message as a turn in its
+# transcript (ok), hold it (held), fail the send (fail), change the text
+# (reworded), call no tool (none), exit 1 (crash), or turn the row busy
+# with no transcript line (busy).
 cat >"$tmp/bin/claude" <<'CLAUDE_EOF'
 #!/usr/bin/env bash
-printf '%s|cfg=%s|path=%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "${CLAUDE_CONFIG_DIR-<unset>}" "$PATH" >>"$STUB/claude.log"
+printf '%s|cfg=%s|path=%s|sock=%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "${CLAUDE_CONFIG_DIR-<unset>}" "$PATH" \
+	"${CLAUDE_CODE_MESSAGING_SOCKET-<unset>}" >>"$STUB/claude.log"
 listing=$STUB/agents${CLAUDE_CONFIG_DIR:+-${CLAUDE_CONFIG_DIR##*/}}.json
+root=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 case $1 in
 agents) cat "$listing" ;;
 stop)
@@ -123,6 +136,42 @@ stop)
 	rc=$(cat "$STUB/resume.rc" 2>/dev/null || echo 0)
 	[ "$rc" = 0 ] && echo "backgrounded · $3" || echo "Workspace not trusted." >&2
 	exit "$rc"
+	;;
+-p)
+	n=$(($(cat "$STUB/relays" 2>/dev/null || echo 0) + 1))
+	echo "$n" >"$STUB/relays"
+	in=$(cat)
+	printf '%s' "$in" >"$STUB/relay.$n"
+	to=$(printf '%s\n' "$in" | sed -n 2p)
+	text=$(printf '%s\n' "$in" | awk '/^END$/ { p = 0 } p { print } /^BEGIN$/ { p = 1 }')
+	printf '%s' "$text" >"$STUB/relayed.$n"
+	mode=$(cat "$STUB/relay.mode" 2>/dev/null || echo ok)
+	case $mode in
+	crash) echo 'relay: boom' >&2 && exit 1 ;;
+	none) jq -cn '{type: "result", subtype: "success", total_cost_usd: 0.0001}' && exit 0 ;;
+	esac
+	msg=$text
+	[ "$mode" != reworded ] || msg='Please re-read your PRs.'
+	ok=true
+	[ "$mode" != fail ] || ok=false
+	id=m-$n
+	jq -cn '{type: "system", subtype: "init"}'
+	jq -cn --arg to "$to" --arg m "$msg" \
+		'{type: "assistant", message: {content: [{type: "tool_use", id: "tu1", name: "SendMessage", input: {to: $to, message: $m}}]}}'
+	jq -cn --argjson ok "$ok" --arg id "$id" '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "tu1",
+		content: [{type: "text", text: ({success: $ok, message: "sent", msg_id: $id} | tojson)}]}]}}'
+	jq -cn '{type: "result", subtype: "success", total_cost_usd: 0.0003}'
+	pid=${to##*/}
+	pid=${pid%.sock}
+	sid=$(jq -r --arg p "$pid" '[.[] | select((.pid // "" | tostring) == $p)] | first | .sessionId // empty' "$listing")
+	if [ "$mode" = ok ] && [ -n "$sid" ]; then
+		mkdir -p "$root/projects/p"
+		jq -cn --arg id "$id" --arg t "$text" '{type: "user", origin: {kind: "peer", msg_id: $id}, message: {content: $t}}' \
+			>>"$root/projects/p/$sid.jsonl"
+	elif [ "$mode" = busy ]; then
+		jq --arg p "$pid" 'map(if (.pid // "" | tostring) == $p then .status = "busy" else . end)' "$listing" >"$listing.new" &&
+			mv "$listing.new" "$listing"
+	fi
 	;;
 esac
 CLAUDE_EOF
@@ -199,10 +248,17 @@ reset() {
 	pr 7 open
 	timeline 7
 	agents "$(agent stopped)"
+	# The session's transcript, with the permission mode it last recorded.
+	mkdir -p "$HOME/.claude/projects/p"
+	printf '%s\n' '{"type":"permission-mode","permissionMode":"auto","sessionId":"x"}' >"$HOME/.claude/projects/p/$SID.jsonl"
 	nt "$T0" subscribe o/r#7 --session "$SID" --name 'r #7: x' >/dev/null
 }
 wakes() { cat "$STUB/wakes" 2>/dev/null || echo 0; }
+relays() { cat "$STUB/relays" 2>/dev/null || echo 0; }
 prompt() { cat "$STUB/prompt.${1:-1}" 2>/dev/null; }
+relayed() { cat "$STUB/relayed.${1:-1}" 2>/dev/null; }
+settings() { printf '%s\n' "$1" >"$PR_NOTIFIER_HOME/config.json"; } # settings <config.json>
+dedup() { printf '%s' "$1" | awk -v RS=: '/^\// && !seen[$0]++' | paste -sd: -; } # a PATH's absolute entries, each once
 subs() { jq -r '[.subscriptions[] | "\(.pr)@\(.session_id[0:8])"] | join(",")' "$PR_NOTIFIER_HOME/registry.json"; }
 held() { jq -r --arg s "$SID" '.pending[$s].events // [] | length' "$PR_NOTIFIER_HOME/state.json"; }
 logged() { has "$PR_NOTIFIER_HOME/notifier.log" "$1"; }
@@ -218,9 +274,14 @@ record 'r #7: x|null' 'with its name, and no config dir when unset' \
 	"$(jq -r '.subscriptions[0] | "\(.name)|\(.config_dir)"' "$PR_NOTIFIER_HOME/registry.json")"
 record "$(iso $((T0 - 120)))" 'subscribed_at carries two minutes of slack' \
 	"$(jq -r '.subscriptions[0].subscribed_at' "$PR_NOTIFIER_HOME/registry.json")"
+record "$PATH" "and the caller's PATH, the session's own" "$(jq -r '.subscriptions[0].path' "$PR_NOTIFIER_HOME/registry.json")"
 nt $((T0 + 50)) subscribe O/R#7 --session "$SID" >/dev/null
 record "1|$(iso $((T0 - 120)))" 'subscribing again keeps one row and its first time' \
 	"$(jq -r '"\(.subscriptions | length)|\(.subscriptions[0].subscribed_at)"' "$PR_NOTIFIER_HOME/registry.json")"
+PATH="/again/bin:$PATH" nt $((T0 + 50)) subscribe o/r#70 --session "$SID" >/dev/null
+record "/again/bin:$PATH|/again/bin:$PATH" "a session's latest PATH replaces the one on each of its subscriptions" \
+	"$(jq -r '[.subscriptions[] | select(.session_id == "'"$SID"'") | .path] | join("|")' "$PR_NOTIFIER_HOME/registry.json")"
+nt "$T0" unsubscribe o/r#70 --session "$SID" >/dev/null
 agents "$(agent stopped "$SID2")"
 CLAUDE_CODE_SESSION_ID=$SID2 nt "$T0" subscribe o/r#8 >/dev/null
 record 'r #7: x|null' 'the session id comes from the environment, and the name from claude agents' \
@@ -524,69 +585,187 @@ record 0 "nor does an unconfigured app's" "$(wakes)"
 
 # --- delivery states ----------------------------------------------------------
 
-deliver_case() { # deliver_case <agent kind> [job updatedAt] [inFlight or none]
+deliver_case() { # deliver_case <agent kind> [job updatedAt] [inFlight or none] [relay mode]
 	reset
 	agents "$(agent "$1")"
 	[ -z "${2:-}" ] || job "$SID" "$2" "${3:-}"
+	[ -z "${4:-}" ] || echo "$4" >"$STUB/relay.mode"
+	settings '{"relay_wait": 0}'
 	timeline 7 "$(comment 7 101 mari User "$T1")"
 	nt "$T" check
 }
-stopped_after_start() { # the claude.log verbs, in order, from the resume's point of view
-	awk -F'|' '{ split($1, a, " "); printf "%s%s", (NR > 1 ? "," : ""), (a[1] == "--bg" ? "resume" : a[1]) }' "$STUB/claude.log"
+stopped_after_start() { # the claude.log verbs, in order: resume for --bg, relay for -p
+	awk -F'|' '{ split($1, a, " "); v = a[1]; if (v == "--bg") v = "resume"; else if (v == "-p") v = "relay"
+		printf "%s%s", (NR > 1 ? "," : ""), v }' "$STUB/claude.log"
 }
 
 deliver_case busy
-record '0|1' 'busy: held, no wake' "$(wakes)|$(held)"
+record '0|0|1' 'busy: held, no relay and no wake' "$(relays)|$(wakes)|$(held)"
 record yes 'and logged' "$(logged 'hold session=aaaaaaaa reason=busy status=busy state=working')"
 agents "$(agent stopped)"
 nt $((T + 60)) check
 record 1 'once it stops, the held event is delivered' "$(wakes)"
 
 deliver_case working
-record '0|1' 'live and mid-turn (state working): held' "$(wakes)|$(held)"
+record '0|0|1' 'live and mid-turn (state working): held' "$(relays)|$(wakes)|$(held)"
 
+# Live and idle: the relay delivers in place.
 deliver_case idle-done $((T - 3600))
-record 1 'live and idle (done), quiet for an hour: woken' "$(wakes)"
-record 'agents,agents,stop,agents,resume' 'by stop, a check that it stopped, then resume' "$(stopped_after_start)"
-record yes 'and the stop names the short id' "$(has "$STUB/claude.log" 'stop aaaaaaaa|')"
-
-deliver_case idle-blocked $((T - 3600))
-record 1 'live and blocked waiting on the user (the hand-back): woken' "$(wakes)"
+record '1|0|0' 'live and idle (done): relayed in place, never resumed, nothing held' "$(relays)|$(wakes)|$(held)"
+record 'agents,relay' 'and never stopped' "$(stopped_after_start)"
+record "uds:$tmp/socks/41.sock" "addressed to the session's own socket, found by its row's pid" "$(sed -n 2p "$STUB/relay.1")"
+record yes 'the relayed text is the wake prompt' "$(relayed | head -1 | grep -q '^pr-notifier wake v1: ' && echo yes || echo no)"
+record 'PR https://github.com/o/r/pull/7 open|- comment https://github.com/o/r/pull/7#issuecomment-101' \
+	'with the same PR and event lines' "$(relayed | tail -n 2 | paste -sd'|' -)"
+record yes 'logged as a relay wake, with the mode the session last recorded and the message id' \
+	"$(logged 'wake session=aaaaaaaa how=relay prs=o/r#7 events=1 mode=auto msg=m-1 cost=0.0003')"
+record yes 'run headless and cheap, with SendMessage alone' \
+	"$(has "$STUB/claude.log" '-p --safe-mode --name pr-notifier --no-session-persistence --model haiku --max-turns 3 --output-format stream-json --verbose --tools SendMessage|')"
+record no 'with its prompt on stdin, never in its arguments' "$(grep -- '^-p ' "$STUB/claude.log" | grep -q BEGIN && echo yes || echo no)"
 
 deliver_case idle-blocked $((T - 60))
-record '0|1' 'live and idle with activity a minute ago: held for attached viewers' "$(wakes)|$(held)"
-record yes 'as recent activity' "$(logged 'reason=recent-activity')"
+record '1|0' 'blocked (the hand-back) and active a minute ago: relayed, since a relay stops nothing' "$(relays)|$(wakes)"
 
 deliver_case idle-done $((T - 3600)) '{"tasks":1,"queued":0,"kinds":["local_bash"]}'
-record '0|1' 'live and idle with background work in flight: held' "$(wakes)|$(held)"
-record no 'and never stopped' "$(has "$STUB/claude.log" stop)"
-
-deliver_case idle-done $((T - 3600)) '{"tasks":0,"queued":0,"kinds":["monitor"]}'
-record 0 'a monitor counts as work in flight' "$(wakes)"
-
-deliver_case idle-done $((T - 3600)) none
-record '0|1' 'no job state to read: held as in flight' "$(wakes)|$(held)"
-record yes 'and logged as unknown' "$(logged 'reason=in-flight=unknown')"
+record '1|0' 'work in flight is no reason to hold a relay' "$(relays)|$(held)"
 
 deliver_case interactive $((T - 3600))
-record '0|1' 'a live interactive session is never stopped: held' "$(wakes)|$(held)"
+record '1|0' 'a live terminal session is relayed to as well' "$(relays)|$(held)"
+
+reset
+agents "$(agent idle-blocked "$SID" "$tmp/gone")"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '1|0|o/r#7@aaaaaaaa' "a live session whose cwd is gone is still relayed to, and stays subscribed" "$(relays)|$(held)|$(subs)"
+
+reset
+agents "$(agent idle-blocked)"
+pr 7 merged "$(iso $((T0 + 90)))"
+nt "$T" check
+record 'PR https://github.com/o/r/pull/7 merged|- merged https://github.com/o/r/pull/7' 'a merge reaches a live session by relay' \
+	"$(relayed | tail -n 2 | paste -sd'|' -)"
+record '' 'and that final wake ends the subscription' "$(subs)"
+
+# The relay doesn't land: stop-then-resume, logged.
+deliver_case idle-done $((T - 3600)) '' held
+record '1|1|0' 'a held relay falls back to stop-then-resume' "$(relays)|$(wakes)|$(held)"
+record 'agents,relay,agents,stop,agents,resume' 'by stop, a check that it stopped, then resume' "$(stopped_after_start)"
+record yes 'and the stop names the short id' "$(has "$STUB/claude.log" 'stop aaaaaaaa|')"
+record yes 'the relay is logged with the mode and why' \
+	"$(logged 'relay-failed session=aaaaaaaa mode=auto reason="sent as m-1, but no turn took it within 0s (held, refused or stopped)"')"
+record yes 'and the resume as the fallback' "$(logged 'wake session=aaaaaaaa how=live-idle')"
+
+deliver_case idle-done $((T - 3600)) '' fail
+record '1|1' 'a failed send falls back too' "$(relays)|$(wakes)"
+record yes 'logged as not sent' "$(logged 'relay-failed session=aaaaaaaa mode=auto reason="not sent: {')"
+
+deliver_case idle-done $((T - 3600)) '' reworded
+record '1|1' 'so does a relay that changed the text' "$(relays)|$(wakes)"
+record yes 'logged' "$(logged 'reason="the text was changed"')"
+
+deliver_case idle-done $((T - 3600)) '' none
+record '1|1' 'or never called SendMessage, though it exited 0' "$(relays)|$(wakes)"
+record yes 'logged' "$(logged 'reason="0 tool calls"')"
+
+deliver_case idle-done $((T - 3600)) '' crash
+record '1|1' 'or failed outright' "$(relays)|$(wakes)"
+record yes 'logged with its stderr' "$(logged 'reason="0 tool calls; relay: boom"')"
+
+deliver_case idle-blocked $((T - 60)) '' held
+record '0|1' 'a held relay to a session active a minute ago: held for attached viewers' "$(wakes)|$(held)"
+record yes 'as recent activity' "$(logged 'reason=relay unconfirmed; recent-activity')"
+nt $((T + 60)) check
+record '1|0' "the next check doesn't relay again: relays back off" "$(relays)|$(wakes)"
+record yes 'logged' "$(logged 'reason=relay backoff until')"
+echo ok >"$STUB/relay.mode"
+nt $((T + 301)) check
+record '2|0' 'five minutes on, it relays again, and that one lands' "$(relays)|$(held)"
+
+deliver_case idle-done $((T - 3600)) '{"tasks":1,"queued":0,"kinds":["local_bash"]}' held
+record '0|1' 'with work in flight, an unlanded relay is held, not stopped' "$(wakes)|$(held)"
+record no 'never stopped' "$(has "$STUB/claude.log" stop)"
+record yes 'logged' "$(logged 'reason=relay unconfirmed; in-flight=busy')"
+
+deliver_case idle-done $((T - 3600)) '{"tasks":0,"queued":0,"kinds":["monitor"]}' held
+record 0 'a monitor counts as work in flight' "$(wakes)"
+
+deliver_case idle-done $((T - 3600)) none held
+record '0|1' 'no job state to read: held as in flight' "$(wakes)|$(held)"
+record yes 'and logged as unknown' "$(logged 'reason=relay unconfirmed; in-flight=unknown')"
+
+deliver_case interactive $((T - 3600)) '' held
+record '0|1' 'a live interactive session whose relay is held is never stopped' "$(wakes)|$(held)"
 record no 'no stop is sent to it' "$(has "$STUB/claude.log" stop)"
 agents "$(agent interactive-exited)"
 nt $((T + 60)) check
 record 1 'once it has exited, it is resumed' "$(wakes)"
 
 reset
+agents "$(agent idle-blocked "$SID" "$tmp/gone")"
+echo held >"$STUB/relay.mode"
+settings '{"relay_wait": 0}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '0|1|o/r#7@aaaaaaaa' 'live with its cwd gone, relay held: held under the bound, not stopped, still subscribed' \
+	"$(wakes)|$(held)|$(subs)"
+record yes 'logged' "$(logged 'reason=relay unconfirmed; cwd-gone')"
+
+reset
+agents "$(agent idle-done)"
+job "$SID" $((T - 3600))
+settings '{"relay": false}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '0|1' 'with the relay off, a live idle session is stopped and resumed' "$(relays)|$(wakes)"
+
+reset
+agents "$(agent idle-done | jq '.pid = 42')"
+job "$SID" $((T - 3600))
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '0|1' "no socket for the session's pid: no relay, stop-then-resume" "$(relays)|$(wakes)"
+record yes 'logged' "$(logged 'reason="no socket for pid 42"')"
+
+# With no transcript to read, the row stands in: the same pid, turned busy.
+reset
+rm "$HOME/.claude/projects/p/$SID.jsonl"
+agents "$(agent idle-done)"
+job "$SID" $((T - 3600))
+echo busy >"$STUB/relay.mode"
+settings '{"relay_wait": 0}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '1|0|0' 'no transcript: the same pid turning busy counts as landed' "$(relays)|$(wakes)|$(held)"
+record yes 'with the mode unknown' "$(logged 'how=relay prs=o/r#7 events=1 mode=unknown')"
+reset
+rm "$HOME/.claude/projects/p/$SID.jsonl"
+agents "$(agent idle-done)"
+job "$SID" $((T - 3600))
+echo held >"$STUB/relay.mode"
+settings '{"relay_wait": 0}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '1|1' 'and a row that stays idle does not' "$(relays)|$(wakes)"
+
+# Rows that can't be woken now.
+reset
 agents "$(agent stopped "$SID" "$tmp/gone")"
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
-record '0|' "the session's cwd is gone: no resume, and it is unsubscribed" "$(wakes)|$(subs)"
+record '0|' "stopped with its cwd gone: no resume, and it is unsubscribed" "$(wakes)|$(subs)"
 record yes 'logged' "$(logged 'drop session=aaaaaaaa reason=cwd-gone')"
 
 reset
 agents "$(agent stopped "$SID2")"
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
-record '0|' 'no row for the session: unsubscribed' "$(wakes)|$(subs)"
+record '0|1|o/r#7@aaaaaaaa' 'no row for the session: held, and still subscribed' "$(wakes)|$(held)|$(subs)"
+record yes 'logged' "$(logged 'hold session=aaaaaaaa reason=session-gone')"
+nt $((T + 1801)) check 2>"$tmp/err"
+record yes 'and reported once held past the bound' "$(has "$tmp/err" 'events for session aaaaaaaa held 30m (last: session-gone)')"
+agents "$(agent stopped)"
+nt $((T + 1900)) check
+record '1|0' 'a row that comes back is woken' "$(wakes)|$(held)"
 
 reset
 echo 1 >"$STUB/resume.rc"
@@ -614,14 +793,38 @@ record '0|1' "an unreadable claude agents listing holds" "$(wakes)|$(held)"
 
 reset
 nt "$T0" unsubscribe o/r#7 --session "$SID" >/dev/null
-CLAUDE_CODE_SESSION_ID=$SID CLAUDE_CONFIG_DIR=$tmp/home/.claude-alt nt "$T0" subscribe o/r#7 --name x >/dev/null
+CLAUDE_CODE_SESSION_ID=$SID CLAUDE_CONFIG_DIR=$tmp/home/.claude-alt PATH="/rec/bin:rel/bin:$PATH:/rec/bin" \
+	nt "$T0" subscribe o/r#7 --name x >/dev/null
 agents "$(agent stopped)" && mv "$STUB/agents.json" "$STUB/agents-.claude-alt.json"
-echo '{"wake_path": "/wake/bin:'"$PATH"'"}' >"$PR_NOTIFIER_HOME/config.json"
+settings '{"wake_path": "/wake/bin:'"$PATH"'"}'
 timeline 7 "$(comment 7 101 mari User "$T1")"
-CLAUDE_CONFIG_DIR=/elsewhere CLAUDE_CODE_SESSION_ID=$SID2 nt "$T" check
+CLAUDE_CONFIG_DIR=/elsewhere CLAUDE_CODE_SESSION_ID=$SID2 CLAUDE_CODE_MESSAGING_SOCKET=/x.sock nt "$T" check
 record 1 'a session in another root is found and woken there' "$(wakes)"
 record "cfg=$tmp/home/.claude-alt" 'with its CLAUDE_CONFIG_DIR' "$(grep -- '--bg' "$STUB/claude.log" | cut -d'|' -f2)"
-record "path=/wake/bin:$PATH" 'and the configured PATH' "$(grep -- '--bg' "$STUB/claude.log" | cut -d'|' -f3)"
+record "path=$(dedup "/rec/bin:$PATH:/wake/bin:$PATH")" \
+	"and its own PATH, then the configured PATH's other entries, each absolute entry once" \
+	"$(grep -- '--bg' "$STUB/claude.log" | cut -d'|' -f3)"
+record "path=/wake/bin:$PATH" 'the listing runs under the configured PATH alone' \
+	"$(grep '^agents' "$STUB/claude.log" | head -1 | cut -d'|' -f3)"
+record 'sock=<unset>' "and no claude it runs inherits the checker's session" "$(grep -- '--bg' "$STUB/claude.log" | cut -d'|' -f4)"
+
+reset
+edit_reg() { jq "$1" "$PR_NOTIFIER_HOME/registry.json" >"$tmp/reg" && mv "$tmp/reg" "$PR_NOTIFIER_HOME/registry.json"; }
+edit_reg '.subscriptions[].path = null'
+settings '{"wake_path": "/wake/bin:'"$PATH"'"}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record "path=$(dedup "/wake/bin:$PATH")" 'a subscription with no PATH recorded is woken under the configured one' \
+	"$(grep -- '--bg' "$STUB/claude.log" | cut -d'|' -f3)"
+
+reset
+agents "$(agent idle-done)"
+settings '{"wake_path": "/wake/bin:'"$PATH"'"}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record "path=/wake/bin:$PATH" 'the relay runs under the configured PATH: the session it reaches keeps its own' \
+	"$(grep -- '^-p ' "$STUB/claude.log" | cut -d'|' -f3)"
+
 reset
 timeline 7 "$(comment 7 101 mari User "$T1")"
 CLAUDE_CONFIG_DIR=/elsewhere nt "$T" check >/dev/null
