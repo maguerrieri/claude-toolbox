@@ -735,6 +735,14 @@ agents "$(agent interactive-exited)"
 nt $((T + 2160)) check 2>/dev/null
 record 1 'once it has exited, it is resumed' "$(wakes)"
 
+deliver_case interactive $((T - 3600)) '' crash
+nt $((T + 300)) check
+nt $((T + 900)) check
+echo ok >"$STUB/relay.mode"
+nt $((T + 2100)) check 2>/dev/null
+record '4|0' 'relays that sent nothing never use up the tries: after three crashes, the fourth relay delivers' \
+	"$(relays)|$(held)"
+
 reset
 agents "$(agent idle-blocked "$SID" "$tmp/gone")"
 echo held >"$STUB/relay.mode"

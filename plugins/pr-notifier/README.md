@@ -248,10 +248,12 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   another tool or address, a send that failed) falls back at once. One whose message may
   have reached it (sent but not yet a turn, sent with the text changed, or killed before
   its result) may still be taken, so the session is held for that check and the fallback
-  waits for the next, by which time a session that took it is busy and isn't stopped. Relays to that session then back off (5, 10, 20, 40, then 60
-  minutes), and after three that don't land, the notifier stops relaying to it until a
-  wake lands: each may have reached the session after all, and a terminal session, whose
-  fallback only holds, would otherwise get one an hour.
+  waits for the next, by which time a session that took it is busy and isn't stopped.
+  Either way, relays to that session then back off (5, 10, 20, 40, then 60 minutes).
+  After three relays that may have reached it without landing, the notifier stops
+  relaying to it until a wake lands, since a terminal session, whose fallback only holds,
+  would otherwise get one an hour. Relays that sent nothing (a crash, a missing socket)
+  only back off, so they never stop relays for good.
 - **What the session sees.** `Another Claude session sent a message:`, then
   `<cross-session-message from="uds:…" from-name="pr-notifier" from-mode="prompting">`,
   with the wake prompt inside. `from-mode` stayed `prompting` with or without
