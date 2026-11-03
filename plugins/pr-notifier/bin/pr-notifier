@@ -769,11 +769,15 @@ relay_result() { # relay_result <stream-json file> <address> <text>: "ok <msg id
 		  end' "$1" 2>/dev/null || echo "no: unreadable output"
 }
 
-relay_failed() { # relay_failed <session id> <mode> <why>: logs it and backs relays off
-	# An unconfirmed relay may still land (a held message approved later), so
-	# relays to the session back off as refused resumes do. The
-	# stop-then-resume fallback isn't held up by it.
+relay_failed() { # relay_failed <session id> <mode> <why> [maybe]: logs it and backs relays off
+	# Relays to the session back off as refused resumes do, and the
+	# stop-then-resume fallback isn't held up by it. One whose message may
+	# have reached the session (maybe) also counts toward relay_tries: it may
+	# still land (a held message approved later), so it isn't repeated
+	# forever. One that sent nothing doesn't, so a crash or a missing socket
+	# never stops relays for good.
 	back_off "$1" relay_failures next_relay_at
+	[ "${4:-}" != maybe ] || edit "$work_state" --arg s "$1" '.pending[$s].relay_unconfirmed = ((.pending[$s].relay_unconfirmed // 0) + 1)'
 	log "relay-failed session=$(short "$1") mode=$2 reason=$(jq -rn --arg r "$3" '$r | @json')"
 }
 
@@ -800,7 +804,7 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 	case $res in
 	"ok "*) id=${res#ok } ;;
 	maybe:*)
-		relay_failed "$sid" "$mode" "${res#maybe: }"
+		relay_failed "$sid" "$mode" "${res#maybe: }" maybe
 		return 2
 		;;
 	*)
@@ -823,7 +827,7 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 			[ "$rpid" = "$pid" ] && [ "$rstatus" = busy ] && break
 		fi
 		if [ "$waited" -ge "$relay_wait" ]; then
-			relay_failed "$sid" "$mode" "sent as $id, but no turn took it within ${relay_wait}s (held, refused or stopped)"
+			relay_failed "$sid" "$mode" "sent as $id, but no turn took it within ${relay_wait}s (held, refused or stopped)" maybe
 			return 2
 		fi
 		sleep 1
@@ -839,7 +843,7 @@ resume_backoff() { # resume_backoff <session id>: holds it and returns 0 while a
 	hold "$1" "wake-backoff until $(iso "$next")"
 }
 
-relay_tries=3      # unconfirmed relays to a session before it waits for the fallback alone
+relay_tries=3      # relays that may have reached a session, unconfirmed, before it waits for the fallback alone
 delivery_budget=150 # seconds into a check after which no delivery starts
 
 over_budget() { # over_budget <session id> [why]: holds it and returns 0 once this check has run its delivery budget
@@ -888,7 +892,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	esac
 	# Live and idle, in a terminal or in the background: relay the wake in
 	# place. Neither its cwd nor its work in flight matters to the relay.
-	read -r next tries <<<"$(jq -r --arg s "$sid" '.pending[$s] | "\(.next_relay_at // 0 | floor) \(.relay_failures // 0)"' "$work_state")"
+	read -r next tries <<<"$(jq -r --arg s "$sid" '.pending[$s] | "\(.next_relay_at // 0 | floor) \(.relay_unconfirmed // 0)"' "$work_state")"
 	if [ "$relay_on" = false ]; then
 		why="relay off"
 	elif [ "$tries" -ge "$relay_tries" ]; then
