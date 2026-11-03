@@ -165,15 +165,16 @@ own `PATH` (below). First match wins:
 | State | Action |
 |---|---|
 | The listing fails | hold |
-| No row for the session | hold: a row can come back, and the bound reports it |
+| No row for the session | hold: a row can come back. The bound reports it once, and it stays held, its PRs still swept, until it's unsubscribed (`pr-notifier unsubscribe <pr> --session <id>`) |
 | Stopped (no `pid`), and its `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
 | Stopped | `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy) |
 | `status` `busy` or `waiting`, or `state` `working` | hold |
 | Any other live state but idle with `state` `done` or `blocked` | hold |
 | Idle with `state` `done` or `blocked` | relay the wake in place (below); if it doesn't land, the fallback |
 
-The fallback, for a live session the relay didn't reach (or with `relay` off, or while
-relays to it back off). First match wins:
+The fallback, for a live session the relay didn't reach: the relay wasn't sent, or one
+sent a check ago never became a turn, or relays are off, backing off, or have given up.
+First match wins:
 
 | State | Action |
 |---|---|
@@ -216,11 +217,15 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   --model haiku --max-turns 3 --output-format stream-json --verbose --tools
   SendMessage`, in the session's root, with its prompt on stdin: `--tools` takes every
   argument after it, so a prompt there would be read as a tool name. Safe mode loads no
-  plugins, hooks or `CLAUDE.md`, and `--no-session-persistence` leaves no transcript.
-- **Where it sends.** To the session's own messaging socket,
-  `uds:/tmp/cc-socks-<uid>/<pid>.sock` (or the same under `/tmp/cc-socks`), for the
-  `pid` its row shows, and only to a socket this user owns. Every live row's `pid` had a
-  socket of that name, and a send to one reached that session. A name can be renamed,
+  plugins, hooks or `CLAUDE.md`, and `--no-session-persistence` leaves no transcript. A
+  relay is killed after a minute, and none starts once a check has run 150 seconds, since
+  every relay holds the lock that `subscribe` waits only five minutes for.
+- **Where it sends.** To the session's own messaging socket, `<pid>.sock` for the `pid`
+  its row shows, in `/tmp/cc-socks` when that directory is this user's or root's and
+  private, else in `/tmp/cc-socks-<uid>`, as Claude Code places them. A directory or socket
+  someone else could have placed (another owner, writable by others, a symlink) is
+  skipped, and the socket must be this user's. Every live row's `pid` had a socket of that
+  name, and a send to one reached that session. A name can be renamed,
   or shared by a forked copy, but a socket can't, so the relay resolves no name and
   needs no `ListAgents` match (the spike's suggestion).
 - **Did it send?** The exit code says nothing: `claude -p` exits 0 when the model never
@@ -237,9 +242,13 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   moves it too.
 - **When it doesn't land.** `relay-failed` in the log says why, with the session's
   permission mode, read from its transcript's last `permission-mode` line, so a hold by
-  a mode mismatch shows there. Relays to that session then back off (5, 10, 20, 40, then
-  60 minutes), since an unconfirmed message can still arrive later (a held one,
-  approved), and the fallback runs at once.
+  a mode mismatch shows there. A relay that wasn't sent falls back at once. One that was
+  sent may still be taken (a held message, approved), so the session is held for that
+  check and the fallback waits for the next, by which time a session that took it is busy
+  and isn't stopped. Relays to that session then back off (5, 10, 20, 40, then 60
+  minutes), and after three that don't land, the notifier stops relaying to it until a
+  wake lands: each may have reached the session after all, and a terminal session, whose
+  fallback only holds, would otherwise get one an hour.
 - **What the session sees.** `Another Claude session sent a message:`, then
   `<cross-session-message from="uds:…" from-name="pr-notifier" from-mode="prompting">`,
   with the wake prompt inside. `from-mode` stayed `prompting` with or without
@@ -247,14 +256,16 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   pair tested, a `prompting` sender and an `auto` receiver (bot's default), delivered.
 - **What it doesn't need.** The relay restarts nothing, so neither the session's cwd nor
   its work in flight matters, and an attached viewer should stay connected (not tested
-  with someone watching).
+  with someone watching). A terminal session gets the relay too: the message starts a turn
+  of its own, as any peer's message does, and nothing is typed into its input.
 
 ### The session's PATH
 
 A resumed session's tool `PATH` is whatever `PATH` its waker passes, for the rest of its
-process (the spike's Trap 2), and no other variable crosses a resume. So `subscribe`
-records the caller's `PATH`, the session's own, on every subscription of that session,
-and a resume passes it back merged with `wake_path`: the recorded entries first, then any
+process (the spike's Trap 2), and no other variable crosses a resume. So when a session
+runs `subscribe` itself, it records the caller's `PATH`, the session's own, on every
+subscription of that session. A subscribe for another session (`--session` from a shell)
+records none and keeps what's there. A resume passes it back merged with `wake_path`: the recorded entries first, then any
 of `wake_path`'s it lacks, absolute entries only, each once. That way a `PATH` recorded
 while degraded (by a session once woken under a bare one) can't persist. A subscription
 made before #305 has none and resumes under `wake_path` alone. A relay keeps the session's
@@ -335,7 +346,7 @@ They run the CLI against stubbed `gh` and `claude` (and the real vendored
   FINISH: #294.
 - Typing into a pty-held `claude attach`, the spike's other way to deliver in place. The
   relay does the same without driving the interactive UI, where typed text can land in a
-  dialog or collide with someone typing.
+  dialog or mix with what someone is typing: a relayed message starts its own turn.
 - Batching relays (one relay given every live session a check wakes). A relay costs
   $0.0003 to $0.0009 and about three seconds, so it would save little, and it would make
   each session's landed check harder to read.

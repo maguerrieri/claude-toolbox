@@ -44,7 +44,8 @@ It records this session's id (`$CLAUDE_CODE_SESSION_ID`), its name, `CLAUDE_CONF
 only if it is set, and its `PATH`, which a resume passes back in (merged with the install's
 own, so nothing the session needs goes missing). It records no directory: the notifier reads
 the session's cwd from `claude agents` at wake time. Subscribing again is harmless, and
-updates the recorded `PATH` on every subscription of the session.
+updates the recorded `PATH` on every subscription of the session. Only a subscribe the
+session runs itself records it: one for another session (`--session`) keeps what's there.
 
 When the session is done with the PR, and **before its worktree is removed** (a session
 whose cwd is gone can't be resumed):

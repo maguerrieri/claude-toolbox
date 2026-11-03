@@ -96,8 +96,9 @@ load_settings() {
 	owner_ttl=$(number_setting owner_ttl 3600)
 	relay_wait=$(number_setting relay_wait 30)
 	relay_model=$(setting relay_model haiku)
-	[[ $relay_model =~ ^[A-Za-z0-9._\[\]-]+$ ]] || relay_model=haiku
-	relay_on=$(setting relay true)
+	local model_re='^[]A-Za-z0-9._[-]+$' # "]" first: inside brackets, a backslash doesn't escape it
+	[[ $relay_model =~ $model_re ]] || relay_model=haiku
+	case $(lc "$(setting relay true)") in false | 0 | no | off) relay_on=false ;; *) relay_on=true ;; esac
 	# The PATH every claude the notifier runs gets. A resumed session keeps
 	# its waker's PATH as its tool PATH (the spike's Trap 2), so a resume
 	# passes the session's own recorded PATH in front of this one
@@ -235,13 +236,19 @@ cmd_subscribe() {
 	load_files
 	# Two minutes of slack, so clock skew can't put a reply just after the
 	# subscribe before it; a repeated event is harmless (the wake prompt).
-	# The caller's PATH is the session's own tool PATH (subscribe runs from
-	# its Bash tool), which a resume carries back in (the spike's Trap 2). It
-	# is the session's, so every one of its subscriptions gets the latest.
+	# The caller's PATH is the session's own tool PATH when the session runs
+	# subscribe itself, from its Bash tool, and a resume carries it back in
+	# (the spike's Trap 2). It is the session's, so every one of its
+	# subscriptions gets the latest. A subscribe for another session (--session
+	# from a shell or another session) records no PATH: the caller's isn't the
+	# session's, so the one already recorded stays.
+	local own_path=
+	[ "$sid" != "$(lc "${CLAUDE_CODE_SESSION_ID:-}")" ] || own_path=${PATH:-}
 	edit "$work_registry" --arg pr "$ref" --arg sid "$sid" --arg name "$name" --arg cfg "$cfg" \
-		--arg at "$(iso $((now - 120)))" --arg path "${PATH:-}" '
+		--arg at "$(iso $((now - 120)))" --arg path "$own_path" '
 		(.subscriptions | map(select(.pr == $pr and .session_id == $sid)) | first) as $old
-		| (if $path == "" then null else $path end) as $p
+		| (if $path == "" then ([.subscriptions[] | select(.session_id == $sid) | .path | strings] | last)
+		   else $path end) as $p
 		| .subscriptions = [.subscriptions[] | select((.pr == $pr and .session_id == $sid) | not)
 		                    | if .session_id == $sid then .path = $p else . end]
 			+ [{pr: $pr, session_id: $sid, name: $name,
@@ -249,7 +256,7 @@ cmd_subscribe() {
 			    path: $p,
 			    subscribed_at: ($old.subscribed_at // $at)}]' || die "can't update the registry"
 	save "$work_registry" "$registry"
-	log "subscribe pr=$ref session=$(short "$sid") name=$(jq -rn --arg n "$name" '$n | @json') root=${cfg:-default} path_entries=$(printf '%s' "${PATH:-}" | awk -F: '{ print ($0 == "" ? 0 : NF) }')"
+	log "subscribe pr=$ref session=$(short "$sid") name=$(jq -rn --arg n "$name" '$n | @json') root=${cfg:-default} path=$(if [ -n "$own_path" ]; then printf '%s' "$own_path" | awk -F: '{ print NF " entries" }' | tr ' ' _; else echo kept; fi)"
 	echo "pr-notifier: subscribed $(short "$sid") to $ref"
 }
 
@@ -682,7 +689,7 @@ session_socket() { # session_socket <pid>: a live session's messaging address, u
 	# skipped.
 	local d dirs
 	[[ $1 =~ ^[0-9]+$ ]] || return 1
-	IFS=: read -ra dirs <<<"${PR_NOTIFIER_SOCK_DIRS:-/tmp/cc-socks-$(id -u):/tmp/cc-socks}"
+	IFS=: read -ra dirs <<<"${PR_NOTIFIER_SOCK_DIRS:-/tmp/cc-socks:/tmp/cc-socks-$(id -u)}"
 	for d in ${dirs[@]+"${dirs[@]}"}; do
 		if [ -n "$d" ] && private_dir "$d" && [ ! -L "$d/$1.sock" ] && [ -S "$d/$1.sock" ] && [ -O "$d/$1.sock" ]; then
 			printf 'uds:%s/%s.sock' "$d" "$1"
@@ -759,7 +766,8 @@ relay_failed() { # relay_failed <session id> <mode> <why>: logs it and backs rel
 	log "relay-failed session=$(short "$1") mode=$2 reason=$(jq -rn --arg r "$3" '$r | @json')"
 }
 
-relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in the live session, else 1 (logged)
+relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in the live session,
+	# 1 if it wasn't sent, 2 if it was sent but no turn took it (both logged).
 	# A one-shot headless session SendMessages the wake prompt to the
 	# session's socket. It restarts nothing, so nothing in flight is lost and
 	# an attached viewer stays connected.
@@ -772,8 +780,9 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 	}
 	text=$(wake_prompt "$sid")
 	relay_prompt "$to" "$text" >"$run_tmp/relay.in"
-	# The prompt goes on stdin: --tools takes every argument after it.
-	claude_env "$cfg" "$wake_path" -p --safe-mode --name pr-notifier --no-session-persistence \
+	# The prompt goes on stdin: --tools takes every argument after it. A relay
+	# takes seconds, so it gets a minute, not the two other calls get.
+	claude_timeout=60 claude_env "$cfg" "$wake_path" -p --safe-mode --name pr-notifier --no-session-persistence \
 		--model "$relay_model" --max-turns 3 --output-format stream-json --verbose --tools SendMessage \
 		<"$run_tmp/relay.in" >"$run_tmp/relay.out" 2>"$run_tmp/relay.err"
 	res=$(relay_result "$run_tmp/relay.out" "$to" "$text")
@@ -793,16 +802,17 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 	while :; do
 		if [ ${#files[@]} -gt 0 ]; then
 			landed "$id" "${files[@]}" && break
-		else
+		elif [ $((waited % 5)) -eq 0 ]; then
 			# No transcript to read (Claude Code moved it): the row, with the
-			# same pid and busy, is the weaker sign the message was taken.
+			# same pid and busy, is the weaker sign the message was taken. A
+			# listing takes a second or so, so it is read every five.
 			row=$(session_row "$cfg" "$sid" fresh) || row=
 			IFS=$us read -r rid rcwd rpid rstatus rst rkind <<<"$row"
 			[ "$rpid" = "$pid" ] && [ "$rstatus" = busy ] && break
 		fi
 		if [ "$waited" -ge "$relay_wait" ]; then
 			relay_failed "$sid" "$mode" "sent as $id, but no turn took it within ${relay_wait}s (held, refused or stopped)"
-			return 1
+			return 2
 		fi
 		sleep 1
 		waited=$((waited + 1))
@@ -817,8 +827,11 @@ resume_backoff() { # resume_backoff <session id>: holds it and returns 0 while a
 	hold "$1" "wake-backoff until $(iso "$next")"
 }
 
+relay_tries=3   # unconfirmed relays to a session before it waits for the fallback alone
+relay_budget=150 # seconds into a check after which no new relay starts
+
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind next why
+	local sid=$1 cfg row id cwd pid status st kind next tries why
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	row=$(session_row "$cfg" "$sid") || {
 		hold "$sid" listing-failed
@@ -855,15 +868,31 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	esac
 	# Live and idle, in a terminal or in the background: relay the wake in
 	# place. Neither its cwd nor its work in flight matters to the relay.
-	next=$(jq -r --arg s "$sid" '.pending[$s].next_relay_at // 0 | floor' "$work_state")
+	read -r next tries <<<"$(jq -r --arg s "$sid" '.pending[$s] | "\(.next_relay_at // 0 | floor) \(.relay_failures // 0)"' "$work_state")"
 	if [ "$relay_on" = false ]; then
 		why="relay off"
+	elif [ "$tries" -ge "$relay_tries" ]; then
+		# Each unconfirmed relay may still have reached the session, so after
+		# a few it stops trying until a wake lands and the count resets.
+		why="relay gave up after $tries unconfirmed tries"
 	elif [ "$now" -lt "$next" ]; then
 		why="relay backoff until $(iso "$next")"
-	elif relay "$sid" "$cfg" "$pid"; then
+	elif [ "$SECONDS" -ge "$relay_budget" ]; then
+		# Every relay holds the lock, and subscribe waits for it only so long.
+		hold "$sid" "relay deferred: this check has run ${SECONDS}s"
 		return
 	else
-		why="relay unconfirmed"
+		relay "$sid" "$cfg" "$pid"
+		case $? in
+		0) return ;;
+		2)
+			# Sent but not yet a turn: it may still be taken, so the fallback
+			# that stops the session waits a pass (the relay backs off).
+			hold "$sid" "relay unconfirmed; the fallback waits a pass"
+			return
+			;;
+		esac
+		why="relay not sent"
 	fi
 	stop_and_resume "$sid" "$cfg" "$id" "$cwd" "$kind" "$why"
 }

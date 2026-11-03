@@ -251,7 +251,7 @@ reset() {
 	# The session's transcript, with the permission mode it last recorded.
 	mkdir -p "$HOME/.claude/projects/p"
 	printf '%s\n' '{"type":"permission-mode","permissionMode":"auto","sessionId":"x"}' >"$HOME/.claude/projects/p/$SID.jsonl"
-	nt "$T0" subscribe o/r#7 --session "$SID" --name 'r #7: x' >/dev/null
+	CLAUDE_CODE_SESSION_ID=$SID nt "$T0" subscribe o/r#7 --session "$SID" --name 'r #7: x' >/dev/null
 }
 wakes() { cat "$STUB/wakes" 2>/dev/null || echo 0; }
 relays() { cat "$STUB/relays" 2>/dev/null || echo 0; }
@@ -278,10 +278,15 @@ record "$PATH" "and the caller's PATH, the session's own" "$(jq -r '.subscriptio
 nt $((T0 + 50)) subscribe O/R#7 --session "$SID" >/dev/null
 record "1|$(iso $((T0 - 120)))" 'subscribing again keeps one row and its first time' \
 	"$(jq -r '"\(.subscriptions | length)|\(.subscriptions[0].subscribed_at)"' "$PR_NOTIFIER_HOME/registry.json")"
-PATH="/again/bin:$PATH" nt $((T0 + 50)) subscribe o/r#70 --session "$SID" >/dev/null
+CLAUDE_CODE_SESSION_ID=$SID PATH="/again/bin:$PATH" nt $((T0 + 50)) subscribe o/r#70 >/dev/null
 record "/again/bin:$PATH|/again/bin:$PATH" "a session's latest PATH replaces the one on each of its subscriptions" \
 	"$(jq -r '[.subscriptions[] | select(.session_id == "'"$SID"'") | .path] | join("|")' "$PR_NOTIFIER_HOME/registry.json")"
+PATH="/shell/bin:$PATH" nt $((T0 + 50)) subscribe o/r#71 --session "$SID" >/dev/null
+record "/again/bin:$PATH|/again/bin:$PATH|/again/bin:$PATH" \
+	"a subscribe for the session from another shell (--session) records its PATH on no subscription" \
+	"$(jq -r '[.subscriptions[] | select(.session_id == "'"$SID"'") | .path] | join("|")' "$PR_NOTIFIER_HOME/registry.json")"
 nt "$T0" unsubscribe o/r#70 --session "$SID" >/dev/null
+nt "$T0" unsubscribe o/r#71 --session "$SID" >/dev/null
 agents "$(agent stopped "$SID2")"
 CLAUDE_CODE_SESSION_ID=$SID2 nt "$T0" subscribe o/r#8 >/dev/null
 record 'r #7: x|null' 'the session id comes from the environment, and the name from claude agents' \
@@ -648,12 +653,15 @@ record '' 'and that final wake ends the subscription' "$(subs)"
 
 # The relay doesn't land: stop-then-resume, logged.
 deliver_case idle-done $((T - 3600)) '' held
-record '1|1|0' 'a held relay falls back to stop-then-resume' "$(relays)|$(wakes)|$(held)"
-record 'agents,relay,agents,stop,agents,resume' 'by stop, a check that it stopped, then resume' "$(stopped_after_start)"
-record yes 'and the stop names the short id' "$(has "$STUB/claude.log" 'stop aaaaaaaa|')"
+record '1|0|1' 'a relay sent but not taken is held a pass, since it may still be taken' "$(relays)|$(wakes)|$(held)"
 record yes 'the relay is logged with the mode and why' \
 	"$(logged 'relay-failed session=aaaaaaaa mode=auto reason="sent as m-1, but no turn took it within 0s (held, refused or stopped)"')"
-record yes 'and the resume as the fallback' "$(logged 'wake session=aaaaaaaa how=live-idle')"
+record yes 'and the hold' "$(logged 'reason=relay unconfirmed; the fallback waits a pass')"
+nt $((T + 60)) check
+record '1|1|0' 'then it falls back to stop-then-resume' "$(relays)|$(wakes)|$(held)"
+record 'agents,relay,agents,agents,stop,agents,resume' 'by stop, a check that it stopped, then resume' "$(stopped_after_start)"
+record yes 'and the stop names the short id' "$(has "$STUB/claude.log" 'stop aaaaaaaa|')"
+record yes 'the resume is logged as the fallback' "$(logged 'wake session=aaaaaaaa how=live-idle')"
 
 deliver_case idle-done $((T - 3600)) '' fail
 record '1|1' 'a failed send falls back too' "$(relays)|$(wakes)"
@@ -672,32 +680,41 @@ record '1|1' 'or failed outright' "$(relays)|$(wakes)"
 record yes 'logged with its stderr' "$(logged 'reason="0 tool calls; relay: boom"')"
 
 deliver_case idle-blocked $((T - 60)) '' held
-record '0|1' 'a held relay to a session active a minute ago: held for attached viewers' "$(wakes)|$(held)"
-record yes 'as recent activity' "$(logged 'reason=relay unconfirmed; recent-activity')"
 nt $((T + 60)) check
-record '1|0' "the next check doesn't relay again: relays back off" "$(relays)|$(wakes)"
-record yes 'logged' "$(logged 'reason=relay backoff until')"
+record '1|0|1' "the next check doesn't relay again (relays back off), and a session active two minutes ago isn't stopped" \
+	"$(relays)|$(wakes)|$(held)"
+record yes 'logged as both' "$(logged "reason=relay backoff until $(iso $((T + 300))); recent-activity")"
 echo ok >"$STUB/relay.mode"
 nt $((T + 301)) check
 record '2|0' 'five minutes on, it relays again, and that one lands' "$(relays)|$(held)"
 
 deliver_case idle-done $((T - 3600)) '{"tasks":1,"queued":0,"kinds":["local_bash"]}' held
+nt $((T + 60)) check
 record '0|1' 'with work in flight, an unlanded relay is held, not stopped' "$(wakes)|$(held)"
 record no 'never stopped' "$(has "$STUB/claude.log" stop)"
-record yes 'logged' "$(logged 'reason=relay unconfirmed; in-flight=busy')"
+record yes 'logged' "$(logged "reason=relay backoff until $(iso $((T + 300))); in-flight=busy")"
 
 deliver_case idle-done $((T - 3600)) '{"tasks":0,"queued":0,"kinds":["monitor"]}' held
+nt $((T + 60)) check
 record 0 'a monitor counts as work in flight' "$(wakes)"
 
 deliver_case idle-done $((T - 3600)) none held
+nt $((T + 60)) check
 record '0|1' 'no job state to read: held as in flight' "$(wakes)|$(held)"
-record yes 'and logged as unknown' "$(logged 'reason=relay unconfirmed; in-flight=unknown')"
+record yes 'and logged as unknown' "$(logged "reason=relay backoff until $(iso $((T + 300))); in-flight=unknown")"
 
 deliver_case interactive $((T - 3600)) '' held
+nt $((T + 60)) check
 record '0|1' 'a live interactive session whose relay is held is never stopped' "$(wakes)|$(held)"
 record no 'no stop is sent to it' "$(has "$STUB/claude.log" stop)"
+record yes 'logged' "$(logged 'live interactive session')"
+nt $((T + 300)) check
+nt $((T + 900)) check
+nt $((T + 2100)) check 2>/dev/null
+record 3 'its relays stop after three unconfirmed tries' "$(relays)"
+record yes 'logged' "$(logged 'reason=relay gave up after 3 unconfirmed tries; live interactive session')"
 agents "$(agent interactive-exited)"
-nt $((T + 60)) check
+nt $((T + 2160)) check 2>/dev/null
 record 1 'once it has exited, it is resumed' "$(wakes)"
 
 reset
@@ -706,9 +723,10 @@ echo held >"$STUB/relay.mode"
 settings '{"relay_wait": 0}'
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
+nt $((T + 60)) check
 record '0|1|o/r#7@aaaaaaaa' 'live with its cwd gone, relay held: held under the bound, not stopped, still subscribed' \
 	"$(wakes)|$(held)|$(subs)"
-record yes 'logged' "$(logged 'reason=relay unconfirmed; cwd-gone')"
+record yes 'logged' "$(logged "reason=relay backoff until $(iso $((T + 300))); cwd-gone")"
 
 reset
 agents "$(agent idle-done)"
@@ -717,6 +735,24 @@ settings '{"relay": false}'
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
 record '0|1' 'with the relay off, a live idle session is stopped and resumed' "$(relays)|$(wakes)"
+for off in '"off"' 0 '"No"'; do
+	reset
+	agents "$(agent idle-done)"
+	job "$SID" $((T - 3600))
+	settings "{\"relay\": $off}"
+	timeline 7 "$(comment 7 101 mari User "$T1")"
+	nt "$T" check
+	record '0|1' "so does relay set to $off" "$(relays)|$(wakes)"
+done
+
+for m in 'opus[1m]|opus[1m]' 'claude-haiku-5-5|claude-haiku-5-5' 'x; rm|haiku'; do
+	reset
+	agents "$(agent idle-done)"
+	settings "$(jq -n --arg m "${m%%|*}" '{relay_model: $m}')"
+	timeline 7 "$(comment 7 101 mari User "$T1")"
+	nt "$T" check
+	record yes "relay_model ${m%%|*} runs as ${m#*|}" "$(has "$STUB/claude.log" "--model ${m#*|} --max-turns")"
+done
 
 reset
 agents "$(agent idle-done | jq '.pid = 42')"
@@ -760,6 +796,7 @@ echo held >"$STUB/relay.mode"
 settings '{"relay_wait": 0}'
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
+nt $((T + 60)) check
 record '1|1' 'and a row that stays idle does not' "$(relays)|$(wakes)"
 
 # Rows that can't be woken now.
