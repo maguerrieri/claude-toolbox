@@ -17,7 +17,7 @@ the notification target was the throwaway PR #296. Timestamps are UTC.
 |---|---|---|
 | 1 | Idle stop | Yes. An unbridged session is stopped after **1 hour** idle (tested). Every `bot` session is Remote Control-bridged (`remoteControlAtStartup: true`), and a bridged session gets **8 hours** (tested: a bridged test session was retired 8 hours 0 minutes 28 seconds after its last update). Attached and pinned sessions, and ones with work in flight, are skipped (read; pinning untested). The exception is **memory pressure**: then the limit drops to 60 seconds, bridged or not, and sessions holding only monitors, then pinned ones, can go too. |
 | 2 | Resume from launchd | Works from a real launchd job in `user/502` and from `env -i`, with no TTY and no direnv, and keeps the id, name and row (tested). Four traps: **any flag other than `--bg` next to `--resume` starts a copy**; **the job's `PATH` becomes the woken session's tool `PATH`**; **`CLAUDE_CONFIG_DIR=~/.claude` set explicitly isn't the default root**; and **a session whose cwd is gone can't be resumed**. The last two are refused with exit 1. Untested: a locked keychain, and a LaunchDaemon (maguerrieri/config#47's route). |
-| 3 | Waking a live, idle session | `--resume` on a live session **forks a copy**; `claude respawn` restarts it but **takes no prompt**. What works: `claude stop` then `--resume` (context kept; an attached viewer is disconnected), or typing into a pty-held `claude attach` (in place, but fragile). (tested) |
+| 3 | Waking a live, idle session | `--resume` on a live session **forks a copy**, and `claude respawn` restarts it but **takes no prompt**. **A headless relay delivers in place**: a one-shot `claude -p --safe-mode --model haiku` session `SendMessage`s the live session, at about $0.003 and 5 seconds a wake. `claude stop` then `--resume` also works, but drops in-flight work and disconnects an attached viewer. Typing into a pty-held `claude attach` works too, but it's fragile. (tested) |
 | 4 | Which notifications arrive | **All of them, except the bot's own.** That covers Mari's top-level comment, line comment and three review types, Copilot's and Codex's reviews, and merges, all as one PR thread. The thread's `updated_at` trails each event by up to 24 seconds, and a 60-second poll saw them 17–74 seconds after the event. The bot's own comment and close move the thread but never reach a conditional poll. A conditional 200 returns only the changed threads. `X-Poll-Interval` is 60, and a 304 doesn't appear to count against the rate limit. A merge or close by the owner wasn't observed. (tested) |
 | 5 | Harness PR events in a local session | **No.** The subscription tool exists only on the cloud harness's MCP server; `ReadNotifications` stayed empty through all of #296's activity. The epic does not need rescoping. (tested + read) |
 
@@ -135,6 +135,16 @@ the session process shows the daemon's `PATH`, so the client's `PATH` is applied
 process. It lasts for the rest of that process's life, so a session woken with a bare
 `PATH` stays unable to run `gh` until it is restarted.
 
+**Only `PATH` crosses a resume.** On Nov 3 a stopped test session (`af5f8e60`) was resumed
+from `env -i` with seven variables set, and its Bash tool printed them:
+- `PATH` was the waker's, marker entry included.
+- `LANG` (`en_US.UTF-8` where the waker set `C`) and `EDITOR` (`code --wait`) were the
+  daemon's.
+- `TZ`, `GH_CONFIG_DIR` and a custom variable were unset.
+- `SSH_AUTH_SOCK` was inconclusive: the probe masked both candidates to the same tail.
+
+So a resume can carry a session's own `PATH` back in, but no other variable.
+
 **Trap 3: `CLAUDE_CONFIG_DIR=~/.claude` is not the default.** Unset, Claude reads
 `~/.claude.json`; set, it reads `$CLAUDE_CONFIG_DIR/.claude.json`. Setting it to `~/.claude`
 explicitly made the resume run without the default root's trust records:
@@ -205,6 +215,29 @@ Tested on `0f43a5bc` while it was live and idle:
   answered in the same process (same `pid`), with no stop. It works, but it drives the
   interactive UI: text typed while a permission dialog or a menu is open lands there, and
   it can collide with what an attached person is typing.
+- **A headless relay session's `SendMessage` delivers in place, and is the way to do it.**
+  Added on Nov 3, after Mari asked whether a live session can be prompted without being
+  killed.
+  - The relay is a one-shot `claude -p --safe-mode --model haiku "<send this to
+    '<session name>'>"`. It loads `SendMessage` and sends the wake text to the live session.
+  - Tested twice on a live, idle test session (`af5f8e60`). Each time the message arrived as
+    a new turn, as a `<cross-session-message from="uds:…" from-name="epic-290-292-18"
+    from-mode="prompting">`, in the same process (same `pid`), with no stop and no fork.
+  - The safe-mode relay cost **$0.0027** and took 4.5 seconds (3 turns, about 61k tokens,
+    mostly cache).
+  - The receiver tries to answer the relay, which has already exited (`ENOENT`). That's
+    harmless, and the wake text can say not to reply.
+  - The sender's name is auto-generated from the relay's cwd, so the receiver can't tell a
+    relay from any other peer. It treats the text as a teammate's message, which is data, as
+    a wake prompt should be.
+  - Addressing is by session name, which the user can rename.
+  - A message to a **stopped** session only queues until it next starts, so stopped sessions
+    still need the resume.
+  - Not tested: a held message. A receiver in a different permission mode from the sender
+    holds cross-session messages for approval. These two were delivered, with the relay in
+    `prompting` mode and the receiver in bot's default.
+  - Not tested: a relay while someone is attached. It restarts nothing, so the viewer should
+    stay connected.
 
 **Attachment isn't visible from outside.** `claude agents --json` has no attached field;
 only the daemon knows (`attachers`). So a notifier can't tell whether Mari is watching.
@@ -332,10 +365,13 @@ What the answers do to the epic's sketch, section by section.
 - **Not the launch dir.** The waker's cwd doesn't matter. What matters is the session's own
   cwd (Trap 4), and that moves with `EnterWorktree`. So read it from the session's
   `claude agents` row at wake time, not at subscribe.
-- **Not a per-session `PATH`.** Whatever `PATH` the waker passes becomes the woken session's
-  tool `PATH` for the rest of its process's life (Trap 2). A `PATH` captured in the
-  session's Bash tool could also carry a worktree's direnv additions. Use one full `PATH`
-  that the install sets: bot's login-shell `PATH`, captured at install time.
+- **The session's own `PATH`.** Whatever `PATH` the waker passes becomes the woken session's
+  tool `PATH` for the rest of its process's life (Trap 2). So record `$PATH` from inside the
+  session at subscribe and pass it back on a resume. In every test the Bash tool's `$PATH`
+  was exactly the session's launch `PATH`. Drop entries that no longer exist at wake time,
+  such as a removed worktree's direnv additions. Fall back to one full `PATH` that the
+  install sets. Nothing else can be injected this way, because only `PATH` crosses a resume
+  (§2). A relay wake (below) restarts nothing, so it keeps the whole environment.
 
 **Poll: confirmed.**
 - `If-Modified-Since` works, a 304 doesn't appear to count against the rate limit, and
@@ -387,10 +423,10 @@ Then, first match wins:
 | State | Action |
 |---|---|
 | Stopped (`pid: null`) and the row's `cwd` no longer exists | Don't resume: it is refused (exit 1) and the prompt is queued. Usually FINISH removed the worktree. Unsubscribe and log it. |
-| Stopped: `pid: null` | `claude --bg --resume <session id> "<wake prompt>"`, with **no flag but `--bg`**. Run it from any cwd, with the install's `PATH` and the recorded `CLAUDE_CONFIG_DIR` (unset if it was unset). |
+| Stopped: `pid: null` | `claude --bg --resume <session id> "<wake prompt>"`, with **no flag but `--bg`**. Run it from any cwd, with the recorded `PATH` (else the install's) and the recorded `CLAUDE_CONFIG_DIR` (unset if it was unset). |
 | Busy: `status: "busy"` or `state: "working"` | Hold and retry on the next poll. |
 | Live with work in flight: in `state.json`, `inFlight.tasks` or `inFlight.queued` above 0, or `inFlight.kinds` not empty | Hold. A stop kills that work (background Bash, agents, monitors, session crons) and drops queued input. |
-| Live and idle: `status: "idle"`, `state` `done` or **`blocked`**, and its `cwd` exists | `--resume` would fork, and `respawn` takes no prompt. Re-read the row and the job state, then `claude stop <short id>`, then the stopped-row command. |
+| Live and idle: `status: "idle"`, `state` `done` or **`blocked`**, and its `cwd` exists | **Relay it in place.** Run a one-shot `claude -p --safe-mode --model haiku` that `SendMessage`s the wake prompt to the session by name. Use the recorded `CLAUDE_CONFIG_DIR` (unset if it was unset), since messaging is per root as the registry is (an assumption, untested). It costs about $0.003. `--resume` would fork, and `respawn` takes no prompt. If the send fails (no such name, refused), fall back: re-read the row and the job state, `claude stop <short id>`, then the stopped-row command. |
 | Anything else: no row in `claude agents`, a live session whose `cwd` is gone, or a state not listed here | Hold and log it, under the same bound as every hold (below). |
 
 - **`state: "blocked"` is the main wake case, not a hold.** It means the session handed back
@@ -398,12 +434,13 @@ Then, first match wins:
 - **The live-and-idle row is the common one.** The epic assumed most PRs sit with a stopped
   session. But while its bridge holds, a bot session idles 8 hours before it is stopped, so
   during a working day most wakes hit a live session.
-- **The stop has costs the notifier can't see.**
+- **The relay makes the live-and-idle wake cheap and safe.** It restarts nothing, so nothing
+  in flight is lost, and an attached viewer should stay connected (not tested with one
+  attached). The wake arrives as a peer's message, which the session treats as data: the
+  same trust model as the wake prompt.
+- **The fallback stop has costs the notifier can't see.**
   - It disconnects an attached viewer, and anything Mari has typed but not sent is lost.
-    Attachment isn't visible outside the daemon (§3), so #293 has to choose a policy. It can
-    accept the cost, or hold a live-and-idle wake for a while after the session's last
-    `updatedAt`, betting that someone attached is active. Or it can deliver in place (the
-    last bullet).
+    Attachment isn't visible outside the daemon (§3).
   - Checking and stopping aren't atomic. A turn can start between the re-read and the stop,
     from Mari typing or a cron firing. Re-reading right before the stop narrows that window
     but doesn't close it. The daemon's own retire has the same check-then-act shape.
@@ -415,9 +452,8 @@ Then, first match wins:
   - The same bound covers a session stopped mid-turn. One waiting on a permission prompt
     keeps `state: "working"`, and the hold would otherwise never end. Not tested: whether its
     `status` then reads `idle` or `busy`.
-- **Typing into a pty-held `claude attach` is the only in-place delivery found.** Keep it
-  out of child 2 unless stop-and-resume proves too disruptive. If it's used, use it only for
-  `state: "done"` or `"blocked"` with `status: "idle"`, never mid-turn.
+- **Typing into a pty-held `claude attach` isn't needed.** The relay delivers in place without
+  driving the interactive UI.
 
 **Wake prompt: confirmed, with one addition.** A refused resume keeps its prompt and delivers
 it with the next wake. So word the prompt so that getting it twice is harmless, e.g.
@@ -431,8 +467,9 @@ it with the next wake. So word the prompt so that getting it twice is harmless, 
   `UserName bot`, need root to install, and run without a login. Whether a resume works from
   that context is untested (§2). It's the first thing #295 should test, with the keychain
   unlocked at startup as config#66 set up.
-- **The job's environment.** Set a full `PATH`, since it becomes the woken session's. Don't
-  set `CLAUDE_CONFIG_DIR` for the default root. If the job may be the first `claude` after a
+- **The job's environment.** Pass each registration's recorded `PATH` on its resume. Give the
+  job itself a full `PATH` too, as the fallback, since whatever the resume carries becomes the
+  woken session's. Don't set `CLAUDE_CONFIG_DIR` for the default root. If the job may be the first `claude` after a
   reboot, its environment also seeds the daemon.
 
 **Children's scope.**
@@ -440,16 +477,17 @@ it with the next wake. So word the prompt so that getting it twice is harmless, 
   - root-aware lookups;
   - the cwd check;
   - a timeline-based filter that also catches merges, closes and Codex's edited summary;
-  - the stop-then-resume path, with its in-flight check, recheck, bounded holds and a policy
-    for attached viewers;
-  - a resume with no flag but `--bg`, under the install's `PATH`.
+  - the headless relay for live, idle sessions;
+  - the stop-then-resume fallback, with its in-flight check, recheck and bounded holds;
+  - a resume with no flag but `--bg`, under the session's recorded `PATH`.
 - **#294 (ticket-workflow):**
-  - The subscribe call records the session id, name and `CLAUDE_CONFIG_DIR`-if-set, with no
-    `PATH`.
+  - The subscribe call records the session id, name, `CLAUDE_CONFIG_DIR`-if-set and `$PATH`.
+  - The wake text a session receives may arrive as a peer's message (the relay) or as a
+    resume prompt, so handle both the same way: re-read the PR, run the owner check.
   - FINISH unsubscribes before it removes the worktree, since a wake after that is refused.
   - Its hand-back state is `blocked`, which the notifier wakes.
 - **#295 (install):**
   - test the resume from a LaunchDaemon first;
-  - a full `PATH` captured at install;
+  - a full `PATH` captured at install, as the fallback when a registration has none;
   - no `CLAUDE_CONFIG_DIR` for the default root;
   - `LimitLoadToSessionType = Background` if it uses the user domain.
