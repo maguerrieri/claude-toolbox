@@ -1,7 +1,7 @@
 {
   "name": "pr-notifier",
   "description": "Wakes the local session that owns a PR when the owner or a configured review bot acts on it, or when it merges or closes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Mari Guerrieri"
   }
