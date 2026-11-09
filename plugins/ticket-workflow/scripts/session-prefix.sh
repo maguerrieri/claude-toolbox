@@ -97,7 +97,9 @@ lists() {
 		"$gh_bin" api "repos/$repo/contents${1:+/$1}" \
 			--jq 'if type == "array" then .[] | select(.type == "dir") | .name else error("not a directory") end'
 	else
-		[ -d "$root/$1" ] || return 1
+		# A directory that exists but can't be listed would glob to nothing,
+		# which reads as "no projects here" rather than as the read failure it is.
+		[ -d "$root/$1" ] && [ -r "$root/$1" ] && [ -x "$root/$1" ] || return 1
 		local d= part
 		local -a parts=()
 		[ -n "$1" ] && IFS=/ read -r -a parts <<<"$1"

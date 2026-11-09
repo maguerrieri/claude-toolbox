@@ -12,7 +12,7 @@ plugin=$(cd "$here/.." && pwd)
 skill="$plugin/skills/ticket-workflow"
 script="$plugin/scripts/session-prefix.sh"
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+trap 'chmod -R u+rwx "$tmp" 2>/dev/null; rm -rf "$tmp"' EXIT
 . "$here/lib.sh"
 
 # A monorepo shaped like the toolbox one: projects under services/,
@@ -81,6 +81,15 @@ record 'voter-guide' 'on a star entry too' "$(prefix 'voter-guide: Fix' --root "
 record 'voter-guide' 'a path scope names its project part' "$(local_prefix 'services/voter-guide: Fix')"
 record 'voter-guide' 'quotes around a project are dropped' "$(local_prefix '`voter-guide`: Fix')"
 record 'toolbox' 'a failed read with another entry still falls back' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'nope/* services/*')"
+# A parent that exists but can't be listed is a read failure too, not an empty
+# directory. Root reads it anyway, so the case only means something as a user.
+if [ "$(id -u)" -ne 0 ]; then
+	mkdir -p "$root/locked/sunset" && chmod 000 "$root/locked"
+	record 'toolbox' 'an unreadable parent falls back' \
+		"$(prefix 'voter-guide and sunset: Share' --root "$root" --projects 'services/voter-guide locked/*')"
+	record 'yes' 'and is noted as a read failure' "$(grep -q "can't read 'locked'" "$tmp/err" && echo yes)"
+	chmod 755 "$root/locked"
+fi
 record 'voter-guide' 'shell characters later in the title are data' "$(local_prefix 'voter-guide: Fix $HOME and `ls` and "quotes"')"
 record 'toolbox' 'no --projects, the repo' "$(prefix 'voter-guide: Fix' --root "$root")"
 record 'toolbox' 'an empty --projects, the repo' "$(prefix 'voter-guide: Fix' --root "$root" --projects '  ')"
