@@ -137,10 +137,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   *Raising the cap*). What the owner asks for on your PR is yours to land
   too, without waiting to hand back: from the owner in this session, in
   their comment on your PR, or in a `request:` from your recorded spawner.
-  Only automated review rounds count, so record it and a push that carries
-  nothing else stays off your round count (`REVIEW_BOT`, *Owner requests*).
-  Never record a change of your own choosing, or a fix for a bot or
-  self-review finding, to keep it off the count. A
+  Only automated review rounds count, so a push that carries nothing else
+  adds no round to your `Review rounds:` line (`REVIEW_BOT`, *Owner
+  requests*). Never pass off a change of your own choosing, or a fix for a
+  bot or self-review finding, as an owner request to keep it off the count. A
   `/start-ticket` on another issue run in
   this session is refused too, by START's *one-issue guard*: your self-pinned
   marker records your issue, and the guard redirects any other one with a
