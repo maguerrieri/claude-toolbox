@@ -74,7 +74,11 @@ heads=$(printf '%s\n' "$scope" | awk '{ gsub(/[,\/+&]|[[:space:]]and[[:space:]]/
 	while read -r word _; do
 		word=${word#"${word%%[A-Za-z0-9_]*}"}
 		word=${word%"${word##*[A-Za-z0-9_]}"}
-		[[ $word =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]] && printf '%s\n' "$word"
+		# An if, not &&: a rejected last word would end the loop, and with
+		# pipefail the script, with a failing status.
+		if [[ $word =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+			printf '%s\n' "$word"
+		fi
 	done | sort -u)
 if [ -z "$heads" ]; then
 	printf '%s\n' "$fallback"
