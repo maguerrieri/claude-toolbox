@@ -16,11 +16,12 @@ trap 'rm -rf "$tmp"' EXIT
 . "$here/lib.sh"
 
 # A monorepo shaped like the toolbox one: projects under services/,
-# mcp-servers/ and apps/, one name in two parents, an infra/ dir with one
-# project and one non-project, plus a file and a hidden dir that aren't.
+# mcp-servers/ (which also holds a scripts/ dir, as toolbox's does) and apps/,
+# one name in two parents, an infra/ dir with one project and one
+# non-project, plus a file and a hidden dir that aren't.
 root="$tmp/toolbox"
 mkdir -p "$root"/services/{voter-guide,sunset,home-supplies,.cache} \
-	"$root"/mcp-servers/{spotify-curator,home-supplies} "$root"/apps/curator-web \
+	"$root"/mcp-servers/{spotify-curator,home-supplies,scripts} "$root"/apps/curator-web \
 	"$root"/infra/{firebase-shared,modules}
 touch "$root/services/README.md"
 mkdir -p "$root/libs/shared" && ln -s ../libs/shared "$root/services/shared"
@@ -43,7 +44,20 @@ record 'spotify-curator' 'a project under a second parent' "$(local_prefix 'spot
 record 'home-supplies' 'one name under two parents' "$(local_prefix 'home-supplies: Count rolls')"
 record 'firebase-shared' 'a plain-dir entry' "$(local_prefix 'firebase-shared: Rotate keys')"
 record 'toolbox' 'a sibling the plain entry leaves out' "$(local_prefix 'modules: Split')"
-record 'toolbox' 'a scope with more words' "$(local_prefix 'spotify-curator scripts: Lint')"
+record 'spotify-curator' 'a scope that starts with a project (owner, 2026-11-09)' "$(local_prefix 'spotify-curator scripts: Lint')"
+record 'home-supplies' 'a project and an area word' "$(local_prefix 'home-supplies MCP: Retry')"
+record 'toolbox' 'node services stays the repo' "$(local_prefix 'node services: Bump Node')"
+record 'toolbox' 'Cloud Run services stays the repo' "$(local_prefix 'Cloud Run services: Pin regions')"
+record 'toolbox' 'two projects joined by and are cross-cutting' "$(local_prefix 'voter-guide and sunset: Share the footer')"
+record 'yes' 'and the note names both' "$(grep -q 'names several projects (sunset,voter-guide)' "$tmp/err" && echo yes)"
+record 'toolbox' 'two projects joined by a comma' "$(local_prefix 'voter-guide, sunset: Share')"
+record 'toolbox' 'two projects joined by a slash' "$(local_prefix 'voter-guide/sunset: Share')"
+record 'toolbox' 'two projects joined by a plus' "$(local_prefix 'voter-guide + curator-web: Share')"
+record 'sunset' 'a project and an area joined by and' "$(local_prefix 'sunset and ci: Cache')"
+record 'voter-guide' 'and inside a word does not split it' "$(local_prefix 'voter-guide android: Fix')"
+record 'voter-guide' 'the same project twice is one' "$(local_prefix 'voter-guide and voter-guide tests: Fix')"
+record 'toolbox' 'a project word after the first does not count' "$(local_prefix 'ci for voter-guide: Fix')"
+record 'toolbox' 'case must match in a longer scope too' "$(local_prefix 'Voter-Guide scripts: Fix')"
 record 'toolbox' 'case must match' "$(local_prefix 'Voter-Guide: Fix')"
 record 'sunset' 'surrounding whitespace is trimmed' "$(local_prefix '  sunset : Fix')"
 record 'toolbox' 'no colon, no scope' "$(local_prefix 'voter-guide fix the page')"
@@ -61,8 +75,9 @@ record 'voter-guide' 'a plain entry for a real dir' "$(prefix 'voter-guide: Fix'
 record 'services' 'a plain top-level entry' "$(prefix 'services: Fix' --root "$root" --projects 'services')"
 record 'firebase-shared' 'trailing slashes are fine' "$(prefix 'firebase-shared: Fix' --root "$root" --projects 'services/*/ infra/firebase-shared/')"
 record 'voter-guide' 'on a star entry too' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'services/*/')"
-record 'toolbox' 'a path scope is not a project' "$(local_prefix 'services/voter-guide: Fix')"
-record 'toolbox' 'a quoted scope is not a project' "$(local_prefix '`voter-guide`: Fix')"
+record 'voter-guide' 'a path scope names its project part' "$(local_prefix 'services/voter-guide: Fix')"
+record 'voter-guide' 'quotes around a project are dropped' "$(local_prefix '`voter-guide`: Fix')"
+record 'toolbox' 'a failed read with another entry still falls back' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'nope/* services/*')"
 record 'voter-guide' 'shell characters later in the title are data' "$(local_prefix 'voter-guide: Fix $HOME and `ls` and "quotes"')"
 record 'toolbox' 'no --projects, the repo' "$(prefix 'voter-guide: Fix' --root "$root")"
 record 'toolbox' 'an empty --projects, the repo' "$(prefix 'voter-guide: Fix' --root "$root" --projects '  ')"
