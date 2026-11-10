@@ -124,6 +124,18 @@ record 0 "second install: exit" "$?"
 record no "second install: writes nothing" "$(grep -qE '^(wrote|set) ' "$out" && echo yes || echo no)"
 record 4 "second install: four pieces current" "$(grep -c '^ok: .* current' "$out")"
 
+# A jq that wake_path finds ahead of the caller's: recorded, not the one the
+# install itself already ran (macOS /bin/bash 3.2's hash table would answer a
+# `PATH=... command -v jq` with that one).
+reset
+mkdir -p "$tmp/firstjq"
+printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v jq)" >"$tmp/firstjq/jq"
+chmod +x "$tmp/firstjq/jq"
+mkdir -p "$PR_NOTIFIER_HOME" && printf '{"idle_grace": 600}\n' >"$PR_NOTIFIER_HOME/config.json"
+inst --path "$tmp/firstjq:$tool_path"
+record 0 "jq ahead on wake_path: exit" "$?"
+record "$tmp/firstjq/jq" "jq ahead on wake_path: recorded" "$(cat "$PR_NOTIFIER_HOME/jq-path")"
+
 # The PATH: absolute entries only, each once, in order.
 reset
 inst --path "relative:$tmp/tools::$tmp/tools:$tool_path:."
@@ -240,6 +252,10 @@ cp "$tmp/user.plist" "$tmp/keep.plist"
 bash "$install" plist >"$daemon"
 inst --domain user --path "$tool_path"
 record 1 "user with a daemon: refused" "$?"
+# With the daemon installed but not loaded, status says to load it first,
+# since a plain install keeps the agent until then.
+st_out=$(bash "$install" status 2>&1)
+record yes "both, daemon not loaded: status says to load it" "$(printf '%s' "$st_out" | grep -qF "the LaunchDaemon isn't loaded; Mari loads it" && echo yes || echo no)"
 # A LaunchDaemon that's installed but not loaded doesn't replace the agent
 # yet, even asked for by name: that would leave nothing running check.
 : >"$STUB/launchctl.log"
@@ -253,6 +269,20 @@ inst --path "$tool_path"
 record 0 "system over a user agent: exit" "$?"
 record no "system over a user agent: agent removed" "$([ -e "$agent" ] && echo yes || echo no)"
 record yes "system over a user agent: booted out" "$(has "$STUB/launchctl.log" "bootout user/$uid/$label")"
+
+# A refused --domain user writes nothing.
+mkdir -p "$tmp/refused" && cp "$daemon" "$tmp/refused/daemon.plist"
+reset
+cp "$tmp/refused/daemon.plist" "$daemon"
+inst --domain user --path "$tool_path"
+record 1 "refused user install: exit" "$?"
+record no "refused user install: no shim" "$([ -e "$shim" ] && echo yes || echo no)"
+record no "refused user install: no config.json" "$([ -e "$PR_NOTIFIER_HOME/config.json" ] && echo yes || echo no)"
+reset
+bash "$install" plist >"$daemon"
+inst --path "$tool_path"
+mkdir -p "$(dirname "$agent")" "$STUB/loaded"
+touch "$STUB/loaded/system_$label"
 
 # An agent still loaded after its plist was deleted is still an agent.
 touch "$STUB/loaded/user_${uid}_$label"
@@ -280,11 +310,16 @@ if command -v plutil >/dev/null 2>&1; then
 fi
 HOME="$tmp/has space" bash "$install" plist >"$out" 2>&1
 record 1 "plist: refuses a HOME it can't carry" "$?"
-# The account's login shell, not the caller's SHELL.
-echo /bin/zsh >"$STUB/dscl.shell"
+# SHELL is a constant: neither the account's nor the caller's shell moves the
+# plist away from INSTALL.md's paste.
+echo /bin/fish >"$STUB/dscl.shell"
 SHELL=/bin/bash bash "$install" plist >"$tmp/dscl.plist"
-record yes "plist: SHELL is the account's" "$(has "$tmp/dscl.plist" "<string>/bin/zsh</string>")"
+record yes "plist: SHELL is /bin/zsh" "$(has "$tmp/dscl.plist" "<string>/bin/zsh</string>")"
+record no "plist: not the account's shell" "$(has "$tmp/dscl.plist" "<string>/bin/fish</string>")"
 record no "plist: not the caller's SHELL" "$(has "$tmp/dscl.plist" "<string>/bin/bash</string>")"
+# The LaunchDaemon gets a security session of its own; the agent has the user's.
+record yes "plist: the LaunchDaemon creates a session" "$(has "$tmp/system.plist" "<key>SessionCreate</key>")"
+record no "plist: the agent doesn't" "$(has "$tmp/user.plist" "<key>SessionCreate</key>")"
 
 # A copy in a plugin cache hands over to the newest copy in any config root.
 reset

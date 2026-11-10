@@ -234,7 +234,8 @@ bash plugins/pr-notifier/tests/test-install.sh
 
 They run the CLI against stubbed `gh` and `claude` (and the real vendored
 `owner-check.sh` on the `gh` stub), and the install and the job script against stubbed
-`launchctl` and `security`, in CI through `.github/workflows/pr-notifier-ci.yml`.
+`launchctl` and `security`, in CI through `.github/workflows/pr-notifier-ci.yml`. The
+install tests also run there on macOS, under its own `/bin/bash` 3.2.
 
 ## Not here
 
