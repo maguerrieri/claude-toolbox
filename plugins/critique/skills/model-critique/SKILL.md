@@ -13,8 +13,8 @@ order is fixed. **Describe where every part is, check each against the real
 thing, and only then judge the look.** A handle that floats above the cart bed
 is found by reading its position, not by squinting at a render.
 
-A critique changes nothing in the project: no model, no game code. It ends in
-a report and a list of recommended issues.
+A critique changes no model and no game code. It ends in a report and a list
+of recommended issues.
 
 ## What it needs
 
@@ -25,6 +25,9 @@ starting:
    position and size in the model's own axes and units.
 2. **A reference for what correct is.** The real object the model is drawn
    from (with its real size), the project's design document, and its palette.
+   For an invented thing (a dragon, a starship), the reference is its concept
+   art or the design document's description, and the rest of the game for
+   scale: never dimensions made up for the critique.
 3. **A context of use.** The game itself, at the camera angles and zoom people
    play at, with everything else on screen.
 
@@ -43,24 +46,30 @@ The method's steps 1 and 2, below, need renders and a parts log.
   a screenshot script): use those, and read their documentation for what each
   view and number means.
 - **It has none:** render the views and log the parts yourself. A scratch
-  script that loads the model, prints each mesh's bounding box in the model's
-  frame, and renders it from fixed cameras is enough. The script and its
-  output are scratch: keep them out of the project's tracked files.
+  script that loads the model, prints each mesh's bounding box, rotation and
+  material color in the model's frame, and renders it from fixed cameras is
+  enough. The script and its raw output are scratch: keep them out of the
+  project's tracked files.
 - **Nothing can be run:** work from whatever numbers or images were given.
   The report lists the views it would have rendered, in place of the renders.
-  A finding read straight off the parts' numbers stands as it is. One that
-  needs a view to confirm is marked unverified, and names the view that would
-  settle it.
+  A finding the numbers settle on their own (a wheel's lowest point above the
+  ground, a size against the real object) stands as it is. One that needs a
+  view to confirm is marked unverified, and names the view that would settle
+  it. A bounding box gives a part's extent, not its shape, so whether a sloped
+  or rotated part joins its neighbor is one of those.
 
 ## The method
 
 Do the steps in order. Finish each, as far as the views and numbers on hand
 allow, before starting the next.
 
-1. **Render every view.** Front, side and top (orthographic, one scale); the
-   game camera's view from each angle players see the model at (every turn of
-   a fixed camera, or a representative set for a free one); and the model in
-   the game at the zoom people play at. Look at every one.
+1. **Render every view.** Front, side and top (orthographic, one scale), with
+   the back and the other side for a model that isn't symmetric; the game
+   camera's view from each angle players see the model at (every turn of a
+   fixed camera, or a representative set for a free one); and the model in
+   the game at the zoom people play at. A model that looks different by state
+   (loaded or empty, at work or at rest) gets these for each state. Look at
+   every one.
 2. **Write down where every part is, before judging anything.** For each part:
    what it is, its position, and which way it faces, in the model's own axes
    and units ("handle: x ±0.10, y 0.14 to 0.26, z −0.26 to 0.02, sloping down
@@ -83,13 +92,16 @@ allow, before starting the next.
    recommended issues: one per change worth making, with fixes that one edit
    would make grouped into one issue.
 
-**The report** is a document that carries its renders, not a chat reply that
-lists file paths: a published page, or a file with the images beside it,
-whichever the project uses for reports. The written part list from step 2
-goes in it, ahead of the findings. It is the evidence the placement findings
-cite, and writing it is the step that finds them. If a skill for laying out a
-design critique is available (the Design plugin's `design-critique`, for
-one), use it for the report's layout and keep this order.
+**The report** of a full critique is a document that carries its renders, not
+a chat reply that lists file paths. It goes where the project keeps its
+reports, renders with it; where the project has no such place, publish it
+outside the project's tracked files. The written part list from step 2 goes in
+it, ahead of the findings. It is the evidence the placement findings cite, and
+writing it is the step that finds them.
+
+**A quick take** asked for in conversation is answered there, in the same
+order and shorter: the part list from the views and numbers on hand, placement
+findings first, and one line on which views weren't looked at.
 
 ## Lessons from earlier critiques
 
@@ -123,11 +135,9 @@ one), use it for the report's layout and keep this order.
 | Mistake | What to do |
 |---|---|
 | Opening with an overall impression ("looks great", "reads well") | Hold it until step 4. Write the part list first. |
-| A quick take that skips the part list | Write the part list anyway, and keep the rest short. It is the step that finds misplaced parts. |
+| A quick take that skips the part list | Write the part list anyway, and keep the rest short. |
 | Trusting someone's verdict that it looks fine | A verdict on the look says nothing about placement. Run steps 1 to 3 anyway. |
 | Reporting each automatic flag as a defect | Look at the part. Report it only if it is wrong on the real object. |
-| Judging only the model alone on a plain background | Add the in-game view at play zoom, from every angle the game shows. |
-| Comparing sizes by eye across separately scaled views | Compare the numbers. |
 | Fixing the model during the critique | Report the fix and recommend an issue. |
 
 ## Outside 3D models
