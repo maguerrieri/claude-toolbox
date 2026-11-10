@@ -106,7 +106,19 @@ bash_case deny implementer "variable followed by more text" 'cmd=/spawn-tickets;
 bash_case deny implementer "/make-ticket --spawn with directive lines after it" "$(printf '%s\n' 'claude --bg "/make-ticket Fix flaky CI --spawn' 'Notify: repo x"')"
 bash_case deny implementer "stripped-identity launch" 'env -u CLAUDE_SESSION_ID claude --bg --name "x" "/start-ticket 5"'
 
+# A launch that carries a model (the Model: lines, SKILL.md Step 0) puts
+# --model "<model>" right after --bg. Its value is skipped like --name's, so
+# the prompt after it is still the one tested.
+bash_case deny implementer "SPAWN launch with a model" '( cd "/repo" && env -u CLAUDE_SESSION_ID claude --bg --model "sonnet" --name "repo #52: fix x" "/start-ticket 52 Implement and test.  Role: implementer" )'
+bash_case deny implementer "model with a bracketed suffix" 'claude --bg --model "claude-opus-5-5[1m]" --name x "/start-ticket 7"'
+bash_case deny implementer "unquoted model" 'claude --bg --model sonnet "/start-ticket 7"'
+bash_case deny implementer "--model=<model> form" 'claude --bg --model=opus --name x "/start-ticket 7"'
+bash_case deny implementer "model after the name" 'claude --bg --name x --model opus "/spawn-tickets 3 5"'
+bash_case deny implementer "/spawn-epic launch with a model" "$(printf '%s\n' "read -r -d '' p <<'PROMPT'" '/start-epic 40' 'Role: epic-coordinator' 'PROMPT' '( cd "$launch_dir" && env -u CLAUDE_SESSION_ID claude --bg --model "opus" --name "repo 40: epic" "$p" )')"
+
 # Implementer: helpers and everything else pass.
+bash_case allow implementer "helper launched on a model" 'env -u CLAUDE_SESSION_ID claude --bg --model "sonnet" --name "helper: flaky build" "Investigate the flaky build; report back only."'
+bash_case allow implementer "issue command as a --model value" 'claude --bg --model "/start-ticket" "Investigate X"'
 bash_case allow implementer "helper whose prompt leads with prose" "$helper"
 bash_case allow implementer "helper through the spawn edge's env -u prefix" 'env -u CLAUDE_SESSION_ID claude --bg --name "helper: flaky build" "Investigate the flaky build; report back only."'
 bash_case allow implementer "plain command" 'git status'
@@ -139,6 +151,16 @@ cloud_case deny implementer "prompt leading with /start-ticket" '/start-ticket 5
 cloud_case deny implementer "leading whitespace, namespaced /spawn-epic" '  /ticket-workflow:spawn-epic 40'
 cloud_case deny implementer "/make-ticket --spawn" '/make-ticket Fix flaky CI --spawn'
 cloud_case allow implementer "helper prompt" 'Investigate why the build flakes; report findings back only.'
+# A cloud launch carries its model as a field beside the prompt.
+cloud_model() { # cloud_model <prompt>
+	jq -n --arg sid "$sid" --arg prompt "$1" \
+		'{session_id: $sid, tool_name: "mcp__Claude_Code_Remote__create_session",
+		  tool_input: {prompt: $prompt, title: "repo #52: fix x", model: "sonnet"}}'
+}
+record deny "implementer create_session: issue spawn with a model field" \
+	"$(decide_raw implementer "$(cloud_model '/start-ticket 52 Implement and test.  Role: implementer')")"
+record allow "implementer create_session: helper with a model field" \
+	"$(decide_raw implementer "$(cloud_model 'Investigate why the build flakes; report findings back only.')")"
 cloud_case allow implementer "prose-opened skill prompt (documented gap)" 'Run the epic 40. Read SKILL.md and follow the EPIC phase for: 40'
 record allow "implementer bare create_session" "$(decide implementer create_session prompt 'Investigate X; report back only.')"
 record deny "implementer bare create_session" "$(decide implementer create_session prompt '/start-ticket 9')"
