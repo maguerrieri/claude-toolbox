@@ -151,8 +151,21 @@ reset
 mkdir -p "$tmp/empty"
 inst --path "$tmp/empty"
 record 1 "PATH without the tools: exit" "$?"
-record yes "PATH without the tools: names them" "$(has "$out" "doesn't find: claude gh jq bash")"
+record yes "PATH without the tools: names them" "$(has "$out" "lacks: claude gh jq bash /usr/bin /bin ")"
 record no "PATH without the tools: no shim" "$([ -e "$shim" ] && echo yes || echo no)"
+
+# Every tool the notifier names, but not the system directories: the shim,
+# the CLI and the job use far more of the base system than any list (Codex
+# reproduced a job exiting 127 on one), so the PATH must carry /usr/bin and /bin.
+reset
+mkdir -p "$tmp/only"
+cp "$tmp/tools/claude" "$tmp/tools/gh" "$tmp/only/"
+ln -sf "$(command -v jq)" "$tmp/only/jq"
+ln -sf "$(command -v bash)" "$tmp/only/bash"
+inst --path "$tmp/only"
+record 1 "PATH without /usr/bin and /bin: exit" "$?"
+record yes "PATH without /usr/bin and /bin: names them" "$(has "$out" "lacks: /usr/bin /bin ")"
+record no "PATH without /usr/bin and /bin: no shim" "$([ -e "$shim" ] && echo yes || echo no)"
 
 # --- PATH capture from the login shell -----------------------------------
 
