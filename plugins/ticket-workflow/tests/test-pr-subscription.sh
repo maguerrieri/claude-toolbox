@@ -9,6 +9,7 @@
 #   STUB_KIND    this session's row's kind (default background; none: no row
 #                for it; null: a row with no kind)
 #   STUB_AGENTS_RC  its exit code (0 by default)
+#   STUB_NAME    this session's row's name (none by default)
 # The doc cases run the one-liners the docs show, pulled out of them. Runs
 # under macOS's bash 3.2 as well as a current bash.
 #
@@ -40,7 +41,7 @@ other='{"sessionId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "kind": "background
 case ${STUB_KIND:-background} in
 none) printf '[%s]\n' "$other" ;;
 null) printf '[%s, {"sessionId": "%s"}]\n' "$other" "$CLAUDE_CODE_SESSION_ID" ;;
-*) printf '[%s, {"sessionId": "%s", "kind": "%s"}]\n' "$other" "$CLAUDE_CODE_SESSION_ID" "${STUB_KIND:-background}" ;;
+*) printf '[%s, {"sessionId": "%s", "kind": "%s", "name": "%s"}]\n' "$other" "$CLAUDE_CODE_SESSION_ID" "${STUB_KIND:-background}" "${STUB_NAME:-}" ;;
 esac
 STUB_EOF
 chmod +x "$tmp/claude"
@@ -135,6 +136,24 @@ record "1 0" "claude agents fails: exit 1, not subscribed" "$rc $(lines "$calls"
 run CLAUDE_CODE_SESSION_ID=$sid STUB_KIND=interactive -- unsubscribe o/r#1
 record "0 unsubscribe o/r#1 sid=$sid" "unsubscribe doesn't ask what kind of session this is" "$rc $calls"
 
+# The name rides along from the same listing, so the notifier needn't list
+# the sessions again.
+run CLAUDE_CODE_SESSION_ID=$sid STUB_NAME="claude-toolbox #294: notifier hookup" -- subscribe o/r#1
+record "0 subscribe o/r#1 --name claude-toolbox #294: notifier hookup sid=$sid" "subscribe passes the session's name" "$rc $calls"
+
+# --- unsubscribe --session: another session's subscription ---------------
+
+other_sid=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee
+run -- unsubscribe o/r#9 --session $other_sid
+record "0 unsubscribe o/r#9 --session $other_sid sid=" "unsubscribe --session drops another session's, with no id of its own" "$rc $calls"
+run CLAUDE_CODE_SESSION_ID=$sid -- unsubscribe --session $other_sid https://github.com/o/r/pull/9
+record "0 unsubscribe o/r#9 --session $other_sid sid=$sid" "--session before the PR" "$rc $calls"
+for bad in "unsubscribe o/r#9 --session" "unsubscribe o/r#9 --session abc" "unsubscribe o/r#9 --session $other_sid --session $other_sid" \
+	"subscribe o/r#9 --session $other_sid" "unsubscribe --session $other_sid"; do
+	run CLAUDE_CODE_SESSION_ID=$sid -- ${bad}
+	record "2 0" "rejects: $bad" "$rc $(lines "$calls")"
+done
+
 # --- failures -------------------------------------------------------------
 
 run -- subscribe o/r#1
@@ -161,13 +180,16 @@ done
 
 # --- the docs' one-liners --------------------------------------------------
 
-# Runs the fenced line of <file> that names <text>, as the docs show it,
-# with its placeholders filled in and the plugin root pointing at this checkout.
+# Runs the line of <file>'s first code block naming <text> that ends with
+# <text>, as the docs show it (so `unsubscribe <pr url>` skips the --session
+# line), with its placeholders filled in and the plugin root pointing at this
+# checkout.
 run_doc() { # run_doc <file> <text> [VAR=value ...]
 	local file=$1 text=$2 line
 	shift 2
-	line=$(extract_block "$file" "$text" | grep -F -- "$text" | head -n 1 |
-		sed -e 's|<pr url>|https://github.com/o/r/pull/5|g')
+	line=$(extract_block "$file" "$text" |
+		awk -v t="$text" 'length($0) >= length(t) && substr($0, length($0) - length(t) + 1) == t' | head -n 1 |
+		sed -e 's|<pr url>|https://github.com/o/r/pull/5|g' -e "s|<session id>|$other_sid|g")
 	record yes "doc line found: $text in ${file#"$skill"/}" "$([ -n "$line" ] && echo yes || echo no)"
 	: >"$STUB_ARGS"
 	env -i PATH="$PATH" HOME="$tmp/home" STUB_ARGS="$STUB_ARGS" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" \
@@ -177,11 +199,13 @@ run_doc() { # run_doc <file> <text> [VAR=value ...]
 }
 
 run_doc "$skill/SKILL.md" 'pr-subscription.sh" subscribe <pr url>' CLAUDE_CODE_SESSION_ID=$sid
-record "subscribe o/r#5 sid=$sid" "START Step 7's subscribe runs as documented" "$calls"
+record "subscribe o/r#5 sid=$sid" "START Step 9's subscribe runs as documented" "$calls"
 run_doc "$skill/notifier.md" 'pr-subscription.sh" subscribe <pr url>' CLAUDE_CODE_SESSION_ID=$sid
 record "subscribe o/r#5 sid=$sid" "notifier.md's subscribe runs as documented" "$calls"
 run_doc "$skill/notifier.md" 'pr-subscription.sh" unsubscribe <pr url>' CLAUDE_CODE_SESSION_ID=$sid
 record "unsubscribe o/r#5 sid=$sid" "notifier.md's unsubscribe runs as documented" "$calls"
+run_doc "$skill/notifier.md" 'pr-subscription.sh" unsubscribe <pr url> --session <session id>' CLAUDE_CODE_SESSION_ID=$sid
+record "unsubscribe o/r#5 --session $other_sid sid=$sid" "notifier.md's unsubscribe --session runs as documented" "$calls"
 run_doc "$skill/phases/finish.md" 'pr-subscription.sh" unsubscribe <pr url>' CLAUDE_CODE_SESSION_ID=$sid
 record "unsubscribe o/r#5 sid=$sid" "FINISH Step 3's unsubscribe runs as documented" "$calls"
 
