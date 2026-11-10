@@ -1,0 +1,8 @@
+{
+  "name": "critique",
+  "description": "Describe-before-judging critiques of 3D game models: the model-critique skill",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mari Guerrieri"
+  }
+}
