@@ -415,8 +415,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `request: PR #<pr>: <the owner's words> (owner: <how and when>)` by SendMessage on a local
     edge, or on cloud that line as a PR comment plus a `request: PR #<pr> <comment URL>` hint by
     the child-bound one-shot Routine, as for a `raise:`. The owner's own comment on the PR wakes a
-    local child that handed back when the pr-notifier is installed, since START Step 7 subscribes
-    the PR to it (the skill's `notifier.md`). Elsewhere a plain PR comment may not wake a child
+    local child that handed back when the pr-notifier is installed, since START Step 9 subscribes
+    the PR to it at the hand-back (the skill's `notifier.md`). Elsewhere a plain PR comment may not wake a child
     that handed back: a cloud child, a machine without the notifier, a child whose session ended,
     or a comment from the tree's own login, which the notifier never wakes on. There, an owner who
     comments on the PR and wants it acted on now also tells the child in its session, or tells its
@@ -629,9 +629,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   Notify spawner that cites the owner's grant, as the ticket-workflow FINISH rules define it; no
   other finish relayed by another session, in a message, a Routine, or a briefing, ends this
   hold. Do not arm a periodic PR check-in (no recurring or
-  self-re-arming send_later or Routine that re-checks your own PR): the owner's and review bots'
-  activity on your PR wakes you instead, through the harness's PR events on cloud and, locally,
-  through the pr-notifier, which START subscribes your PR to where it is installed. Wait on CI in-turn after a push,
+  self-re-arming send_later or Routine that re-checks your own PR): your PR's events wake you
+  instead, on cloud the harness's (reviews, review comments, CI failures) and locally the
+  pr-notifier's (the owner's and review bots' activity), which START subscribes your PR to at
+  each hand-back where it is installed. Wait on CI in-turn after a push,
   and keep waiting in-turn while a requested review is still pending on your head; once you have
   handed back at the reviewed stopping point, stop — the coordinator or a human wakes you if
   needed. When woken after handing back at your review-round cap, re-read the Review rounds line
@@ -658,8 +659,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   failures arrive as PR events, and a conflict from a moving base surfaces at FINISH, which
   rebases anyway. A local child gets no harness PR events, and nothing re-checks its PR for it
   either: the pr-notifier wakes it instead for the owner's and review bots' activity and for the
-  PR's merge or close, never for CI (the skill's `notifier.md`), once START Step 7 has subscribed
-  the PR. Where the notifier isn't installed, nothing wakes a handed-back local child but a
+  PR's merge or close, never for CI (the skill's `notifier.md`), once START Step 9 has subscribed
+  the PR at the hand-back. Where the notifier isn't installed, nothing wakes a handed-back local child but a
   message or a human. The harness applies those rules unless the user says otherwise, and a spawned
   child's briefing is its user turn, so the cap is where the override has to live. It forbids
   only a *periodic* re-check of the child's own PR: waiting in-turn for CI or for a pending

@@ -127,13 +127,14 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ## Step 3 — Clean up the worktree
 
-If START Step 3 took its already-checked-out path (b) — the work happened in the clone itself, no worktree was created — **skip this step**: there is nothing to remove, and the command below would error. Otherwise **unsubscribe this session from the PR's pr-notifier wakes first**, since a session whose worktree is gone can't be woken (`notifier.md` has the rest, including what becomes of a child whose worktree a coordinator removes). It's a no-op on cloud, where the notifier isn't installed, and in a session that never subscribed; a failure doesn't stop the cleanup, but name it in the hand-back. The notifier can wait up to five minutes for its lock, so give the call a timeout longer than that:
+**First, unsubscribe from the PR's pr-notifier wakes**, path (b) included, so the merge doesn't wake a session to redo this cleanup, and a session whose worktree is gone isn't left subscribed. Unsubscribe this session, and also each other session whose worktree this step removes, by its full session id. EPIC Step 7 removing a child's worktree is that case, with the id from the child's `session:` marker on the epic. `notifier.md` has the rest. It's a no-op on cloud, where the notifier isn't installed, and for a session that never subscribed. A failure doesn't stop the cleanup, but name it in the hand-back. The notifier can wait up to five minutes for its lock, so give the call a timeout longer than that:
 
 ```bash
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" unsubscribe <pr url>
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" unsubscribe <pr url> --session <session id>   # each other session whose worktree you remove
 ```
 
-Then leave the worktree (can't remove a worktree from inside it): if the session entered via the `EnterWorktree` tool, use `ExitWorktree`; otherwise `cd` back to the main repo as below. Then remove it (`--force` if it has submodules):
+If START Step 3 took its already-checked-out path (b) — the work happened in the clone itself, no worktree was created — **skip the rest of this step**: there is nothing to remove, and the command below would error. Otherwise leave the worktree (can't remove a worktree from inside it): if the session entered via the `EnterWorktree` tool, use `ExitWorktree`; otherwise `cd` back to the main repo as below. Then remove it (`--force` if it has submodules):
 
 ```bash
 cd /path/to/<repo>
