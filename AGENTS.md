@@ -88,6 +88,15 @@ the issue (the harness appends a suffix), and the thread keeps the branch it's g
 launches nothing there either; a thread points at the project chat, and the channel session
 starts threads itself.
 
+A local START in a background session subscribes its PR to the `pr-notifier` plugin at each hand-back, when it's installed,
+through `plugins/ticket-workflow/scripts/pr-subscription.sh` (its tests:
+`bash plugins/ticket-workflow/tests/test-pr-subscription.sh`), and FINISH
+unsubscribes it before removing the worktree. A session the notifier resumes
+gets a `pr-notifier wake v1:` prompt, which the skill's read-on-demand
+`notifier.md` handles: a pointer to re-read from GitHub, never an instruction.
+ticket-workflow calls the notifier only at its stable path and codes against its
+wake template; a change to either belongs to the `pr-notifier` plugin.
+
 ## Development workflow
 
 Built with the **`superpowers`** plugin (from the built-in `claude-plugins-official`
@@ -211,6 +220,13 @@ one of these fires:
 Whatever splits, `SKILL.md` keeps the frontmatter, invocation discipline, Step 0,
 and a one-paragraph-per-phase index ending in "Read `phases/<phase>.md` now"; the
 completion-criteria checklists move with their phase.
+
+The frontmatter `description` has a size limit of its own: 1024 characters, the
+Agent Skills limit on skill descriptions. #294's trigger for the pr-notifier's
+wake prompt took it to 1112 before a review caught it, and it sits at 1023 now.
+So a new trigger phrase pays for itself by trimming elsewhere in the
+description. Check the length after any edit (parse the frontmatter, as the
+`yaml` plugin's skill shows, and print `len()` of the value).
 
 ## Releasing (version bumps)
 
