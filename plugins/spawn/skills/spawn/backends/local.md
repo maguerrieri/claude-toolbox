@@ -153,6 +153,13 @@ was down (a base branch that moved, a PR merged, a restack, a raised budget), an
 to re-derive its state from the durable record (branch, PR, tracker) before
 carrying on. Quote it, and strip `CLAUDE_SESSION_ID`, the way *Launch* below says.
 
+**Pass nothing else on a resume: no `--model`, no `--name`.** Any flag besides
+`--bg` next to `--resume` starts a copy of the session instead of continuing it
+(found by the #292 spike, `docs/superpowers/specs/2026-10-31-pr-notifier-spike.md`
+in the toolbox repo). So a resumed session keeps the model it was launched with,
+even when the unit now carries another one: a changed model applies to fresh
+launches only. Say so in the report rather than relaunching to change it.
+
 A session belongs to the directory it was launched from, so if that `cwd` no
 longer exists, don't resume from somewhere else: launch fresh and say why in the
 report. Do the same when the resume command errors. If its output says it
@@ -183,6 +190,15 @@ your session:
   PROMPT
   ( cd "$launch_dir" && env -u CLAUDE_SESSION_ID claude --bg --name "<context> <desc>" "$p" )
   ```
+- **A unit with a `model`** (SKILL.md step 1; most have none) passes it right after
+  `--bg`, quoted, and everything else stays as above:
+  ```bash
+  ( cd "$launch_dir" && env -u CLAUDE_SESSION_ID claude --bg --model "<model>" --name "<context> <desc>" "<prompt>" )
+  ```
+  `<model>` is an alias (`sonnet`, `opus`, `fable`) or a full model name, already
+  checked against step 1's pattern. Keep the quotes: under zsh an unquoted
+  bracketed suffix (`opus[1m]`) is a glob, and the command fails with `no matches
+  found`. Without a model, pass no `--model` at all, never an empty one.
 - `env -u CLAUDE_SESSION_ID` keeps the spawner's session identity out of the child.
   On CLIs older than Claude Code 2.1.132, the `ticket-workflow` plugin's
   SessionStart hook exports that variable to key its role markers, and a child

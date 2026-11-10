@@ -73,6 +73,8 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
 ( cd "$launch_dir" && env -u CLAUDE_SESSION_ID claude --bg --name "<repo> <ID>: <desc>" "/start-ticket <ID> <briefing + SPAWN_CAP>  Base branch: <base>  Worktree: epic-<epic-id-lower>-<id-lower>  Role: implementer  Notify: <orchestrator session name>" )
 ```
 
+- **Model**: resolve the `implementer` launch model once for the run, in your own Step 0 (`SKILL.md` Step 0's optional settings: `Model (implementer):`, then `Model:`, per source, validated there). It is not in your briefing: `/spawn-epic` resolved only your own model, and yours says nothing about the children's. With one resolved, every child's launch carries it right after `--bg`, quoted (`claude --bg --model "<model>" --name …`); with none, or `default`, the launch is exactly the one above. A resume (*Resume before spawning*, below) never carries `--model`: the child keeps the model it was launched with. Name the model, and any `Model:` line skipped as invalid, in the Step 6 report.
+
 - **Durable launch dir** (`launch_dir` — same rule as SPAWN Step 3 / the `spawn` skill's `backends/local.md`): every child spawns from the repo's **main checkout** (first entry of `git worktree list`), never from inside a disposable worktree — the bg job records its launch cwd, and a dangling cwd breaks attach/resume of that child later.
 - **Stripped identity** (`env -u CLAUDE_SESSION_ID` — same rule as SPAWN Step 3): a child on a CLI without `CLAUDE_CODE_SESSION_ID` whose own SessionStart hook didn't run then has no session id and skips its self-pin, instead of re-pinning your coordinator marker as `implementer`.
 - **Session name**: same convention as SPAWN Step 3 — `<repo> <ID>: <desc>`, `<desc>` under 5 words (e.g. `--name "widgets #3: CI on macOS"`). Only the **branch** needs to be deterministic (stacking and the Step 6 poll key on branches/PRs, never on session names), and `claude --bg` prints a **session handle** at spawn — record it per child; it's how you inspect a stuck child later, and it survives the user renaming the session.
@@ -111,7 +113,7 @@ launch_dir=$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^workt
   fi
   ```
 
-  The resumed child keeps its name and its briefing (cap, `Role:`, `Budget:`), since those are already in its context; put only what changed in the re-brief (a raised `Budget: rounds=<n>`, a new base after a restack). Its `Notify:` still names the coordinator that spawned it, so when that isn't you (a fresh coordinator took over), add `Notify: <your session name>` to the re-brief, or its pings go to a stopped session. Quote a re-brief carrying `$` or backticks through a heredoc, as for a launch.
+  The resumed child keeps its name, its model and its briefing (cap, `Role:`, `Budget:`): the first two are saved with the session, which is why the resume passes no `--model` or `--name`, and the briefing is already in its context; put only what changed in the re-brief (a raised `Budget: rounds=<n>`, a new base after a restack). Its `Notify:` still names the coordinator that spawned it, so when that isn't you (a fresh coordinator took over), add `Notify: <your session name>` to the re-brief, or its pings go to a stopped session. Quote a re-brief carrying `$` or backticks through a heredoc, as for a launch.
 - **All roots spawn immediately, in parallel** — one Bash call per root in a single message (each a launch or a resume, per the bullet above).
 
 **Cloud backend** (`create_session` — the `spawn` skill's `backends/cloud.md` carries the tool's general mechanics; these are the EPIC-specific fields). One call per child, all in a single message:
@@ -125,6 +127,8 @@ create_session({
   "outcome_branch": "epic-<epic-id-lower>-<id-lower>"
 })
 ```
+
+- **`model` only when one is resolved.** Resolve the `implementer` launch model as the local *Model* bullet says. With one, add `"model": "<model>"` to every child's call; with none, or `default`, leave the field out, as above, and the child inherits. A re-spawn of an ended child is a new launch, so it takes the model resolved now.
 
 - **`outcome_branch` is what makes the branch deterministic on cloud.** A cloud session otherwise derives its own `claude/…` branch name, and the wave gate and Step 6 poll would watch a branch that never appears while every child succeeds. Verified 2026-09-10 against a real child: the container comes up with `<outcome_branch>` **already checked out** (a plain checkout of the clone, no worktree, no upstream configured yet), at the tip of `source_revision`, and the child's harness prompt names that branch as the one to develop on and `git push -u origin` to. The branch does **not** exist on origin until the child pushes — which is exactly the wave gate's signal.
 - **`source_revision` carries the assigned base** — the resolved epic base for a root, the parent's assigned branch for a single-parent dependent, the integration branch for a diamond (Step 4). On cloud the checkout *is* the base: the container starts on `outcome_branch` at that revision, so the briefing's `Base branch: <base>` must name the same ref (START Step 2 reads it for the PR's `--base` and diff range). The revision must already be on origin at launch — the dependent gate below is what guarantees that; never launch a dependent early hoping the checkout will wait.

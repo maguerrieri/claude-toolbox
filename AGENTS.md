@@ -32,7 +32,13 @@ Profile: default
 
 (An optional `Worktree dir: <path>` line in the same block — or in project memory —
 overrides where `/start-ticket` creates worktrees; the default, `.claude/worktrees/`,
-is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.)
+is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.
+Optional model lines go in the same places: one that reads `Model:` then a model alias
+or ID sets the model of every session the workflow launches, and the same line with
+`(implementer)` or `(epic-coordinator)` after `Model` sets it for launches of that role
+and wins over the plain one. With none, launches pass no model and Claude Code's default
+applies; a resumed session keeps the model it was launched with. The skill's Step 0 has
+the rules. This repo sets none.)
 
 Work is tracked in **GitHub Issues**. Commits follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
