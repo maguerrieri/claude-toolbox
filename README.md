@@ -34,8 +34,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   on Claude Code's default model unless the repo's `AGENTS.md` or your project
   memory sets one: a `Model: <model>` line for every launch, or
   `Model (implementer): <model>` / `Model (epic-coordinator): <model>` for one
-  role, which wins over the plain line. A resumed session keeps the model it
-  was launched with.
+  role, which wins over a plain line in the same file (a line in project memory
+  beats the repo's). A resumed session keeps the model it was launched with.
   Inside a Claude Project it switches to a Projects mode that leaves branch creation,
   PR watching and fan-out to the Projects harness: the spawning commands start
   project threads instead of background sessions, each thread keeps to one issue
