@@ -88,11 +88,16 @@ security=${PR_NOTIFIER_SECURITY:-/usr/bin/security}
 uid=$(id -u)
 user=$(id -un)
 # The account's own login shell, not whatever SHELL the caller inherited:
-# it's what the PATH is captured from, and the plist carries it.
+# it's what the PATH is captured from.
 dscl=${PR_NOTIFIER_DSCL:-/usr/bin/dscl}
 login_shell=
 [ ! -x "$dscl" ] || login_shell=$("$dscl" . -read "/Users/$user" UserShell 2>/dev/null | sed -n 's/^UserShell: //p')
 login_shell=${login_shell:-${SHELL:-/bin/zsh}}
+# The plist carries nothing read from the machine but HOME and the user, so
+# the system one is exactly INSTALL.md's reviewed paste for bot: its SHELL is
+# a constant, macOS's default, rather than the account's (which, if it ever
+# changed, would make every status FAIL against a paste that can't follow).
+plist_shell=/bin/zsh
 # The plist's own PATH only has to find what the job script runs before it
 # switches to wake_path (id, mkdir, wc, mv, date, sed).
 plist_path=/usr/bin:/bin:/usr/sbin:/sbin
@@ -123,12 +128,17 @@ plain() { [[ $1 =~ ^[A-Za-z0-9._/-]+$ ]]; }
 
 render_plist() { # render_plist <system|user>: the job's plist on stdout
 	local who
-	plain "$HOME" && plain "$user" && plain "$login_shell" ||
-		die "HOME ($HOME), the user ($user) or SHELL ($login_shell) has a character the plist can't carry"
+	plain "$HOME" && plain "$user" ||
+		die "HOME ($HOME) or the user ($user) has a character the plist can't carry"
 	if [ "$1" = system ]; then
-		# A LaunchDaemon runs as root unless it names its user.
+		# A LaunchDaemon runs as root unless it names its user. SessionCreate
+		# gives the job a security session of its own, the usual requirement
+		# for a daemon that unlocks and reads a user's keychain (untested
+		# here: INSTALL.md's steps 4 and 5 are where it shows).
 		who="  <key>UserName</key>
-  <string>$user</string>"
+  <string>$user</string>
+  <key>SessionCreate</key>
+  <true/>"
 	else
 		# The user domain loads an agent only into a session type it names,
 		# and bot has no GUI session (the spike).
@@ -157,7 +167,7 @@ $who
     <key>LOGNAME</key>
     <string>$user</string>
     <key>SHELL</key>
-    <string>$login_shell</string>
+    <string>$plist_shell</string>
     <key>LANG</key>
     <string>en_US.UTF-8</string>
     <key>PATH</key>
@@ -239,6 +249,13 @@ clean_path() { # clean_path <PATH>: its absolute entries, each once, in order
 	printf '%s\n' "$1" | tr ':' '\n' | awk '/^\// && !seen[$0]++' | paste -sd: -
 }
 
+find_on() { # find_on <PATH> <tool>: where that PATH, alone, finds the tool
+	# A fresh shell, never `PATH=... command -v` here: macOS's /bin/bash 3.2
+	# answers that from its hash table, so a tool this script already ran
+	# (jq) comes back from the caller's PATH instead.
+	env PATH="$1" /bin/sh -c 'command -v "$1"' sh "$2"
+}
+
 missing_tools() { # missing_tools <PATH>: what that PATH lacks, as a list of tools and directories
 	# The tools the system doesn't ship, by name. The shim, the CLI, the job
 	# script and every session it wakes also use the base system's tools
@@ -246,7 +263,7 @@ missing_tools() { # missing_tools <PATH>: what that PATH lacks, as a list of too
 	# PATH has to carry the directories they live in.
 	local tool dir
 	for tool in claude gh jq bash; do
-		PATH=$1 command -v "$tool" >/dev/null 2>&1 || printf '%s ' "$tool"
+		find_on "$1" "$tool" >/dev/null 2>&1 || printf '%s ' "$tool"
 	done
 	for dir in /usr/bin /bin; do
 		case ":$1:" in *":$dir:"*) ;; *) printf '%s ' "$dir" ;; esac
@@ -278,7 +295,7 @@ set_wake_path() { # set_wake_path <PATH>: config.json's wake_path, other keys ke
 
 set_jq_path() { # set_jq_path <PATH>: records the jq that PATH finds, for the job to read config.json with
 	local found
-	found=$(PATH=$1 command -v jq) || die "no jq on $1"
+	found=$(find_on "$1" jq) || die "no jq on $1"
 	if [ -f "$jq_path" ] && [ "$(cat "$jq_path")" = "$found" ]; then
 		echo "ok: $jq_path is current"
 		return
@@ -322,6 +339,10 @@ cmd_install() {
 	command -v jq >/dev/null 2>&1 || die "jq not found on PATH"
 	[ -f "$shim_src" ] && [ -f "$job_src" ] || die "can't find the shim or the job script next to $0"
 	render_plist "$domain" >"$run_tmp/plist" || exit 1
+	# Every refusal comes before the first write, so a refused run changes nothing.
+	if [ "$domain" = user ] && [ -e "$daemon" ]; then
+		die "the LaunchDaemon ($daemon) is installed, and the two would both run the job; Mari removes it first (INSTALL.md, Uninstall)"
+	fi
 
 	if [ -n "$wanted_path" ]; then
 		raw=$wanted_path
@@ -362,9 +383,6 @@ cmd_install() {
 		return 0
 	fi
 
-	if [ -e "$daemon" ]; then
-		die "the LaunchDaemon ($daemon) is installed, and the two would both run the job; Mari removes it first (INSTALL.md, Uninstall)"
-	fi
 	if [ -f "$agent" ] && same_plist "$run_tmp/plist" "$agent"; then
 		if loaded "user/$uid/$label"; then
 			echo "ok: the user-domain agent $label is installed and loaded"
@@ -424,7 +442,12 @@ cmd_status() {
 	render_plist system >"$run_tmp/system" || exit 1
 	render_plist user >"$run_tmp/user" || exit 1
 	if [ -e "$daemon" ] && agent_present; then
-		fail "both the LaunchDaemon ($daemon) and the user-domain agent (user/$uid/$label) are installed; run: $0 (it removes the agent)"
+		if loaded "system/$label"; then
+			fail "both the LaunchDaemon ($daemon) and the user-domain agent (user/$uid/$label) are installed; run: $0 (it removes the agent)"
+		else
+			# The install keeps the agent until the LaunchDaemon runs.
+			fail "both the LaunchDaemon ($daemon) and the user-domain agent (user/$uid/$label) are installed, and the LaunchDaemon isn't loaded; Mari loads it (INSTALL.md, step 2), then run: $0 (it removes the agent)"
+		fi
 	fi
 	loaded_info() { # loaded_info <domain>/<label> <what to run when it isn't loaded>
 		info=$(job_info "$1")

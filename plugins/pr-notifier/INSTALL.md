@@ -66,7 +66,9 @@ no file for it: it has no `StandardOutPath` or `StandardErrorPath`, and the job 
 redirects its own output as bot. So root never writes into a directory bot controls
 (config#47's reason for keeping its logs out of bot's home). `AbandonProcessGroup` keeps a
 `claude` daemon that the job's `claude` call starts (the first one after a reboot) alive
-when the job exits.
+when the job exits. `SessionCreate` gives the job a security session of its own, which a
+LaunchDaemon usually needs to unlock and read a user's keychain. Whether this job needs it
+is untested, and steps 4 and 5 are where that shows.
 
 ## Checklist
 
@@ -116,6 +118,8 @@ sudo tee /Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist >/dev/null <<'
   <string>works.sprue.bot.pr-notifier</string>
   <key>UserName</key>
   <string>bot</string>
+  <key>SessionCreate</key>
+  <true/>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/sh</string>
@@ -179,10 +183,18 @@ stops; you comment on the PR; the job should resume it. Pick any open PR that
 pr='maguerrieri/claude-toolbox#296'
 cd ~/Developer/claude-toolbox
 claude --bg -n 'pr-notifier install test' --model haiku 'Reply with one word: ready.'
-sleep 20
-sid=$(claude agents --json --all | jq -r '[.[] | select(.name == "pr-notifier install test")] | last | .sessionId')
-~/.local/bin/pr-notifier subscribe "$pr" --session "$sid" --name 'pr-notifier install test'
-claude stop ${sid:0:8}
+sid=
+for i in {1..30}; do
+  sid=$(claude agents --json --all | jq -r '[.[] | select(.name == "pr-notifier install test")] | last | .sessionId // empty')
+  [ -n "$sid" ] && break
+  sleep 2
+done
+if [ -n "$sid" ]; then
+  ~/.local/bin/pr-notifier subscribe "$pr" --session "$sid" --name 'pr-notifier install test'
+  claude stop ${sid:0:8}
+else
+  echo "no session named 'pr-notifier install test' after a minute; find it with claude agents before going on"
+fi
 ```
 
 Now comment on that PR from your own GitHub account (anything, such as "notifier test").
