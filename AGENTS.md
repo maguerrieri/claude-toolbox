@@ -88,7 +88,7 @@ the issue (the harness appends a suffix), and the thread keeps the branch it's g
 launches nothing there either; a thread points at the project chat, and the channel session
 starts threads itself.
 
-A local START in a background session subscribes its PR to the `pr-notifier` plugin, when it's installed,
+A local START in a background session subscribes its PR to the `pr-notifier` plugin at each hand-back, when it's installed,
 through `plugins/ticket-workflow/scripts/pr-subscription.sh` (its tests:
 `bash plugins/ticket-workflow/tests/test-pr-subscription.sh`), and FINISH
 unsubscribes it before removing the worktree. A session the notifier resumes

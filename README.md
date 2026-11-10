@@ -31,10 +31,10 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   parallel fan-out. In a repo that sets a tracker, a plain "fix this bug" or "add
   this feature" with no issue named also triggers it: it files the issue, then
   starts it (a pinned planner spawns it instead). Where `pr-notifier` is
-  installed, a local background session subscribes the PR it opens, so the owner's and
-  review bots' activity on it, and its merge, wake that session after it hands
-  back (the owner's only from an account other than the sessions' own);
-  FINISH unsubscribes it.
+  installed, a local background session subscribes its PR when it hands back,
+  so the owner's and review bots' activity on it, and its merge, wake that
+  session again (the owner's only from an account other than the sessions'
+  own); FINISH unsubscribes it.
   Inside a Claude Project it switches to a Projects mode that leaves branch creation,
   PR watching and fan-out to the Projects harness: the spawning commands start
   project threads instead of background sessions, each thread keeps to one issue

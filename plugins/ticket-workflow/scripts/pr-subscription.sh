@@ -4,13 +4,14 @@
 # says when START and FINISH run it, and how a woken session handles the wake.
 #
 #   pr-subscription.sh subscribe <pr>
-#   pr-subscription.sh unsubscribe <pr>
+#   pr-subscription.sh unsubscribe <pr> [--session <session id>]
 #
 # <pr> is the PR's github.com URL (https://github.com/<owner>/<repo>/pull/<n>,
-# as gh pr create prints it) or <owner>/<repo>#<n>. Both act for this session:
-# the notifier reads its id from CLAUDE_CODE_SESSION_ID. Another session's
-# subscription is the notifier's to drop (it does once that session's
-# worktree is gone), never this script's.
+# as gh pr create prints it) or <owner>/<repo>#<n>. Both act for this session,
+# whose id the notifier reads from CLAUDE_CODE_SESSION_ID. unsubscribe
+# --session drops another session's subscription instead, by its full id: the
+# one a FINISH is about to remove the worktree of, or the one a takeover
+# replaces (notifier.md says when).
 #
 # Being woken is a convenience, never something a step depends on, so this
 # prints one line saying what happened and exits:
@@ -25,9 +26,10 @@
 # Only a background session subscribes. The notifier resumes a stopped
 # subscriber with claude --bg --resume, so a terminal session (an interactive
 # claude) would come back as a background one after its owner closed it.
-# subscribe reads this session's kind from claude agents --json --all, the
-# field the notifier itself checks, and skips any kind but background (#312
-# covers notifying a terminal session without resuming it).
+# subscribe reads this session's row from claude agents --json --all: its
+# kind, the field the notifier itself checks, skipping any kind but
+# background (#312 covers notifying a terminal session without resuming it),
+# and its name, passed on so the notifier needn't list the sessions again.
 #
 # The notifier waits up to five minutes for its lock while a poll holds it, so
 # a caller's timeout should allow that. It is called only at its stable path,
@@ -39,7 +41,7 @@ set -uo pipefail
 
 me=pr-subscription
 usage() {
-	echo "usage: pr-subscription.sh subscribe <pr> | unsubscribe <pr>" >&2
+	echo "usage: pr-subscription.sh subscribe <pr> | unsubscribe <pr> [--session <session id>]" >&2
 	exit 2
 }
 say() { printf '%s: %s\n' "$me" "$*"; }
@@ -47,9 +49,29 @@ say() { printf '%s: %s\n' "$me" "$*"; }
 cmd=${1:-}
 case $cmd in subscribe | unsubscribe) ;; *) usage ;; esac
 shift
-[ $# -eq 1 ] || usage
-pr=$1
-case $pr in -* | '') usage ;; esac
+pr=
+other=
+while [ $# -gt 0 ]; do
+	case $1 in
+	--session)
+		[ "$cmd" = unsubscribe ] && [ $# -ge 2 ] && [ -z "$other" ] || usage
+		other=$2
+		shift 2
+		;;
+	-* | '') usage ;;
+	*)
+		[ -z "$pr" ] || usage
+		pr=$1
+		shift
+		;;
+	esac
+done
+[ -n "$pr" ] || usage
+session_re='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+if [ -n "$other" ] && ! [[ $other =~ $session_re ]]; then
+	echo "$me: '$other' isn't a full session id" >&2
+	usage
+fi
 
 # The notifier's own ref shape: <owner>/<repo>#<n>.
 url_re='^https://github\.com/([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9._-]+)/pull/([0-9]+)/?$'
@@ -75,17 +97,24 @@ if [ -z "$cli" ] || [ ! -f "$cli" ] || [ ! -x "$cli" ]; then
 	exit 0
 fi
 
-if [ -z "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+args=("$cmd" "$ref")
+if [ -n "$other" ]; then
+	args+=(--session "$other")
+elif [ -z "${CLAUDE_CODE_SESSION_ID:-}" ]; then
 	say "no session id (CLAUDE_CODE_SESSION_ID), so $ref wasn't ${cmd}d"
 	exit 1
 fi
 
 if [ "$cmd" = subscribe ]; then
-	# This session's row, by its full id; the last one if the listing repeats it.
-	kind=$("${PR_SUBSCRIPTION_CLAUDE:-claude}" agents --json --all 2>/dev/null </dev/null |
+	# This session's row, by its full id (the last one if the listing repeats
+	# it), as "<kind> <name>": an empty kind reads as unknown.
+	row=$("${PR_SUBSCRIPTION_CLAUDE:-claude}" agents --json --all 2>/dev/null </dev/null |
 		jq -r --arg s "$CLAUDE_CODE_SESSION_ID" \
-			'[.[]? | select(.sessionId == $s) | (.kind // "") | if . == "" then "unknown" else . end] | last // empty' 2>/dev/null)
-	if [ -z "$kind" ]; then
+			'[.[]? | select(.sessionId == $s)] | last // empty
+			 | "\((.kind // "") | if . == "" then "unknown" else . end) \(.name // "")"' 2>/dev/null)
+	kind=${row%% *}
+	name=${row#* }
+	if [ -z "$row" ]; then
 		say "couldn't find this session in claude agents --json --all, so $ref wasn't subscribed (only a background session subscribes)"
 		exit 1
 	fi
@@ -93,10 +122,11 @@ if [ "$cmd" = subscribe ]; then
 		say "this session's kind is $kind, not background, so $ref wasn't subscribed: the notifier would resume it in the background once it's closed (#312)"
 		exit 0
 	fi
+	[ -z "$name" ] || args+=(--name "$name")
 fi
 
 # The notifier's output, on one line.
-out=$("$cli" "$cmd" "$ref" 2>&1 </dev/null)
+out=$("$cli" "${args[@]}" 2>&1 </dev/null)
 rc=$?
 out=$(printf '%s' "$out" | tr '\n' ' ')
 out=${out% }
