@@ -239,12 +239,17 @@ clean_path() { # clean_path <PATH>: its absolute entries, each once, in order
 	printf '%s\n' "$1" | tr ':' '\n' | awk '/^\// && !seen[$0]++' | paste -sd: -
 }
 
-missing_tools() { # missing_tools <PATH>: the notifier's tools that PATH doesn't find
-	# The system's basic tools too: the CLI and the job script run on this
-	# PATH, and so does every session it wakes.
-	local tool
-	for tool in claude gh jq bash sed awk date mv mkdir; do
+missing_tools() { # missing_tools <PATH>: what that PATH lacks, as a list of tools and directories
+	# The tools the system doesn't ship, by name. The shim, the CLI, the job
+	# script and every session it wakes also use the base system's tools
+	# (sort, cut, mktemp, sed and many more), so rather than list those, the
+	# PATH has to carry the directories they live in.
+	local tool dir
+	for tool in claude gh jq bash; do
 		PATH=$1 command -v "$tool" >/dev/null 2>&1 || printf '%s ' "$tool"
+	done
+	for dir in /usr/bin /bin; do
+		case ":$1:" in *":$dir:"*) ;; *) printf '%s ' "$dir" ;; esac
 	done
 }
 
@@ -327,7 +332,7 @@ cmd_install() {
 	new_path=$(clean_path "$raw")
 	missing=$(missing_tools "$new_path")
 	[ -z "$missing" ] ||
-		die "the PATH to install ($new_path) doesn't find: $missing; install them or pass a PATH that does with --path"
+		die "the PATH to install ($new_path) lacks: $missing(it needs claude, gh, jq and bash on it, and /usr/bin and /bin in it); install them or pass a PATH that has them with --path"
 
 	put "$shim_src" "$shim"
 	put "$job_src" "$job"
@@ -403,7 +408,7 @@ cmd_status() {
 	else
 		missing=$(missing_tools "$wake")
 		if [ -n "$missing" ]; then
-			fail "wake_path ($wake) doesn't find: $missing"
+			fail "wake_path ($wake) lacks: $missing(it needs claude, gh, jq and bash on it, and /usr/bin and /bin in it)"
 		else
 			ok "wake_path is $wake"
 		fi
