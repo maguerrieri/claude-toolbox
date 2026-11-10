@@ -124,7 +124,9 @@ Other fields:
   that branch being pushed (`git ls-remote --heads origin <branch>`), rather than
   launching early and hoping the checkout waits.
 - **`model`** — omit it unless the unit carries one (the caller's, or the user's
-  ask: SKILL.md step 1); omitted, the child inherits. Pass the value as given.
+  ask: SKILL.md step 1). Omitted, the child "inherits", per the tool's own
+  description; whether that is the spawner's model or the account default isn't
+  verified, so don't promise either. Pass the value as given.
   Which aliases the tool accepts isn't verified here (the CLI takes `sonnet`,
   `opus`, `fable` and full model names), so if the call rejects the model,
   report that unit's error and don't quietly relaunch it without one: the
