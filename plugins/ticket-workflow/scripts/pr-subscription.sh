@@ -16,15 +16,25 @@
 # prints one line saying what happened and exits:
 #
 #   0  done; or skipped where there is nothing to do: a cloud session (the
-#      harness's own PR events reach it) or no notifier installed here
-#   1  the notifier ran and failed, or this session has no id; the line says why
+#      harness's own PR events reach it), no notifier installed here, or, for
+#      subscribe, a session that isn't a background one
+#   1  the notifier ran and failed, this session has no id, or subscribe
+#      couldn't tell whether it runs in the background; the line says why
 #   2  usage error
+#
+# Only a background session subscribes. The notifier resumes a stopped
+# subscriber with claude --bg --resume, so a terminal session (an interactive
+# claude) would come back as a background one after its owner closed it.
+# subscribe reads this session's kind from claude agents --json --all, the
+# field the notifier itself checks, and skips any kind but background (#312
+# covers notifying a terminal session without resuming it).
 #
 # The notifier waits up to five minutes for its lock while a poll holds it, so
 # a caller's timeout should allow that. It is called only at its stable path,
 # $HOME/.local/bin/pr-notifier (the pr-notifier plugin's skill), never in a
 # plugin cache, whose directory carries a version. PR_SUBSCRIPTION_CLI
-# replaces that path for tests, as owner-check.sh's OWNER_CHECK_GH replaces gh.
+# replaces that path for tests, and PR_SUBSCRIPTION_CLAUDE the claude binary,
+# as owner-check.sh's OWNER_CHECK_GH replaces gh.
 set -uo pipefail
 
 me=pr-subscription
@@ -68,6 +78,21 @@ fi
 if [ -z "${CLAUDE_CODE_SESSION_ID:-}" ]; then
 	say "no session id (CLAUDE_CODE_SESSION_ID), so $ref wasn't ${cmd}d"
 	exit 1
+fi
+
+if [ "$cmd" = subscribe ]; then
+	# This session's row, by its full id; the last one if the listing repeats it.
+	kind=$("${PR_SUBSCRIPTION_CLAUDE:-claude}" agents --json --all 2>/dev/null </dev/null |
+		jq -r --arg s "$CLAUDE_CODE_SESSION_ID" \
+			'[.[]? | select(.sessionId == $s) | (.kind // "") | if . == "" then "unknown" else . end] | last // empty' 2>/dev/null)
+	if [ -z "$kind" ]; then
+		say "couldn't find this session in claude agents --json --all, so $ref wasn't subscribed (only a background session subscribes)"
+		exit 1
+	fi
+	if [ "$kind" != background ]; then
+		say "this session's kind is $kind, not background, so $ref wasn't subscribed: the notifier would resume it in the background once it's closed (#312)"
+		exit 0
+	fi
 fi
 
 # The notifier's output, on one line.
