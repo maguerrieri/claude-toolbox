@@ -98,8 +98,9 @@ pni
 It prints a line per piece (`wrote …`, `set wake_path …`), then `next: the LaunchDaemon
 isn't installed`. Check the `wake_path` it printed: it's what every woken session's tools
 will see. If it's wrong, run `pni --path '<the PATH>'`. It stops without writing anything
-if that `PATH` doesn't find `claude`, `gh`, `jq`, `bash` and the basic system tools
-(`sed`, `awk`, `date`, `mv`, `mkdir`).
+if that `PATH` doesn't find `claude`, `gh`, `jq` and `bash`, or leaves out `/usr/bin` or
+`/bin`, where the base system's tools live: the shim, the CLI, the job and every woken
+session use many of them.
 
 ### 2. The LaunchDaemon (your own shell, as root)
 
