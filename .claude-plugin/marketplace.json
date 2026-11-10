@@ -46,6 +46,11 @@
       "description": "Wakes the local session that owns a PR when the owner or a configured review bot acts on it, or when it merges or closes"
     },
     {
+      "name": "critique",
+      "source": "./plugins/critique",
+      "description": "Describe-before-judging critiques of 3D game models: every view rendered and every part's position written down before the look is judged (model-critique skill)"
+    },
+    {
       "name": "provenance",
       "source": {
         "source": "github",
