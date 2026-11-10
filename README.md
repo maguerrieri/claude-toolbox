@@ -31,7 +31,7 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   parallel fan-out. In a repo that sets a tracker, a plain "fix this bug" or "add
   this feature" with no issue named also triggers it: it files the issue, then
   starts it (a pinned planner spawns it instead). Where `pr-notifier` is
-  installed, a local session subscribes the PR it opens, so the owner's and
+  installed, a local background session subscribes the PR it opens, so the owner's and
   review bots' activity on it, and its merge, wake that session after it hands
   back (the owner's only from an account other than the sessions' own);
   FINISH unsubscribes it.

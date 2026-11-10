@@ -357,7 +357,7 @@ EOF
 )"
 ```
 
-Then **subscribe the PR to the pr-notifier**, so the owner's and review bots' activity on it, and its merge or close, can wake this session after it hands back. It's a no-op on cloud and where the notifier isn't installed, and a failure never stops START. The notifier can wait up to five minutes for its lock, so give the call a timeout longer than that. `notifier.md` has the rest; read it when the line needs explaining:
+Then **subscribe the PR to the pr-notifier**, so the owner's and review bots' activity on it, and its merge or close, can wake this session after it hands back. It's a no-op on cloud, in a terminal (non-background) session, which the notifier would otherwise resume in the background, and where the notifier isn't installed; a failure never stops START. The notifier can wait up to five minutes for its lock, so give the call a timeout longer than that. `notifier.md` has the rest; read it when the line needs explaining:
 
 ```bash
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" subscribe <pr url>
