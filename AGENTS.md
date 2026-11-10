@@ -186,8 +186,8 @@ reads the default — splitting reintroduces the #22 bypass failure in a new for
 each with a one-paragraph index in `SKILL.md` ending "Read `phases/<phase>.md`
 now": EPIC (`phases/epic.md`, done in #79 when its cloud port made it
 phase-sized), SPAWN (`phases/spawn.md`, done in #202 when `SKILL.md` had reached
-536 lines; only `/spawn-tickets`, FILE's `--spawn` and EPIC, which reads it
-too, need it, so START and FINISH runs stop loading it) and FINISH
+536 lines; only `/spawn-tickets`, FILE's `--spawn`, EPIC, which reads it
+too, and `/spawn-epic`, for its *Launch model* rules, need it, so START and FINISH runs stop loading it) and FINISH
 (`phases/finish.md`, done in #240 when #238's untracked change requests took
 `SKILL.md` to 502 lines and #239 conflicted with two concurrent PRs in it). EPIC
 and SPAWN carry their own completion checklist or "does NOT" list; FINISH had
