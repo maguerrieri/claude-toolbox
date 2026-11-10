@@ -38,7 +38,7 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   or your global `CLAUDE.md` (`~/.claude/CLAUDE.md` by default) for a default across every repo; between
   two lines of the same kind, the first of those places wins. A resumed session keeps the model
   it was launched with. Where `pr-notifier` is
-  installed, a local session subscribes the PR it opens, so the owner's and
+  installed, a local background session subscribes the PR it opens, so the owner's and
   review bots' activity on it, and its merge, wake that session after it hands
   back (the owner's only from an account other than the sessions' own);
   FINISH unsubscribes it.
