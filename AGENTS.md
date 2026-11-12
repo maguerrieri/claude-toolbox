@@ -36,9 +36,9 @@ is the only location that avoids Claude Code's unsuppressible enter-worktree pro
 Optional model lines go in the same places: one that reads `Session model:` then a model
 alias or ID sets the model of every session the workflow launches, and the same line with
 `(implementer)` or `(epic-coordinator)` after `Session model` sets it for launches of that
-role and wins over a plain one in the same place. Any line in project memory beats this
-file's, and this file's beat one in the user's own global `CLAUDE.md` (in the Claude config
-directory), which is where a default for every repo goes. With none, launches pass no model
+role and wins over a plain one wherever each sits. Between two lines of the same kind, one in
+project memory beats this file's, and this file's beats one in the user's own global
+`CLAUDE.md` (in the Claude config directory), which is where a default for every repo goes. With none, launches pass no model
 and Claude Code's default applies; a resumed session keeps the model it was launched with.
 The skill's `launch-model.md` has the rules. This repo sets none.)
 
