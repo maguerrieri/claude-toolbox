@@ -35,7 +35,7 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   for every launch, or `Session model (implementer): <model>` /
   `Session model (epic-coordinator): <model>` for one role, which always wins
   over a plain line. A line goes in your project memory, the repo's `AGENTS.md`,
-  or your global `~/.claude/CLAUDE.md` for a default across every repo; between
+  or your global `CLAUDE.md` (`~/.claude/CLAUDE.md` by default) for a default across every repo; between
   two lines of the same kind, the first of those places wins. A resumed session keeps the model
   it was launched with.
   Inside a Claude Project it switches to a Projects mode that leaves branch creation,
