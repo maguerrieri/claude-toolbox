@@ -249,6 +249,15 @@ With no `--domain`, `pni` keeps whichever job is installed, so this is the same 
 fallback. If `status` says the LaunchDaemon's plist differs, run step 2 again with this
 file's new block.
 
+## After changing bot's shell `PATH`
+
+`wake_path` is captured once, when `pni` runs, and every session the notifier wakes gets
+it as its tool `PATH`. So after adding a directory to bot's shell `PATH` (`~/.cargo/bin`,
+say), run `pni` again from a fresh bot shell: it captures the new `PATH` and prints `set
+wake_path …`. Until then, woken sessions don't see the new directory, and `pni status`
+doesn't flag the difference. A session woken earlier keeps the old `PATH` until its
+process restarts.
+
 ## Uninstall
 
 The LaunchDaemon first, in your own shell, so launchd isn't left running a job that's
