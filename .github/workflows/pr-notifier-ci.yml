@@ -19,3 +19,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Notifier tests (stubbed gh and claude; also checks the vendored owner-check.sh)
         run: bash plugins/pr-notifier/tests/test-pr-notifier.sh
+      - name: Install tests (stubbed launchctl and security)
+        run: bash plugins/pr-notifier/tests/test-install.sh
+
+  install-macos:
+    # The install runs on macOS, under its own /bin/bash (3.2), plutil and
+    # /bin/sh, which ubuntu's bash 5 hides: bash 3.2's command hash once gave
+    # the install a jq from the wrong PATH, and only this job would catch that.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tests under /bin/bash 3.2
+        run: PATH="/bin:/usr/bin:/usr/sbin:/sbin:$(dirname "$(command -v jq)")" /bin/bash plugins/pr-notifier/tests/test-install.sh
