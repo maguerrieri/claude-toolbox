@@ -47,6 +47,8 @@ Split the request into one or more `(prompt, desc)` units:
 
 `prompt` = the full instruction the background session acts on (verbatim — don't trim the caller's bounds). `desc` = an under-5-word summary for the session name.
 
+A unit may also carry a **`model`**, and usually doesn't. It comes from one of two places: the caller (ticket-workflow resolves one from its `Session model:` lines and hands it over with the unit; such a caller has already decided, so the next rule doesn't apply to its units), or, on a `/spawn` request, the user telling you which model the spawned session should run on ("spawn this on sonnet", "use opus for these"), which applies to the units it names. That instruction is addressed to you, so it is the one part of the request left out of the prompt; a model named as part of the task ("benchmark the summarizer on sonnet") is task text and stays in. When you can't tell which it is, pass no model and keep the words in the prompt. Spawn reads no setting of its own for it. **No model given means none passed**: the session runs on Claude Code's default. Take it only when it is a model alias or ID and nothing else, matching `^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9]+\])?$` (e.g. `sonnet`, `claude-opus-5-5`, `opus[1m]`), since it lands in a shell command. A caller hands over only a value it already checked. A user names models loosely, so first read their words as the alias they plainly mean ("on Sonnet" is `sonnet`, "use Opus" is `opus`), and take "the default model" as no model at all. When what they asked for still isn't one value that fits the pattern ("Sonnet 4.5", a name you can't place), don't guess and don't launch that unit on some other model: skip it and say why in the report, so they can restate the model or drop it. The pattern checks shape, not existence, and the CLI doesn't reject an unknown model at launch either: the session starts and fails on its first request. So always name the model in the report, where a typo can be seen.
+
 ### 2 — Pick a context label
 
 A short prefix that makes the session findable in whatever lists sessions on your backend (`claude agents` locally, the session list on cloud):
@@ -76,6 +78,7 @@ Whichever backend you're on:
 - **Local: resume before you spawn.** When a unit may already have a session (a re-spawn after a restart or a `claude stop`, a retried fan-out), look it up with `claude agents --json --all` and resume a stopped one with `claude --bg --resume` instead of launching fresh — `backends/local.md`'s *Find and resume before you spawn*. `ListAgents` lists live sessions only, and bare `claude agents` fails without a TTY, so neither can tell you a session is gone.
 - `<desc>` — under 5 words, recognizable (e.g. `investigate flaky CI`); the session's name is `<context> <desc>`.
 - Pass the caller's `prompt` **verbatim**. Add no cap; the prompt carries whatever bounds the caller wrote.
+- A unit's `model`, when it has one, goes where the backend file says (`--model` locally, the `model` field on cloud), on a fresh launch only. A resume never passes one: the session keeps the model it was launched with.
 - **Record the handle** the launch returns (a session handle locally, a `session_...` id on cloud) — it survives a rename and is how you inspect a stuck session later.
 
 ### 5 — Report and hand back
@@ -85,6 +88,8 @@ Print a table, then stop — **don't block on the sessions**:
 | Session | Scope |
 |---|---|
 | `misc investigate flaky CI` | <one-line summary> |
+
+For a unit launched with a `model`, name it in its row's Scope (`… (on sonnet)`), and say when a unit wasn't launched because the model asked for was invalid. A resumed unit keeps its launch model, so claim no new one for it.
 
 Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the cloud one adds an ID column).
 

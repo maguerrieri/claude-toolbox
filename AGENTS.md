@@ -32,7 +32,15 @@ Profile: default
 
 (An optional `Worktree dir: <path>` line in the same block — or in project memory —
 overrides where `/start-ticket` creates worktrees; the default, `.claude/worktrees/`,
-is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.)
+is the only location that avoids Claude Code's unsuppressible enter-worktree prompt.
+Optional model lines go in the same places: one that reads `Session model:` then a model
+alias or ID sets the model of every session the workflow launches, and the same line with
+`(implementer)` or `(epic-coordinator)` after `Session model` sets it for launches of that
+role and wins over a plain one wherever each sits. Between two lines of the same kind, one in
+project memory beats this file's, and this file's beats one in the user's own global
+`CLAUDE.md` (in the Claude config directory), which is where a default for every repo goes. With none, launches pass no model
+and Claude Code's default applies; a resumed session keeps the model it was launched with.
+The skill's `launch-model.md` has the rules. This repo sets none.)
 
 Work is tracked in **GitHub Issues**. Commits follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in
@@ -197,7 +205,11 @@ guards' known limits) across six PRs until they conflicted with each other,
 while most runs need only the commands. `SKILL.md` keeps the roles, how
 `Role:` propagates, a short *Pinning* carrying the commands each step runs, and
 a pointer saying when to "read `role-marker.md` now". That section was a few
-very long paragraphs, so its move cut characters, not lines. Don't split
+very long paragraphs, so its move cut characters, not lines. **The launch-model
+rules are a file of their own as well** (`launch-model.md`, #308): only a session about
+to launch another needs them, and `/spawn-epic`, which doesn't load the skill, reads
+that one file by path instead of the whole SPAWN phase. Keep them there, not in
+`phases/spawn.md`. Don't split
 another phase preemptively. Split it into a read-on-demand `phases/<phase>.md`
 (the same read-on-demand idiom as `trackers/`, `profiles/`, and `roles/`) when
 one of these fires:

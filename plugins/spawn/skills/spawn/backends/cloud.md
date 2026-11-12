@@ -33,10 +33,12 @@ Those four are the required core: `prompt` is the caller's instruction **verbati
 `source_url` is the repo to check out (**required** — see below); and
 `outcome_branch` is the branch the child will work on (**required** — see below).
 
-Two optional fields, added only when they apply:
+Three optional fields, added only when they apply:
 
 - `source_revision: "<base branch>"` — when the caller pinned a base other than the
   repo's default branch.
+- `model: "<model>"` — when the unit carries one (SKILL.md step 1), as written.
+  A unit without one omits the field (*Other fields* below).
 - `tags: ["spawn:<context>"]` — metadata for the **user's** own session listings.
   It is not how *you* find the fan-out afterwards (see Report: `parent_session_id`),
   and you can't filter on it from inside a session.
@@ -121,8 +123,16 @@ Other fields:
   launch — a caller stacking one child on another's branch gates the launch on
   that branch being pushed (`git ls-remote --heads origin <branch>`), rather than
   launching early and hoping the checkout waits.
-- **`model` / `environment_id`** — omit both unless the caller asked for something
-  specific; they inherit.
+- **`model`** — omit it unless the unit carries one (the caller's, or the user's
+  ask: SKILL.md step 1). Omitted, the child "inherits", per the tool's own
+  description; whether that is the spawner's model or the account default isn't
+  verified, so don't promise either. Pass the value as given.
+  Which aliases the tool accepts isn't verified here (the CLI takes `sonnet`,
+  `opus`, `fable` and full model names), so if the call rejects the model,
+  report that unit's error and don't quietly relaunch it without one: the
+  caller asked for a model, and a child on another one isn't what it asked for.
+- **`environment_id`** — omit it unless the caller asked for a specific one; it
+  inherits.
 
 `create_session` returns the child's `id` (`session_...`) and records
 `parent_session_id` pointing back at the spawner. **Record the id per unit** — it is

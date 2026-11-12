@@ -104,3 +104,12 @@ session: `/clear` and a fork that starts its own session begin a new session
 the pin doesn't follow (the skill's `role-marker.md`, *Session identity*), so run `/role planner`
 again there. Every `/spawn-epic` and `/spawn-tickets` below
 propagates the lower tiers on its own.
+
+The `Session model:` lines (the skill's `launch-model.md`) set the model of the
+sessions you spawn, never your own: no spawn edge launches a planner, so a
+`Session model (planner):` line applies to nothing. To run the planner on a particular
+model, start its session on it yourself, from your own terminal:
+`claude --model "<model>"` (keep the quotes: zsh reads an unquoted `opus[1m]`
+as a glob), then `/role planner` as its first message, before the planning
+task, so the charter and the edit guard are in place from the first turn. In a
+session already running, `/model` switches it.
