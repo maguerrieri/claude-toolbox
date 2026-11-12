@@ -205,7 +205,11 @@ guards' known limits) across six PRs until they conflicted with each other,
 while most runs need only the commands. `SKILL.md` keeps the roles, how
 `Role:` propagates, a short *Pinning* carrying the commands each step runs, and
 a pointer saying when to "read `role-marker.md` now". That section was a few
-very long paragraphs, so its move cut characters, not lines. Don't split
+very long paragraphs, so its move cut characters, not lines. **The launch-model
+rules are a file of their own as well** (`launch-model.md`, #308): only a session about
+to launch another needs them, and `/spawn-epic`, which doesn't load the skill, reads
+that one file by path instead of the whole SPAWN phase. Keep them there, not in
+`phases/spawn.md`. Don't split
 another phase preemptively. Split it into a read-on-demand `phases/<phase>.md`
 (the same read-on-demand idiom as `trackers/`, `profiles/`, and `roles/`) when
 one of these fires:
