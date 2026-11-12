@@ -105,9 +105,9 @@ the pin doesn't follow (the skill's `role-marker.md`, *Session identity*), so ru
 again there. Every `/spawn-epic` and `/spawn-tickets` below
 propagates the lower tiers on its own.
 
-The `Model:` lines (the skill's `phases/spawn.md`, *Launch model*) set the model of the
+The `Session model:` lines (the skill's `phases/spawn.md`, *Launch model*) set the model of the
 sessions you spawn, never your own: no spawn edge launches a planner, so a
-`Model (planner):` line applies to nothing. To run the planner on a particular
+`Session model (planner):` line applies to nothing. To run the planner on a particular
 model, start its session on it yourself, from your own terminal:
 `claude --model "<model>"` (keep the quotes: zsh reads an unquoted `opus[1m]`
 as a glob), then `/role planner` as its first message, before the planning

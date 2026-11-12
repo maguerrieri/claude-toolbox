@@ -106,7 +106,7 @@ bash_case deny implementer "variable followed by more text" 'cmd=/spawn-tickets;
 bash_case deny implementer "/make-ticket --spawn with directive lines after it" "$(printf '%s\n' 'claude --bg "/make-ticket Fix flaky CI --spawn' 'Notify: repo x"')"
 bash_case deny implementer "stripped-identity launch" 'env -u CLAUDE_SESSION_ID claude --bg --name "x" "/start-ticket 5"'
 
-# A launch that carries a model (the Model: lines, SKILL.md Step 0) puts
+# A launch that carries a model (the Session model: lines, phases/spawn.md's Launch model) puts
 # --model "<model>" right after --bg. Its value is skipped like --name's, so
 # the prompt after it is still the one tested.
 bash_case deny implementer "SPAWN launch with a model" '( cd "/repo" && env -u CLAUDE_SESSION_ID claude --bg --model "sonnet" --name "repo #52: fix x" "/start-ticket 52 Implement and test.  Role: implementer" )'

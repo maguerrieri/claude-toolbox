@@ -31,11 +31,13 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   parallel fan-out. In a repo that sets a tracker, a plain "fix this bug" or "add
   this feature" with no issue named also triggers it: it files the issue, then
   starts it (a pinned planner spawns it instead). The sessions it launches run
-  on Claude Code's default model unless the repo's `AGENTS.md` or your project
-  memory sets one: a `Model: <model>` line for every launch, or
-  `Model (implementer): <model>` / `Model (epic-coordinator): <model>` for one
-  role, which wins over a plain line in the same file (a line in project memory
-  beats the repo's). A resumed session keeps the model it was launched with.
+  on Claude Code's default model unless a `Session model: <model>` line sets one
+  for every launch, or `Session model (implementer): <model>` /
+  `Session model (epic-coordinator): <model>` for one role, which wins over a
+  plain line in the same file. The line goes in your project memory, the repo's
+  `AGENTS.md`, or your global `~/.claude/CLAUDE.md` for a default across every
+  repo; the first of those that has one wins. A resumed session keeps the model
+  it was launched with.
   Inside a Claude Project it switches to a Projects mode that leaves branch creation,
   PR watching and fan-out to the Projects harness: the spawning commands start
   project threads instead of background sessions, each thread keeps to one issue
