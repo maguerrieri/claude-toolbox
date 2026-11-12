@@ -105,7 +105,7 @@ the pin doesn't follow (the skill's `role-marker.md`, *Session identity*), so ru
 again there. Every `/spawn-epic` and `/spawn-tickets` below
 propagates the lower tiers on its own.
 
-The `Session model:` lines (the skill's `phases/spawn.md`, *Launch model*) set the model of the
+The `Session model:` lines (the skill's `launch-model.md`) set the model of the
 sessions you spawn, never your own: no spawn edge launches a planner, so a
 `Session model (planner):` line applies to nothing. To run the planner on a particular
 model, start its session on it yourself, from your own terminal:
