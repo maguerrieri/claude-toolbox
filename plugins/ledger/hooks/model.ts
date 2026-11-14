@@ -7,6 +7,8 @@ import type { LedgerDecision, LedgerNeed, LedgerView } from '../types'
 export type Entry = {
   kind: 'decision' | 'need'
   id: string
+  /** Its Why line: one short line of history and goal (absent in older entries). */
+  why?: string
   text: string
   ref?: string
   at: string
@@ -19,8 +21,9 @@ export const EMPTY_VIEW: LedgerView = { needs: [], decisions: [] }
 const isOptionalString = (value: unknown): boolean => value === undefined || value === null || typeof value === 'string'
 
 // An entry as scripts/ledger.sh counts one: a string kind, id, text and at,
-// and a ref, cwd and resolved_at that are strings or absent (null counts as
-// absent). Anything else a hand edit left is skipped, as the script skips it.
+// and a why, ref, cwd and resolved_at that are strings or absent (null counts
+// as absent). Anything else a hand edit left is skipped, as the script skips
+// it.
 const isEntry = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false
@@ -32,6 +35,7 @@ const isEntry = (value: unknown): value is Record<string, unknown> => {
     typeof entry.id === 'string' &&
     typeof entry.text === 'string' &&
     typeof entry.at === 'string' &&
+    isOptionalString(entry.why) &&
     isOptionalString(entry.ref) &&
     isOptionalString(entry.cwd) &&
     isOptionalString(entry.resolved_at)
@@ -52,12 +56,18 @@ export const parseLedger = (text: string): Entry[] =>
     if (!isEntry(value)) {
       return []
     }
-    const [ref, cwd, resolvedAt] = [stringOrAbsent(value.ref), stringOrAbsent(value.cwd), stringOrAbsent(value.resolved_at)]
+    const [why, ref, cwd, resolvedAt] = [
+      stringOrAbsent(value.why),
+      stringOrAbsent(value.ref),
+      stringOrAbsent(value.cwd),
+      stringOrAbsent(value.resolved_at),
+    ]
 
     return [
       {
         kind: value.kind as Entry['kind'],
         id: value.id as string,
+        ...(why === undefined ? {} : { why }),
         text: value.text as string,
         ...(ref === undefined ? {} : { ref }),
         at: value.at as string,
@@ -105,6 +115,11 @@ export const namesOf = (stdout: string): Record<string, string> => {
 /** Control characters (C0 but tab and newline, DEL, C1) shown as `?`, as the script lists them. */
 export const clean = (text: string): string =>
   text.replace(/[\x01-\x08\x0b-\x1f\x7f-\x9f]/g, '?')
+
+// A Why line as one line, as the script lists it: a hand edit could hold a
+// newline.
+const whyOf = (why: string | undefined): { why?: string } =>
+  why === undefined ? {} : { why: clean(why.split('\n').join(' ')) }
 
 const labelOf = (
   session: string,
@@ -174,6 +189,7 @@ export const viewOf = (
         session,
         label: labelOf(session, me, names, entry.cwd),
         id: entry.id,
+        ...whyOf(entry.why),
         text: clean(entry.text),
         ...(entry.ref === undefined ? {} : { ref: clean(entry.ref) }),
         at: entry.at,
@@ -195,6 +211,7 @@ export const viewOf = (
     .filter(entry => entry.kind === 'decision')
     .map(entry => ({
       id: entry.id,
+      ...whyOf(entry.why),
       text: clean(entry.text),
       ...(entry.ref === undefined ? {} : { ref: clean(entry.ref) }),
       at: entry.at,

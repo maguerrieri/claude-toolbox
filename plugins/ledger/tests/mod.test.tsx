@@ -17,11 +17,11 @@ const line = (entry: Record<string, string>): string => JSON.stringify(entry)
 // other's n1 (the same ref), as a spawner records a child's need.
 const FILES: Record<string, string> = {
   'me.jsonl': [
-    line({ kind: 'decision', id: 'd1', text: 'Ship it as its own plugin', ref: '#208', at: '2026-10-27T11:00:00Z', cwd: '/r/toolbox' }),
+    line({ kind: 'decision', id: 'd1', why: 'status answers get rebuilt every time', text: 'Ship it as its own plugin', ref: '#208', at: '2026-10-27T11:00:00Z', cwd: '/r/toolbox' }),
     line({ kind: 'need', id: 'n1', text: 'Unlock 1Password', at: '2026-10-27T11:10:00Z', cwd: '/r/toolbox', resolved_at: '2026-10-27T11:20:00Z' }),
   ].join('\n'),
   'other.jsonl': [
-    line({ kind: 'need', id: 'n1', text: 'PR #212 needs review\nthen say finish', ref: '#212', at: '2026-10-27T11:50:00Z', cwd: '/r/toolbox' }),
+    line({ kind: 'need', id: 'n1', why: 'planners stall on prompts', text: 'PR #212 needs review\nthen say finish', ref: '#212', at: '2026-10-27T11:50:00Z', cwd: '/r/toolbox' }),
     'not json',
   ].join('\n'),
   'third.jsonl': [
@@ -37,6 +37,8 @@ const BAND = {
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,
+    // Newer builds than the pinned one add it; the pinned build ignores it.
+    isCollapsed: false,
     isWorking: false,
     maxRows: 10,
     bodyColumns: 100,
@@ -142,6 +144,10 @@ test('the pane lists every open need once and this session\'s decisions, and Res
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /^Open needs/ }))?.text).toBe('Open needs (2)')
     expect((await ui.find({ type: 'Text', text: /^toolbox/ }))?.text).toBe('toolbox #212: merge it (other) · n1 · #212 · 10m')
+    expect((await ui.find({ type: 'Text', text: /^Why: planners/ }))?.text).toBe('Why: planners stall on prompts')
+    expect((await ui.find({ type: 'Text', text: /^Why: status/ }))?.text).toBe('Why: status answers get rebuilt every time')
+    // A need recorded without a Why line (www's n2) shows none.
+    expect((await ui.findAll({ type: 'Text', text: /^Why:/ })).length).toBe(2)
     expect((await ui.find({ type: 'Text', text: /^also/ }))?.text).toBe('also: www (third) n3')
     expect((await ui.find({ type: 'Text', text: /^www/ }))?.text).toBe('www (third) · n2 · 3h')
     expect((await ui.find({ type: 'Text', text: /^Decisions/ }))?.text).toBe('Decisions in this session (1)')
@@ -215,6 +221,9 @@ test('the model skips lines that are not entries and orders newest first', async
     ].join('\n'),
   )
   expect(odd).toEqual([{ kind: 'need', id: 'n2', text: 'null fields', at: 't' }])
+  expect(parseLedger('{"kind":"need","id":"n1","why":5,"text":"a number why","at":"t"}')).toEqual([])
+  // A hand-edited Why with a newline is shown on one line, as the script lists it.
+  expect(viewOf({ s: parseLedger('{"kind":"need","id":"n1","why":"a\\nb","text":"x","at":"t"}') }, 'me', {}).needs[0]?.why).toBe('a b')
   expect(viewOf({ s: odd }, 'me', {}).needs.map(need => need.id)).toEqual(['n2'])
   expect(ageOf('2026-10-27T11:59:30Z', NOW)).toBe('now')
   expect(ageOf('2026-10-24T12:00:00Z', NOW)).toBe('3d')

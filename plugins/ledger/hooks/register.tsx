@@ -18,7 +18,7 @@ const NAMES_MS = 60_000
 
 // Change the tag when LedgerView's fields change: it declines what an earlier
 // version stored, which outlives a reload.
-const view = atom({ plugin: 'ledger', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-2' })
+const view = atom({ plugin: 'ledger', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-3' })
 const hiddenFor = atom({ plugin: 'ledger', key: 'hiddenFor' } as const, '')
 
 // Caches, which a reload starts over: each file's entries as last read, kept
@@ -188,6 +188,7 @@ export const register: Register = on => {
         {current.needs.map(need => (
           <Box key={`need:${need.session}:${need.id}`} flexDirection="column" marginBottom={1}>
             <Text color="warning">{meta([need.label, need.id, need.ref, ageOf(need.at, now)])}</Text>
+            {need.why !== undefined && <Text dimColor>{`Why: ${need.why}`}</Text>}
             <Text>{need.text}</Text>
             {need.also.length > 0 && <Text dimColor>also: {copies(need.also)}</Text>}
             <Button key={`resolve:${need.session}:${need.id}`} label="Resolve" onPress={() => resolveNeed($, need)} />
@@ -198,6 +199,7 @@ export const register: Register = on => {
         {current.decisions.map(decision => (
           <Box key={`decision:${decision.id}`} flexDirection="column" marginBottom={1}>
             <Text dimColor>{meta([decision.id, decision.ref, ageOf(decision.at, now)])}</Text>
+            {decision.why !== undefined && <Text dimColor>{`Why: ${decision.why}`}</Text>}
             <Text>{decision.text}</Text>
           </Box>
         ))}

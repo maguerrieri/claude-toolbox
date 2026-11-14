@@ -17,6 +17,8 @@ export type LedgerCopy = {
  * other open need with the same ref (its copies up the spawn tree).
  */
 export type LedgerNeed = LedgerCopy & {
+  /** One short line of history and goal: why the work exists (absent in older entries). */
+  why?: string
   text: string
   ref?: string
   /** ISO-8601 UTC, when it was recorded. */
@@ -27,6 +29,8 @@ export type LedgerNeed = LedgerCopy & {
 /** A decision of this session's ledger. */
 export type LedgerDecision = {
   id: string
+  /** One short line of history and goal: why the work exists (absent in older entries). */
+  why?: string
   text: string
   ref?: string
   at: string

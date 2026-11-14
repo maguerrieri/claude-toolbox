@@ -61,9 +61,10 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   [its README](plugins/pr-notifier/README.md).
 - **ledger** — a per-session record of the decisions the owner made and what
   each session needs from them (a review, a merge, a permission prompt, a
-  credential), with the exact step that unblocks it: the `ledger` skill plus
-  `/ledger`. A mod in the same plugin shows every local session's open needs at
-  a glance: a band above the prompt while any is open, and a pane
+  credential), each with a one-line why (the history and goal of the work)
+  and the exact step that unblocks it: the `ledger` skill plus `/ledger`. A
+  mod in the same plugin shows every local session's open needs at a glance:
+  a band above the prompt while any is open, and a pane
   (`/ledger-pane`) with a Resolve button per need and this session's latest
   decisions. `ticket-workflow`'s charters record into it, bubble children's
   needs up to the planner, and answer "status?" from it first. Local sessions

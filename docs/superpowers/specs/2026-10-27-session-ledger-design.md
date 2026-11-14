@@ -36,7 +36,7 @@ anywhere durable:
   remove a successor's live lock: Codex reproduced lost entries that way on
   PR #272.
   Each line is one entry:
-  `{kind: "decision"|"need", id, text, ref?, at, cwd, resolved_at?}`. `id` is
+  `{kind: "decision"|"need", id, why, text, ref?, at, cwd, resolved_at?}`. `id` is
   `d<n>` or `n<n>`, numbered per kind within the file. `cwd` is where the
   session wrote from, so a reader can name a session that `claude agents`
   doesn't list (an interactive one). A bare `#<n>` ref is written as
@@ -49,8 +49,18 @@ anywhere durable:
   which FINISH runs when a PR lands, resolving the child's need and every
   spawner's copy at once. Every write goes through a temp file and a rename,
   so a reader never sees half a line.
-- **Writes go through `scripts/ledger.sh`**: `add-decision` and `add-need` (text
-  on stdin through a quoted heredoc, `--ref` optional), `resolve <id>`,
+- **Every entry opens with a Why line** (the owner's request on PR #272,
+  2026-11-14): `Why: <history and goal>`, one short line on why the work the
+  entry is about exists, since a small in-the-weeds issue is easy to forget
+  the reason for when its need shows up days later among other sessions'.
+  It's the first line of the text on stdin, stored as `why` (at most 200
+  bytes), and the script refuses an entry without one, so writers can't skip
+  it. The listings and the pane print it above the entry's text; the band
+  keeps showing the text, which is the action. Entries written before it have
+  no `why` and still list.
+- **Writes go through `scripts/ledger.sh`**: `add-decision` and `add-need` (a
+  Why line, then the text, on stdin through a quoted heredoc, `--ref`
+  optional), `resolve <id>`,
   `resolve --ref <ref>`, and `list [--all]`. Text on stdin keeps quotes and `$`
   literal, the same way `role-marker.sh notify` takes a session name.
 - **Subagents can't write their parent's ledger.** A subagent's Bash runs with

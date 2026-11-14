@@ -30,11 +30,24 @@ printf '%s\n' '[{"id":"22222222","sessionId":"$other","name":"toolbox #212: merg
 EOF
 chmod +x "$tmp/bin/claude"
 
+# The Why line every add needs (with_why adds it); tests of the Why line itself
+# set NOWHY=1 and write their own.
+WHY='Why: a test goal'
+with_why() { # with_why <stdin> <subcommand>: <stdin>, with $WHY first for an add
+	case "$2:${NOWHY:-}:$1" in
+	add-*::Why:*) printf '%s' "$1" ;;
+	add-*::*) printf '%s\n%s' "$WHY" "$1" ;;
+	*) printf '%s' "$1" ;;
+	esac
+}
+
 # Runs the script as session <id> with <stdin> and the arguments, under a clean
 # environment from $work; prints the exit status. stdout and stderr are kept
-# in $tmp/out and $tmp/err.
+# in $tmp/out and $tmp/err. An add's stdin gets $WHY first (with_why).
 run_as() { # run_as <id> <stdin> <arg> ...
-	local id=$1 input=$2
+	local id=$1 input
+	input=$(with_why "$2" "${3:-}"; printf x)
+	input=${input%x}
 	shift 2
 	(cd "$work" && printf '%s' "$input" | env -i PATH="$tmp/bin:$PATH" HOME="$tmp/home" TZ=UTC \
 		CLAUDE_SESSION_LEDGER_DIR="$dir" CLAUDE_CODE_SESSION_ID="$id" "$BASH" "$script" "$@" >"$tmp/out" 2>"$tmp/err")
@@ -62,7 +75,7 @@ reset() { rm -rf "$dir"; }
 reset
 record "exit 0" "add-decision: records" "$(run 'Ship it as its own plugin' add-decision)"
 record "d1" "add-decision: prints the id" "$(cat "$tmp/out")"
-record "{\"kind\":\"decision\",\"id\":\"d1\",\"text\":\"Ship it as its own plugin\",\"at\":\"T\",\"cwd\":\"$work\"}|" \
+record "{\"kind\":\"decision\",\"id\":\"d1\",\"why\":\"a test goal\",\"text\":\"Ship it as its own plugin\",\"at\":\"T\",\"cwd\":\"$work\"}|" \
 	"add-decision: the entry" "$(ledger)"
 run $'Defer the cloud half\n' add-decision --ref '#208' >/dev/null
 record "d2" "add-decision: numbered per kind" "$(cat "$tmp/out")"
@@ -103,15 +116,36 @@ reset
 record "exit 1 none" "add: over 4000 bytes refused" "$(run "$(printf 'x%.0s' $(seq 4001))" add-decision) $(ledger)"
 record 1 "add: says why" "$(grep -c 'over 4000 bytes' "$tmp/err")"
 
+# The Why line: the first line, kept apart from the text.
+reset
+run $'Why:   #208: status answers are rebuilt every time  \n\nReview PR #212\nthen say finish' add-need >/dev/null
+record '"#208: status answers are rebuilt every time" "Review PR #212\nthen say finish"' \
+	"add: the Why line is stored trimmed, the blank line after it dropped" \
+	"$(jq -r '"\(.why | tojson) \(.text | tojson)"' "$dir/$sid.jsonl")"
+reset
+record "exit 1 none" "add: no Why line" "$(NOWHY=1 run 'Review PR #212' add-need) $(ledger)"
+record 1 "add: no Why line says how" "$(grep -c "start the text with 'Why: <history and goal>'" "$tmp/err")"
+record "exit 1 none" "add: a Why line not first" "$(NOWHY=1 run $'Review PR #212\nWhy: a goal' add-need) $(ledger)"
+record "exit 1 none" "add: a lowercase why" "$(NOWHY=1 run $'why: a goal\nReview' add-need) $(ledger)"
+record "exit 1 none" "add: an empty Why line" "$(NOWHY=1 run $'Why:  \t\nReview' add-need) $(ledger)"
+record 1 "add: an empty Why line says so" "$(grep -c 'the Why line is empty' "$tmp/err")"
+record "exit 1 none" "add: a Why line and nothing else" "$(NOWHY=1 run 'Why: a goal' add-decision) $(ledger)"
+record 1 "add: nothing after the Why line says so" "$(grep -c 'the text after the Why line is empty' "$tmp/err")"
+record "exit 1 none" "add: a Why line over 200 bytes" \
+	"$(NOWHY=1 run "Why: $(printf 'x%.0s' $(seq 201))"$'\nReview' add-need) $(ledger)"
+record "exit 0" "add: a 200-byte Why line" "$(NOWHY=1 run "Why: $(printf 'x%.0s' $(seq 200))"$'\nReview' add-need)"
+reset
+record "exit 1 none" "add: a control character in the Why line" "$(NOWHY=1 run $'Why: red \033[31m\nReview' add-need) $(ledger)"
+
 # --- session id --------------------------------------------------------------
 
 reset
 record "exit 1" "no session id" \
-	"$(cd "$work" && printf t | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+	"$(cd "$work" && printf '%s\nt' "$WHY" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		"$BASH" "$script" add-decision >/dev/null 2>"$tmp/err"; echo "exit $?")"
 record 1 "no session id: says why" "$(grep -c 'no session id' "$tmp/err")"
 record "exit 0 d1" "CLAUDE_SESSION_ID is the fallback" \
-	"$(cd "$work" && printf t | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+	"$(cd "$work" && printf '%s\nt' "$WHY" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		CLAUDE_SESSION_ID="$sid" "$BASH" "$script" add-decision >/dev/null 2>&1; echo "exit $?") $(jq -r .id "$dir/$sid.jsonl")"
 reset
 for bad in '../x' '.' 'a/b' 'a..b' 'a b'; do
@@ -119,7 +153,7 @@ for bad in '../x' '.' 'a/b' 'a..b' 'a b'; do
 done
 record "none" "a refused session id writes nothing" "$(ls -A "$dir" 2>/dev/null || printf none)"
 record "exit 0 $tmp/home/.claude/session-ledger/$sid.jsonl" "default directory under HOME" \
-	"$(cd "$work" && printf t | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_CODE_SESSION_ID="$sid" \
+	"$(cd "$work" && printf '%s\nt' "$WHY" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_CODE_SESSION_ID="$sid" \
 		"$BASH" "$script" add-decision >/dev/null 2>&1; echo "exit $?") $(ls "$tmp/home/.claude/session-ledger/"*)"
 
 # --- resolve -----------------------------------------------------------------
@@ -161,19 +195,22 @@ record "exit 0" "list: no ledger" "$(run '' list)"
 record 1 "list: no ledger says so" "$(grep -c 'no entries' "$tmp/out")"
 
 run 'Keep it local' add-decision --ref '#208' >/dev/null
-run $'Review PR #212\nthen say finish' add-need --ref '#212' >/dev/null
+run $'Why: the owner reviews before a merge\nReview PR #212\nthen say finish' add-need --ref '#212' >/dev/null
 run 'Unlock 1Password' add-need >/dev/null
 run '' resolve n2 >/dev/null
 run '' list >/dev/null
 expected="Open needs (1):
   n1 · DATE · #212
+    Why: the owner reviews before a merge
     Review PR #212
     then say finish
 Decisions (1):
   d1 · DATE · #208
+    Why: a test goal
     Keep it local
 Resolved needs (1):
   n2 · DATE
+    Why: a test goal
     Unlock 1Password"
 record "$expected" "list: this session" \
 	"$(sed -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}/DATE/' "$tmp/out")"
@@ -188,7 +225,8 @@ EOF
 # repo-b's n2 shares this session's n1's ref, as a child's need and its
 # spawner's copy do: one need, shown once, under the first recorded.
 cat >"$dir/33333333-x.jsonl" <<EOF
-{"kind":"need","id":"n1","text":"Pick a design","at":"2020-01-01T09:00:00Z","cwd":"$tmp/work/repo-b"}
+{"kind":"need","id":"n1","why":"the www redesign","text":"Pick a design","at":"2020-01-01T09:00:00Z","cwd":"$tmp/work/repo-b"}
+{"kind":"need","id":"n7","why":5,"text":"a number for a why","at":"2020-01-01T09:30:00Z"}
 not json
 {"kind":"need","text":"no id","at":"2020-01-01T09:30:00Z"}
 {"kind":"need","id":"n8","text":"a number for a ref","ref":5,"at":"2020-01-01T09:30:00Z"}
@@ -206,6 +244,9 @@ record 1 "list --all: a shared ref names the other copies" "$(grep -c '^    also
 record 1 "list --all: header counts a shared ref once" "$(grep -c '^Open needs across sessions (3):$' "$tmp/out")"
 record 1 "list --all: decisions header" "$(grep -c '^Decisions in this session (1):$' "$tmp/out")"
 record 1 "list --all: a need's text" "$(grep -c '^    Pick a design$' "$tmp/out")"
+record 1 "list --all: a need's Why line, above its text" "$(grep -A1 '^    Why: the www redesign$' "$tmp/out" | grep -c '^    Pick a design$')"
+record 0 "list --all: an entry with a non-string why is skipped" "$(grep -c 'a number for a why' "$tmp/out")"
+record 1 "list --all: an entry written without a Why line still lists" "$(grep -A1 '^  toolbox #212: merge it (22222222) · n1' "$tmp/out" | grep -c '^    Approve the permission prompt$')"
 record 0 "list --all: resolved needs left out" "$(grep -c 'Unlock 1Password\|done already' "$tmp/out")"
 record 0 "list --all: other sessions' decisions left out" "$(grep -c 'their decision' "$tmp/out")"
 
@@ -246,7 +287,7 @@ run 'first' add-need >/dev/null
 run 'second' add-need >/dev/null
 for batch in 1 2; do
 	for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-		(cd "$work" && printf 'need %s.%s' "$batch" "$i" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+		(cd "$work" && printf '%s\nneed %s.%s' "$WHY" "$batch" "$i" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 			CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" add-need >/dev/null 2>&1) &
 	done
 	run '' resolve "n$batch" --session "$sid" >/dev/null &
@@ -300,7 +341,7 @@ mkdir -p "$repo_dir"
 git -C "$repo_dir" init -q
 git -C "$repo_dir" remote add origin git@github.com:acme/widgets.git
 in_repo() { # in_repo <stdin> <arg>…: run as this session from $repo_dir
-	(cd "$repo_dir" && printf '%s' "$1" | env -i PATH="$PATH" HOME="$tmp/home" \
+	(cd "$repo_dir" && with_why "$1" "$2" | env -i PATH="$PATH" HOME="$tmp/home" \
 		CLAUDE_SESSION_LEDGER_DIR="$dir" CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" "${@:2}" >"$tmp/out" 2>"$tmp/err")
 	echo "exit $?"
 }
