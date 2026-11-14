@@ -44,13 +44,15 @@ and assemble what comes back up.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
   installs it; its skill says how). Record each decision the owner makes
   here, and each thing you stop for that only the owner can give, with its
-  exact unblock step, each under a Why line saying why the work exists.
-  Record a child's ping that it needs the owner
-  (`blocked: merge needs the owner`, a `declined:` line) as a need under the
-  child's PR ref, and your own `ready; needs the owner` stack as one, and
-  resolve each once the owner answers or the child pings `merged:`. When the
-  owner asks "status?", answer from `ledger.sh list --all` first, then verify
-  against the PRs.
+  exact unblock step, each under a Why line saying why the work exists, and
+  resolve each once the owner answers. Your own `ready; needs the owner`
+  stack is one, recorded under the epic's ref (`--ref '#<epic>'`) and
+  resolved by its id once the whole stack has merged, since FINISH resolves
+  needs by a single PR's ref. A child's need (`blocked: merge needs the
+  owner`, a `declined:` line) stays in the child's own ledger, which
+  `list --all` reads, so don't copy it into yours. When the owner asks
+  "status?", answer from `ledger.sh list --all` first, then verify against
+  the PRs.
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
   work files it and pings you — it never spawns it. You dedup (two children can
   file the same discovery), decide whether it belongs in *this* epic's DAG or
