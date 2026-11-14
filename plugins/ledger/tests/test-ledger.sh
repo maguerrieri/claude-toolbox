@@ -305,7 +305,7 @@ record "exit 1" "list: an unknown option" "$(run '' list --json)"
 
 # --- writes are atomic and serialized ---------------------------------------
 
-record "" "no temp files left behind (only ledgers and their lock files)" "$(ls -A "$dir" | grep -v -e '\.jsonl$' -e '^notes\.txt$' -e '^\..*\.jsonl\.lock$')"
+record "" "no temp files left behind (only ledgers and the lock file)" "$(ls -A "$dir" | grep -v -e '\.jsonl$' -e '^notes\.txt$' -e '^\.lock$')"
 
 # Twenty adds at once, twice over, with resolves among them: every entry
 # lands, numbered without a repeat. (A lock that could be deleted and remade
@@ -324,18 +324,18 @@ done
 record "42 42 2" "concurrent writes: none lost, ids unique, the resolves kept" \
 	"$(jq -s '"\(length) \([.[].id] | unique | length) \([.[] | select(.resolved_at)] | length)"' -r "$dir/$sid.jsonl")"
 
-# hold_lock <seconds>: hold this session's ledger lock from a background
+# hold_lock <seconds>: hold the ledger directory's lock from a background
 # process for <seconds>, as a write in progress does; sets holder to its pid.
 hold_lock() {
 	mkdir -p "$dir"
 	(
-		exec 9>>"$dir/.$sid.jsonl.lock"
+		exec 9>>"$dir/.lock"
 		perl -MFcntl=:flock -e 'open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
 		exec sleep "$1"
 	) &
 	holder=$!
 	# Until the lock is taken: a non-blocking try fails while it's held.
-	until ! perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; exit(flock($f, LOCK_EX | LOCK_NB) ? 0 : 1)' "$dir/.$sid.jsonl.lock"; do
+	until ! perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; exit(flock($f, LOCK_EX | LOCK_NB) ? 0 : 1)' "$dir/.lock"; do
 		sleep 0.05
 	done
 }
@@ -408,22 +408,35 @@ record "exit 0" "resolve --ref: no session id needed" \
 	"$(cd "$work" && env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		"$BASH" "$script" resolve --ref 'ABC-12' >/dev/null 2>&1; echo "exit $?")"
 
-# One ledger that can't be locked is reported and left as it was; the others
-# are still resolved, and the exit status says not every one was. (A lock
-# file that is a directory can't be opened.)
+# One ledger that can't be read is reported and left as it was; the others
+# are still resolved, and the exit status says not every one was. (Root reads
+# a mode-000 file anyway, so this needs another user.)
+if [ "$(id -u)" -ne 0 ]; then
+	reset
+	mkdir -p "$dir"
+	for owner in "$other" 44444444; do
+		printf '{"kind":"need","id":"n1","text":"t","ref":"acme/x#1","at":"2020-01-01T10:00:00Z"}\n' >"$dir/$owner.jsonl"
+	done
+	chmod 000 "$dir/44444444.jsonl"
+	record "exit 1" "resolve --ref: one ledger left unresolved" "$(run '' resolve --ref 'acme/x#1')"
+	record "$other: 1" "resolve --ref: stdout names the ledger it resolved" "$(cat "$tmp/out")"
+	record 1 "resolve --ref: stderr names the one it left" "$(grep -c '44444444 could not be read; it is unchanged$' "$tmp/err")"
+	record 1 "resolve --ref: and says not every one was" "$(grep -c 'left unresolved' "$tmp/err")"
+	record 0 "resolve --ref: never says nothing was written" "$(grep -c 'nothing written' "$tmp/err")"
+	chmod 644 "$dir/44444444.jsonl"
+	record "T none" "resolve --ref: the other ledger resolved, the unreadable one untouched" \
+		"$(ledger "$other" | tr '|' '\n' | jq -r .resolved_at) $(jq -r '.resolved_at // "none"' "$dir/44444444.jsonl")"
+fi
+
+# The lock is the directory's, so a write to one ledger waits on a write to
+# another.
 reset
-mkdir -p "$dir"
-for owner in "$other" 44444444; do
-	printf '{"kind":"need","id":"n1","text":"t","ref":"acme/x#1","at":"2020-01-01T10:00:00Z"}\n' >"$dir/$owner.jsonl"
-done
-mkdir "$dir/.44444444.jsonl.lock"
-record "exit 1" "resolve --ref: one ledger left unresolved" "$(run '' resolve --ref 'acme/x#1')"
-record "$other: 1" "resolve --ref: stdout names the ledger it resolved" "$(cat "$tmp/out")"
-record 1 "resolve --ref: stderr names the one it left" "$(grep -c '44444444 is unchanged$' "$tmp/err")"
-record 1 "resolve --ref: and says not every one was" "$(grep -c 'left unresolved' "$tmp/err")"
-record 0 "resolve --ref: never says nothing was written" "$(grep -c 'nothing written' "$tmp/err")"
-record "T none" "resolve --ref: the other ledger resolved, the locked one untouched" \
-	"$(ledger "$other" | tr '|' '\n' | jq -r .resolved_at) $(jq -r '.resolved_at // "none"' "$dir/44444444.jsonl")"
+run 'mine' add-need >/dev/null
+hold_lock 1
+started=$(date +%s)
+record "exit 0" "a held lock holds another session's write too" "$(run_as "$other" 'theirs' add-need)"
+record yes "another session's write waited for it" "$([ $(($(date +%s) - started)) -ge 1 ] && echo yes)"
+wait "$holder"
 
 # A ref is checked again once its repo is added: one that a write could store
 # is one resolve --ref takes.

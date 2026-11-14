@@ -45,6 +45,8 @@ dir="$HOME/.claude/session-ledger"
 
 [ -z "$session_id" ] || [ ! -f "$dir/$session_id.jsonl" ] || touch "$dir/$session_id.jsonl" 2>/dev/null
 
-# A ledger, a temp file a killed write left behind, or a lock file (which
-# every write touches, so one in use is never this old).
+# A ledger, or a temp file a killed write left behind (`.<ledger>.XXXXXX`).
+# The directory's one lock file, `.lock`, matches neither and is never
+# reaped: deleting a lock file a writer has just opened would let the next
+# writer lock a new file at the same path, and both would write at once.
 find "$dir" -maxdepth 1 -type f \( -name '*.jsonl' -o -name '.*.jsonl.*' \) -mtime +30 -delete 2>/dev/null || true
