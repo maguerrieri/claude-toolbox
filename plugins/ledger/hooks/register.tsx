@@ -54,7 +54,12 @@ async function refresh($: EngineInterface): Promise<void> {
   if (dir === undefined) {
     return
   }
-  const listed = await $.fs.list(dir).catch(() => [])
+  // A listing or a read that fails keeps what was last read, rather than
+  // showing the needs it couldn't read as gone.
+  const listed = await $.fs.list(dir).catch(() => undefined)
+  if (listed === undefined) {
+    return
+  }
   const ledgers: Record<string, Entry[]> = {}
   for (const file of listed) {
     const session = file.kind === 'file' ? sessionOf(file.name) : undefined
@@ -68,6 +73,9 @@ async function refresh($: EngineInterface): Promise<void> {
     }
     const text = await $.fs.read(`${dir}/${file.name}`).catch(() => undefined)
     if (text === undefined) {
+      if (known) {
+        ledgers[session] = known.entries
+      }
       continue
     }
     const entries = parseLedger(text)

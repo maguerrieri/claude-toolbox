@@ -67,30 +67,45 @@ type Seen = { runs: string[][]; toasts: string[]; lists: number }
 
 // The engine beneath the plugin: the files (those above by default), the
 // session "me", and a process runner that answers `claude agents`, and the
-// script's resolve with a refusal when `isResolveRefused`.
+// script's resolve with a refusal when `isResolveRefused`. `failing` makes
+// every listing after the first `lists`, or every read after the first
+// `reads`, throw; with `reads`, each listing gives the files a new mtime, so
+// every poll reads them again.
 function world(
   on: On,
   isResolveRefused = false,
   files: Record<string, string> = FILES,
+  failing: { lists?: number; reads?: number } = {},
 ): Seen & { clock: ReturnType<typeof mock.clock> } {
   const seen: Seen = { runs: [], toasts: [], lists: 0 }
+  let reads = 0
   mock.env(on, { HOME })
   const clock = mock.clock(on, { now: NOW })
   on('session.id', () => ({ value: 'me' }))
   on('fs.list', () => {
     seen.lists += 1
+    if (failing.lists !== undefined && seen.lists > failing.lists) {
+      throw new Error('EIO: the directory could not be listed')
+    }
 
     return {
       value: Object.entries(files).map(([name, text]) => ({
         name,
         kind: 'file' as const,
         size: text.length,
-        mtimeMs: 1,
+        mtimeMs: failing.reads === undefined ? 1 : seen.lists,
         isLink: false,
       })),
     }
   })
-  on('fs.read', (_, e) => ({ value: files[e.path.slice(DIR.length + 1)] ?? '' }))
+  on('fs.read', (_, e) => {
+    reads += 1
+    if (failing.reads !== undefined && reads > failing.reads) {
+      throw new Error('EIO: the file could not be read')
+    }
+
+    return { value: files[e.path.slice(DIR.length + 1)] ?? '' }
+  })
   on('process.run', (_, e) => {
     seen.runs.push([...e.argv])
     const isRefused = isResolveRefused && e.argv[0] === 'bash'
@@ -198,6 +213,29 @@ test('session names are not fetched while only this session has open needs', asy
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await seen.clock.advance(60_000)
   expect(seen.runs.filter(argv => argv[0] === 'claude')).toEqual([])
+})
+
+test('a listing that fails keeps the needs last read, rather than showing none', async ($, on) => {
+  const seen = world(on, false, FILES, { lists: 1 })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await seen.clock.advance(15_000)
+  expect(seen.lists).toBeGreaterThan(1)
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /open needs/ }))?.text).toBe('3 open needs ')
+  await ui.unmount()
+})
+
+test('a ledger read that fails keeps that ledger as last read', async ($, on) => {
+  const ledgerFiles = Object.keys(FILES).filter(name => name.endsWith('.jsonl')).length
+  const seen = world(on, false, FILES, { reads: ledgerFiles })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await seen.clock.advance(15_000)
+  expect(seen.lists).toBeGreaterThan(1)
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /open needs/ }))?.text).toBe('3 open needs ')
+  await ui.unmount()
 })
 
 test('a second session.start replaces the poll rather than adding one', async ($, on) => {

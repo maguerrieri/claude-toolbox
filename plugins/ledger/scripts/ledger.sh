@@ -227,6 +227,11 @@ fi
 [ -n "${CLAUDE_SESSION_LEDGER_DIR:-}${HOME:-}" ] || fail 'neither CLAUDE_SESSION_LEDGER_DIR nor HOME is set'
 dir="${CLAUDE_SESSION_LEDGER_DIR:-$HOME/.claude/session-ledger}"
 file="$dir/$sid.jsonl"
+# A directory that is there but can't be listed fails, rather than reading
+# as one with no ledgers, which would show every open need as gone.
+if [ -d "$dir" ] && { [ ! -r "$dir" ] || [ ! -x "$dir" ]; }; then
+	fail 'the ledger directory could not be read'
+fi
 
 # A bare #<n> becomes <owner>/<repo>#<n>, from the origin remote's URL
 # (git@host:owner/repo.git, https://host/owner/repo, ssh://…), where the

@@ -101,6 +101,25 @@ record 'export CLAUDE_LEDGER_ROOT=/plugins/led\ ger|export CLAUDE_SESSION_ID=min
 	"exports the plugin root, and the session id on a CLI without its own" "$(tr '\n' '|' <"$env_file" | sed 's/|$//')"
 record ".lock fresh.jsonl keep.txt mine.jsonl" "reaps month-old ledgers and temp files, keeps its own and the lock file" \
 	"$(ls -A "$ledgers" | tr '\n' ' ' | sed 's/ $//')"
+# The reaping runs under the directory's lock, and skips a turn when a write
+# holds it.
+: >"$ledgers/stale.jsonl"
+touch -t 202001010000 "$ledgers/stale.jsonl"
+(
+	exec 9>>"$ledgers/.lock"
+	perl -MFcntl=:flock -e 'open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
+	exec sleep 4
+) &
+holder=$!
+until ! perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; exit(flock($f, LOCK_EX | LOCK_NB) ? 0 : 1)' "$ledgers/.lock"; do
+	sleep 0.05
+done
+printf '%s' '{"session_id": "mine"}' | env -i PATH="$PATH" HOME="$home" "$BASH" "$start"
+record "yes" "a held lock skips the reaping" "$([ -f "$ledgers/stale.jsonl" ] && echo yes)"
+kill "$holder" 2>/dev/null
+wait "$holder" 2>/dev/null
+printf '%s' '{"session_id": "mine"}' | env -i PATH="$PATH" HOME="$home" "$BASH" "$start"
+record "no" "a free lock lets it reap" "$([ -f "$ledgers/stale.jsonl" ] && echo yes || echo no)"
 : >"$env_file"
 printf '%s' '{"session_id": "mine"}' |
 	env -i PATH="$PATH" HOME="$home" CLAUDE_ENV_FILE="$env_file" CLAUDE_CODE_SESSION_ID=mine CLAUDE_PLUGIN_ROOT=/p "$BASH" "$start"

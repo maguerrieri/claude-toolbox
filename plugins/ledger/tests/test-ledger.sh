@@ -302,6 +302,14 @@ record "exit 0" "list --all: no session id still lists" \
 		"$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
 record 0 "list --all: no session id marks no session as this one" "$(grep -c 'this session' "$tmp/out")"
 record "exit 1" "list: an unknown option" "$(run '' list --json)"
+# A directory there but unlistable fails, rather than reading as no needs.
+if [ "$(id -u)" -ne 0 ]; then
+	chmod 000 "$dir"
+	record "exit 1" "list --all: an unreadable directory fails" "$(run '' list --all)"
+	chmod 755 "$dir"
+	record 1 "list --all: an unreadable directory says so" "$(grep -c 'the ledger directory could not be read' "$tmp/err")"
+	record 0 "list --all: an unreadable directory claims no needs" "$(grep -c 'No session has an open need' "$tmp/out")"
+fi
 
 # --- writes are atomic and serialized ---------------------------------------
 
