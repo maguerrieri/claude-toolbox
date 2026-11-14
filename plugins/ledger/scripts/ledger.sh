@@ -40,30 +40,30 @@
 # empty or whitespace-only text, text over 4000 bytes, and control characters
 # (C0 and C1) other than tab and newline are refused.
 # A ref is letters, digits and # / _ . : -, starting with a letter, digit or
-# #, at most 100 bytes (#212, owner/repo#12, ABC-12). A bare #<n> names an
-# issue or PR of the checkout's own repo, and the same number in another repo
-# is another one, so it is written as <owner>/<repo>#<n>, read from the origin
-# remote where there is one. That way two sessions in one repo writing `#212`
-# record the same ref, and two repos' `#12` don't.
+# #, at most 200 bytes once qualified (#212, owner/repo#12, ABC-12). A bare
+# #<n> names an issue or PR of the checkout's own repo, and the same number in
+# another repo is another one, so it is written as <owner>/<repo>#<n>, read
+# from the origin remote where there is one. That way two sessions in one repo
+# writing `#212` record the same ref, and two repos' `#12` don't. Outside a
+# checkout of the ref's repo, pass the full <owner>/<repo>#<n>.
 #
 # A session writes its own ledger, keyed by its session id: the harness's
 # CLAUDE_CODE_SESSION_ID, else the CLAUDE_SESSION_ID this plugin's
-# SessionStart hook exports on older CLIs. Two writes reach another session's:
-# `resolve --session` (the full id, or a unique prefix of at least four
-# characters), the owner dismissing a need; and `resolve --ref`, which
-# resolves every open copy of a need (a child's, and its spawner's) once the
-# PR it names lands.
+# SessionStart hook exports on older CLIs. Each need lives only in the ledger
+# of the session that needs the owner; nobody copies it into another. Two
+# writes reach another session's: `resolve --session` (the full id, or a
+# unique prefix of at least four characters), the owner dismissing a need;
+# and `resolve --ref`, which resolves every open need under a PR in every
+# ledger once the PR lands.
 #
 # `list` prints this session's open needs, decisions and resolved needs,
 # newest first, each as its heading line, its Why line, then its text.
-# `list --all` prints the open needs of every session's ledger,
-# newest first, then this session's decisions. Open needs that share a ref are
-# one need recorded on its way up the spawn tree, so they're shown once, under
-# the first recorded, with an `also:` line naming the rest. Another session is
-# shown as `<name> (<short id>)`: its name where `claude agents --json --all`
-# lists it (given five seconds), else the directory it wrote from. The short
-# id, the session id's first eight characters, is `claude attach`'s handle and
-# a `resolve --session` prefix.
+# `list --all` prints the open needs of every session's ledger, newest first,
+# then this session's decisions. Another session is shown as
+# `<name> (<short id>)`: its name where `claude agents --json --all` lists it
+# (given five seconds, and asked only when another session has an open need),
+# else the directory it wrote from. The short id, the session id's first eight
+# characters, is `claude attach`'s handle and a `resolve --session` prefix.
 #
 # Every write holds the ledger's lock (flock, through perl) from its read to
 # its rename, goes to a temp file in the ledger directory, and is renamed over
@@ -71,7 +71,9 @@
 # never sees half of one.
 # Reads skip a line that isn't an entry (an object with a string kind, id,
 # text and at, and a string or null why, ref, cwd and resolved_at). Exits 0 on
-# success; exits 1 with the reason on stderr when nothing was written or read.
+# success; exits 1 with the reason on stderr when nothing was written or read,
+# or, for `resolve --ref`, when any ledger was left unresolved (stdout still
+# names each one it resolved).
 set -uo pipefail
 # Bytes, not characters: the 4000-byte limit and the control-character check
 # count bytes.
@@ -81,7 +83,7 @@ cmd=${1:-}
 
 fail() {
 	case "$cmd" in
-	add-decision | add-need | resolve) printf 'ledger %s: %s; nothing written\n' "$cmd" "$1" >&2 ;;
+	add-decision | add-need | resolve) printf 'ledger %s: %s%s\n' "$cmd" "$1" "${fail_note:-; nothing written}" >&2 ;;
 	*) printf 'ledger %s: %s\n' "${cmd:-(no subcommand)}" "$1" >&2 ;;
 	esac
 	exit 1
@@ -107,11 +109,11 @@ check_ref() {
 	case "$ref" in
 	'' | [!A-Za-z0-9#]* | *[!A-Za-z0-9#/_.:-]*) fail 'the ref is empty or not just letters, digits and # / _ . : - (#212, owner/repo#12, ABC-12)' ;;
 	esac
-	[ "${#ref}" -le 100 ] || fail 'the ref is over 100 bytes'
+	[ "${#ref}" -le 200 ] || fail 'the ref is over 200 bytes'
 }
 
 # Check every argument before touching anything.
-ref='' has_ref=no why='' text='' need='' session='' all=no
+ref='' has_ref=no why='' text='' need='' session='' all=no fail_note=''
 case "$cmd" in
 add-decision | add-need)
 	shift
@@ -240,6 +242,9 @@ case "$ref" in
 		owner=${rest##*[:/]}
 		if [ -n "$url" ] && id_ok "$repo" && id_ok "$owner"; then
 			ref="$owner/$repo$ref"
+			# Checked again with its repo, so `resolve --ref` takes every ref
+			# a write can store.
+			[ "${#ref}" -le 200 ] || fail 'the ref is over 200 bytes with its repo'
 		fi
 		;;
 	esac
@@ -396,16 +401,33 @@ add-decision | add-need)
 	;;
 resolve)
 	if [ "$has_ref" = yes ]; then
-		resolved=0
+		# A ledger that can't be read, locked or written is reported and left as
+		# it was, and the rest are still resolved: the exit status says that not
+		# every one was, and the lines on stdout name the ones that were.
+		resolved=0 failed=0
 		while IFS= read -r ledger; do
-			count=$(entries "$ledger" | jq -s --arg ref "$ref" '[.[] | select(.kind == "need" and .resolved_at == null and .ref == $ref)] | length') ||
-				fail "$ledger could not be read"
+			name=${ledger##*/}
+			name=${name%.jsonl}
+			if ! count=$(entries "$ledger" | jq -s --arg ref "$ref" '[.[] | select(.kind == "need" and .resolved_at == null and .ref == $ref)] | length'); then
+				printf 'ledger resolve: %s could not be read; it is unchanged\n' "$name" >&2
+				failed=$((failed + 1))
+				continue
+			fi
 			[ "$count" -gt 0 ] || continue
-			resolve_in "$ledger" '$e.ref == $ref'
-			owner=${ledger##*/}
-			printf '%s: %s\n' "${owner%.jsonl}" "$count"
-			resolved=$((resolved + count))
+			if (
+				fail_note="; $name is unchanged"
+				resolve_in "$ledger" '$e.ref == $ref'
+			); then
+				printf '%s: %s\n' "$name" "$count"
+				resolved=$((resolved + count))
+			else
+				failed=$((failed + 1))
+			fi
 		done < <(ledgers)
+		if [ "$failed" -gt 0 ]; then
+			printf 'ledger resolve: %s ledger(s) with the ref %s were left unresolved (the ones listed on stdout were resolved)\n' "$failed" "$ref" >&2
+			exit 1
+		fi
 		[ "$resolved" -gt 0 ] || printf 'ledger resolve: no open need has the ref %s\n' "$ref" >&2
 		exit 0
 	fi
@@ -452,9 +474,19 @@ list)
 			  end' || fail 'the ledger could not be read'
 		exit 0
 	fi
-	# Session names, where `claude agents` lists the session with one.
+	# Every ledger read by one jq, each entry tagged with its session.
+	files=()
+	while IFS= read -r ledger; do files+=("$ledger"); done < <(ledgers)
+	tagged=$(
+		[ "${#files[@]}" -eq 0 ] ||
+			jq -cR "$entry_filter"' | . + {session: (input_filename | split("/") | last | rtrimstr(".jsonl"))}' "${files[@]}"
+	) || fail 'the ledgers could not be read'
+	# Session names, where `claude agents` lists the session with one. Only
+	# another session's open need is labeled by name, so without one the CLI
+	# isn't run.
 	names='{}'
-	if command -v claude >/dev/null 2>&1; then
+	if command -v claude >/dev/null 2>&1 &&
+		printf '%s\n' "$tagged" | jq -e -s --arg me "$sid" 'any(.[]; .kind == "need" and .resolved_at == null and .session != $me)' >/dev/null 2>&1; then
 		listed=$(agents_json |
 			jq -c 'if type == "array"
 				then map(select((.sessionId | type) == "string" and (.name | type) == "string" and .name != "")
@@ -462,29 +494,14 @@ list)
 				else empty end' 2>/dev/null) &&
 			[ -n "$listed" ] && names=$listed
 	fi
-	# Every ledger read by one jq, each entry tagged with its session. Open needs
-	# that share a ref are one need recorded along the way up (a child's own,
-	# then its spawner's copy), so they're shown once: the first recorded,
-	# naming the others.
-	files=()
-	while IFS= read -r ledger; do files+=("$ledger"); done < <(ledgers)
-	{
-		[ "${#files[@]}" -eq 0 ] ||
-			jq -cR "$entry_filter"' | . + {session: (input_filename | split("/") | last | rtrimstr(".jsonl"))}' "${files[@]}"
-	} | jq -rs --argjson names "$names" --arg me "$sid" "$jq_defs"'
+	printf '%s\n' "$tagged" | jq -rs --argjson names "$names" --arg me "$sid" "$jq_defs"'
 		def who: if .session == $me then "this session"
 			elif ($names[.session] | type) == "string" then $names[.session] + " (" + .session[0:8] + ")"
 			else ((.cwd // "" | split("/") | map(select(. != "")) | last) // "?") + " (" + .session[0:8] + ")" end;
-		[.[] | select(.kind == "need" and .resolved_at == null)] as $open
-		| ([$open[] | select((.ref | type) != "string") | [.]]
-			+ ([$open[] | select((.ref | type) == "string")] | group_by(.ref))
-			| map(sort_by(.at, .session, num))
-			| sort_by((map(.at) | max), .[0].session, (.[0] | num)) | reverse) as $needs
+		([.[] | select(.kind == "need" and .resolved_at == null)] | sort_by(.at, .session, num) | reverse) as $needs
 		| ([.[] | select(.kind == "decision" and $me != "" and .session == $me)] | sort_by(.at, num) | reverse) as $decisions
 		| if ($needs | length) == 0 then "No session has an open need."
-		  else ("Open needs across sessions (\($needs | length)):"),
-			($needs[] | (.[0] | show([who])),
-				(if length > 1 then "    also: " + (.[1:] | map([who, .id] | map(clean) | join(" ")) | join(", ")) else empty end))
+		  else ("Open needs across sessions (\($needs | length)):"), ($needs[] | show([who]))
 		  end,
 		  ($decisions | section("Decisions in this session"; []))' || fail 'the ledgers could not be read'
 	;;

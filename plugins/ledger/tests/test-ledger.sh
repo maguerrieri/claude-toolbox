@@ -97,7 +97,7 @@ for ref in 'owner/repo#12' 'ABC-12' 'epic:40' '#7' 'x.y_z'; do
 	record "exit 0 $ref" "add: ref $ref accepted" "$(run t add-need --ref "$ref") $(jq -r .ref "$dir/$sid.jsonl")"
 done
 
-for bad in '' 'a b' '$(id)' '-x' 'a;b' "$(printf 'x%.0s' $(seq 101))"; do
+for bad in '' 'a b' '$(id)' '-x' 'a;b' "$(printf 'x%.0s' $(seq 201))"; do
 	reset
 	record "exit 1 none" "add: ref '${bad:0:12}' refused" "$(run t add-need --ref "$bad") $(ledger)"
 done
@@ -222,8 +222,8 @@ cat >"$dir/$other.jsonl" <<EOF
 {"kind":"decision","id":"d1","text":"their decision","at":"2020-01-01T10:01:00Z","cwd":"$tmp/work/repo-a"}
 {"kind":"need","id":"n2","text":"done already","at":"2020-01-01T10:02:00Z","cwd":"$tmp/work/repo-a","resolved_at":"2020-01-01T10:03:00Z"}
 EOF
-# repo-b's n2 shares this session's n1's ref, as a child's need and its
-# spawner's copy do: one need, shown once, under the first recorded.
+# repo-b's n2 shares this session's n1's ref, and is still its own need,
+# listed on its own.
 cat >"$dir/33333333-x.jsonl" <<EOF
 {"kind":"need","id":"n1","why":"the www redesign","text":"Pick a design","at":"2020-01-01T09:00:00Z","cwd":"$tmp/work/repo-b"}
 {"kind":"need","id":"n7","why":5,"text":"a number for a why","at":"2020-01-01T09:30:00Z"}
@@ -236,12 +236,13 @@ EOF
 printf 'ignored\n' >"$dir/notes.txt"
 record "exit 0" "list --all" "$(run '' list --all)"
 labels=$(grep -E '^  [^ ]' "$tmp/out" | sed -E 's/^  //; s/ · [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}//')
-record "repo-b (33333333) · n2 · #212
+record "this session · n1 · #212
 toolbox #212: merge it (22222222) · n1
 repo-b (33333333) · n1
+repo-b (33333333) · n2 · #212
 d1 · #208" "list --all: open needs across sessions, newest first, then this session's decisions" "$labels"
-record 1 "list --all: a shared ref names the other copies" "$(grep -c '^    also: this session n1$' "$tmp/out")"
-record 1 "list --all: header counts a shared ref once" "$(grep -c '^Open needs across sessions (3):$' "$tmp/out")"
+record 0 "list --all: needs under one ref aren't merged" "$(grep -c 'also:' "$tmp/out")"
+record 1 "list --all: header counts every open need" "$(grep -c '^Open needs across sessions (4):$' "$tmp/out")"
 record 1 "list --all: decisions header" "$(grep -c '^Decisions in this session (1):$' "$tmp/out")"
 record 1 "list --all: a need's text" "$(grep -c '^    Pick a design$' "$tmp/out")"
 record 1 "list --all: a need's Why line, above its text" "$(grep -A1 '^    Why: the www redesign$' "$tmp/out" | grep -c '^    Pick a design$')"
@@ -249,6 +250,25 @@ record 0 "list --all: an entry with a non-string why is skipped" "$(grep -c 'a n
 record 1 "list --all: an entry written without a Why line still lists" "$(grep -A1 '^  toolbox #212: merge it (22222222) · n1' "$tmp/out" | grep -c '^    Approve the permission prompt$')"
 record 0 "list --all: resolved needs left out" "$(grep -c 'Unlock 1Password\|done already' "$tmp/out")"
 record 0 "list --all: other sessions' decisions left out" "$(grep -c 'their decision' "$tmp/out")"
+
+# `claude agents` is asked only when another session has an open need, which
+# its names label.
+mkdir -p "$tmp/bin-count"
+printf '#!/bin/sh\ntouch "%s/claude-ran"\nexit 1\n' "$tmp" >"$tmp/bin-count/claude"
+chmod +x "$tmp/bin-count/claude"
+list_counting() { # list_counting: list --all through the counting claude; prints whether it ran
+	rm -f "$tmp/claude-ran"
+	(cd "$work" && env -i PATH="$tmp/bin-count:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >/dev/null 2>&1)
+	[ -f "$tmp/claude-ran" ] && echo ran || echo "not run"
+}
+record ran "list --all: another session's need asks claude agents" "$(list_counting)"
+mv "$dir" "$tmp/ledger-kept"
+mkdir -p "$dir"
+cp "$tmp/ledger-kept/$sid.jsonl" "$dir/"
+record "not run" "list --all: only this session's needs don't" "$(list_counting)"
+rm -rf "$dir"
+mv "$tmp/ledger-kept" "$dir"
 
 # A claude whose listing fails leaves every session named by its directory.
 mkdir -p "$tmp/bin-broken"
@@ -360,10 +380,10 @@ record "#12" "add: outside a checkout, the ref as given" "$(jq -r 'select(.id ==
 
 # --- resolve --ref -----------------------------------------------------------
 
-# The child's need and its spawner's copy, under the same ref, are both
-# resolved; another repo's #12, and a need already resolved, are left alone.
+# Open needs under the same ref in two ledgers (a hand-back and a blocked: one) are
+# both resolved; another repo's #12, and a need already resolved, are left alone.
 cat >"$dir/$other.jsonl" <<EOF
-{"kind":"need","id":"n1","text":"copy of acme #12","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","cwd":"$repo_dir"}
+{"kind":"need","id":"n1","text":"blocked on acme #12","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","cwd":"$repo_dir"}
 {"kind":"need","id":"n2","text":"done","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","resolved_at":"2020-01-01T11:00:00Z"}
 EOF
 record "exit 0" "resolve --ref: every open copy" "$(in_repo '' resolve --ref '#12')"
@@ -379,5 +399,30 @@ record "exit 1" "resolve --ref: with a need id" "$(run '' resolve --ref '#12' n1
 record "exit 0" "resolve --ref: no session id needed" \
 	"$(cd "$work" && env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		"$BASH" "$script" resolve --ref 'ABC-12' >/dev/null 2>&1; echo "exit $?")"
+
+# One ledger that can't be locked is reported and left as it was; the others
+# are still resolved, and the exit status says not every one was. (A lock
+# file that is a directory can't be opened.)
+reset
+mkdir -p "$dir"
+for owner in "$other" 44444444; do
+	printf '{"kind":"need","id":"n1","text":"t","ref":"acme/x#1","at":"2020-01-01T10:00:00Z"}\n' >"$dir/$owner.jsonl"
+done
+mkdir "$dir/.44444444.jsonl.lock"
+record "exit 1" "resolve --ref: one ledger left unresolved" "$(run '' resolve --ref 'acme/x#1')"
+record "$other: 1" "resolve --ref: stdout names the ledger it resolved" "$(cat "$tmp/out")"
+record 1 "resolve --ref: stderr names the one it left" "$(grep -c '44444444 is unchanged$' "$tmp/err")"
+record 1 "resolve --ref: and says not every one was" "$(grep -c 'left unresolved' "$tmp/err")"
+record 0 "resolve --ref: never says nothing was written" "$(grep -c 'nothing written' "$tmp/err")"
+record "T none" "resolve --ref: the other ledger resolved, the locked one untouched" \
+	"$(ledger "$other" | tr '|' '\n' | jq -r .resolved_at) $(jq -r '.resolved_at // "none"' "$dir/44444444.jsonl")"
+
+# A ref is checked again once its repo is added: one that a write could store
+# is one resolve --ref takes.
+long=$(printf 'r%.0s' $(seq 197))
+git -C "$repo_dir" remote set-url origin "git@github.com:acme/$long.git"
+reset
+record "exit 1 none" "add: a ref over 200 bytes with its repo" "$(in_repo 'x' add-need --ref '#12') $(ledger)"
+record 1 "add: a long qualified ref says so" "$(grep -c 'over 200 bytes with its repo' "$tmp/err")"
 
 finish

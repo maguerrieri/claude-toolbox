@@ -4,7 +4,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ageOf, parseLedger, viewOf } from '../hooks/model'
+import { ageOf, hasOthersNeed, parseLedger, viewOf } from '../hooks/model'
 
 const HOME = '/home/u'
 const DIR = `${HOME}/.claude/session-ledger`
@@ -13,8 +13,8 @@ const NOW = Date.parse('2026-10-27T12:00:00Z')
 const line = (entry: Record<string, string>): string => JSON.stringify(entry)
 
 // Three sessions' ledgers: this one ("me"), one `claude agents` names, and one
-// it doesn't, plus a file that isn't a ledger. Third's n3 is its copy of
-// other's n1 (the same ref), as a spawner records a child's need.
+// it doesn't, plus a file that isn't a ledger. Third's n3 is a different need
+// under other's n1's ref, and each is shown and resolved on its own.
 const FILES: Record<string, string> = {
   'me.jsonl': [
     line({ kind: 'decision', id: 'd1', why: 'status answers get rebuilt every time', text: 'Ship it as its own plugin', ref: '#208', at: '2026-10-27T11:00:00Z', cwd: '/r/toolbox' }),
@@ -26,7 +26,7 @@ const FILES: Record<string, string> = {
   ].join('\n'),
   'third.jsonl': [
     line({ kind: 'need', id: 'n2', text: 'Pick a design', at: '2026-10-27T09:00:00Z', cwd: '/r/www' }),
-    line({ kind: 'need', id: 'n3', text: 'Child other: merge #212', ref: '#212', at: '2026-10-27T11:55:00Z', cwd: '/r/www' }),
+    line({ kind: 'need', id: 'n3', why: 'the www redesign', text: 'Approve the Bash prompt', ref: '#212', at: '2026-10-27T11:55:00Z', cwd: '/r/www' }),
   ].join('\n'),
   'notes.txt': 'ignored',
 }
@@ -65,10 +65,14 @@ const PANE = {
 // how many times the ledger directory was listed.
 type Seen = { runs: string[][]; toasts: string[]; lists: number }
 
-// The engine beneath the plugin: the files above, the session "me", and a
-// process runner that answers `claude agents`, and the script's resolve with
-// a refusal when `isResolveRefused`.
-function world(on: On, isResolveRefused = false): Seen & { clock: ReturnType<typeof mock.clock> } {
+// The engine beneath the plugin: the files (those above by default), the
+// session "me", and a process runner that answers `claude agents`, and the
+// script's resolve with a refusal when `isResolveRefused`.
+function world(
+  on: On,
+  isResolveRefused = false,
+  files: Record<string, string> = FILES,
+): Seen & { clock: ReturnType<typeof mock.clock> } {
   const seen: Seen = { runs: [], toasts: [], lists: 0 }
   mock.env(on, { HOME })
   const clock = mock.clock(on, { now: NOW })
@@ -77,7 +81,7 @@ function world(on: On, isResolveRefused = false): Seen & { clock: ReturnType<typ
     seen.lists += 1
 
     return {
-      value: Object.entries(FILES).map(([name, text]) => ({
+      value: Object.entries(files).map(([name, text]) => ({
         name,
         kind: 'file' as const,
         size: text.length,
@@ -86,7 +90,7 @@ function world(on: On, isResolveRefused = false): Seen & { clock: ReturnType<typ
       })),
     }
   })
-  on('fs.read', (_, e) => ({ value: FILES[e.path.slice(DIR.length + 1)] ?? '' }))
+  on('fs.read', (_, e) => ({ value: files[e.path.slice(DIR.length + 1)] ?? '' }))
   on('process.run', (_, e) => {
     seen.runs.push([...e.argv])
     const isRefused = isResolveRefused && e.argv[0] === 'bash'
@@ -115,8 +119,8 @@ test('the band counts the open needs and shows the newest, on each surface', asy
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect((await ui.find({ type: 'Text', text: /open needs/ }))?.text).toBe('2 open needs ')
-    expect((await ui.find({ type: 'Text', text: /212/ }))?.text).toBe('toolbox #212: merge it (other): PR #212 needs review ')
+    expect((await ui.find({ type: 'Text', text: /open needs/ }))?.text).toBe('3 open needs ')
+    expect((await ui.find({ type: 'Text', text: /Bash/ }))?.text).toBe('www (third): Approve the Bash prompt ')
     await ui.unmount()
   }
 })
@@ -136,20 +140,23 @@ test('Hide quiets the band until the open needs change', async ($, on) => {
   await ui.unmount()
 })
 
-test('the pane lists every open need once and this session\'s decisions, and Resolve resolves every copy', async ($, on) => {
+test('the pane lists every open need and this session\'s decisions, and Resolve resolves the one pressed', async ($, on) => {
   const seen = world(on)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /^Open needs/ }))?.text).toBe('Open needs (2)')
+    expect((await ui.find({ type: 'Text', text: /^Open needs/ }))?.text).toBe('Open needs (3)')
     expect((await ui.find({ type: 'Text', text: /^toolbox/ }))?.text).toBe('toolbox #212: merge it (other) · n1 · #212 · 10m')
+    // A different need under the same ref is a row of its own.
+    expect((await ui.find({ type: 'Text', text: /· n3 ·/ }))?.text).toBe('www (third) · n3 · #212 · 5m')
+    expect((await ui.find({ type: 'Text', text: /^Approve/ }))?.text).toBe('Approve the Bash prompt')
+    expect((await ui.find({ type: 'Text', text: /· n2 ·/ }))?.text).toBe('www (third) · n2 · 3h')
     expect((await ui.find({ type: 'Text', text: /^Why: planners/ }))?.text).toBe('Why: planners stall on prompts')
     expect((await ui.find({ type: 'Text', text: /^Why: status/ }))?.text).toBe('Why: status answers get rebuilt every time')
     // A need recorded without a Why line (www's n2) shows none.
-    expect((await ui.findAll({ type: 'Text', text: /^Why:/ })).length).toBe(2)
-    expect((await ui.find({ type: 'Text', text: /^also/ }))?.text).toBe('also: www (third) n3')
-    expect((await ui.find({ type: 'Text', text: /^www/ }))?.text).toBe('www (third) · n2 · 3h')
+    expect((await ui.findAll({ type: 'Text', text: /^Why:/ })).length).toBe(3)
+    expect(await ui.find({ type: 'Text', text: /^also/ })).toBeUndefined()
     expect((await ui.find({ type: 'Text', text: /^Decisions/ }))?.text).toBe('Decisions in this session (1)')
     expect((await ui.find({ type: 'Text', text: /^d1/ }))?.text).toBe('d1 · #208 · 1h')
     expect(await ui.find({ type: 'Text', text: /1Password/ })).toBeUndefined()
@@ -159,10 +166,7 @@ test('the pane lists every open need once and this session\'s decisions, and Res
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'resolve:other:n1' })
   const resolves = seen.runs.filter(argv => argv[0] === 'bash')
-  expect(resolves.map(argv => argv.slice(2))).toEqual([
-    ['resolve', 'n1', '--session', 'other'],
-    ['resolve', 'n3', '--session', 'third'],
-  ])
+  expect(resolves.map(argv => argv.slice(2))).toEqual([['resolve', 'n1', '--session', 'other']])
   expect(resolves[0]?.[1]?.endsWith('/scripts/ledger.sh')).toBe(true)
   expect(seen.toasts).toEqual([])
   await ui.unmount()
@@ -178,6 +182,22 @@ test('a Resolve the script refuses says why', async ($, on) => {
     "Couldn't resolve www (third) n2: ledger resolve: the ledger has no need n1; nothing written",
   ])
   await ui.unmount()
+})
+
+test('session names are fetched while another session has an open need', async ($, on) => {
+  const seen = world(on, false, { 'me.jsonl': FILES['me.jsonl'] ?? '', 'third.jsonl': FILES['third.jsonl'] ?? '' })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await seen.clock.advance(60_000)
+  expect(seen.runs.some(argv => argv[0] === 'claude')).toBe(true)
+})
+
+test('session names are not fetched while only this session has open needs', async ($, on) => {
+  const seen = world(on, false, {
+    'me.jsonl': line({ kind: 'need', id: 'n2', why: 'a goal', text: 'Only mine', at: '2026-10-27T11:00:00Z' }),
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await seen.clock.advance(60_000)
+  expect(seen.runs.filter(argv => argv[0] === 'claude')).toEqual([])
 })
 
 test('a second session.start replaces the poll rather than adding one', async ($, on) => {
@@ -200,12 +220,15 @@ test('the model skips lines that are not entries and orders newest first', async
 
   const view = viewOf(ledgers, 'me', { other: 'toolbox #212: merge it' })
   expect(view.needs.map(need => `${need.label} ${need.id}`)).toEqual([
+    'www (third) n3',
     'toolbox #212: merge it (other) n1',
     'www (third) n2',
   ])
-  expect(view.needs[0]?.also).toEqual([{ session: 'third', label: 'www (third)', id: 'n3' }])
+  expect(hasOthersNeed(ledgers, 'me')).toBe(true)
+  expect(hasOthersNeed({ me: parseLedger('{"kind":"need","id":"n1","text":"x","at":"t"}') }, 'me')).toBe(false)
+  expect(hasOthersNeed({ other: parseLedger('{"kind":"need","id":"n1","text":"x","at":"t","resolved_at":"t"}') }, 'me')).toBe(false)
   expect(view.decisions.map(decision => decision.id)).toEqual(['d1'])
-  expect(viewOf(ledgers, 'other', {}).needs[0]?.label).toBe('this session')
+  expect(viewOf(ledgers, 'other', {}).needs.find(need => need.session === 'other')?.label).toBe('this session')
   expect(parseLedger('{"kind":"need","id":"n1","text":"x\\u001b[31m","at":"t"}')[0]?.text).toBe('x\u001b[31m')
   expect(viewOf({ s: parseLedger('{"kind":"need","id":"n1","text":"x\\u001b[31m","at":"t"}') }, 'me', {}).needs[0]?.text).toBe('x?[31m')
   expect(viewOf({ s: parseLedger('{"kind":"need","id":"n1","text":"x\u009b2J","at":"t"}') }, 'me', {}).needs[0]?.text).toBe('x?2J')

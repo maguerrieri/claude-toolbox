@@ -41,14 +41,21 @@ anywhere durable:
   session wrote from, so a reader can name a session that `claude agents`
   doesn't list (an interactive one). A bare `#<n>` ref is written as
   `<owner>/<repo>#<n>` from the checkout's origin, so a repo's sessions agree
-  on a ref and two repos' `#12` stay apart.
-- **A session writes its own ledger.** A child's `blocked:` ping becomes a
-  need in the spawner's ledger because the spawner records it there. Two
-  writes reach another session's: `resolve --session`, the owner dismissing a
-  need (the pane's Resolve button, `/ledger resolve`); and `resolve --ref`,
-  which FINISH runs when a PR lands, resolving the child's need and every
-  spawner's copy at once. Every write goes through a temp file and a rename,
-  so a reader never sees half a line.
+  on a ref and two repos' `#12` stay apart. Outside such a checkout a bare ref
+  stays bare, so FINISH spells out `<owner>/<repo>#<pr>`.
+- **A session writes its own ledger, and a need lives only in the ledger of
+  the session that needs the owner.** A spawner doesn't copy a child's
+  `blocked:` into its own: `list --all` and the mod read every local ledger,
+  so the child's need already reaches the "status?" answer of the session the
+  owner talks to. (The first version did copy it up the tree and showed open
+  needs that shared a ref as one row. The self-review on the rebased PR found
+  that this also merged two different needs under one PR, hiding the second
+  one's text, and that Resolve then dismissed both.) Two writes reach another
+  session's: `resolve --session`, the owner dismissing a need (the pane's
+  Resolve button, `/ledger resolve`); and `resolve --ref`, which FINISH runs
+  when a PR lands, resolving every open need under the PR in every ledger.
+  Every write goes through a temp file and a rename, so a reader never sees
+  half a line.
 - **Every entry opens with a Why line** (the owner's request on PR #272,
   2026-11-14): `Why: <history and goal>`, one short line on why the work the
   entry is about exists, since a small in-the-weeds issue is easy to forget
@@ -73,13 +80,12 @@ anywhere durable:
   drift apart.
 - **Reader: a mod plus `/ledger`.** The mod (a hooks module in the same plugin)
   polls the ledger directory, joins session names from
-  `claude agents --json --all`, and draws a one-line band above the prompt
-  while any session has an open need, and a pane (`/ledger-pane`) listing open
-  needs across every local session plus this session's recent decisions, each
-  need with a Resolve button. `/ledger` prints the same through
-  `ledger.sh list --all` for a session without mods. Open needs that share a
-  ref (a child's need and its spawner's copy) are one row in both, so a
-  bubbled need isn't counted once per tier.
+  `claude agents --json --all` (asked only while another session has an open
+  need, since names label only those), and draws a one-line band above the
+  prompt while any session has an open need, and a pane (`/ledger-pane`)
+  listing open needs across every local session plus this session's recent
+  decisions, each need with a Resolve button. `/ledger` prints the same
+  through `ledger.sh list --all` for a session without mods.
 - **"status?" reads the ledger first.** The planner and coordinator charters
   answer from `ledger.sh list --all` and verify against GitHub, instead of
   sweeping first.

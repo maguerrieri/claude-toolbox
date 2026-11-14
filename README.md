@@ -66,8 +66,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   mod in the same plugin shows every local session's open needs at a glance:
   a band above the prompt while any is open, and a pane
   (`/ledger-pane`) with a Resolve button per need and this session's latest
-  decisions. `ticket-workflow`'s charters record into it, bubble children's
-  needs up to the planner, and answer "status?" from it first. Local sessions
+  decisions. `ticket-workflow`'s sessions record into it, and its planners and
+  coordinators answer "status?" from every session's needs first. Local sessions
   only: the ledgers are files under `~/.claude/session-ledger/`.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
