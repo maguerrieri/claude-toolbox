@@ -155,58 +155,39 @@ const byNewest = (
   return numberOf(b.id) - numberOf(a.id)
 }
 
-type OpenNeed = Omit<LedgerNeed, 'also'>
-
-// Groups of open needs, each oldest first, newest first: by the newest time
-// in the group, then by its first need's session and id.
-const byNewestGroup = (a: readonly OpenNeed[], b: readonly OpenNeed[]): number => {
-  const latest = (group: readonly OpenNeed[]): string => group.reduce((at, need) => (need.at > at ? need.at : at), '')
-  if (latest(a) !== latest(b)) {
-    return latest(a) < latest(b) ? 1 : -1
-  }
-
-  return byNewest({ ...(a[0] as OpenNeed), at: '' }, { ...(b[0] as OpenNeed), at: '' })
-}
+/** Whether any ledger but <me>'s has an open need, which only a session name labels. */
+export const hasOthersNeed = (ledgers: Readonly<Record<string, readonly Entry[]>>, me: string): boolean =>
+  Object.entries(ledgers).some(
+    ([session, entries]) => session !== me && entries.some(entry => entry.kind === 'need' && entry.resolved_at === undefined),
+  )
 
 /**
- * The view the pane and band draw: every ledger's open needs, and this
- * session's latest ten decisions. Open needs that share a ref are one need
- * recorded on its way up the spawn tree, so they're one row: the first
- * recorded, naming the rest, ordered by the newest of them.
+ * The view the pane and band draw: every ledger's open needs, each in the
+ * ledger of the session that needs the owner, and this session's latest ten
+ * decisions.
  */
 export const viewOf = (
   ledgers: Readonly<Record<string, readonly Entry[]>>,
   me: string,
   names: Readonly<Record<string, string>>,
 ): LedgerView => {
-  const groups = new Map<string, OpenNeed[]>()
-  for (const [session, entries] of Object.entries(ledgers)) {
-    for (const entry of entries) {
-      if (entry.kind !== 'need' || entry.resolved_at !== undefined) {
-        continue
-      }
-      const need: OpenNeed = {
-        session,
-        label: labelOf(session, me, names, entry.cwd),
-        id: entry.id,
-        ...whyOf(entry.why),
-        text: clean(entry.text),
-        ...(entry.ref === undefined ? {} : { ref: clean(entry.ref) }),
-        at: entry.at,
-      }
-      // A need without a ref is a group of its own.
-      const key = entry.ref === undefined ? `\0${session}\0${entry.id}` : `ref\0${entry.ref}`
-      groups.set(key, [...(groups.get(key) ?? []), need])
-    }
-  }
-  const needs = [...groups.values()]
-    // Oldest first within a group, so the first recorded leads it.
-    .map(group => [...group].sort(byNewest).reverse())
-    .sort(byNewestGroup)
-    .map(([first, ...rest]): LedgerNeed => ({
-      ...(first as OpenNeed),
-      also: rest.map(({ session, label, id }) => ({ session, label, id })),
-    }))
+  const needs: LedgerNeed[] = Object.entries(ledgers)
+    .flatMap(([session, entries]) =>
+      entries
+        .filter(entry => entry.kind === 'need' && entry.resolved_at === undefined)
+        .map(
+          (entry): LedgerNeed => ({
+            session,
+            label: labelOf(session, me, names, entry.cwd),
+            id: entry.id,
+            ...whyOf(entry.why),
+            text: clean(entry.text),
+            ...(entry.ref === undefined ? {} : { ref: clean(entry.ref) }),
+            at: entry.at,
+          }),
+        ),
+    )
+    .sort(byNewest)
   const decisions: LedgerDecision[] = (ledgers[me] ?? [])
     .filter(entry => entry.kind === 'decision')
     .map(entry => ({
@@ -222,10 +203,7 @@ export const viewOf = (
 
 /** The key the band's Hide remembers: the open needs it was hidden for. */
 export const needsKey = (view: LedgerView): string =>
-  view.needs
-    .flatMap(need => [need, ...need.also])
-    .map(copy => `${copy.session}:${copy.id}`)
-    .join(',')
+  view.needs.map(need => `${need.session}:${need.id}`).join(',')
 
 /** How long ago <at> was, from <nowMs>: `now`, `5m`, `3h`, `2d`. */
 export const ageOf = (at: string, nowMs: number): string => {

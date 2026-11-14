@@ -1,7 +1,7 @@
 // The ledger mod's state contract: what its pane and band draw from.
 
-/** Where an open need is recorded: a session's ledger, and the need's id. */
-export type LedgerCopy = {
+/** An open need, as the pane and band show it. */
+export type LedgerNeed = {
   /** The session whose ledger holds it (the file's name less `.jsonl`). */
   session: string
   /**
@@ -10,20 +10,12 @@ export type LedgerCopy = {
    */
   label: string
   id: string
-}
-
-/**
- * An open need, as the pane and band show it: the first recorded, and any
- * other open need with the same ref (its copies up the spawn tree).
- */
-export type LedgerNeed = LedgerCopy & {
   /** One short line of history and goal: why the work exists (absent in older entries). */
   why?: string
   text: string
   ref?: string
   /** ISO-8601 UTC, when it was recorded. */
   at: string
-  also: LedgerCopy[]
 }
 
 /** A decision of this session's ledger. */
@@ -37,7 +29,7 @@ export type LedgerDecision = {
 }
 
 export type LedgerView = {
-  /** Every session's open needs, a shared ref's once, newest first. */
+  /** Every session's open needs, newest first. */
   needs: LedgerNeed[]
   /** This session's decisions, newest first, the latest ten. */
   decisions: LedgerDecision[]

@@ -1,6 +1,6 @@
 ---
 name: ledger
-description: 'Use when instructions (a ticket-workflow charter or step, a briefing) or the owner ask this session to record a decision the owner made or something it needs from the owner, when a child session pings that it needs the owner, or when the owner asks "status?" or what needs them. Keeps the per-session ledger that the ledger mod and /ledger show across every local session.'
+description: 'Use when instructions (a ticket-workflow charter or step, a briefing) or the owner ask this session to record a decision the owner made or something it needs from the owner, or when the owner asks "status?" or what needs them. Keeps the per-session ledger that the ledger mod and /ledger show across every local session.'
 ---
 
 # Ledger: decisions made, and what a session needs from the owner
@@ -39,18 +39,18 @@ entry's own text goes on the lines after it.
   the session: `review PR #212, then claude attach 5864ecfd and say finish`,
   `approve the Bash prompt in claude attach 5864ecfd`. Record each need once:
   check `list` before adding one that may already be open.
-- **A child's need**, when a session you spawned pings that it needs the owner
-  (`blocked: merge needs the owner`, a `declined: … needs the owner` line, a
-  stack `ready; needs the owner`). Record it as a need of yours, naming the
-  child and its unblock step, with the child's PR as `--ref` (`'#212'`) and
-  the Why line of the work you spawned it for. That
-  puts it in the ledger of the session the owner talks to, so a "status?"
-  there has it, and the shared ref lets the listings show the child's need and
-  your copy once, as one row naming both.
-- **Resolve a need** once the owner has answered: they replied, approved,
-  merged, or the child pinged `merged:` or `resumed:`. Resolve a need that no
-  longer applies too (its PR closed, the plan changed). When a PR lands,
-  `resolve --ref` resolves every open need under it, in every local ledger.
+- **Not a child's need.** A need lives only in the ledger of the session that
+  needs the owner. When a session you spawned pings that it needs the owner
+  (`blocked: merge needs the owner`, a `declined: … needs the owner` line),
+  that child records the need itself, and `list --all` and the mod read every
+  local ledger, so it already reaches your "status?" answer. Don't copy it
+  into yours: a copy would show the same need twice. What you stop for
+  yourself, such as a whole stack that's ready for the owner, is yours to
+  record.
+- **Resolve a need** once the owner has answered: they replied, approved or
+  merged. Resolve a need that no longer applies too (its PR closed, the plan
+  changed). When a PR lands, `resolve --ref` resolves every open need under
+  it, in every local ledger.
 
 ## When to read
 
@@ -84,7 +84,8 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
   is optional (an issue or PR: `#212`, `owner/repo#12`, `ABC-12`). A bare
   `#212` is written as `owner/repo#212`, from the checkout's origin remote, so
   every session in one repo records the same ref and two repos' `#12` don't
-  collide. The first line must be the Why line, `Why:` and then at most 200
+  collide. Outside a checkout of the ref's repo, a bare `#212` stays as it is,
+  so there pass the full `owner/repo#212`. The first line must be the Why line, `Why:` and then at most 200
   bytes; it's stored as the entry's `why`, and the listings print it above the
   text. The text after it is at most 4000 bytes. Neither may hold a control
   character but tab and newline.
@@ -93,13 +94,15 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
   session's, which is for the owner dismissing a need whose session is gone,
   never for a need that session can still answer itself.
 - `resolve --ref <ref>` resolves every open need with that ref in every local
-  ledger: the child's own and each spawner's copy. It's for a PR that landed
-  (ticket-workflow's FINISH runs it), since the merge answers all of them.
+  ledger: the hand-back's, and any `blocked:` one. It's for a PR that landed
+  (ticket-workflow's FINISH runs it), since the merge answers all of them. It
+  prints one line per ledger it resolved; if any ledger couldn't be resolved,
+  it says which on stderr and exits 1, and the ledgers it printed were still
+  resolved.
 - `list` prints this session's open needs, decisions and resolved needs;
   `list --all` prints every session's open needs and this session's decisions.
-  Open needs that share a ref are one row there, under the first recorded,
-  with an `also:` line naming the other copies. The pane's Resolve resolves
-  every copy; `resolve` resolves one, so resolve the copy in your own ledger.
+  Each need is its own row, even when two share a ref, and the pane's Resolve
+  resolves the one pressed.
 - A body line that is exactly `LEDGER_EOF` would end the heredoc early: use
   another delimiter, the same word in both places. Don't also pipe into the
   command: under zsh a pipe and a heredoc on one command both feed stdin.

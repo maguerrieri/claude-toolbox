@@ -1,14 +1,15 @@
 // The ledger mod: a band above the prompt while any local session has an open
 // need, and a pane (/ledger-pane) listing every session's open needs, each
-// with a Resolve button, and this session's latest decisions. It reads the
-// ledger files scripts/ledger.sh writes, every 15 seconds, and names other
-// sessions from `claude agents --json --all`. It writes only through the
-// script (Resolve), so the files keep one writer's format.
+// under its Why line and with a Resolve button, and this session's latest
+// decisions. It reads the ledger files scripts/ledger.sh writes, every 15
+// seconds, and names other sessions from `claude agents --json --all` while
+// one of them has an open need. It writes only through the script (Resolve),
+// so the files keep one writer's format.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { LedgerCopy, LedgerNeed, LedgerView } from '../types'
-import { EMPTY_VIEW, ageOf, firstLine, namesOf, needsKey, parseLedger, sessionOf, viewOf } from './model'
+import type { LedgerNeed, LedgerView } from '../types'
+import { EMPTY_VIEW, ageOf, firstLine, hasOthersNeed, namesOf, needsKey, parseLedger, sessionOf, viewOf } from './model'
 import type { Entry } from './model'
 
 const PANE = 'ledger'
@@ -75,7 +76,9 @@ async function refresh($: EngineInterface): Promise<void> {
 
   const me = await $.session.id()
   const now = await $.clock.now()
-  if (now - namesAt >= NAMES_MS) {
+  // Names label only another session's open need, so with none the CLI isn't
+  // run (a session per terminal would otherwise each run it every minute).
+  if (now - namesAt >= NAMES_MS && hasOthersNeed(ledgers, me)) {
     namesAt = now
     const agents = await $.process
       .run(['claude', 'agents', '--json', '--all'], { timeoutMs: 10_000 })
@@ -103,32 +106,22 @@ async function openPane($: EngineInterface): Promise<void> {
   await $.ui.open({ id: PANE, title: 'Ledger' })
 }
 
-// The owner's dismissal of a need and every copy of it, through the script
-// like every other write. A copy the script couldn't resolve says why.
+// The owner's dismissal of a need, through the script like every other write.
+// A need the script couldn't resolve says why.
 async function resolveNeed($: EngineInterface, need: LedgerNeed): Promise<void> {
-  const failures: string[] = []
-  for (const copy of [need, ...need.also]) {
-    const ran = await $.process
-      .run(['bash', `${$.plugin.root}/scripts/ledger.sh`, 'resolve', copy.id, '--session', copy.session], {
-        timeoutMs: 15_000,
-      })
-      .catch((error: unknown) => ({ exitCode: 1, stderr: String(error) }))
-    if (ran.exitCode !== 0) {
-      failures.push(`${copy.label} ${copy.id}: ${ran.stderr.trim().split('\n')[0] ?? 'failed'}`)
-    }
-  }
-  if (failures.length > 0) {
-    $.ui.toast(`Couldn't resolve ${failures.join('; ')}`)
+  const ran = await $.process
+    .run(['bash', `${$.plugin.root}/scripts/ledger.sh`, 'resolve', need.id, '--session', need.session], {
+      timeoutMs: 15_000,
+    })
+    .catch((error: unknown) => ({ exitCode: 1, stderr: String(error) }))
+  if (ran.exitCode !== 0) {
+    $.ui.toast(`Couldn't resolve ${need.label} ${need.id}: ${ran.stderr.trim().split('\n')[0] ?? 'failed'}`)
   }
   await refreshQuietly($)
 }
 
 function meta(parts: (string | undefined)[]): string {
   return parts.filter(part => part !== undefined).join(' · ')
-}
-
-function copies(also: readonly LedgerCopy[]): string {
-  return also.map(copy => `${copy.label} ${copy.id}`).join(', ')
 }
 
 export const register: Register = on => {
@@ -190,7 +183,6 @@ export const register: Register = on => {
             <Text color="warning">{meta([need.label, need.id, need.ref, ageOf(need.at, now)])}</Text>
             {need.why !== undefined && <Text dimColor>{`Why: ${need.why}`}</Text>}
             <Text>{need.text}</Text>
-            {need.also.length > 0 && <Text dimColor>also: {copies(need.also)}</Text>}
             <Button key={`resolve:${need.session}:${need.id}`} label="Resolve" onPress={() => resolveNeed($, need)} />
           </Box>
         ))}
