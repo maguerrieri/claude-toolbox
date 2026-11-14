@@ -289,6 +289,14 @@ record "exit 0" "list --all: claude agents hanging" \
 		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
 record yes "list --all: done within ten seconds" "$([ $(($(date +%s) - started)) -lt 10 ] && echo yes)"
 record 1 "list --all: a hung claude names nobody" "$(grep -c '^  repo-a (22222222) · n1' "$tmp/out")"
+# One that ignores TERM too is killed a second later.
+printf "#!/bin/sh\ntrap '' TERM\nexec sleep 30\n" >"$tmp/bin-hung/claude"
+started=$(date +%s)
+record "exit 0" "list --all: claude agents ignoring TERM" \
+	"$(cd "$work" && env -i PATH="$tmp/bin-hung:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
+record yes "list --all: one ignoring TERM, done within ten seconds" "$([ $(($(date +%s) - started)) -lt 10 ] && echo yes)"
+record 1 "list --all: one ignoring TERM names nobody" "$(grep -c '^  repo-a (22222222) · n1' "$tmp/out")"
 record "exit 0" "list --all: no session id still lists" \
 	"$(cd "$work" && env -i PATH="$tmp/bin:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		"$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
