@@ -45,7 +45,8 @@
 # another repo is another one, so it is written as <owner>/<repo>#<n>, read
 # from the origin remote where there is one. That way two sessions in one repo
 # writing `#212` record the same ref, and two repos' `#12` don't. Outside a
-# checkout of the ref's repo, pass the full <owner>/<repo>#<n>.
+# checkout of the ref's repo, or in a fork's (whose origin is the fork), pass
+# the full <owner>/<repo>#<n>.
 #
 # A session writes its own ledger, keyed by its session id: the harness's
 # CLAUDE_CODE_SESSION_ID, else the CLAUDE_SESSION_ID this plugin's

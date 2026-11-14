@@ -42,7 +42,8 @@ anywhere durable:
   doesn't list (an interactive one). A bare `#<n>` ref is written as
   `<owner>/<repo>#<n>` from the checkout's origin, so a repo's sessions agree
   on a ref and two repos' `#12` stay apart. Outside such a checkout a bare ref
-  stays bare, so FINISH spells out `<owner>/<repo>#<pr>`.
+  stays bare, and a fork's origin names the fork, so START's hand-back and
+  FINISH spell out the PR's own `<owner>/<repo>#<pr>`.
 - **A session writes its own ledger, and a need lives only in the ledger of
   the session that needs the owner.** A spawner doesn't copy a child's
   `blocked:` into its own: `list --all` and the mod read every local ledger,

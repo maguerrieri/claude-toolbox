@@ -84,11 +84,12 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
   is optional (an issue or PR: `#212`, `owner/repo#12`, `ABC-12`). A bare
   `#212` is written as `owner/repo#212`, from the checkout's origin remote, so
   every session in one repo records the same ref and two repos' `#12` don't
-  collide. Outside a checkout of the ref's repo, a bare `#212` stays as it is,
-  so there pass the full `owner/repo#212`. The first line must be the Why line, `Why:` and then at most 200
-  bytes; it's stored as the entry's `why`, and the listings print it above the
-  text. The text after it is at most 4000 bytes. Neither may hold a control
-  character but tab and newline.
+  collide. Outside a checkout of the ref's repo a bare `#212` stays as it is,
+  and in a fork's checkout `origin` names the fork, so there pass the full
+  `owner/repo#212`. The first line must be the Why line, `Why:` and then at
+  most 200 bytes; it's stored as the entry's `why`, and the listings print it
+  above the text. The text after it is at most 4000 bytes. Neither may hold a
+  control character but tab and newline.
 - `resolve <need id>` marks one of this session's needs resolved;
   `--session <session id or a unique prefix of 4+ characters>` resolves another
   session's, which is for the owner dismissing a need whose session is gone,
