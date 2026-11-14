@@ -3,18 +3,24 @@
 # describe. The ledger is one JSONL file per session under the ledger
 # directory, one entry per line:
 #
-#   {"kind":"decision"|"need","id":"d1"|"n1","text":…,"ref":…,"at":…,"cwd":…,"resolved_at":…}
+#   {"kind":"decision"|"need","id":"d1"|"n1","why":…,"text":…,"ref":…,"at":…,"cwd":…,"resolved_at":…}
 #
 # `ref` (an issue or PR, optional) and `resolved_at` (needs only) may be
-# absent. `at` and `resolved_at` are ISO-8601 UTC. `cwd` is where the session
-# wrote from, so a reader can name a session `claude agents` doesn't list.
+# absent, and so may `why` in an entry written before it existed. `why` is one
+# short line of history and goal: why the work the entry is about exists, so
+# the owner reading it days later, among other sessions' needs, remembers
+# what it's for. `at` and `resolved_at` are ISO-8601 UTC. `cwd` is where the
+# session wrote from, so a reader can name a session `claude agents` doesn't
+# list.
 # The mod (hooks/register.tsx) reads the files directly; nothing but this
 # script writes them.
 #
 #   ledger.sh add-decision [--ref <ref>] <<'LEDGER_EOF'   record a decision; prints its id
+#   Why: <history and goal>
 #   <text>
 #   LEDGER_EOF
 #   ledger.sh add-need [--ref <ref>] <<'LEDGER_EOF'       record a need; prints its id
+#   Why: <history and goal>
 #   <text>
 #   LEDGER_EOF
 #   ledger.sh resolve <need id> [--session <session>]     mark a need resolved
@@ -27,9 +33,12 @@
 # plugin's SessionStart hook sets that variable.
 #
 # The text comes on stdin, from a quoted heredoc, so no character of it
-# reaches a shell as syntax. One trailing newline is dropped; the rest is
-# kept, lines included. Empty or whitespace-only text, text over 4000 bytes,
-# and control characters (C0 and C1) other than tab and newline are refused.
+# reaches a shell as syntax. Its first line must be `Why: <history and goal>`,
+# at most 200 bytes after the prefix; it's stored as `why`, and the lines
+# after it (less any blank lines leading them) as `text`. One trailing newline
+# is dropped; the rest is kept, lines included. A missing or empty Why line,
+# empty or whitespace-only text, text over 4000 bytes, and control characters
+# (C0 and C1) other than tab and newline are refused.
 # A ref is letters, digits and # / _ . : -, starting with a letter, digit or
 # #, at most 100 bytes (#212, owner/repo#12, ABC-12). A bare #<n> names an
 # issue or PR of the checkout's own repo, and the same number in another repo
@@ -46,7 +55,8 @@
 # PR it names lands.
 #
 # `list` prints this session's open needs, decisions and resolved needs,
-# newest first. `list --all` prints the open needs of every session's ledger,
+# newest first, each as its heading line, its Why line, then its text.
+# `list --all` prints the open needs of every session's ledger,
 # newest first, then this session's decisions. Open needs that share a ref are
 # one need recorded on its way up the spawn tree, so they're shown once, under
 # the first recorded, with an `also:` line naming the rest. Another session is
@@ -60,7 +70,7 @@
 # the ledger, so writes at once don't lose each other's entries and a reader
 # never sees half of one.
 # Reads skip a line that isn't an entry (an object with a string kind, id,
-# text and at, and a string or null ref, cwd and resolved_at). Exits 0 on
+# text and at, and a string or null why, ref, cwd and resolved_at). Exits 0 on
 # success; exits 1 with the reason on stderr when nothing was written or read.
 set -uo pipefail
 # Bytes, not characters: the 4000-byte limit and the control-character check
@@ -101,7 +111,7 @@ check_ref() {
 }
 
 # Check every argument before touching anything.
-ref='' has_ref=no text='' need='' session='' all=no
+ref='' has_ref=no why='' text='' need='' session='' all=no
 case "$cmd" in
 add-decision | add-need)
 	shift
@@ -126,11 +136,6 @@ add-decision | add-need)
 	)
 	text=${text%x}
 	text=${text%$'\n'}
-	case "$text" in
-	*[![:space:]]*) ;;
-	*) fail 'the text is empty' ;;
-	esac
-	[ "${#text}" -le 4000 ] || fail 'the text is over 4000 bytes'
 	# C0 controls but tab and newline, DEL, and C1 controls as UTF-8 encodes
 	# them (U+0080 to U+009F: C2 80 to C2 9F), which some terminals obey too.
 	c1=$'*\xc2[\x80-\x9f]*'
@@ -140,6 +145,37 @@ add-decision | add-need)
 	esac
 	[ "$(printf '%s' "$text" | tr -d '\001-\010\013-\037\177' | wc -c)" -eq "${#text}" ] ||
 		fail 'the text has a control character (only tab and newline are kept)'
+	# The first line is the Why line; the rest, past any blank lines, the text.
+	why=${text%%$'\n'*}
+	case "$text" in
+	*$'\n'*) text=${text#*$'\n'} ;;
+	*) text='' ;;
+	esac
+	case "$why" in
+	Why:*) why=${why#Why:} ;;
+	*) fail "the first line isn't a Why line: start the text with 'Why: <history and goal>', one short line on why the work exists" ;;
+	esac
+	# Trimmed of the blanks around it.
+	why=${why#"${why%%[![:space:]]*}"}
+	why=${why%"${why##*[![:space:]]}"}
+	[ -n "$why" ] || fail 'the Why line is empty'
+	[ "${#why}" -le 200 ] || fail 'the Why line is over 200 bytes (keep it to one short line)'
+	while :; do
+		first=${text%%$'\n'*}
+		case "$text" in
+		*$'\n'*) ;;
+		*) break ;;
+		esac
+		case "$first" in
+		*[![:space:]]*) break ;;
+		esac
+		text=${text#*$'\n'}
+	done
+	case "$text" in
+	*[![:space:]]*) ;;
+	*) fail 'the text after the Why line is empty' ;;
+	esac
+	[ "${#text}" -le 4000 ] || fail 'the text is over 4000 bytes'
 	;;
 resolve)
 	shift
@@ -211,13 +247,13 @@ case "$ref" in
 esac
 
 # What counts as an entry, for every read: an object with a string kind
-# (decision or need), id, text and at, and a ref, cwd and resolved_at that are
-# strings or absent (null counts as absent). Anything else a hand edit left is
-# skipped, so one bad line can't break a listing.
+# (decision or need), id, text and at, and a why, ref, cwd and resolved_at
+# that are strings or absent (null counts as absent). Anything else a hand
+# edit left is skipped, so one bad line can't break a listing.
 entry_filter='fromjson? // empty
 	| select(type == "object" and (.kind == "decision" or .kind == "need")
 		and (.id | type) == "string" and (.text | type) == "string" and (.at | type) == "string"
-		and ([.ref, .cwd, .resolved_at] | all(. == null or type == "string")))'
+		and ([.why, .ref, .cwd, .resolved_at] | all(. == null or type == "string")))'
 
 # entries <file>…: the files' entries, one compact JSON object per line.
 entries() {
@@ -301,8 +337,8 @@ agents_json() {
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # The jq helpers both listings use: a date in local time, an entry's heading
-# line and its indented text, control characters shown as ? (a hand-edited
-# file may hold one), and newest-first order.
+# line, its Why line and its indented text, control characters shown as ? (a
+# hand-edited file may hold one), and newest-first order.
 jq_defs='
 def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f]"; "?");
 def when: (.at | (fromdateiso8601? // null)) as $t
@@ -310,8 +346,9 @@ def when: (.at | (fromdateiso8601? // null)) as $t
 def num: (.id[1:] | tonumber? // 0);
 def heading($label): ($label + [.id, when] + (if (.ref | type) == "string" then [.ref] else [] end))
 	| map(clean) | join(" · ");
+def why: if (.why | type) == "string" then ["    Why: " + (.why | split("\n") | join(" ") | clean)] else [] end;
 def body: (.text | split("\n") | map("    " + clean) | join("\n"));
-def show($label): "  " + heading($label) + "\n" + body;
+def show($label): "  " + heading($label) + "\n" + (why + [body] | join("\n"));
 def section($title; $label): if length == 0 then empty
 	else ($title + " (\(length)):"), (.[] | show($label)) end;
 '
@@ -350,9 +387,9 @@ add-decision | add-need)
 			fail 'the ledger could not be read'
 	fi
 	id="$letter$((last + 1))"
-	entry=$(jq -cn --arg kind "$kind" --arg id "$id" --arg text "$text" --arg ref "$ref" \
+	entry=$(jq -cn --arg kind "$kind" --arg id "$id" --arg why "$why" --arg text "$text" --arg ref "$ref" \
 		--arg at "$now" --arg cwd "$PWD" \
-		'{kind: $kind, id: $id, text: $text} + (if $ref == "" then {} else {ref: $ref} end) + {at: $at, cwd: $cwd}') ||
+		'{kind: $kind, id: $id, why: $why, text: $text} + (if $ref == "" then {} else {ref: $ref} end) + {at: $at, cwd: $cwd}') ||
 		fail 'the entry could not be built'
 	replace "$file" append_entry
 	printf '%s\n' "$id"

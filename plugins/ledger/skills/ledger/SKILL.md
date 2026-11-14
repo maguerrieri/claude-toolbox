@@ -19,6 +19,15 @@ answer and let the parent record it.
 
 ## When to record
 
+Every entry starts with a **Why line**: `Why: <history and goal>`, one short
+line (at most 200 bytes) on why the work the entry is about exists and what
+it's for. Take it from the issue's motivation, or the epic or request it
+serves: `Why: #208: "status?" answers are rebuilt from scratch each time, so
+this keeps a durable list of decisions and needs`. The owner reads an entry
+days later, among other sessions' needs, and a small in-the-weeds issue is
+easy to forget the reason for. The script refuses an entry without one. The
+entry's own text goes on the lines after it.
+
 - **A decision**, whenever the owner decides something in this session: a scope
   change, a defer, a merge authorized, a design pick, a review-round cap raised,
   a follow-up declined. One line saying what was decided and why. The owner's
@@ -33,7 +42,8 @@ answer and let the parent record it.
 - **A child's need**, when a session you spawned pings that it needs the owner
   (`blocked: merge needs the owner`, a `declined: … needs the owner` line, a
   stack `ready; needs the owner`). Record it as a need of yours, naming the
-  child and its unblock step, with the child's PR as `--ref` (`'#212'`). That
+  child and its unblock step, with the child's PR as `--ref` (`'#212'`) and
+  the Why line of the work you spawned it for. That
   puts it in the ledger of the session the owner talks to, so a "status?"
   there has it, and the shared ref lets the listings show the child's need and
   your copy once, as one row naming both.
@@ -46,8 +56,9 @@ answer and let the parent record it.
 
 When the owner asks "status?", "what's left?" or what needs them, run
 `list --all` first: every session's open needs, newest first, then this
-session's decisions. Then verify what may have moved since (PR state,
-`claude agents`), and lead the answer with what needs the owner.
+session's decisions, each under its Why line. Then verify what may have moved
+since (PR state, `claude agents`), and lead the answer with what needs the
+owner, each with its why.
 
 ## The commands
 
@@ -57,9 +68,11 @@ as a comment.
 
 ```bash
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" add-decision --ref '#208' <<'LEDGER_EOF'
+Why: <history and goal: why this work exists>
 <what the owner decided, and why>
 LEDGER_EOF
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" add-need --ref '#212' <<'LEDGER_EOF'
+Why: <history and goal: why this work exists>
 <what the owner needs to do, and the exact step>
 LEDGER_EOF
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve n1
@@ -71,8 +84,10 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
   is optional (an issue or PR: `#212`, `owner/repo#12`, `ABC-12`). A bare
   `#212` is written as `owner/repo#212`, from the checkout's origin remote, so
   every session in one repo records the same ref and two repos' `#12` don't
-  collide. The text is at most 4000 bytes, with no control characters but tab
-  and newline.
+  collide. The first line must be the Why line, `Why:` and then at most 200
+  bytes; it's stored as the entry's `why`, and the listings print it above the
+  text. The text after it is at most 4000 bytes. Neither may hold a control
+  character but tab and newline.
 - `resolve <need id>` marks one of this session's needs resolved;
   `--session <session id or a unique prefix of 4+ characters>` resolves another
   session's, which is for the owner dismissing a need whose session is gone,
