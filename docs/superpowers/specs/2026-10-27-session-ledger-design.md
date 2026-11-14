@@ -96,7 +96,10 @@ anywhere durable:
   answer from `ledger.sh list --all` and verify against GitHub, instead of
   sweeping first.
 - **Garbage collection**: the SessionStart hook deletes ledger files untouched
-  for 30 days, as ticket-workflow's does for role markers.
+  for 30 days, as ticket-workflow's does for role markers, under the
+  directory's lock: unlocked, it could check a ledger's age just before a
+  write renamed an updated one into place, and delete the new entry with the
+  old ones. When a write holds the lock past two seconds, it skips its turn.
 
 ## Out of scope
 
