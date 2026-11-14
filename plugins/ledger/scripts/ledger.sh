@@ -321,9 +321,10 @@ unlock() {
 }
 
 # agents_json: what `claude agents --json --all` prints, given five seconds.
-# A hung CLI must not hold up a status answer; then nobody is named. The
-# watchdog writes nowhere, so a caller reading this script's output never
-# waits on its sleep.
+# A hung CLI must not hold up a status answer; then nobody is named. At the
+# deadline it gets TERM, and a second later KILL, since one that ignores TERM
+# would otherwise hold the wait forever. The watchdog writes nowhere, so a
+# caller reading this script's output never waits on its sleep.
 agents_json() {
 	local out pid watchdog
 	out=$(mktemp "${TMPDIR:-/tmp}/ledger-agents.XXXXXX" 2>/dev/null) || return 1
@@ -332,6 +333,8 @@ agents_json() {
 	(
 		sleep 5
 		kill "$pid"
+		sleep 1
+		kill -9 "$pid"
 	) >/dev/null 2>&1 &
 	watchdog=$!
 	wait "$pid" && cat "$out"

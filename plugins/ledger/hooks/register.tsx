@@ -30,6 +30,10 @@ const files = new Map<string, { mtimeMs: number; size: number; entries: Entry[] 
 let names: Record<string, string> = {}
 let namesAt = 0
 let shown: string | undefined
+// The number of the latest refresh begun. A refresh that a later one has
+// overtaken (a poll still waiting on `claude agents` while Resolve's refresh
+// ran) publishes nothing, so an older snapshot never overwrites a newer one.
+let latest = 0
 // The poll, one per module: a second session.start (a /clear) replaces it.
 let poll: Timer | undefined
 
@@ -44,6 +48,8 @@ async function ledgerDir($: EngineInterface): Promise<string | undefined> {
 }
 
 async function refresh($: EngineInterface): Promise<void> {
+  latest += 1
+  const turn = latest
   const dir = await ledgerDir($)
   if (dir === undefined) {
     return
@@ -88,11 +94,15 @@ async function refresh($: EngineInterface): Promise<void> {
     }
   }
 
+  if (turn !== latest) {
+    return
+  }
   const next = viewOf(ledgers, me, names)
   const json = JSON.stringify(next)
   if (json !== shown) {
-    shown = json
     await update($, view, () => next)
+    // Marked only once written, so a write that fails is tried again next tick.
+    shown = json
   }
 }
 
