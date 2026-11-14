@@ -44,7 +44,8 @@ and assemble what comes back up.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
   installs it; its skill says how). Record each decision the owner makes
   here, and each thing you stop for that only the owner can give, with its
-  exact unblock step. Record a child's ping that it needs the owner
+  exact unblock step, each under a Why line saying why the work exists.
+  Record a child's ping that it needs the owner
   (`blocked: merge needs the owner`, a `declined:` line) as a need under the
   child's PR ref, and your own `ready; needs the owner` stack as one, and
   resolve each once the owner answers or the child pings `merged:`. When the
