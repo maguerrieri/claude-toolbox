@@ -108,14 +108,24 @@ fi
 if [ "$cmd" = subscribe ]; then
 	# This session's row, by its full id (the last one if the listing repeats
 	# it), as "<kind> <name>": an empty kind reads as unknown.
-	row=$("${PR_SUBSCRIPTION_CLAUDE:-claude}" agents --json --all 2>/dev/null </dev/null |
-		jq -r --arg s "$CLAUDE_CODE_SESSION_ID" \
-			'[.[]? | select(.sessionId == $s)] | last // empty
-			 | "\((.kind // "") | if . == "" then "unknown" else . end) \(.name // "")"' 2>/dev/null)
+	command -v jq >/dev/null 2>&1 || {
+		say "jq not found on PATH, so this session's kind can't be read and $ref wasn't subscribed (only a background session subscribes)"
+		exit 1
+	}
+	listing=$("${PR_SUBSCRIPTION_CLAUDE:-claude}" agents --json --all 2>/dev/null </dev/null) || {
+		say "claude agents --json --all failed, so this session's kind can't be read and $ref wasn't subscribed (only a background session subscribes)"
+		exit 1
+	}
+	row=$(printf '%s' "$listing" | jq -r --arg s "$CLAUDE_CODE_SESSION_ID" \
+		'[.[]? | select(.sessionId == $s)] | last // empty
+		 | "\((.kind // "") | if . == "" then "unknown" else . end) \(.name // "")"' 2>/dev/null) || {
+		say "claude agents --json --all printed nothing jq could read, so $ref wasn't subscribed (only a background session subscribes)"
+		exit 1
+	}
 	kind=${row%% *}
 	name=${row#* }
 	if [ -z "$row" ]; then
-		say "couldn't find this session in claude agents --json --all, so $ref wasn't subscribed (only a background session subscribes)"
+		say "this session isn't in claude agents --json --all, so $ref wasn't subscribed (only a background session subscribes)"
 		exit 1
 	fi
 	if [ "$kind" != background ]; then
