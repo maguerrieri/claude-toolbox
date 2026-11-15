@@ -101,6 +101,14 @@ record "exit 1 none" "add: whitespace-only text" "$(run $' \n\t\n' add-decision)
 record "exit 1 none" "add: a control character" "$(run $'red \033[31m' add-decision) $(ledger)"
 record "exit 1 none" "add: a carriage return" "$(run $'a\rb' add-decision) $(ledger)"
 record "exit 1 none" "add: a C1 control as UTF-8 (CSI)" "$(run $'a\xc2\x9b2J' add-decision) $(ledger)"
+# A NUL can't sit in a shell variable, so it's fed straight in: it's refused
+# like any control character, not silently dropped.
+for input in 'Why: w\nab\000cd' 'Why: a\000b\nthe text'; do
+	record "exit 1 none" "add: a NUL ($input)" \
+		"$(cd "$work" && printf "$input" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
+			CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" add-need >/dev/null 2>"$tmp/err"; echo "exit $?") $(ledger)"
+done
+record 1 "add: a NUL says it's a control character" "$(grep -c 'control character' "$tmp/err")"
 record "exit 0" "add: other UTF-8 is kept" "$(run $'caf\xc3\xa9 \xe2\x80\x94 ok' add-decision)"
 reset
 record "exit 0" "add: 4000 bytes accepted" "$(run "$(printf 'x%.0s' $(seq 4000))" add-decision)"
@@ -225,6 +233,11 @@ if [ "$(id -u)" -ne 0 ]; then
 	chmod 755 "$dir"
 	record 1 "list: an unreadable directory says so" "$(grep -c 'the ledger directory could not be read' "$tmp/err")"
 	record 0 "list: an unreadable directory claims no entries" "$(grep -c 'no entries' "$tmp/out")"
+	# An unreadable ledger fails before printing anything.
+	chmod 000 "$dir/$sid.jsonl"
+	record "exit 1" "list: an unreadable ledger fails" "$(run '' list)"
+	chmod 644 "$dir/$sid.jsonl"
+	record "" "list: an unreadable ledger prints nothing" "$(cat "$tmp/out")"
 fi
 
 
