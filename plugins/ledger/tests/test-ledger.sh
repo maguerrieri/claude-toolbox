@@ -166,6 +166,26 @@ record "exit 1" "resolve: a decision" "$(run '' resolve d1)"
 record "exit 1" "resolve: no id" "$(run '' resolve)"
 record "exit 1" "resolve: a bad id" "$(run '' resolve 'n1;x')"
 
+# A hand-edited line is left as it is: an id not of the script's form doesn't
+# take part in numbering (n1.5 once broke the arithmetic and blocked every
+# add), and a line that isn't an entry isn't stamped, even when its id or ref
+# matches.
+reset
+mkdir -p "$dir"
+cat >"$dir/$sid.jsonl" <<'EOF'
+{"kind":"need","id":"n1.5","text":"an odd id","at":"2020-01-01T00:00:00Z"}
+{"kind":"need","id":"n1e999","text":"a huge one","at":"2020-01-01T00:00:00Z"}
+{"kind":"need","id":"n3","text":"a real one","at":"2020-01-01T00:00:00Z"}
+{"kind":"need","id":"n3","text":5,"ref":"ABC-1","at":"2020-01-01T00:00:00Z"}
+{"kind":"need","id":"n9","text":"bad ref type","ref":7,"at":"2020-01-01T00:00:00Z"}
+EOF
+record "exit 0 n4" "add: an odd id doesn't block numbering" "$(run 'next' add-need) $(cat "$tmp/out")"
+record "exit 0" "resolve: the entry with the id" "$(run '' resolve n3)"
+record "T none" "resolve: a malformed line with the same id is left alone" \
+	"$(sed -n 3p "$dir/$sid.jsonl" | jq -r '.resolved_at // "none"' | sed 's/^[0-9].*Z$/T/') $(sed -n 4p "$dir/$sid.jsonl" | jq -r '.resolved_at // "none"')"
+record "exit 0" "resolve --ref: only entries are stamped" "$(run '' resolve --ref 'ABC-1')"
+record "none" "resolve --ref: a malformed line under the ref is left alone" "$(sed -n 4p "$dir/$sid.jsonl" | jq -r '.resolved_at // "none"')"
+
 # The cross-session forms are #316's: refused here.
 record "exit 1" "resolve: --session is refused" "$(run '' resolve n1 --session "$other")"
 record "exit 1" "resolve: an extra argument" "$(run '' resolve n1 n2)"

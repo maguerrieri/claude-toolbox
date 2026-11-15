@@ -241,14 +241,15 @@ case "$ref" in
 	;;
 esac
 
-# What counts as an entry, for every read: an object with a string kind
-# (decision or need), id, text and at, and a why, ref, cwd and resolved_at
-# that are strings or absent (null counts as absent). Anything else a hand
-# edit left is skipped, so one bad line can't break a listing.
-entry_filter='fromjson? // empty
-	| select(type == "object" and (.kind == "decision" or .kind == "need")
-		and (.id | type) == "string" and (.text | type) == "string" and (.at | type) == "string"
-		and ([.why, .ref, .cwd, .resolved_at] | all(. == null or type == "string")))'
+# What counts as an entry, for every read and every resolve: an object with a
+# string kind (decision or need), id, text and at, and a why, ref, cwd and
+# resolved_at that are strings or absent (null counts as absent). Anything
+# else a hand edit left is skipped, so one bad line can't break a listing,
+# and a resolve leaves it as it is.
+entry_def='def is_entry: type == "object" and (.kind == "decision" or .kind == "need")
+	and (.id | type) == "string" and (.text | type) == "string" and (.at | type) == "string"
+	and ([.why, .ref, .cwd, .resolved_at] | all(. == null or type == "string"));'
+entry_filter="$entry_def"' fromjson? // empty | select(is_entry)'
 
 # entries: this session's entries, one compact JSON object per line.
 entries() {
@@ -334,9 +335,9 @@ append_entry() {
 # stamp <jq condition on $e>: the ledger with every open need that meets the
 # condition stamped resolved. Lines that aren't entries are kept as they are.
 stamp() {
-	jq -rR --arg at "$now" --arg id "$need" --arg ref "$ref" \
-		'(fromjson? // null) as $e
-		| if ($e | type) == "object" and $e.kind == "need" and $e.resolved_at == null and ('"$1"')
+	jq -rR --arg at "$now" --arg id "$need" --arg ref "$ref" "$entry_def"'
+		(fromjson? // null) as $e
+		| if ($e | is_entry) and $e.kind == "need" and $e.resolved_at == null and ('"$1"')
 		  then $e + {resolved_at: $at} | tojson else . end' "$file"
 }
 
@@ -344,11 +345,15 @@ case "$cmd" in
 add-decision | add-need)
 	kind=${cmd#add-}
 	letter=${kind:0:1}
-	# Numbered after the highest id of its kind, read under the lock.
+	# Numbered after the highest id of its kind, read under the lock. Only an id
+	# of the form the script writes counts (its letter, then at most nine
+	# digits), so a hand-edited one like n1.5 or n1e999 can't break the
+	# arithmetic and block every add after it.
 	lock
 	last=0
 	if [ -f "$file" ]; then
-		last=$(entries | jq -s --arg k "$kind" '[.[] | select(.kind == $k) | (.id[1:] | tonumber? // 0)] | max // 0') ||
+		last=$(entries | jq -s --arg k "$kind" --arg l "$letter" \
+			'[.[] | select(.kind == $k and (.id | test("^" + $l + "[1-9][0-9]{0,8}$"))) | (.id[1:] | tonumber)] | max // 0') ||
 			fail 'the ledger could not be read'
 	fi
 	id="$letter$((last + 1))"
