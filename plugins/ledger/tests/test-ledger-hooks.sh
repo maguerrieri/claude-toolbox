@@ -108,7 +108,7 @@ record ".lock fresh.jsonl keep.txt mine.jsonl open.jsonl" "reaps month-old ledge
 # The reaping runs under the directory's lock, and skips a turn when a write
 # holds it.
 : >"$ledgers/stale.jsonl"
-touch -t 202001010000 "$ledgers/stale.jsonl"
+touch -t 202001010000 "$ledgers/stale.jsonl" "$ledgers/mine.jsonl"
 (
 	exec 9>>"$ledgers/.lock"
 	perl -MFcntl=:flock -e 'open(my $f, ">&=", 9) or die; flock($f, LOCK_EX) or die'
@@ -120,6 +120,8 @@ until ! perl -MFcntl=:flock -e 'open(my $f, ">>", $ARGV[0]) or die; exit(flock($
 done
 printf '%s' '{"session_id": "mine"}' | env -i PATH="$PATH" HOME="$home" "$BASH" "$start"
 record "yes" "a held lock skips the reaping" "$([ -f "$ledgers/stale.jsonl" ] && echo yes)"
+record "yes" "a held lock still refreshes this session's own ledger" \
+	"$([ -n "$(find "$ledgers/mine.jsonl" -mtime -1 2>/dev/null)" ] && echo yes)"
 kill "$holder" 2>/dev/null
 wait "$holder" 2>/dev/null
 printf '%s' '{"session_id": "mine"}' | env -i PATH="$PATH" HOME="$home" "$BASH" "$start"
