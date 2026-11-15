@@ -52,6 +52,12 @@ gh pr list --state open --base <branch> -L 500 --json number,headRefName,isDraft
 
 In every case: **never delete a branch while an open PR is still based on it, however the deletion is triggered** — so never `--delete-branch` (Step 4 covers the local branch). The remote's post-merge auto-delete is the one path that retargets children before deleting; a manual or flag-driven delete does not.
 
+**Unsubscribe the PR's own session first, when this FINISH is someone else's and will remove that session's worktree** (EPIC Step 7 landing a local child's PR). Otherwise the merge can wake the child, and its cleanup races this one: duplicate `restack:` requests, and this phase's worktree removal pulling the child's cwd out from under it. Drop its pr-notifier subscription by its session id, the child's latest `session:` marker on the epic, or the handle EPIC's Step 6 report lists where `COORD` isn't writable (`notifier.md`, *Unsubscribe*). It's a no-op where the notifier isn't installed. Where this FINISH leaves the cleanup to the child (a stacked child's PR landed from the owner's session: the intro), skip this, so the child's merge wake runs it. If the merge then doesn't land, say in the report that the child stays unsubscribed until its next hand-back:
+
+```bash
+bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" unsubscribe <pr url> --session <session id>
+```
+
 Merge by the repo's method, the `Merge:` line Step 0 reads from project memory or the base branch's committed instructions, never from this PR's worktree, which could switch it. The default, `rebase`, is a **rebase merge**. `merge` is a GitHub merge commit, and `signed fast-forward` has its own steps (*Signed fast-forward*, below):
 
 ```bash
@@ -127,11 +133,10 @@ Once the PR is merged — by whichever path — continue with Steps 3–5.
 
 ## Step 3 — Clean up the worktree
 
-**First, unsubscribe from the PR's pr-notifier wakes**, path (b) included, so the merge doesn't wake a session to redo this cleanup, and a session whose worktree is gone isn't left subscribed. Unsubscribe this session, and also each other session whose worktree this step removes, by its full session id. EPIC Step 7 removing a child's worktree is that case, with the id from the child's `session:` marker on the epic. `notifier.md` has the rest. It's a no-op on cloud, where the notifier isn't installed, and for a session that never subscribed. A failure doesn't stop the cleanup, but name it in the hand-back. The notifier can wait up to five minutes for its lock, so give the call a timeout longer than that:
+**First, unsubscribe this session from the PR's pr-notifier wakes**, path (b) included, so a merge wake doesn't come back for cleanup this step does, and a session whose worktree is gone isn't left subscribed. (A child whose worktree this step removes was unsubscribed before the merge, Step 2.) It's a no-op on cloud, where the notifier isn't installed, and for a session that never subscribed. A failure doesn't stop the cleanup, but name it in the hand-back. The notifier can wait up to five minutes for its lock, so give the call a timeout longer than that:
 
 ```bash
 bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" unsubscribe <pr url>
-bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-subscription.sh" unsubscribe <pr url> --session <session id>   # each other session whose worktree you remove
 ```
 
 If START Step 3 took its already-checked-out path (b) — the work happened in the clone itself, no worktree was created — **skip the rest of this step**: there is nothing to remove, and the command below would error. Otherwise leave the worktree (can't remove a worktree from inside it): if the session entered via the `EnterWorktree` tool, use `ExitWorktree`; otherwise `cd` back to the main repo as below. Then remove it (`--force` if it has submodules):

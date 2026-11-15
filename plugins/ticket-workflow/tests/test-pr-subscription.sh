@@ -10,6 +10,7 @@
 #                for it; null: a row with no kind)
 #   STUB_AGENTS_RC  its exit code (0 by default)
 #   STUB_NAME    this session's row's name (none by default)
+#   STUB_AGENTS_JUNK  print something that isn't JSON instead
 # The doc cases run the one-liners the docs show, pulled out of them. Runs
 # under macOS's bash 3.2 as well as a current bash.
 #
@@ -37,6 +38,7 @@ cat >"$tmp/claude" <<'STUB_EOF'
 #!/usr/bin/env bash
 [ "$*" = "agents --json --all" ] || { echo "unexpected claude $*" >&2; exit 2; }
 [ "${STUB_AGENTS_RC:-0}" -eq 0 ] || exit "$STUB_AGENTS_RC"
+[ -z "${STUB_AGENTS_JUNK:-}" ] || { echo "not json"; exit 0; }
 other='{"sessionId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "kind": "background"}'
 case ${STUB_KIND:-background} in
 none) printf '[%s]\n' "$other" ;;
@@ -133,6 +135,12 @@ run CLAUDE_CODE_SESSION_ID=$sid STUB_KIND=none -- subscribe o/r#1
 record "1 0" "no row for this session: exit 1, not subscribed" "$rc $(lines "$calls")"
 run CLAUDE_CODE_SESSION_ID=$sid STUB_AGENTS_RC=1 -- subscribe o/r#1
 record "1 0" "claude agents fails: exit 1, not subscribed" "$rc $(lines "$calls")"
+record "pr-subscription: claude agents --json --all failed, so this session's kind can't be read and o/r#1 wasn't subscribed (only a background session subscribes)" \
+	"claude agents fails: says so, not that the session is missing" "$out"
+run CLAUDE_CODE_SESSION_ID=$sid STUB_AGENTS_JUNK=1 -- subscribe o/r#1
+record "1 0" "a listing jq can't read: exit 1, not subscribed" "$rc $(lines "$calls")"
+record "pr-subscription: claude agents --json --all printed nothing jq could read, so o/r#1 wasn't subscribed (only a background session subscribes)" \
+	"a listing jq can't read: says so" "$out"
 run CLAUDE_CODE_SESSION_ID=$sid STUB_KIND=interactive -- unsubscribe o/r#1
 record "0 unsubscribe o/r#1 sid=$sid" "unsubscribe doesn't ask what kind of session this is" "$rc $calls"
 
@@ -180,15 +188,22 @@ done
 
 # --- the docs' one-liners --------------------------------------------------
 
-# Runs the line of <file>'s first code block naming <text> that ends with
-# <text>, as the docs show it (so `unsubscribe <pr url>` skips the --session
-# line), with its placeholders filled in and the plugin root pointing at this
-# checkout.
+# Prints the first line, in any fenced code block of <file>, that ends with
+# <text> (so `unsubscribe <pr url>` skips the --session form, whichever block
+# each is in).
+fenced_line_ending() { # fenced_line_ending <file> <text>
+	awk -v t="$2" '
+		/^[ \t]*```/ { in_block = !in_block; next }
+		in_block && length($0) >= length(t) && substr($0, length($0) - length(t) + 1) == t { print; exit }
+	' "$1"
+}
+
+# Runs that line as the docs show it, with its placeholders filled in and the
+# plugin root pointing at this checkout.
 run_doc() { # run_doc <file> <text> [VAR=value ...]
 	local file=$1 text=$2 line
 	shift 2
-	line=$(extract_block "$file" "$text" |
-		awk -v t="$text" 'length($0) >= length(t) && substr($0, length($0) - length(t) + 1) == t' | head -n 1 |
+	line=$(fenced_line_ending "$file" "$text" |
 		sed -e 's|<pr url>|https://github.com/o/r/pull/5|g' -e "s|<session id>|$other_sid|g")
 	record yes "doc line found: $text in ${file#"$skill"/}" "$([ -n "$line" ] && echo yes || echo no)"
 	: >"$STUB_ARGS"
@@ -208,5 +223,7 @@ run_doc "$skill/notifier.md" 'pr-subscription.sh" unsubscribe <pr url> --session
 record "unsubscribe o/r#5 --session $other_sid sid=$sid" "notifier.md's unsubscribe --session runs as documented" "$calls"
 run_doc "$skill/phases/finish.md" 'pr-subscription.sh" unsubscribe <pr url>' CLAUDE_CODE_SESSION_ID=$sid
 record "unsubscribe o/r#5 sid=$sid" "FINISH Step 3's unsubscribe runs as documented" "$calls"
+run_doc "$skill/phases/finish.md" 'pr-subscription.sh" unsubscribe <pr url> --session <session id>' CLAUDE_CODE_SESSION_ID=$sid
+record "unsubscribe o/r#5 --session $other_sid sid=$sid" "FINISH Step 2's unsubscribe of the child runs as documented" "$calls"
 
 finish
