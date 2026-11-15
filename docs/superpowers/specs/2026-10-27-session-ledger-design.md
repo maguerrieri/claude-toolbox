@@ -99,8 +99,12 @@ under *Deferred to #316* below.
   resumed after a month away and the need is still the owner's to answer. The
   reaping runs under the directory's lock: unlocked, it could check a ledger's
   age just before a write renamed an updated one into place, and delete the
-  new entry with the old ones. When a write holds the lock past two seconds,
-  it skips its turn.
+  new entry with the old ones. When the lock can't be had within two seconds,
+  it skips its turn. The hook's refresh of its own session's ledger happens
+  under the same lock, so another session's reaping sees the ledger fresh or
+  not at all (Copilot found it could pick an old ledger, see it refreshed, and
+  delete it anyway). Without the lock the refresh still runs, and the reaping
+  checks each ledger's age and open needs again just before deleting it.
 
 ## Deferred to #316
 
