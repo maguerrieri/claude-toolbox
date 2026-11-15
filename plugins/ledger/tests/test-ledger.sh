@@ -222,6 +222,15 @@ record "exit 1" "add: no need id left" "$(run 'one more' add-need)"
 record 1 "add: no need id left says so" "$(grep -c 'used every need id' "$tmp/err")"
 record "exit 0 d1" "add: a decision still numbers on its own" "$(run 'decided' add-decision) $(cat "$tmp/out")"
 
+# A ledger path that is a directory fails every write, rather than taking
+# the new ledger inside it and reporting success.
+reset
+mkdir -p "$dir/$sid.jsonl"
+record "exit 1" "add: a ledger path that is a directory" "$(run 'lost' add-need)"
+record 1 "add: a directory for a ledger says so" "$(grep -c 'not a regular file' "$tmp/err")"
+record "" "add: nothing is written into it" "$(ls -A "$dir/$sid.jsonl")"
+record "exit 1" "list: a ledger path that is a directory" "$(run '' list)"
+
 # The cross-session forms are #316's: refused here.
 record "exit 1" "resolve: --session is refused" "$(run '' resolve n1 --session "$other")"
 record "exit 1" "resolve: an extra argument" "$(run '' resolve n1 n2)"
@@ -349,6 +358,11 @@ record "acme/widgets#12 ABC-12 other/repo#12 PR#12" "add: a bare #<n> names the 
 git -C "$repo_dir" remote set-url origin https://github.com/acme/widgets
 in_repo 'over https' add-decision --ref '#13' >/dev/null
 record "acme/widgets#13" "add: an https remote" "$(jq -r 'select(.id == "d1") | .ref' "$dir/$sid.jsonl")"
+# A trailing slash on origin's URL doesn't leave the ref unqualified.
+git -C "$repo_dir" remote set-url origin https://github.com/acme/widgets.git/
+in_repo 'a trailing slash' add-decision --ref '#14' >/dev/null
+record "acme/widgets#14" "add: an origin with a trailing slash" "$(jq -r 'select(.id == "d2") | .ref' "$dir/$sid.jsonl")"
+git -C "$repo_dir" remote set-url origin https://github.com/acme/widgets
 record "exit 0" "add: outside a checkout a bare ref stays" "$(run 'no repo' add-need --ref '#12')"
 record "#12" "add: outside a checkout, the ref as given" "$(jq -r 'select(.id == "n5") | .ref' "$dir/$sid.jsonl")"
 # GitHub ignores an owner's and a repo's case, so a qualified ref's are

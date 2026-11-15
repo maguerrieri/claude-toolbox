@@ -145,6 +145,8 @@ normalize_ref() {
 	case "$ref" in
 	'#'*)
 		url=$(git -C "$PWD" remote get-url origin 2>/dev/null) || url=
+		# Less any trailing slashes, which would leave the repo empty.
+		url=${url%"${url##*[!/]}"}
 		rest=${url%.git}
 		repo=${rest##*/}
 		rest=${rest%/*}
@@ -276,6 +278,12 @@ file="$dir/$sid.jsonl"
 # one without this session's ledger, which would show its open needs as gone.
 if [ -d "$dir" ] && { [ ! -r "$dir" ] || [ ! -x "$dir" ]; }; then
 	fail 'the ledger directory could not be read'
+fi
+# A ledger path that is something other than a file (a directory, say) fails
+# too: a rename onto a directory would move the new ledger inside it and
+# report success.
+if [ -e "$file" ] && [ ! -f "$file" ]; then
+	fail 'the ledger path is not a regular file'
 fi
 
 [ "$has_ref" = no ] || normalize_ref
