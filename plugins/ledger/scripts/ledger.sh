@@ -34,18 +34,20 @@
 # at most 200 bytes after the prefix; it's stored as `why`, and the lines
 # after it (less any blank lines leading them) as `text`. One trailing newline
 # is dropped; the rest is kept, lines included. A missing or empty Why line,
-# empty or whitespace-only text, text over 4000 bytes, and control characters
-# (C0 and C1) other than tab and newline are refused.
+# empty or whitespace-only text, text over 4000 bytes, control characters (C0,
+# NUL included, and C1) other than tab and newline, and invisible formatting
+# characters (bidi overrides and isolates, zero-width characters, line and
+# paragraph separators, a byte-order mark) are refused, so nothing in an entry
+# can make `list` read differently from what was recorded.
 #
-# A ref is letters, digits and # / _ . : -, starting with a letter, digit or
-# #, at most 200 bytes once qualified (#212, owner/repo#12, ABC-12). A bare
-# #<n> names an issue or PR of the checkout's own repo, and the same number in
-# another repo is another one, so it is written as <owner>/<repo>#<n>, read
-# from the origin remote where there is one. Outside a checkout of the ref's
-# repo, or in a fork's (whose origin is the fork), pass the full
-# <owner>/<repo>#<n>. An <owner>/<repo>#<n> ref is stored with its owner and
-# repo lowercased, written or resolved, since GitHub ignores their case and
-# origin's spelling of them can differ from a PR URL's.
+# Give a ref in full: <owner>/<repo>#<n>, a GitHub issue or PR URL (stored as
+# <owner>/<repo>#<n>), or another tracker's key (ABC-12). A bare #<n> is a
+# shorthand for an issue or PR of this checkout's own repo, written as
+# <owner>/<repo>#<n> from the origin remote; outside a checkout of the ref's
+# repo, or in a fork's (whose origin is the fork), it names the wrong repo, so
+# pass the full ref there. An <owner>/<repo>#<n> is stored with its owner and
+# repo lowercased, written or resolved. normalize_ref below has the exact
+# rules.
 #
 # A session reads and writes only its own ledger, keyed by its session id: the
 # harness's CLAUDE_CODE_SESSION_ID, else the CLAUDE_SESSION_ID this plugin's
@@ -94,10 +96,66 @@ id_ok() {
 	esac
 }
 
-# check_ref: fail unless $ref is a well-formed ref.
-check_ref() {
+# normalize_ref: $ref in the form it's stored in, or fail. Accepted: a bare
+# #<n> (an issue or PR of this checkout's repo, qualified from origin's URL:
+# git@host:owner/repo.git, https://host/owner/repo, ssh://…), an
+# <owner>/<repo>#<n>, a GitHub issue or PR URL (https://<host>/<owner>/<repo>/
+# issues/<n> or /pull/<n>, anything after the number dropped), or another
+# token (ABC-12, epic:40). A ref is then letters, digits and # / _ . : -,
+# starting with a letter, digit or #, at most 200 bytes; at most one #, which
+# must be followed by an issue or PR number. An <owner>/<repo>#<n> has its
+# owner and repo lowercased, since GitHub ignores their case and origin's
+# spelling of them can differ from a PR URL's.
+normalize_ref() {
+	local rest owner repo kind num url
+	case "$ref" in
+	http://* | https://*)
+		rest=${ref#*://}
+		rest=${rest#*/}
+		owner=${rest%%/*}
+		rest=${rest#*/}
+		repo=${rest%%/*}
+		rest=${rest#*/}
+		kind=${rest%%/*}
+		num=${rest#*/}
+		num=${num%%[/?#]*}
+		case "$kind" in
+		issues | pull) ;;
+		*) fail 'a URL ref must name an issue or PR (https://github.com/owner/repo/pull/12)' ;;
+		esac
+		case "$num" in
+		'' | 0* | *[!0-9]*) fail 'a URL ref must name an issue or PR (https://github.com/owner/repo/pull/12)' ;;
+		esac
+		id_ok "$owner" && id_ok "$repo" ||
+			fail 'a URL ref must name an issue or PR (https://github.com/owner/repo/pull/12)'
+		ref="$owner/$repo#$num"
+		;;
+	esac
 	case "$ref" in
 	'' | [!A-Za-z0-9#]* | *[!A-Za-z0-9#/_.:-]*) fail 'the ref is empty or not just letters, digits and # / _ . : - (#212, owner/repo#12, ABC-12)' ;;
+	esac
+	case "$ref" in
+	*'#'*'#'*) fail 'a ref has at most one # (#212, owner/repo#12)' ;;
+	*'#'*)
+		case "${ref##*#}" in
+		'' | 0* | *[!0-9]*) fail 'a # in a ref must be followed by an issue or PR number (#212, owner/repo#12)' ;;
+		esac
+		;;
+	esac
+	case "$ref" in
+	'#'*)
+		url=$(git -C "$PWD" remote get-url origin 2>/dev/null) || url=
+		rest=${url%.git}
+		repo=${rest##*/}
+		rest=${rest%/*}
+		owner=${rest##*[:/]}
+		if [ -n "$url" ] && id_ok "$repo" && id_ok "$owner"; then
+			ref="$owner/$repo$ref"
+		fi
+		;;
+	esac
+	case "$ref" in
+	*/*'#'*) ref="$(printf '%s' "${ref%#*}" | tr '[:upper:]' '[:lower:]')#${ref##*#}" ;;
 	esac
 	[ "${#ref}" -le 200 ] || fail 'the ref is over 200 bytes'
 }
@@ -117,7 +175,6 @@ add-decision | add-need)
 		*) fail "$usage" ;;
 		esac
 	done
-	[ "$has_ref" = no ] || check_ref
 	# The text comes from a heredoc; from a terminal, reading would only block.
 	[ ! -t 0 ] || fail "$usage"
 	# All of stdin, kept exact (the x stops $(...) from stripping trailing
@@ -139,6 +196,19 @@ add-decision | add-need)
 	esac
 	[ "$(printf '%s' "$text" | tr -d '\001-\010\013-\037\177' | wc -c)" -eq "${#text}" ] ||
 		fail 'the text has a control character (only tab and newline are kept)'
+	# Invisible formatting characters as UTF-8 encodes them: zero-width ones,
+	# the marks and bidi embeddings and overrides (U+200B to U+200F: E2 80 8B to
+	# 8F; U+2028 to U+202E: E2 80 A8 to AE), the bidi isolates (U+2066 to
+	# U+2069: E2 81 A6 to A9), and a byte-order mark (U+FEFF: EF BB BF). Text
+	# pasted from an issue can carry one, and it can make `list` read
+	# differently from what was recorded.
+	fmt=$'*\xe2\x80[\x8b-\x8f\xa8-\xae]*'
+	iso=$'*\xe2\x81[\xa6-\xa9]*'
+	bom=$'*\xef\xbb\xbf*'
+	# shellcheck disable=SC2254 # the patterns are meant to match
+	case "$text" in
+	$fmt | $iso | $bom) fail 'the text has an invisible formatting character (a bidi override or isolate, a zero-width character, a line separator or a byte-order mark)' ;;
+	esac
 	# The first line is the Why line; the rest, past any blank lines, the text.
 	why=${text%%$'\n'*}
 	case "$text" in
@@ -177,7 +247,6 @@ resolve)
 	if [ "$1" = --ref ]; then
 		[ $# -eq 2 ] || fail "$usage"
 		ref=$2 has_ref=yes
-		check_ref
 	else
 		[ $# -eq 1 ] || fail "$usage"
 		need=$1
@@ -209,48 +278,15 @@ if [ -d "$dir" ] && { [ ! -r "$dir" ] || [ ! -x "$dir" ]; }; then
 	fail 'the ledger directory could not be read'
 fi
 
-# A bare #<n> becomes <owner>/<repo>#<n>, from the origin remote's URL
-# (git@host:owner/repo.git, https://host/owner/repo, ssh://…), where the
-# checkout has one that parses.
-case "$ref" in
-'#'[1-9]*)
-	case "${ref#\#}" in
-	*[!0-9]*) ;;
-	*)
-		url=$(git -C "$PWD" remote get-url origin 2>/dev/null) || url=
-		rest=${url%.git}
-		repo=${rest##*/}
-		rest=${rest%/*}
-		owner=${rest##*[:/]}
-		if [ -n "$url" ] && id_ok "$repo" && id_ok "$owner"; then
-			ref="$owner/$repo$ref"
-			# Checked again with its repo, so `resolve --ref` takes every ref
-			# a write can store.
-			[ "${#ref}" -le 200 ] || fail 'the ref is over 200 bytes with its repo'
-		fi
-		;;
-	esac
-	;;
-esac
-# An <owner>/<repo>#<n> ref, given or just qualified, with its owner and repo
-# lowercased.
-case "$ref" in
-*/*'#'[1-9]*)
-	case "${ref##*#}" in
-	*[!0-9]*) ;;
-	*) ref="$(printf '%s' "${ref%#*}" | tr '[:upper:]' '[:lower:]')#${ref##*#}" ;;
-	esac
-	;;
-esac
+[ "$has_ref" = no ] || normalize_ref
 
-# What counts as an entry, for every read and every resolve: an object with a
-# string kind (decision or need), id, text and at, and a why, ref, cwd and
-# resolved_at that are strings or absent (null counts as absent). Anything
-# else a hand edit left is skipped, so one bad line can't break a listing,
-# and a resolve leaves it as it is.
-entry_def='def is_entry: type == "object" and (.kind == "decision" or .kind == "need")
-	and (.id | type) == "string" and (.text | type) == "string" and (.at | type) == "string"
-	and ([.why, .ref, .cwd, .resolved_at] | all(. == null or type == "string"));'
+# What counts as an entry, for every read and every resolve: is-entry.jq
+# beside this script, which the SessionStart hook's reaping reads too.
+# Anything else a hand edit left is skipped, so one bad line can't break a
+# listing, and a resolve leaves it as it is.
+script_dir=${BASH_SOURCE[0]%/*}
+[ "$script_dir" != "${BASH_SOURCE[0]}" ] || script_dir=.
+entry_def=$(cat "$script_dir/is-entry.jq" 2>/dev/null) || fail 'is-entry.jq is missing beside the script'
 entry_filter="$entry_def"' fromjson? // empty | select(is_entry)'
 
 # entries: this session's entries, one compact JSON object per line.
@@ -311,7 +347,7 @@ now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 # line, its Why line and its indented text, control characters shown as ? (a
 # hand-edited file may hold one), and newest-first order.
 jq_defs='
-def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f]"; "?");
+def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]"; "?");
 def when: (.at | (fromdateiso8601? // null)) as $t
 	| if $t == null then "?" else ($t | strflocaltime("%Y-%m-%d %H:%M")) end;
 def num: (.id[1:] | tonumber? // 0);
@@ -358,6 +394,8 @@ add-decision | add-need)
 			'[.[] | select(.kind == $k and (.id | test("^" + $l + "[1-9][0-9]{0,8}$"))) | (.id[1:] | tonumber)] | max // 0') ||
 			fail 'the ledger could not be read'
 	fi
+	# The next id has to fit the form too, or numbering would repeat it.
+	[ "$last" -lt 999999999 ] || fail "the ledger has used every $kind id"
 	id="$letter$((last + 1))"
 	entry=$(jq -cn --arg kind "$kind" --arg id "$id" --arg why "$why" --arg text "$text" --arg ref "$ref" \
 		--arg at "$now" --arg cwd "$PWD" \

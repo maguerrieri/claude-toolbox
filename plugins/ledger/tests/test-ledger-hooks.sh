@@ -91,11 +91,18 @@ mkdir -p "$ledgers"
 # The directory's lock file, however old, is never reaped.
 : >"$ledgers/.lock"
 # A month-old ledger that still has an open need is kept; one whose needs are
-# all resolved is reaped.
-printf '%s\n' '{"kind":"need","id":"n1","text":"t","at":"2020-01-01T00:00:00Z"}' >"$ledgers/open.jsonl"
+# all resolved is reaped, and so is one whose only "need" isn't an entry
+# (ledger.sh's list skips it too), and one with an open need past 90 days.
+open_need='{"kind":"need","id":"n1","text":"t","at":"2020-01-01T00:00:00Z"}'
+printf '%s\n' "$open_need" >"$ledgers/open.jsonl"
+printf '%s\n' "$open_need" >"$ledgers/ancient.jsonl"
 printf '%s\n' '{"kind":"need","id":"n1","text":"t","at":"2020-01-01T00:00:00Z","resolved_at":"2020-01-02T00:00:00Z"}' >"$ledgers/closed.jsonl"
+printf '%s\n' '{"kind":"need"}' >"$ledgers/malformed.jsonl"
 touch -t 202001010000 "$ledgers/old.jsonl" "$ledgers/mine.jsonl" "$ledgers/.old.jsonl.Ab12Cd" "$ledgers/keep.txt" \
-	"$ledgers/.lock" "$ledgers/open.jsonl" "$ledgers/closed.jsonl"
+	"$ledgers/.lock" "$ledgers/ancient.jsonl"
+# 45 days old: past the 30-day reaping, short of the 90-day one.
+perl -e 'my $t = time - 45 * 86400; utime($t, $t, @ARGV) or die' \
+	"$ledgers/open.jsonl" "$ledgers/closed.jsonl" "$ledgers/malformed.jsonl"
 env_file="$tmp/env"
 : >"$env_file"
 printf '%s' '{"session_id": "mine", "source": "startup"}' |
@@ -150,6 +157,18 @@ if [ -f "$original" ]; then
 	record "" "the write rule is ticket-workflow's, script and read swapped" \
 		"$(diff <(code "$original" | sed -e 's/role-marker\\\\\.sh/ledger\\\\.sh/g' -e 's/role-marker\.sh/ledger.sh/g' \
 			-e 's/ROLE_MARKER_SH/LEDGER_SH/g' -e 's/(?!show(/(?!list(/') <(code "$plugin/hooks/ledger-guard-write.jq"))"
+fi
+
+# ledger-guard.sh's subagent gate and its directory check are role-guard.sh's
+# too (its in_roles_dir, under the directory's name), so they're held to the
+# original the same way.
+original_guard="$plugin/../ticket-workflow/hooks/role-guard.sh"
+if [ -f "$original_guard" ]; then
+	fn() { sed -n "/^$2() {/,/^}/p" "$1"; }
+	record "" "the directory check is role-guard.sh's in_roles_dir" \
+		"$(diff <(fn "$original_guard" in_roles_dir | sed 's/roles_dir/ledger_dir/g') <(fn "$plugin/hooks/ledger-guard.sh" in_ledger_dir))"
+	record "1 1" "the subagent gate is role-guard.sh's" \
+		"$(grep -c "^agent_re='\"agent_id\"\[\[:space:\]\]\*:\[\[:space:\]\]\*\"\[^\"\]'$" "$original_guard") $(grep -c "^agent_re='\"agent_id\"\[\[:space:\]\]\*:\[\[:space:\]\]\*\"\[^\"\]'$" "$plugin/hooks/ledger-guard.sh")"
 fi
 
 finish

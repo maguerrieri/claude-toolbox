@@ -46,13 +46,14 @@ and assemble what comes back up.
   here, and each thing you stop for that only the owner can give, with its
   exact unblock step, each under a Why line saying why the work exists, and
   resolve each once the owner answers. Your own `ready; needs the owner`
-  stack is one, recorded under the epic's ref (`--ref '#<epic>'`) and
-  resolved by its id once the whole stack has merged, since FINISH resolves
-  needs by a single PR's ref. A child's need (`blocked: merge needs the
-  owner`, a `declined:` line) stays in the child's own ledger, so don't copy
-  it into yours; relay it upward as before. When the owner asks "status?",
-  start from `ledger.sh list` (your own decisions and needs), then verify
-  against the PRs. (A view across every session's ledger is #316.)
+  stack is one, recorded under the epic's ref in full
+  (`--ref '<owner>/<repo>#<epic>'`) and resolved by its id once the whole
+  stack has merged, since FINISH resolves needs by a single PR's ref. A
+  child's need (`blocked: merge needs the owner`, a `declined:` line) stays
+  in the child's own ledger, so don't copy it into yours; relay it upward as
+  before. When the owner asks "status?", start from `ledger.sh list` (your
+  own decisions and needs), then verify against the PRs. (A view across
+  every session's ledger is #316.)
 - **Own the spawn decision on `filed:` pings.** A child that discovers adjacent
   work files it and pings you — it never spawns it. You dedup (two children can
   file the same discovery), decide whether it belongs in *this* epic's DAG or

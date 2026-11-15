@@ -12,11 +12,13 @@
 # 2. Opportunistic GC: ledgers outlive their sessions and nothing else reaps
 #    them. Delete those untouched for 30 days that hold no open need, after
 #    touching this session's own so a still-live session doesn't lose an old
-#    one. A ledger with an open need is kept: its session may be resumed
-#    after a month away, and the need is still the owner's to answer. Only in
-#    the default location: an overridden directory (test scaffolding, or a
-#    misconfigured broad path) must never have its contents deleted by this
-#    hook.
+#    one. A ledger with an open need is kept for 90 days: its session may be
+#    resumed after a month away, and the need is still the owner's to answer.
+#    Past that it goes too, since a need no session can resolve (a child's
+#    hand-back whose PR another session landed; resolving it from there is
+#    #316) would otherwise keep its ledger forever. Only in the default
+#    location: an overridden directory (test scaffolding, or a misconfigured
+#    broad path) must never have its contents deleted by this hook.
 #
 # Fails open: this hook must never block a session from starting.
 set -uo pipefail
@@ -76,13 +78,21 @@ fi
 # lock file a writer has just opened would let the next writer lock a new
 # file at the same path.
 [ "$locked" = yes ] && command -v jq >/dev/null 2>&1 || exit 0
+# An open need is one ledger.sh counts as one: is-entry.jq, which it reads too.
+hook_dir=${BASH_SOURCE[0]%/*}
+[ "$hook_dir" != "${BASH_SOURCE[0]}" ] || hook_dir=.
+entry_def=$(cat "$hook_dir/../scripts/is-entry.jq" 2>/dev/null) || exit 0
 find "$dir" -maxdepth 1 -type f -name '.*.jsonl.*' -mtime +30 -delete 2>/dev/null || true
 find "$dir" -maxdepth 1 -type f -name '*.jsonl' -mtime +30 -print0 2>/dev/null |
 	while IFS= read -r -d '' ledger; do
 		[ -n "$(find "$ledger" -maxdepth 0 -type f -mtime +30 2>/dev/null)" ] || continue
-		# Kept when it has an open need, or when it can't be read to tell.
-		open=$(jq -R 'fromjson? // empty | select(type == "object" and .kind == "need" and .resolved_at == null) | 1' "$ledger" 2>/dev/null) ||
+		# Kept, until it's 90 days old, when it has an open need, and always
+		# when it can't be read to tell.
+		open=$(jq -R "$entry_def"' fromjson? // empty | select(is_entry and .kind == "need" and .resolved_at == null) | 1' "$ledger" 2>/dev/null) ||
 			continue
-		[ -n "$open" ] || rm -f "$ledger"
+		if [ -n "$open" ] && [ -z "$(find "$ledger" -maxdepth 0 -type f -mtime +90 2>/dev/null)" ]; then
+			continue
+		fi
+		rm -f "$ledger"
 	done
 exec 9>&-

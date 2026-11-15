@@ -89,10 +89,30 @@ for ref in 'owner/repo#12' 'ABC-12' 'epic:40' '#7' 'x.y_z'; do
 	record "exit 0 $ref" "add: ref $ref accepted" "$(run t add-need --ref "$ref") $(jq -r .ref "$dir/$sid.jsonl")"
 done
 
-for bad in '' 'a b' '$(id)' '-x' 'a;b' "$(printf 'x%.0s' $(seq 201))"; do
+for bad in '' 'a b' '$(id)' '-x' 'a;b' "$(printf 'x%.0s' $(seq 201))" \
+	'#' '#0' '#07' 'a#' 'PR#x' 'a#1#2' \
+	'https://github.com/acme/widgets/tree/main' 'https://github.com/acme/widgets/pull/' 'https://github.com/acme/widgets/pull/0'; do
 	reset
-	record "exit 1 none" "add: ref '${bad:0:12}' refused" "$(run t add-need --ref "$bad") $(ledger)"
+	record "exit 1 none" "add: ref '${bad:0:40}' refused" "$(run t add-need --ref "$bad") $(ledger)"
 done
+# A GitHub issue or PR URL is stored as owner/repo#n, lowercased, whatever
+# follows the number.
+for url in 'https://github.com/Acme/Widgets/pull/12' 'https://github.com/acme/widgets/pull/12/files' \
+	'https://github.com/acme/widgets/issues/12#issuecomment-1' 'https://ghe.example.com/acme/widgets/pull/12?w=1'; do
+	reset
+	record "exit 0 acme/widgets#12" "add: URL ref ${url#https://} stored as owner/repo#n" \
+		"$(run t add-need --ref "$url") $(jq -r .ref "$dir/$sid.jsonl")"
+done
+# Invisible formatting characters are refused: a bidi override and isolate, a
+# zero-width space and joiner, a line separator, a byte-order mark.
+for ch in $'\xe2\x80\xae' $'\xe2\x81\xa6' $'\xe2\x80\x8b' $'\xe2\x80\x8d' $'\xe2\x80\xa8' $'\xef\xbb\xbf'; do
+	reset
+	record "exit 1 none" "add: an invisible formatting character ($(printf '%s' "$ch" | od -An -tx1 | tr -d ' '))" \
+		"$(run "a${ch}b" add-need) $(ledger)"
+done
+record 1 "add: says what it refused" "$(grep -c 'invisible formatting character' "$tmp/err")"
+reset
+record "exit 0" "add: a plain em dash and an accent still pass" "$(run $'caf\xc3\xa9 \xe2\x80\x94 ok' add-need)"
 reset
 record "exit 1 none" "add: --ref with no value" "$(run t add-need --ref) $(ledger)"
 record "exit 1 none" "add: an extra argument" "$(run t add-decision extra) $(ledger)"
@@ -193,6 +213,14 @@ record "T none" "resolve: a malformed line with the same id is left alone" \
 	"$(sed -n 3p "$dir/$sid.jsonl" | jq -r '.resolved_at // "none"' | sed 's/^[0-9].*Z$/T/') $(sed -n 4p "$dir/$sid.jsonl" | jq -r '.resolved_at // "none"')"
 record "exit 0" "resolve --ref: only entries are stamped" "$(run '' resolve --ref 'ABC-1')"
 record "none" "resolve --ref: a malformed line under the ref is left alone" "$(sed -n 4p "$dir/$sid.jsonl" | jq -r '.resolved_at // "none"')"
+
+# Past the last id of the form, numbering stops rather than repeat one.
+reset
+mkdir -p "$dir"
+printf '%s\n' '{"kind":"need","id":"n999999999","text":"t","at":"2020-01-01T00:00:00Z"}' >"$dir/$sid.jsonl"
+record "exit 1" "add: no need id left" "$(run 'one more' add-need)"
+record 1 "add: no need id left says so" "$(grep -c 'used every need id' "$tmp/err")"
+record "exit 0 d1" "add: a decision still numbers on its own" "$(run 'decided' add-decision) $(cat "$tmp/out")"
 
 # The cross-session forms are #316's: refused here.
 record "exit 1" "resolve: --session is refused" "$(run '' resolve n1 --session "$other")"
@@ -383,6 +411,6 @@ long=$(printf 'r%.0s' $(seq 197))
 git -C "$repo_dir" remote set-url origin "git@github.com:acme/$long.git"
 reset
 record "exit 1 none" "add: a ref over 200 bytes with its repo" "$(in_repo 'x' add-need --ref '#12') $(ledger)"
-record 1 "add: a long qualified ref says so" "$(grep -c 'over 200 bytes with its repo' "$tmp/err")"
+record 1 "add: a long qualified ref says so" "$(grep -c 'the ref is over 200 bytes' "$tmp/err")"
 
 finish
