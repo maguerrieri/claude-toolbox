@@ -4,11 +4,13 @@ on:
   push:
     paths:
       - "plugins/ledger/**"
+      - "plugins/ticket-workflow/hooks/role-guard.sh"
       - "plugins/ticket-workflow/hooks/role-guard-marker-write.jq"
       - ".github/workflows/ledger-ci.yml"
   pull_request:
     paths:
       - "plugins/ledger/**"
+      - "plugins/ticket-workflow/hooks/role-guard.sh"
       - "plugins/ticket-workflow/hooks/role-guard-marker-write.jq"
       - ".github/workflows/ledger-ci.yml"
 

@@ -47,7 +47,8 @@ and assemble what comes back up.
   exact unblock step, each under a Why line saying why the work exists, and
   resolve each once the owner answers. Your own `ready; needs the owner`
   stack is one, recorded under the epic's ref in full
-  (`--ref '<owner>/<repo>#<epic>'`) and resolved by its id once the whole
+  (`--ref '<owner>/<repo>#<epic>'` for a GitHub epic, the epic's key such as
+  `--ref 'ABC-40'` for a Jira one) and resolved by its id once the whole
   stack has merged, since FINISH resolves needs by a single PR's ref. A
   child's need (`blocked: merge needs the owner`, a `declined:` line) stays
   in the child's own ledger, so don't copy it into yours; relay it upward as
