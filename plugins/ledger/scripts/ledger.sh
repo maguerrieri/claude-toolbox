@@ -121,9 +121,11 @@ add-decision | add-need)
 	# The text comes from a heredoc; from a terminal, reading would only block.
 	[ ! -t 0 ] || fail "$usage"
 	# All of stdin, kept exact (the x stops $(...) from stripping trailing
-	# newlines), less one trailing newline.
+	# newlines), less one trailing newline. A NUL, which a shell variable can't
+	# hold and $(...) would silently drop, becomes \001, so the control check
+	# below refuses it instead.
 	text=$(
-		cat
+		tr '\000' '\001'
 		printf x
 	)
 	text=${text%x}
@@ -407,7 +409,10 @@ list)
 		echo "This session's ledger has no entries."
 		exit 0
 	fi
-	entries | jq -rs "$jq_defs"'
+	# Read in full before anything is printed, so a ledger that can't be read
+	# fails without first claiming it has no entries.
+	read_entries=$(entries) || fail 'the ledger could not be read'
+	printf '%s\n' "$read_entries" | jq -rs "$jq_defs"'
 		sort_by(.at, num) | reverse
 		| if length == 0 then "This session'"'"'s ledger has no entries." else
 			([.[] | select(.kind == "need" and .resolved_at == null)] | section("Open needs")),
