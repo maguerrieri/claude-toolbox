@@ -61,34 +61,36 @@ owner, each with its why.
 ## The commands
 
 The text goes on stdin through a quoted heredoc, so quotes, backticks and `$`
-stay literal. Quote a `--ref` that starts with `#`: unquoted, the shell reads it
-as a comment.
+stay literal. Give a `--ref` in full, `<owner>/<repo>#<n>` (or the issue's or
+PR's URL), and quote it: unquoted, the shell reads a `#` as a comment.
 
 ```bash
-bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" add-decision --ref '#208' <<'LEDGER_EOF'
+bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" add-decision --ref '<owner>/<repo>#208' <<'LEDGER_EOF'
 Why: <history and goal: why this work exists>
 <what the owner decided, and why>
 LEDGER_EOF
-bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" add-need --ref '#212' <<'LEDGER_EOF'
+bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" add-need --ref '<owner>/<repo>#212' <<'LEDGER_EOF'
 Why: <history and goal: why this work exists>
 <what the owner needs to do, and the exact step>
 LEDGER_EOF
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve n1
-bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve --ref '#212'
+bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve --ref '<owner>/<repo>#212'
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list
 ```
 
 - `add-decision` and `add-need` print the new entry's id (`d1`, `n1`); `--ref`
-  is optional (an issue or PR: `#212`, `owner/repo#12`, `ABC-12`). A bare
-  `#212` is written as `owner/repo#212`, from the checkout's origin remote, so
-  every session in one repo records the same ref and two repos' `#12` don't
-  collide. Outside a checkout of the ref's repo a bare `#212` stays as it is,
-  and in a fork's checkout `origin` names the fork, so there pass the full
-  `owner/repo#212`. An `owner/repo#212` ref is stored with its owner and repo
-  lowercased, as GitHub ignores their case. The first line must be the Why
-  line, `Why:` and then at most 200 bytes; it's stored as the entry's `why`,
-  and `list` prints it above the text. The text after it is at most 4000
-  bytes. Neither may hold a control character but tab and newline.
+  is optional: an issue or PR as `owner/repo#12` or its GitHub URL (stored as
+  `owner/repo#12`), or another tracker's key (`ABC-12`). Its owner and repo
+  are stored lowercased, as GitHub ignores their case. A bare `#212` is a
+  shorthand for this checkout's own repo, written as `owner/repo#212` from its
+  origin remote; outside a checkout of the ref's repo, or in a fork's (whose
+  `origin` is the fork), it names the wrong repo, so give the full ref. The
+  first line of stdin must be the Why line, `Why:` and then at most 200 bytes;
+  it's stored as the entry's `why`, and `list` prints it above the text. The
+  text after it is at most 4000 bytes. Neither may hold a control character
+  but tab and newline, or an invisible formatting character (a bidi override,
+  a zero-width character), which could make `list` read differently from what
+  was recorded.
 - `resolve <need id>` marks one of this session's needs resolved.
 - `resolve --ref <ref>` resolves every open need of this session's with that
   ref, the hand-back's and any `blocked:` one, and prints their ids. It's for a
@@ -98,10 +100,12 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list
 - A body line that is exactly `LEDGER_EOF` would end the heredoc early: use
   another delimiter, the same word in both places. Don't also pipe into the
   command: under zsh a pipe and a heredoc on one command both feed stdin.
-- Your attach handle, for an unblock step (the session id falls back as the
-  script's does, on a CLI before 2.1.132):
-  `claude agents --json --all | jq -r --arg s "${CLAUDE_CODE_SESSION_ID:-$CLAUDE_SESSION_ID}" '.[] | select(.sessionId == $s) | .id'`
-  (nothing for an interactive session, which the owner is already in).
+- Your attach handle, for an unblock step. `claude agents` can hang, so give
+  it five seconds (perl's `alarm` ends it); the session id falls back as the
+  script's does, on a CLI before 2.1.132:
+  `perl -e 'alarm 5; exec @ARGV' claude agents --json --all | jq -r --arg s "${CLAUDE_CODE_SESSION_ID:-$CLAUDE_SESSION_ID}" '.[] | select(.sessionId == $s) | .id'`
+  It prints nothing for an interactive session, which the owner is already in,
+  or when the lookup timed out: then record the need without a handle.
 
 `CLAUDE_LEDGER_ROOT` is set by the plugin's SessionStart hook. When it is unset
 (the plugin installed mid-session, hooks off) a command stops with
@@ -113,8 +117,8 @@ directory, the highest version if several match) and run it by that path.
 A ledger is keyed on the session id, so after `/clear` or a fork (which start
 a new one) entries recorded earlier stay under the old id, out of `list`'s
 reach. Resuming the session (`claude --resume`) keeps its id and its ledger.
-The SessionStart hook reaps a ledger untouched for 30 days only when it has no
-open need.
+The SessionStart hook reaps a ledger untouched for 30 days when it has no open
+need, and one with an open need after 90.
 
 A ledger write that fails never blocks the work it describes: carry on, and
 say in your next report what wasn't recorded and why.

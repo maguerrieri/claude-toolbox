@@ -39,16 +39,25 @@ under *Deferred to #316* below.
   `CLAUDE_SESSION_ID` the plugin's SessionStart hook (and ticket-workflow's)
   exports on older CLIs. Each line is one entry:
   `{kind: "decision"|"need", id, why, text, ref?, at, cwd, resolved_at?}`.
-  `id` is `d<n>` or `n<n>`, numbered per kind within the file. `cwd` is where
+  `id` is `d<n>` or `n<n>`, numbered per kind within the file from the highest
+  well-formed id (at most nine digits, so a hand-edited `n1.5` can't break the
+  arithmetic, and numbering stops at the last one rather than repeat it).
+  Which lines count as entries is one jq definition, `scripts/is-entry.jq`,
+  that the script's reads, its resolves and the hook's reaping all load.
+  `cwd` is where
   the session wrote from, which nothing here reads yet; it's kept so #316 can
   name a session that `claude agents` doesn't list (an interactive one).
-- **Refs.** A bare `#<n>` ref is written as `<owner>/<repo>#<n>` from the
-  checkout's origin, so a repo's sessions agree on a ref and two repos' `#12`
-  stay apart. Outside such a checkout a bare ref stays bare, and a fork's
-  origin names the fork, so START's hand-back and FINISH spell out the PR's
-  own `<owner>/<repo>#<pr>`. An `<owner>/<repo>#<n>` ref is stored with its
-  owner and repo lowercased, written or resolved, since GitHub ignores their
-  case and origin's spelling can differ from a PR URL's.
+- **Refs** go through one function, `normalize_ref`, on write and on
+  resolve, so the two always agree. A ref is given in full: `<owner>/<repo>#<n>`,
+  a GitHub issue or PR URL (stored as `<owner>/<repo>#<n>`, since START and
+  FINISH read the repo from a PR's URL), or another tracker's key. A bare
+  `#<n>` is a shorthand for the checkout's own repo, qualified from origin;
+  outside such a checkout it stays bare, and in a fork it names the fork, so
+  START's hand-back, the implementer's `blocked:` need, the coordinator's
+  stack need and FINISH all spell out the full ref. The owner and repo are
+  lowercased, since GitHub ignores their case and origin's spelling can differ
+  from a PR URL's. A `#` must be followed by a number (a lone `#` named
+  nothing and could never be resolved), and a ref has at most one.
 - **Locking.** A write holds the ledger directory's one lock from its read to
   its rename, since a session's parallel tool calls can write its ledger at
   once and the reaping (below) deletes in the same directory. The lock is
@@ -69,7 +78,12 @@ under *Deferred to #316* below.
   the reason for when its need is read days later. It's the first line of the
   text on stdin, stored as `why` (at most 200 bytes), and the script refuses
   an entry without one, so writers can't skip it. `list` prints it above the
-  entry's text. Entries written before it have no `why` and still list.
+  entry's text. Entries written before it have no `why` and still list. The
+  Why line and the text refuse control characters (NUL included, which a
+  shell variable would otherwise drop) and invisible formatting characters
+  (bidi overrides and isolates, zero-width characters, line separators), so
+  text pasted from an issue can't make `list` read differently from what was
+  recorded.
 - **Writes go through `scripts/ledger.sh`**: `add-decision` and `add-need` (a
   Why line, then the text, on stdin through a quoted heredoc, `--ref`
   optional), `resolve <id>`, `resolve --ref <ref>` (this session's open needs
@@ -95,8 +109,10 @@ under *Deferred to #316* below.
   children as before, until #316 brings the children's ledgers into one view.
 - **Garbage collection**: the SessionStart hook deletes ledger files untouched
   for 30 days that hold no open need, as ticket-workflow's does for role
-  markers. A ledger with an open need is kept, since its session may be
-  resumed after a month away and the need is still the owner's to answer. The
+  markers. A ledger with an open need is kept for 90 days, since its session
+  may be resumed after a month away and the need is still the owner's to
+  answer; past that it goes too, or a need no session can resolve (a child's
+  hand-back whose PR its coordinator landed) would keep its ledger forever. The
   reaping runs under the directory's lock: unlocked, it could check a ledger's
   age just before a write renamed an updated one into place, and delete the
   new entry with the old ones. When the lock can't be had within two seconds,
