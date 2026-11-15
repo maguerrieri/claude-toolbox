@@ -90,8 +90,12 @@ mkdir -p "$ledgers"
 : >"$ledgers/keep.txt"
 # The directory's lock file, however old, is never reaped.
 : >"$ledgers/.lock"
+# A month-old ledger that still has an open need is kept; one whose needs are
+# all resolved is reaped.
+printf '%s\n' '{"kind":"need","id":"n1","text":"t","at":"2020-01-01T00:00:00Z"}' >"$ledgers/open.jsonl"
+printf '%s\n' '{"kind":"need","id":"n1","text":"t","at":"2020-01-01T00:00:00Z","resolved_at":"2020-01-02T00:00:00Z"}' >"$ledgers/closed.jsonl"
 touch -t 202001010000 "$ledgers/old.jsonl" "$ledgers/mine.jsonl" "$ledgers/.old.jsonl.Ab12Cd" "$ledgers/keep.txt" \
-	"$ledgers/.lock"
+	"$ledgers/.lock" "$ledgers/open.jsonl" "$ledgers/closed.jsonl"
 env_file="$tmp/env"
 : >"$env_file"
 printf '%s' '{"session_id": "mine", "source": "startup"}' |
@@ -99,7 +103,7 @@ printf '%s' '{"session_id": "mine", "source": "startup"}' |
 record "0" "session start exits 0" "$?"
 record 'export CLAUDE_LEDGER_ROOT=/plugins/led\ ger|export CLAUDE_SESSION_ID=mine' \
 	"exports the plugin root, and the session id on a CLI without its own" "$(tr '\n' '|' <"$env_file" | sed 's/|$//')"
-record ".lock fresh.jsonl keep.txt mine.jsonl" "reaps month-old ledgers and temp files, keeps its own and the lock file" \
+record ".lock fresh.jsonl keep.txt mine.jsonl open.jsonl" "reaps month-old ledgers without an open need and temp files, keeps its own and the lock file" \
 	"$(ls -A "$ledgers" | tr '\n' ' ' | sed 's/ $//')"
 # The reaping runs under the directory's lock, and skips a turn when a write
 # holds it.

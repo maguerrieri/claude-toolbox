@@ -21,17 +21,14 @@ jobs:
         run: bash plugins/ledger/tests/test-ledger.sh
       - name: Ledger hook tests
         run: bash plugins/ledger/tests/test-ledger-hooks.sh
-  mod:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      # Pinned to the build the mod was written against: the function-hook API
-      # is early access and moves between releases. Neither command needs a
-      # login.
-      - name: Validate the plugin and its hooks module
+      # Pinned, so a CLI release can't change the verdict under an unchanged
+      # plugin. It needs no login.
+      - name: Validate the plugin and its hooks
         run: npx -y @anthropic-ai/claude-code@2.1.312 plugin validate plugins/ledger
-      - name: Mod tests
-        run: npx -y @anthropic-ai/claude-code@2.1.312 plugin test plugins/ledger

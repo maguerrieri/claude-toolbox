@@ -1,16 +1,16 @@
 ---
 name: ledger
-description: 'Use when instructions (a ticket-workflow charter or step, a briefing) or the owner ask this session to record a decision the owner made or something it needs from the owner, or when the owner asks "status?" or what needs them. Keeps the per-session ledger that the ledger mod and /ledger show across every local session.'
+description: 'Use when instructions (a ticket-workflow charter or step, a briefing) or the owner ask this session to record a decision the owner made or something it needs from the owner, or when the owner asks "status?" or what this session needs from them. Keeps the per-session ledger that /ledger shows.'
 ---
 
 # Ledger: decisions made, and what a session needs from the owner
 
 Each session keeps a **ledger**: the decisions the owner made in it, and what
-it needs from the owner. The ledger plugin's mod shows every local session's
-open needs at a glance (a band above the prompt, and the `/ledger-pane` pane),
-and `/ledger` prints the same. So when the owner asks "status?", the answer
-starts there instead of being rebuilt from GitHub and memory, and nothing the
-owner has to do waits for them to ask.
+it needs from the owner, each with a line saying why the work exists. `/ledger`
+prints it. So when the owner asks this session "status?", the answer starts
+there instead of being rebuilt from GitHub and memory, and what the owner has
+to do is written down before they ask. (A view of every local session's
+ledger at once, a glanceable mod among them, is #316.)
 
 A ledger is one file per session, written only by that session through
 `scripts/ledger.sh`. An in-process subagent shares its parent's session, so a
@@ -24,9 +24,9 @@ line (at most 200 bytes) on why the work the entry is about exists and what
 it's for. Take it from the issue's motivation, or the epic or request it
 serves: `Why: #208: "status?" answers are rebuilt from scratch each time, so
 this keeps a durable list of decisions and needs`. The owner reads an entry
-days later, among other sessions' needs, and a small in-the-weeds issue is
-easy to forget the reason for. The script refuses an entry without one. The
-entry's own text goes on the lines after it.
+days later, and a small in-the-weeds issue is easy to forget the reason for.
+The script refuses an entry without one. The entry's own text goes on the
+lines after it.
 
 - **A decision**, whenever the owner decides something in this session: a scope
   change, a defer, a merge authorized, a design pick, a review-round cap raised,
@@ -35,29 +35,27 @@ entry's own text goes on the lines after it.
 - **A need**, whenever this session stops for something only the owner can
   give: a review or a merge, a design decision, a permission prompt, a credential
   to unlock (1Password), an answer to a question. Say what is needed and the
-  **exact unblock step**, so the owner can act from the pane without opening
+  **exact unblock step**, so the owner can act without reading back through
   the session: `review PR #212, then claude attach 5864ecfd and say finish`,
-  `approve the Bash prompt in claude attach 5864ecfd`. Record each need once:
-  check `list` before adding one that may already be open.
-- **Not a child's need.** A need lives only in the ledger of the session that
-  needs the owner. When a session you spawned pings that it needs the owner
-  (`blocked: merge needs the owner`, a `declined: … needs the owner` line),
-  that child records the need itself, and `list --all` and the mod read every
-  local ledger, so it already reaches your "status?" answer. Don't copy it
-  into yours: a copy would show the same need twice. What you stop for
-  yourself, such as a whole stack that's ready for the owner, is yours to
-  record.
+  `approve the Bash prompt in claude attach 5864ecfd`. When the need is about a
+  PR, give that PR as `--ref`, so the merge that answers it can resolve it.
+  Record each need once: check `list` before adding one that may already be
+  open.
+- **Only your own needs.** A need lives in the ledger of the session that needs
+  the owner. When a session you spawned pings that it needs the owner, that
+  child records it in its own ledger; don't copy it into yours, and relay it
+  to the owner as before.
 - **Resolve a need** once the owner has answered: they replied, approved or
   merged. Resolve a need that no longer applies too (its PR closed, the plan
-  changed). When a PR lands, `resolve --ref` resolves every open need under
-  it, in every local ledger.
+  changed). When a PR lands, `resolve --ref` resolves every open need of this
+  session's under it.
 
 ## When to read
 
-When the owner asks "status?", "what's left?" or what needs them, run
-`list --all` first: every session's open needs, newest first, then this
-session's decisions, each under its Why line. Then verify what may have moved
-since (PR state, `claude agents`), and lead the answer with what needs the
+When the owner asks this session "status?", "what's left?" or what it needs
+from them, run `list` first: its open needs, decisions and resolved needs,
+newest first, each under its Why line. Then verify what may have moved since
+(PR state, the sessions you spawned), and lead the answer with what needs the
 owner, each with its why.
 
 ## The commands
@@ -77,7 +75,7 @@ Why: <history and goal: why this work exists>
 LEDGER_EOF
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve n1
 bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve --ref '#212'
-bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
+bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list
 ```
 
 - `add-decision` and `add-need` print the new entry's id (`d1`, `n1`); `--ref`
@@ -86,29 +84,23 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
   every session in one repo records the same ref and two repos' `#12` don't
   collide. Outside a checkout of the ref's repo a bare `#212` stays as it is,
   and in a fork's checkout `origin` names the fork, so there pass the full
-  `owner/repo#212`. The first line must be the Why line, `Why:` and then at
-  most 200 bytes; it's stored as the entry's `why`, and the listings print it
-  above the text. The text after it is at most 4000 bytes. Neither may hold a
-  control character but tab and newline.
-- `resolve <need id>` marks one of this session's needs resolved;
-  `--session <session id or a unique prefix of 4+ characters>` resolves another
-  session's, which is for the owner dismissing a need whose session is gone,
-  never for a need that session can still answer itself.
-- `resolve --ref <ref>` resolves every open need with that ref in every local
-  ledger: the hand-back's, and any `blocked:` one. It's for a PR that landed
-  (ticket-workflow's FINISH runs it), since the merge answers all of them. It
-  prints one line per ledger it resolved; if any ledger couldn't be resolved,
-  it says which on stderr and exits 1, and the ledgers it printed were still
-  resolved.
-- `list` prints this session's open needs, decisions and resolved needs;
-  `list --all` prints every session's open needs and this session's decisions.
-  Each need is its own row, even when two share a ref, and the pane's Resolve
-  resolves the one pressed.
+  `owner/repo#212`. An `owner/repo#212` ref is stored with its owner and repo
+  lowercased, as GitHub ignores their case. The first line must be the Why
+  line, `Why:` and then at most 200 bytes; it's stored as the entry's `why`,
+  and `list` prints it above the text. The text after it is at most 4000
+  bytes. Neither may hold a control character but tab and newline.
+- `resolve <need id>` marks one of this session's needs resolved.
+- `resolve --ref <ref>` resolves every open need of this session's with that
+  ref, the hand-back's and any `blocked:` one, and prints their ids. It's for a
+  PR that landed (ticket-workflow's FINISH runs it), since the merge answers
+  all of them.
+- `list` prints this session's open needs, decisions and resolved needs.
 - A body line that is exactly `LEDGER_EOF` would end the heredoc early: use
   another delimiter, the same word in both places. Don't also pipe into the
   command: under zsh a pipe and a heredoc on one command both feed stdin.
-- Your attach handle, for an unblock step:
-  `claude agents --json --all | jq -r --arg s "$CLAUDE_CODE_SESSION_ID" '.[] | select(.sessionId == $s) | .id'`
+- Your attach handle, for an unblock step (the session id falls back as the
+  script's does, on a CLI before 2.1.132):
+  `claude agents --json --all | jq -r --arg s "${CLAUDE_CODE_SESSION_ID:-$CLAUDE_SESSION_ID}" '.[] | select(.sessionId == $s) | .id'`
   (nothing for an interactive session, which the owner is already in).
 
 `CLAUDE_LEDGER_ROOT` is set by the plugin's SessionStart hook. When it is unset
@@ -119,9 +111,10 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list --all
 directory, the highest version if several match) and run it by that path.
 
 A ledger is keyed on the session id, so after `/clear` or a fork (which start
-a new one) entries recorded earlier stay under the old id. `list --all` still
-shows them, under the directory and the old short id, and `resolve --ref` or
-`resolve --session <old id>` reaches them.
+a new one) entries recorded earlier stay under the old id, out of `list`'s
+reach. Resuming the session (`claude --resume`) keeps its id and its ledger.
+The SessionStart hook reaps a ledger untouched for 30 days only when it has no
+open need.
 
 A ledger write that fails never blocks the work it describes: carry on, and
 say in your next report what wasn't recorded and why.

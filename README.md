@@ -60,15 +60,13 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   URLs. Its launchd install is separate (#295). See
   [its README](plugins/pr-notifier/README.md).
 - **ledger** — a per-session record of the decisions the owner made and what
-  each session needs from them (a review, a merge, a permission prompt, a
+  the session needs from them (a review, a merge, a permission prompt, a
   credential), each with a one-line why (the history and goal of the work)
-  and the exact step that unblocks it: the `ledger` skill plus `/ledger`. A
-  mod in the same plugin shows every local session's open needs at a glance:
-  a band above the prompt while any is open, and a pane
-  (`/ledger-pane`) with a Resolve button per need and this session's latest
-  decisions. `ticket-workflow`'s sessions record into it, and its planners and
-  coordinators answer "status?" from every session's needs first. Local sessions
-  only: the ledgers are files under `~/.claude/session-ledger/`.
+  and the exact step that unblocks it: the `ledger` skill plus `/ledger`.
+  `ticket-workflow`'s sessions record into it and start their "status?"
+  answers from it. Local sessions only: the ledgers are files under
+  `~/.claude/session-ledger/`. A glanceable view across every session's
+  ledger is #316.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
