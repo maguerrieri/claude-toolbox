@@ -38,7 +38,7 @@
     {
       "name": "ledger",
       "source": "./plugins/ledger",
-      "description": "Per-session ledger of the owner's decisions and what each session needs from them, shown across sessions in a pane and band (a mod) and by /ledger"
+      "description": "Per-session ledger of the owner's decisions and what the session needs from them, each with a one-line why, shown by /ledger"
     },
     {
       "name": "ticket-workflow",

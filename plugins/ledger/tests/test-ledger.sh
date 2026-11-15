@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Tests for scripts/ledger.sh, which makes every ledger read and write the
-# docs describe: add-decision and add-need (text on stdin), resolve, and list,
-# the session-id lookup, the argument checks, and atomic writes. The script
-# runs under the bash running this file, so `/bin/bash tests/test-ledger.sh`
-# checks it under macOS's bash 3.2. Needs jq.
+# docs describe: add-decision and add-need (a Why line and text on stdin),
+# resolve, and list, the session-id lookup, the argument checks, and atomic
+# writes. The script runs under the bash running this file, so
+# `/bin/bash tests/test-ledger.sh` checks it under macOS's bash 3.2. Needs jq.
 #
 #   bash plugins/ledger/tests/test-ledger.sh
 set -u
@@ -19,16 +19,8 @@ dir="$tmp/ledger"
 sid=11111111-aaaa-bbbb-cccc-000000000001
 other=22222222-aaaa-bbbb-cccc-000000000002
 work="$tmp/work/repo-a"
-mkdir -p "$work" "$tmp/bin"
+mkdir -p "$work"
 . "$here/lib.sh"
-
-# A stand-in for `claude agents --json --all`, which list --all reads names from.
-cat >"$tmp/bin/claude" <<EOF
-#!/bin/sh
-[ "\$1 \$2 \$3" = "agents --json --all" ] || exit 2
-printf '%s\n' '[{"id":"22222222","sessionId":"$other","name":"toolbox #212: merge it","state":"done"}]'
-EOF
-chmod +x "$tmp/bin/claude"
 
 # The Why line every add needs (with_why adds it); tests of the Why line itself
 # set NOWHY=1 and write their own.
@@ -49,7 +41,7 @@ run_as() { # run_as <id> <stdin> <arg> ...
 	input=$(with_why "$2" "${3:-}"; printf x)
 	input=${input%x}
 	shift 2
-	(cd "$work" && printf '%s' "$input" | env -i PATH="$tmp/bin:$PATH" HOME="$tmp/home" TZ=UTC \
+	(cd "$work" && printf '%s' "$input" | env -i PATH="$PATH" HOME="$tmp/home" TZ=UTC \
 		CLAUDE_SESSION_LEDGER_DIR="$dir" CLAUDE_CODE_SESSION_ID="$id" "$BASH" "$script" "$@" >"$tmp/out" 2>"$tmp/err")
 	echo "exit $?"
 }
@@ -174,19 +166,9 @@ record "exit 1" "resolve: a decision" "$(run '' resolve d1)"
 record "exit 1" "resolve: no id" "$(run '' resolve)"
 record "exit 1" "resolve: a bad id" "$(run '' resolve 'n1;x')"
 
-run_as "$other" 'their need' add-need >/dev/null
-record "exit 0 T" "resolve --session: another session's need" \
-	"$(run '' resolve n1 --session "$other") $(ledger "$other" | tr '|' '\n' | jq -r .resolved_at)"
-run_as "$other" 'their second need' add-need >/dev/null
-record "exit 0 T" "resolve --session: a unique prefix" \
-	"$(run '' resolve n2 --session 2222) $(jq -r 'select(.id == "n2") | .resolved_at' "$dir/$other.jsonl" | sed 's/^[0-9].*Z$/T/')"
-record "exit 1" "resolve --session: a prefix under four characters" "$(run '' resolve n2 --session 222)"
-run_as 22229999 'x' add-need >/dev/null
-record "exit 1" "resolve --session: an ambiguous prefix" "$(run '' resolve n1 --session 2222)"
-record 1 "resolve --session: says it's ambiguous" "$(grep -c 'more than one' "$tmp/err")"
-record "exit 1" "resolve --session: no such session" "$(run '' resolve n1 --session 3333)"
-record "exit 1" "resolve --session: a path" "$(run '' resolve n1 --session ../x)"
-record "exit 1" "resolve --session: no value" "$(run '' resolve n1 --session)"
+# The cross-session forms are #316's: refused here.
+record "exit 1" "resolve: --session is refused" "$(run '' resolve n1 --session "$other")"
+record "exit 1" "resolve: an extra argument" "$(run '' resolve n1 n2)"
 
 # --- list --------------------------------------------------------------------
 
@@ -214,102 +196,17 @@ Resolved needs (1):
     Unlock 1Password"
 record "$expected" "list: this session" \
 	"$(sed -E 's/[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}/DATE/' "$tmp/out")"
-
-# Other sessions' ledgers, written as fixtures so their times are fixed: the
-# listing puts the newest need first.
-cat >"$dir/$other.jsonl" <<EOF
-{"kind":"need","id":"n1","text":"Approve the permission prompt","at":"2020-01-01T10:00:00Z","cwd":"$tmp/work/repo-a"}
-{"kind":"decision","id":"d1","text":"their decision","at":"2020-01-01T10:01:00Z","cwd":"$tmp/work/repo-a"}
-{"kind":"need","id":"n2","text":"done already","at":"2020-01-01T10:02:00Z","cwd":"$tmp/work/repo-a","resolved_at":"2020-01-01T10:03:00Z"}
-EOF
-# repo-b's n2 shares this session's n1's ref, and is still its own need,
-# listed on its own.
-cat >"$dir/33333333-x.jsonl" <<EOF
-{"kind":"need","id":"n1","why":"the www redesign","text":"Pick a design","at":"2020-01-01T09:00:00Z","cwd":"$tmp/work/repo-b"}
-{"kind":"need","id":"n7","why":5,"text":"a number for a why","at":"2020-01-01T09:30:00Z"}
-not json
-{"kind":"need","text":"no id","at":"2020-01-01T09:30:00Z"}
-{"kind":"need","id":"n8","text":"a number for a ref","ref":5,"at":"2020-01-01T09:30:00Z"}
-["an", "array"]
-{"kind":"need","id":"n2","text":"Review PR #212","ref":"#212","at":"2020-01-01T08:00:00Z","cwd":"$tmp/work/repo-b"}
-EOF
-printf 'ignored\n' >"$dir/notes.txt"
-record "exit 0" "list --all" "$(run '' list --all)"
-labels=$(grep -E '^  [^ ]' "$tmp/out" | sed -E 's/^  //; s/ · [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}//')
-record "this session · n1 · #212
-toolbox #212: merge it (22222222) · n1
-repo-b (33333333) · n1
-repo-b (33333333) · n2 · #212
-d1 · #208" "list --all: open needs across sessions, newest first, then this session's decisions" "$labels"
-record 0 "list --all: needs under one ref aren't merged" "$(grep -c 'also:' "$tmp/out")"
-record 1 "list --all: header counts every open need" "$(grep -c '^Open needs across sessions (4):$' "$tmp/out")"
-record 1 "list --all: decisions header" "$(grep -c '^Decisions in this session (1):$' "$tmp/out")"
-record 1 "list --all: a need's text" "$(grep -c '^    Pick a design$' "$tmp/out")"
-record 1 "list --all: a need's Why line, above its text" "$(grep -A1 '^    Why: the www redesign$' "$tmp/out" | grep -c '^    Pick a design$')"
-record 0 "list --all: an entry with a non-string why is skipped" "$(grep -c 'a number for a why' "$tmp/out")"
-record 1 "list --all: an entry written without a Why line still lists" "$(grep -A1 '^  toolbox #212: merge it (22222222) · n1' "$tmp/out" | grep -c '^    Approve the permission prompt$')"
-record 0 "list --all: resolved needs left out" "$(grep -c 'Unlock 1Password\|done already' "$tmp/out")"
-record 0 "list --all: other sessions' decisions left out" "$(grep -c 'their decision' "$tmp/out")"
-
-# `claude agents` is asked only when another session has an open need, which
-# its names label.
-mkdir -p "$tmp/bin-count"
-printf '#!/bin/sh\ntouch "%s/claude-ran"\nexit 1\n' "$tmp" >"$tmp/bin-count/claude"
-chmod +x "$tmp/bin-count/claude"
-list_counting() { # list_counting: list --all through the counting claude; prints whether it ran
-	rm -f "$tmp/claude-ran"
-	(cd "$work" && env -i PATH="$tmp/bin-count:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
-		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >/dev/null 2>&1)
-	[ -f "$tmp/claude-ran" ] && echo ran || echo "not run"
-}
-record ran "list --all: another session's need asks claude agents" "$(list_counting)"
-mv "$dir" "$tmp/ledger-kept"
-mkdir -p "$dir"
-cp "$tmp/ledger-kept/$sid.jsonl" "$dir/"
-record "not run" "list --all: only this session's needs don't" "$(list_counting)"
-rm -rf "$dir"
-mv "$tmp/ledger-kept" "$dir"
-
-# A claude whose listing fails leaves every session named by its directory.
-mkdir -p "$tmp/bin-broken"
-printf '#!/bin/sh\nexit 1\n' >"$tmp/bin-broken/claude"
-chmod +x "$tmp/bin-broken/claude"
-record "exit 0" "list --all: claude agents failing" \
-	"$(cd "$work" && env -i PATH="$tmp/bin-broken:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
-		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
-record 1 "list --all: falls back to the directory name" "$(grep -c '^  repo-a (22222222) · n1' "$tmp/out")"
-
-# A claude that hangs is given five seconds, and then nobody is named.
-mkdir -p "$tmp/bin-hung"
-printf '#!/bin/sh\nexec sleep 30\n' >"$tmp/bin-hung/claude"
-chmod +x "$tmp/bin-hung/claude"
-started=$(date +%s)
-record "exit 0" "list --all: claude agents hanging" \
-	"$(cd "$work" && env -i PATH="$tmp/bin-hung:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
-		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
-record yes "list --all: done within ten seconds" "$([ $(($(date +%s) - started)) -lt 10 ] && echo yes)"
-record 1 "list --all: a hung claude names nobody" "$(grep -c '^  repo-a (22222222) · n1' "$tmp/out")"
-# One that ignores TERM too is killed a second later.
-printf "#!/bin/sh\ntrap '' TERM\nexec sleep 30\n" >"$tmp/bin-hung/claude"
-started=$(date +%s)
-record "exit 0" "list --all: claude agents ignoring TERM" \
-	"$(cd "$work" && env -i PATH="$tmp/bin-hung:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
-		CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
-record yes "list --all: one ignoring TERM, done within ten seconds" "$([ $(($(date +%s) - started)) -lt 10 ] && echo yes)"
-record 1 "list --all: one ignoring TERM names nobody" "$(grep -c '^  repo-a (22222222) · n1' "$tmp/out")"
-record "exit 0" "list --all: no session id still lists" \
-	"$(cd "$work" && env -i PATH="$tmp/bin:$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
-		"$BASH" "$script" list --all >"$tmp/out" 2>"$tmp/err"; echo "exit $?")"
-record 0 "list --all: no session id marks no session as this one" "$(grep -c 'this session' "$tmp/out")"
+record "exit 1" "list: --all is refused" "$(run '' list --all)"
 record "exit 1" "list: an unknown option" "$(run '' list --json)"
-# A directory there but unlistable fails, rather than reading as no needs.
+# A directory there but unreadable fails, rather than reading as no ledger.
 if [ "$(id -u)" -ne 0 ]; then
 	chmod 000 "$dir"
-	record "exit 1" "list --all: an unreadable directory fails" "$(run '' list --all)"
+	record "exit 1" "list: an unreadable directory fails" "$(run '' list)"
 	chmod 755 "$dir"
-	record 1 "list --all: an unreadable directory says so" "$(grep -c 'the ledger directory could not be read' "$tmp/err")"
-	record 0 "list --all: an unreadable directory claims no needs" "$(grep -c 'No session has an open need' "$tmp/out")"
+	record 1 "list: an unreadable directory says so" "$(grep -c 'the ledger directory could not be read' "$tmp/err")"
+	record 0 "list: an unreadable directory claims no entries" "$(grep -c 'no entries' "$tmp/out")"
 fi
+
 
 # --- writes are atomic and serialized ---------------------------------------
 
@@ -326,7 +223,7 @@ for batch in 1 2; do
 		(cd "$work" && printf '%s\nneed %s.%s' "$WHY" "$batch" "$i" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 			CLAUDE_CODE_SESSION_ID="$sid" "$BASH" "$script" add-need >/dev/null 2>&1) &
 	done
-	run '' resolve "n$batch" --session "$sid" >/dev/null &
+	run '' resolve "n$batch" >/dev/null &
 	wait
 done
 record "42 42 2" "concurrent writes: none lost, ids unique, the resolves kept" \
@@ -393,48 +290,49 @@ in_repo 'over https' add-decision --ref '#13' >/dev/null
 record "acme/widgets#13" "add: an https remote" "$(jq -r 'select(.id == "d1") | .ref' "$dir/$sid.jsonl")"
 record "exit 0" "add: outside a checkout a bare ref stays" "$(run 'no repo' add-need --ref '#12')"
 record "#12" "add: outside a checkout, the ref as given" "$(jq -r 'select(.id == "n5") | .ref' "$dir/$sid.jsonl")"
+# GitHub ignores an owner's and a repo's case, so a qualified ref's are
+# lowercased, whatever origin or the caller spelled.
+git -C "$repo_dir" remote set-url origin git@github.com:Acme/Widgets.git
+reset
+in_repo 'from a mixed-case origin' add-need --ref '#14' >/dev/null
+in_repo 'given mixed case' add-need --ref 'Other/Repo#5' >/dev/null
+in_repo 'a jira ref' add-need --ref 'ABC-12' >/dev/null
+record "acme/widgets#14 other/repo#5 ABC-12" "add: a qualified ref's owner and repo are lowercased, other refs kept" \
+	"$(jq -r .ref "$dir/$sid.jsonl" | tr '\n' ' ' | sed 's/ $//')"
+git -C "$repo_dir" remote set-url origin git@github.com:acme/widgets.git
 
 # --- resolve --ref -----------------------------------------------------------
 
-# Open needs under the same ref in two ledgers (a hand-back and a blocked: one) are
-# both resolved; another repo's #12, and a need already resolved, are left alone.
-cat >"$dir/$other.jsonl" <<EOF
-{"kind":"need","id":"n1","text":"blocked on acme #12","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","cwd":"$repo_dir"}
-{"kind":"need","id":"n2","text":"done","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","resolved_at":"2020-01-01T11:00:00Z"}
+# Every open need of this session's under the ref is resolved, and their ids
+# printed; another ref's, a need already resolved, and another session's
+# ledger are left alone.
+reset
+mkdir -p "$dir"
+cat >"$dir/$sid.jsonl" <<EOF
+{"kind":"need","id":"n1","why":"w","text":"the hand-back","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z"}
+{"kind":"need","id":"n2","why":"w","text":"done","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z","resolved_at":"2020-01-01T11:00:00Z"}
+{"kind":"need","id":"n3","why":"w","text":"blocked on #12","ref":"acme/widgets#12","at":"2020-01-01T10:30:00Z"}
+{"kind":"need","id":"n4","why":"w","text":"another PR","ref":"acme/widgets#13","at":"2020-01-01T10:00:00Z"}
 EOF
-record "exit 0" "resolve --ref: every open copy" "$(in_repo '' resolve --ref '#12')"
-record "2" "resolve --ref: one line per ledger it touched" "$(wc -l <"$tmp/out" | tr -d ' ')"
-record "n1 n2:2020-01-01T11:00:00Z" "resolve --ref: the other session's copy, and the old stamp kept" \
-	"$(jq -r 'select(.resolved_at) | "\(.id)\(if .id == "n2" then ":" + .resolved_at else "" end)"' "$dir/$other.jsonl" | tr '\n' ' ' | sed 's/ $//')"
-record "n1" "resolve --ref: this session's copy, and nothing else" \
-	"$(jq -r 'select(.resolved_at) | .id' "$dir/$sid.jsonl")"
+cat >"$dir/$other.jsonl" <<EOF
+{"kind":"need","id":"n1","why":"w","text":"theirs","ref":"acme/widgets#12","at":"2020-01-01T10:00:00Z"}
+EOF
+record "exit 0" "resolve --ref: this session's open needs under it" "$(in_repo '' resolve --ref '#12')"
+record "n1 n3" "resolve --ref: prints the ids it stamped" "$(tr '\n' ' ' <"$tmp/out" | sed 's/ $//')"
+record "n1 n2:2020-01-01T11:00:00Z n3" "resolve --ref: those stamped, the old stamp kept" \
+	"$(jq -r 'select(.resolved_at) | "\(.id)\(if .id == "n2" then ":" + .resolved_at else "" end)"' "$dir/$sid.jsonl" | tr '\n' ' ' | sed 's/ $//')"
+record "none" "resolve --ref: another session's ledger left alone" "$(jq -r '.resolved_at // "none"' "$dir/$other.jsonl")"
+record "exit 0 n4" "resolve --ref: matched whatever the case of its owner and repo" \
+	"$(run '' resolve --ref 'ACME/Widgets#13') $(cat "$tmp/out")"
 record "exit 0" "resolve --ref: nothing open under the ref" "$(in_repo '' resolve --ref '#99')"
 record 1 "resolve --ref: says so" "$(grep -c 'no open need has the ref acme/widgets#99' "$tmp/err")"
 record "exit 1" "resolve --ref: a bad ref" "$(run '' resolve --ref 'a b')"
 record "exit 1" "resolve --ref: with a need id" "$(run '' resolve --ref '#12' n1)"
-record "exit 0" "resolve --ref: no session id needed" \
+record "exit 1" "resolve --ref: needs a session id" \
 	"$(cd "$work" && env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$dir" \
 		"$BASH" "$script" resolve --ref 'ABC-12' >/dev/null 2>&1; echo "exit $?")"
-
-# One ledger that can't be read is reported and left as it was; the others
-# are still resolved, and the exit status says not every one was. (Root reads
-# a mode-000 file anyway, so this needs another user.)
-if [ "$(id -u)" -ne 0 ]; then
-	reset
-	mkdir -p "$dir"
-	for owner in "$other" 44444444; do
-		printf '{"kind":"need","id":"n1","text":"t","ref":"acme/x#1","at":"2020-01-01T10:00:00Z"}\n' >"$dir/$owner.jsonl"
-	done
-	chmod 000 "$dir/44444444.jsonl"
-	record "exit 1" "resolve --ref: one ledger left unresolved" "$(run '' resolve --ref 'acme/x#1')"
-	record "$other: 1" "resolve --ref: stdout names the ledger it resolved" "$(cat "$tmp/out")"
-	record 1 "resolve --ref: stderr names the one it left" "$(grep -c '44444444 could not be read; it is unchanged$' "$tmp/err")"
-	record 1 "resolve --ref: and says not every one was" "$(grep -c 'left unresolved' "$tmp/err")"
-	record 0 "resolve --ref: never says nothing was written" "$(grep -c 'nothing written' "$tmp/err")"
-	chmod 644 "$dir/44444444.jsonl"
-	record "T none" "resolve --ref: the other ledger resolved, the unreadable one untouched" \
-		"$(ledger "$other" | tr '|' '\n' | jq -r .resolved_at) $(jq -r '.resolved_at // "none"' "$dir/44444444.jsonl")"
-fi
+reset
+record "exit 0" "resolve --ref: no ledger yet" "$(run '' resolve --ref 'ABC-12')"
 
 # The lock is the directory's, so a write to one ledger waits on a write to
 # another.

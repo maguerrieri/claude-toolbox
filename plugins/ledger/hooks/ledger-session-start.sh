@@ -10,10 +10,13 @@
 #    inherits that export; the spawn edges strip it.)
 #
 # 2. Opportunistic GC: ledgers outlive their sessions and nothing else reaps
-#    them. Delete those untouched for 30 days, after touching this session's
-#    own so a still-live session doesn't lose an old one. Only in the default
-#    location: an overridden directory (test scaffolding, or a misconfigured
-#    broad path) must never have its contents deleted by this hook.
+#    them. Delete those untouched for 30 days that hold no open need, after
+#    touching this session's own so a still-live session doesn't lose an old
+#    one. A ledger with an open need is kept: its session may be resumed
+#    after a month away, and the need is still the owner's to answer. Only in
+#    the default location: an overridden directory (test scaffolding, or a
+#    misconfigured broad path) must never have its contents deleted by this
+#    hook.
 #
 # Fails open: this hook must never block a session from starting.
 set -uo pipefail
@@ -45,18 +48,26 @@ dir="$HOME/.claude/session-ledger"
 
 [ -z "$session_id" ] || [ ! -f "$dir/$session_id.jsonl" ] || touch "$dir/$session_id.jsonl" 2>/dev/null
 
-# A ledger, or a temp file a killed write left behind (`.<ledger>.XXXXXX`),
-# reaped under the directory's lock, the one every write holds from its read
-# to its rename: unlocked, the reaping could check a ledger's age, a write
-# could then add to it and rename it into place, and the delete would take
-# the new entry with the old ones. A lock not had within two seconds skips
-# the reaping this time (it's opportunistic). The lock file itself, `.lock`,
-# matches neither pattern and is never reaped: deleting a lock file a writer
-# has just opened would let the next writer lock a new file at the same path.
-command -v perl >/dev/null 2>&1 || exit 0
+# A ledger with no open need, or a temp file a killed write left behind
+# (`.<ledger>.XXXXXX`), reaped under the directory's lock, the one every write
+# holds from its read to its rename: unlocked, the reaping could check a
+# ledger's age, a write could then add to it and rename it into place, and
+# the delete would take the new entry with the old ones. A lock not had
+# within two seconds skips the reaping this time (it's opportunistic), and so
+# does a missing perl or jq. The lock file itself, `.lock`, matches neither
+# pattern and is never reaped: deleting a lock file a writer has just opened
+# would let the next writer lock a new file at the same path.
+command -v perl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || exit 0
 { exec 9>>"$dir/.lock"; } 2>/dev/null || exit 0
 perl -MFcntl=:flock -e 'open(my $fh, ">&=", 9) or exit 2;
 	for (1 .. 40) { exit 0 if flock($fh, LOCK_EX | LOCK_NB); select(undef, undef, undef, 0.05) }
 	exit 1' 2>/dev/null || exit 0
-find "$dir" -maxdepth 1 -type f \( -name '*.jsonl' -o -name '.*.jsonl.*' \) -mtime +30 -delete 2>/dev/null || true
+find "$dir" -maxdepth 1 -type f -name '.*.jsonl.*' -mtime +30 -delete 2>/dev/null || true
+find "$dir" -maxdepth 1 -type f -name '*.jsonl' -mtime +30 -print0 2>/dev/null |
+	while IFS= read -r -d '' ledger; do
+		# Kept when it has an open need, or when it can't be read to tell.
+		open=$(jq -R 'fromjson? // empty | select(type == "object" and .kind == "need" and .resolved_at == null) | 1' "$ledger" 2>/dev/null) ||
+			continue
+		[ -n "$open" ] || rm -f "$ledger"
+	done
 exec 9>&-
