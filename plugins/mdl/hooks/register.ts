@@ -13,25 +13,25 @@
 // /effort runs only once /model took. /model's own result carries no text, so
 // the plugin reads the switch off PostModelSwitch, which fires for a real
 // change only; with no switch, the session either was already on the model or
-// /model refused it, which the session's model tells apart. That decision has
-// to wait for /model to run, so /effort is queued after it rather than beside
-// it. (A plugin's own command.run hooks don't see its own $.command.run, so it
-// can't queue both and hold /effort back from a hook.)
+// /model refused it (alreadyOn tells them apart). That decision has to wait
+// for /model to run, so /effort is queued after it rather than beside it. (A
+// plugin's own command.run hooks don't see its own $.command.run, so it can't
+// queue both and hold /effort back from a hook.)
 
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
-export const SIZES = ['big', 'medium', 'small'] as const
-export type Size = (typeof SIZES)[number]
+const SIZES = ['big', 'medium', 'small'] as const
+type Size = (typeof SIZES)[number]
 
 // What /effort takes, less its `ultracode` switch, which isn't a level.
-export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'] as const
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'] as const
 
 // The aliases /model takes that name a model family: a session already on a
-// model of that family (`claude-opus-…`) is on the alias, and /model then
-// changes nothing.
+// model of that family (an ID holding `claude-opus-`, first-party or a cloud
+// provider's) is on the alias, and /model then changes nothing.
 const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable'] as const
 
-export type Preset = { model: string; effort: string }
+type Preset = { model: string; effort: string }
 
 // A switch in flight: what it asked for, and whether /model has switched to
 // it. One at a time: a second /mdl waits for the first to finish.
@@ -43,7 +43,7 @@ function text(value: unknown): string | undefined {
 
 // A size's preset as /mdl can run it, or what's wrong with it: `missing` when
 // a field is unset, as opposed to set to something that isn't a level.
-export function presetOf(
+function presetOf(
   options: PluginOptions,
   size: Size,
 ): { preset: Preset } | { refusal: string; missing: boolean } {
@@ -74,7 +74,7 @@ export function presetOf(
   return { preset: { model, effort: effort.toLowerCase() } }
 }
 
-export function usage(options: PluginOptions, model: string): string {
+function usage(options: PluginOptions, model: string): string {
   const rows = SIZES.map(size => {
     const read = presetOf(options, size)
     const shown =
@@ -90,27 +90,29 @@ export function usage(options: PluginOptions, model: string): string {
   return [`Usage: /mdl big|medium|small. The session is on ${model}.`, ...rows].join('\n')
 }
 
-function bare(model: string): string {
-  return model.toLowerCase().replace(/\[1m\]$/, '')
-}
-
 // Whether PostModelSwitch's `requested_model` is what /mdl asked /model for:
 // the name as typed, or null for `default`.
-export function requested(asked: string, requestedModel: string | null): boolean {
+function requested(asked: string, requestedModel: string | null): boolean {
   if (requestedModel === null) return asked.toLowerCase() === 'default'
 
   return requestedModel.toLowerCase() === asked.toLowerCase()
 }
 
-// Whether the session is on the model /mdl asked for, so that a /model which
-// fired no switch changed nothing rather than refused: the same model ID, or a
-// model of the family an alias names.
-export function alreadyOn(asked: string, current: string): boolean {
-  const want = bare(asked)
-  const now = bare(current)
+// Whether a /model that fired no switch found the session already on the
+// model /mdl asked for, rather than refusing it. For a plain family alias the
+// session's model decides: it's of that family or it isn't, whatever the
+// setting says. For anything else, the session's model ID can match exactly;
+// past that, the model setting read after /model decides, since /model saves
+// what it takes: that's how a [1m] variant, `best` or `opusplan` shows, and
+// `default` is no setting at all.
+export function alreadyOn(asked: string, current: string, setting: unknown): boolean {
+  const want = asked.toLowerCase()
+  const now = current.toLowerCase()
+  if ((FAMILIES as readonly string[]).includes(want)) return now.includes(`claude-${want}-`)
   if (want === now) return true
+  const saved = typeof setting === 'string' && setting.trim() !== '' ? setting.trim() : 'default'
 
-  return (FAMILIES as readonly string[]).includes(want) && now.startsWith(`claude-${want}-`)
+  return saved.toLowerCase() === want
 }
 
 // Runs /model, then /effort if the model took. Each prints its own line, as
@@ -118,7 +120,10 @@ export function alreadyOn(asked: string, current: string): boolean {
 async function apply($: EngineInterface, change: Switch) {
   try {
     await $.command.run({ command: 'model', args: change.model })
-    if (!change.switched && !alreadyOn(change.model, await $.session.model())) {
+    const took =
+      change.switched ||
+      alreadyOn(change.model, await $.session.model(), await $.settings.read({ key: 'model' }))
+    if (!took) {
       $.ui.log(
         `/mdl ${change.size}: the model didn't switch to ${change.model}, ` +
           `so the effort was left as it was.`,
@@ -134,8 +139,9 @@ async function apply($: EngineInterface, change: Switch) {
 export const register: Register = (on, options) => {
   // The switch whose /model is running, for PostModelSwitch to mark.
   let current: Switch | undefined
-  // The last switch queued, settled once it is over: each waits for the one
-  // before, so two /mdl in a row run model, effort, model, effort.
+  // The switches queued so far, one after another, so two /mdl in a row run
+  // model, effort, model, effort. apply catches its own errors, so a link
+  // never rejects.
   let last: Promise<void> = Promise.resolve()
 
   on('session.start', async ($, e, next) => {
@@ -163,27 +169,18 @@ export const register: Register = (on, options) => {
 
     const { model, effort } = read.preset
     const change: Switch = { size, model, effort, switched: false }
-    const before = last
-    let done = () => {}
-    last = new Promise<void>(resolve => {
-      done = resolve
-    })
     $.clock.after(0, () => {
-      void before
-        .then(async () => {
-          current = change
-          await apply($, change)
-        })
-        .finally(() => {
-          if (current === change) current = undefined
-          done()
-        })
+      last = last.then(async () => {
+        current = change
+        await apply($, change)
+        current = undefined
+      })
     })
 
     return {
       text:
-        `Switching to ${model} at ${effort} effort: /model and /effort run next, ` +
-        `and apply from your next message.`,
+        `Switching to ${model} at ${effort} effort: /model and /effort follow this reply, ` +
+        `and apply from the next message after them.`,
     }
   })
 
