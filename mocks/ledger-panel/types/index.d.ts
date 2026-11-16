@@ -5,6 +5,8 @@ export type Variant = 'pane' | 'status' | 'band' | 'inline'
 
 /** A need, as the panel shows it. */
 export type MockNeed = {
+  /** What it goes by across sessions: `<session>:<id>`, the id as the ledger holds it. */
+  key: string
   /** The session whose ledger holds it (the file's name less `.jsonl`). */
   session: string
   /**
@@ -57,6 +59,8 @@ declare module 'claude-code' {
       isShowingResolved: boolean
       /** Whether the inline band is expanded into its list. */
       isExpanded: boolean
+      /** The minute the poll last saw, which redraws the ages a drawing shows. */
+      minute: number
     }
   }
 }

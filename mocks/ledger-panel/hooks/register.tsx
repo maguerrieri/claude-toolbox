@@ -21,7 +21,6 @@ import {
   countOf,
   firstLine,
   hasOthersNeed,
-  keyOf,
   namesOf,
   needsKey,
   parseLedger,
@@ -36,18 +35,16 @@ const POLL_MS = 15_000
 // `claude agents` costs a process; names change rarely.
 const NAMES_MS = 60_000
 
-const VARIANTS: readonly Variant[] = ['pane', 'status', 'band', 'inline']
-
-
 // Change a tag when its value's fields change: it declines what an earlier
 // version stored, which outlives a reload.
-const view = atom({ plugin: 'ledger-panel-mock', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-1' })
+const view = atom({ plugin: 'ledger-panel-mock', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-2' })
 const hiddenFor = atom({ plugin: 'ledger-panel-mock', key: 'hiddenFor' } as const, '')
 const resolvedHere = atom({ plugin: 'ledger-panel-mock', key: 'resolvedHere' } as const, {} as Record<string, string>, {
   shape: 'resolved-1',
 })
 const isShowingResolved = atom({ plugin: 'ledger-panel-mock', key: 'isShowingResolved' } as const, false)
 const isExpanded = atom({ plugin: 'ledger-panel-mock', key: 'isExpanded' } as const, false)
+const minute = atom({ plugin: 'ledger-panel-mock', key: 'minute' } as const, 0)
 
 /** What each option is made of. */
 type Shape = {
@@ -72,7 +69,7 @@ const SHAPES: Readonly<Record<Variant, Shape>> = {
 const hasPane = (of: Shape): boolean => of.band !== 'expanding'
 
 const variantOf = (value: unknown): Variant =>
-  VARIANTS.includes(value as Variant) ? (value as Variant) : 'pane'
+  typeof value === 'string' && Object.hasOwn(SHAPES, value) ? (value as Variant) : 'pane'
 
 const meta = (parts: (string | undefined)[]): string => parts.filter(part => part !== undefined).join(' · ')
 
@@ -98,10 +95,12 @@ let names: Record<string, string> = {}
 let namesAt = 0
 let shown: string | undefined
 let statusShown: { text: string | undefined } | undefined
-// The number of the latest refresh begun: one a later refresh overtook
-// publishes nothing, so an older snapshot never overwrites a newer one.
+// The number of the latest refresh to list the directory: one a later refresh
+// overtook publishes nothing, so an older snapshot never overwrites a newer
+// one, and one that fails before listing overtakes nothing.
 let latest = 0
-// The poll, one per module: a second session.start (a /clear) replaces it.
+// The poll, one per module: a second session.start (a reload of the plugin,
+// never a /clear) replaces it.
 let poll: Timer | undefined
 
 async function ledgerDir($: EngineInterface): Promise<string | undefined> {
@@ -162,8 +161,6 @@ async function listLedgers($: EngineInterface, dir: string) {
 }
 
 async function refresh($: EngineInterface): Promise<void> {
-  latest += 1
-  const turn = latest
   const dir = await ledgerDir($)
   if (dir === undefined) {
     return
@@ -172,6 +169,8 @@ async function refresh($: EngineInterface): Promise<void> {
   if (listed === undefined) {
     return
   }
+  latest += 1
+  const turn = latest
   const ledgers: Record<string, Entry[]> = {}
   for (const file of listed) {
     const session = file.kind === 'file' ? sessionOf(file.name) : undefined
@@ -203,6 +202,7 @@ async function refresh($: EngineInterface): Promise<void> {
   const me = isFixtures ? FIXTURE_ME : await $.session.id()
   await namesFor($, ledgers, me)
   const marked = await read($, resolvedHere)
+  const now = await $.clock.now()
   // The last await before the write: past here no later refresh can have
   // begun unseen, so this one's snapshot is the newest.
   if (turn !== latest) {
@@ -214,6 +214,12 @@ async function refresh($: EngineInterface): Promise<void> {
     await update($, view, () => next)
     // Marked only once written, so a write that fails is tried again next tick.
     shown = json
+  }
+  // The ages a drawing shows come from the clock, not the view: a new minute
+  // redraws them, which the unchanged view never would.
+  const thisMinute = Math.floor(now / 60_000)
+  if ((await read($, minute)) !== thisMinute) {
+    await update($, minute, () => thisMinute)
   }
   if (shape.hasStatus) {
     // The engine draws it after the plugin's name and cuts its end at the
@@ -235,9 +241,11 @@ async function isPaneOpen($: EngineInterface): Promise<boolean> {
   return (await $.ui.panes()).some(pane => pane.id === PANE)
 }
 
-// The pane, opened; or why it waits undrawn.
+// The pane, opened; or why it waits undrawn. It opens on the view the poll
+// keeps, and a refresh started beside it redraws it if anything changed, so
+// a slow `claude agents` never holds the open up.
 async function openPane($: EngineInterface): Promise<string | undefined> {
-  await refreshQuietly($)
+  void refreshQuietly($)
   const opened = await $.ui.open({
     id: PANE,
     title: shape.scope === 'all' ? 'Ledger: every session' : 'Ledger',
@@ -260,8 +268,10 @@ async function closePane($: EngineInterface): Promise<void> {
 }
 
 // The inline band's toggle: a band that shows its list folds; one that is
-// folded or hidden shows its list.
+// folded or hidden shows its list. It reads a fresh view, so a switch from
+// an option of one session's scope is judged on every session's needs.
 async function toggleInline($: EngineInterface): Promise<string | undefined> {
+  await refreshQuietly($)
   const current: MockView = await read($, view)
   if (current.needs.length === 0) {
     return 'No session needs you.'
@@ -273,11 +283,18 @@ async function toggleInline($: EngineInterface): Promise<string | undefined> {
   return undefined
 }
 
+// Hide: quiet the band until the set of open needs changes, and fold it, so
+// it comes back as the one-row summary rather than the whole list.
+async function hideBand($: EngineInterface, key: string): Promise<void> {
+  await update($, hiddenFor, () => key)
+  await update($, isExpanded, () => false)
+}
+
 // Resolve in the mock: marked resolved here, written nowhere. The real panel
 // would run the ledger plugin's `ledger.sh resolve <id> --session <session>`.
 async function resolveHere($: EngineInterface, need: MockNeed): Promise<void> {
   const at = new Date(await $.clock.now()).toISOString()
-  await update($, resolvedHere, marks => ({ [keyOf(need)]: at, ...marks }))
+  await update($, resolvedHere, marks => ({ [need.key]: at, ...marks }))
   $.ui.toast(
     `Mock: ${need.id} marked resolved here only. The panel would run ledger.sh resolve ${need.id} --session ${need.session.slice(0, 8)}.`,
   )
@@ -360,7 +377,7 @@ export const register: Register = (on, options) => {
         {first === 'open' && <Button key="open" label="Open" onPress={() => openFromBand($)} />}
         {first === 'show' && <Button key="show" label="Show" onPress={() => update($, isExpanded, () => true)} />}
         {first === 'less' && <Button key="less" label="Less" onPress={() => update($, isExpanded, () => false)} />}
-        <Button key="hide" label="Hide" dimColor onPress={() => update($, hiddenFor, () => key)} />
+        <Button key="hide" label="Hide" dimColor onPress={() => hideBand($, key)} />
       </Box>
     )
 
@@ -373,6 +390,8 @@ export const register: Register = (on, options) => {
         </Box>
       )
     }
+    // Read so that a new minute redraws the ages.
+    await read($, minute)
     const now = await $.clock.now()
 
     // No hotkeys on these Resolve buttons: a bare digit in an empty composer
@@ -384,10 +403,10 @@ export const register: Register = (on, options) => {
           {buttons('less')}
         </Box>
         {current.needs.map(need => (
-          <Box key={`need:${keyOf(need)}`} flexDirection="column">
+          <Box key={`need:${need.key}`} flexDirection="column">
             <Box>
               <Box flexShrink={0} marginRight={1}>
-                <Button key={`resolve:${keyOf(need)}`} label="Resolve" dimColor onPress={() => resolveHere($, need)} />
+                <Button key={`resolve:${need.key}`} label="Resolve" dimColor onPress={() => resolveHere($, need)} />
               </Box>
               <Text color="warning" wrap="truncate-end">
                 {meta([need.label, need.id, need.ref, ageOf(need.at, now)])}
@@ -407,11 +426,15 @@ export const register: Register = (on, options) => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const current: MockView = await read($, view)
     const isShowing = await read($, isShowingResolved)
+    // Read so that a new minute redraws the ages.
+    await read($, minute)
     const now = await $.clock.now()
     const isEveryone = shape.scope === 'all'
 
-    const needRow = (need: MockNeed, index: number, isOpen: boolean) => (
-      <Box key={`need:${keyOf(need)}`} flexDirection="column" marginBottom={1}>
+    // Resolve has no digit hotkey: digits by position would shift after each
+    // Resolve, so a second press would resolve the next need.
+    const needRow = (need: MockNeed, isOpen: boolean) => (
+      <Box key={`need:${need.key}`} flexDirection="column" marginBottom={1}>
         <Text color={isOpen ? 'warning' : undefined} dimColor={!isOpen}>
           {meta([isEveryone ? need.label : undefined, need.id, need.ref, ageOf(need.at, now)])}
           {isOpen ? '' : ` · resolved ${agoOf(need.resolvedAt ?? '', now)}`}
@@ -420,9 +443,8 @@ export const register: Register = (on, options) => {
         <Text dimColor={!isOpen}>{need.text}</Text>
         {isOpen && (
           <Button
-            key={`resolve:${keyOf(need)}`}
+            key={`resolve:${need.key}`}
             label="Resolve"
-            {...(index < 9 ? { hotkey: String(index + 1) } : {})}
             onPress={() => resolveHere($, need)}
           />
         )}
@@ -446,10 +468,10 @@ export const register: Register = (on, options) => {
         {current.needs.length === 0 && (
           <Text dimColor>{isEveryone ? 'No session needs you.' : 'This session needs nothing from you.'}</Text>
         )}
-        {current.needs.map((need, index) => needRow(need, index, true))}
+        {current.needs.map(need => needRow(need, true))}
         {isShowing && <Text bold>Resolved ({current.resolved.length})</Text>}
         {isShowing && current.resolved.length === 0 && <Text dimColor>None.</Text>}
-        {isShowing && current.resolved.map((need, index) => needRow(need, index, false))}
+        {isShowing && current.resolved.map(need => needRow(need, false))}
         <Text bold>Decisions in this session ({current.decisions.length})</Text>
         {current.decisions.length === 0 && <Text dimColor>None recorded.</Text>}
         {current.decisions.map(decision => (

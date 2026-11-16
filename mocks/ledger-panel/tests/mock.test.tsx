@@ -72,8 +72,9 @@ type Seen = {
 // The engine beneath the mock: the fixtures served by file name, a pane
 // record that ui.open and ui.close keep, and a log of what it was asked.
 // `isPlaced: false` makes every open wait undrawn; `isMissing` makes every
-// directory but the fixtures' not exist.
-function world(on: On, { isPlaced = true, isMissing = false } = {}): Seen {
+// directory but the fixtures' not exist; `files` is what the fixtures'
+// directory holds, which a test may change between polls.
+function world(on: On, { isPlaced = true, isMissing = false, files = FILES } = {}): Seen {
   const clock = mock.clock(on, { now: NOW })
   const seen: Seen = { opens: [], closes: [], statuses: [], toasts: [], runs: [], writes: [], lists: [], clock }
   const open = new Set<string>()
@@ -86,18 +87,18 @@ function world(on: On, { isPlaced = true, isMissing = false } = {}): Seen {
     if (isMissing && !isFixtures(e.path)) {
       throw new Error('the directory could not be listed')
     }
-    const entries = Object.entries(FILES).map(([name, text]) => ({
+    const entries = Object.entries(files).map(([name, text]) => ({
       name,
       kind: 'file' as const,
       size: text.length,
-      mtimeMs: 1,
+      mtimeMs: text.length,
       isLink: false,
     }))
 
     return { value: isFixtures(e.path) ? entries : [] }
   })
   on('fs.read', (_, e) => ({
-    value: e.path.endsWith('/fixtures/agents.json') ? AGENTS : (FILES[e.path.split('/').at(-1) ?? ''] ?? ''),
+    value: e.path.endsWith('/fixtures/agents.json') ? AGENTS : (files[e.path.split('/').at(-1) ?? ''] ?? ''),
   }))
   on('fs.write', (_, e) => {
     seen.writes.push(e.path)
@@ -237,6 +238,17 @@ test('pane: a need resolved here keeps the time it was pressed, and lists first'
   await later.unmount()
 })
 
+test('pane: the ages it shows move on with the clock while it stays open', async ($, on) => {
+  const seen = world(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /^n1 ·/ }))?.text).toBe('n1 · o/r#300 · 10m')
+  await seen.clock.advance(120_000)
+  expect((await ui.find({ type: 'Text', text: /^n1 ·/ }))?.text).toBe('n1 · o/r#300 · 12m')
+  await ui.unmount()
+})
+
 test('status: a status line names the open need while one is open, sent once while it holds', { options: { variant: 'status' } }, async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
@@ -337,6 +349,32 @@ test('inline: /ledger-pane on a hidden band brings it back expanded, not folded'
   await $.command.run(RUN)
   expect(await band.find({ type: 'Button', key: 'less' })).toBeDefined()
   await band.unmount()
+})
+
+test('inline: a band hidden while expanded comes back folded when the needs change', { options: { variant: 'inline' } }, async ($, on) => {
+  const files: Record<string, string> = { ...FILES }
+  const seen = world(on, { files })
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'show' })
+  await band.press({ key: 'hide' })
+  files['c0ffee00-new.jsonl'] = line({ kind: 'need', id: 'n1', text: 'A new need', at: '2026-11-16T01:59:00Z' })
+  await seen.clock.advance(15_000)
+
+  expect(await band.find({ type: 'Button', key: 'show' })).toBeDefined()
+  expect(await band.find({ type: 'Button', key: 'less' })).toBeUndefined()
+  await band.unmount()
+})
+
+test('the model shows as ? the characters the script does, ids included', async () => {
+  const ledgers = {
+    me: parseLedger(
+      line({ kind: 'need', id: 'n1\u0007', why: 'a‮goal', text: 'Read​ this\u{e0041}', at: '2026-11-16T01:00:00Z' }),
+    ),
+  }
+  const [need] = viewOf(ledgers, 'me', {}, 'session').needs
+  expect([need?.id, need?.why, need?.text, need?.key]).toEqual(['n1?', 'a?goal', 'Read? this?', 'me:n1\u0007'])
 })
 
 test('the model scopes needs, keeps needs sharing a ref apart, and lists the latest resolved first', async () => {
