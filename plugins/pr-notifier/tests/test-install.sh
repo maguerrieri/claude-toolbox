@@ -11,6 +11,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 plugin=$(cd "$here/.." && pwd)
 install=$plugin/scripts/install.sh
 job_src=$plugin/scripts/pr-notifier-job.sh
+daemon_script=$plugin/scripts/install-daemon.sh
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
@@ -300,11 +301,12 @@ record yes "plist: runs the job script" "$(has "$tmp/system.plist" "<string>$job
 record no "plist: launchd opens no log" "$(grep -qE 'Standard(Out|Error)Path' "$tmp/system.plist" && echo yes || echo no)"
 record no "plist: no CLAUDE_CONFIG_DIR" "$(has "$tmp/system.plist" CLAUDE_CONFIG_DIR)"
 record yes "plist: keeps a transient claude daemon alive" "$(has "$tmp/system.plist" "<key>AbandonProcessGroup</key>")"
-# INSTALL.md's copy is this render for bot (/Users/bot, user bot, zsh).
+# The plist the root script writes is this render for bot (/Users/bot, user
+# bot, zsh), so install.sh's status agrees with what Mari installed.
 user=$(id -un)
 sed -e "s|$HOME|/Users/bot|g" -e "s|<string>$user</string>|<string>bot</string>|g" "$tmp/system.plist" >"$tmp/bot.plist"
-awk '/<<.PLIST_EOF.$/ {on=1; next} /^PLIST_EOF$/ {on=0} on' "$plugin/INSTALL.md" >"$tmp/doc.plist"
-record yes "INSTALL.md's plist is the render for bot" "$(same "$tmp/doc.plist" "$tmp/bot.plist")"
+bash "$daemon_script" plist >"$tmp/root.plist"
+record yes "install-daemon.sh's plist is the render for bot" "$(same "$tmp/root.plist" "$tmp/bot.plist")"
 if command -v plutil >/dev/null 2>&1; then
 	record yes "plist: plutil -lint" "$(plutil -lint -s "$tmp/system.plist" && plutil -lint -s "$tmp/user.plist" && echo yes || echo no)"
 fi
@@ -333,6 +335,50 @@ record "newest ran: plist" "cache copy: runs the newest (0.10.0 over 0.9.0)" "$(
 rm -rf "$HOME/.claude-other"
 bash "$old/install.sh" plist >"$out" 2>&1
 record yes "cache copy: runs itself when it's the newest" "$(has "$out" "<key>Label</key>")"
+
+# --- the root script ------------------------------------------------------
+
+# Run without root through its test seam, guarding against a user that isn't
+# this one (these tests run from bot's own checkout).
+root_script() {
+	PR_NOTIFIER_DAEMON_TEST=1 PR_NOTIFIER_DAEMON_GUARD_USER=nobody-here \
+		PR_NOTIFIER_DAEMON_GUARD_HOME=/nonexistent/home bash "$daemon_script" "$@" >"$out" 2>&1
+}
+reset
+root_script
+record 0 "root script: exit" "$?"
+record yes "root script: wrote its plist" "$(same "$daemon" "$tmp/root.plist")"
+record yes "root script: bootstrapped into system" "$(has "$STUB/launchctl.log" "bootstrap system $daemon")"
+: >"$STUB/launchctl.log"
+root_script
+record 0 "root script, second run: exit" "$?"
+record yes "root script, second run: nothing to change" "$(has "$out" "nothing to change")"
+record 0 "root script, second run: no bootstrap" "$(bootstraps)"
+rm -f "$STUB/loaded/system_$label"
+root_script
+record 1 "root script, unloaded: bootstraps again" "$(bootstraps)"
+record no "root script, unloaded: plist not rewritten" "$(has "$out" "wrote ")"
+echo changed >>"$daemon"
+: >"$STUB/launchctl.log"
+root_script
+record yes "root script, changed plist: boots out first" "$(head -n 1 "$STUB/launchctl.log" | grep -q "^bootout system/$label" && echo yes || echo no)"
+record yes "root script, changed plist: rewritten" "$(same "$daemon" "$tmp/root.plist")"
+record 1 "root script, changed plist: bootstraps once" "$(bootstraps)"
+root_script uninstall
+record 0 "root script uninstall: exit" "$?"
+record no "root script uninstall: plist gone" "$([ -e "$daemon" ] && echo yes || echo no)"
+record no "root script uninstall: unloaded" "$([ -e "$STUB/loaded/system_$label" ] && echo yes || echo no)"
+# It never runs a copy that belongs to the guarded user, or sits in their home.
+PR_NOTIFIER_DAEMON_TEST=1 PR_NOTIFIER_DAEMON_GUARD_USER=$(id -un) PR_NOTIFIER_DAEMON_GUARD_HOME=/nonexistent/home \
+	bash "$daemon_script" >"$out" 2>&1
+record 1 "root script owned by the guarded user: refused" "$?"
+record yes "root script owned by the guarded user: says so" "$(has "$out" "belongs to")"
+PR_NOTIFIER_DAEMON_TEST=1 PR_NOTIFIER_DAEMON_GUARD_USER=nobody-here PR_NOTIFIER_DAEMON_GUARD_HOME=$(cd "$plugin" && pwd -P) \
+	bash "$daemon_script" >"$out" 2>&1
+record 1 "root script under the guarded home: refused" "$?"
+record no "root script refused: nothing written" "$([ -e "$daemon" ] && echo yes || echo no)"
+# Without the test seam and without root it only asks sudo; the seams alone change nothing.
+record yes "root script: seams need the test flag" "$(grep -q 'PR_NOTIFIER_DAEMON_TEST:-}" = 1' "$daemon_script" && echo yes || echo no)"
 
 # --- status ---------------------------------------------------------------
 
