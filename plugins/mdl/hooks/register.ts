@@ -7,7 +7,16 @@
 // It switches the way a person does, by running /model and then /effort. A
 // command.run hook can't run another command itself (the engine refuses: the
 // run would wait on the command the hook is holding), so the hook answers
-// first and a timer runs the two commands once the session is idle.
+// first and a timer queues the commands. /mdl is `immediate`, so typed during
+// a turn it queues /model at once, ahead of anything typed after it.
+//
+// /effort runs only once /model took. /model's own result carries no text, so
+// the plugin reads the switch off PostModelSwitch, which fires for a real
+// change only; with no switch, the session either was already on the model or
+// /model refused it, which the session's model tells apart. That decision has
+// to wait for /model to run, so /effort is queued after it rather than beside
+// it. (A plugin's own command.run hooks don't see its own $.command.run, so it
+// can't queue both and hold /effort back from a hook.)
 
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
@@ -17,86 +26,124 @@ export type Size = (typeof SIZES)[number]
 // What /effort takes, less its `ultracode` switch, which isn't a level.
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'] as const
 
-export type Preset = { model?: string; effort?: string }
+// The aliases /model takes that name a model family: a session already on a
+// model of that family (`claude-opus-…`) is on the alias, and /model then
+// changes nothing.
+const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable'] as const
+
+export type Preset = { model: string; effort: string }
+
+// A switch in flight: what it asked for, and whether /model has switched to
+// it. One at a time: a second /mdl waits for the first to finish.
+type Switch = Preset & { size: Size; switched: boolean }
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
 }
 
-export function presetOf(options: PluginOptions, size: Size): Preset {
-  return { model: text(options[`${size}Model`]), effort: text(options[`${size}Effort`]) }
-}
+// A size's preset as /mdl can run it, or what's wrong with it: `missing` when
+// a field is unset, as opposed to set to something that isn't a level.
+export function presetOf(
+  options: PluginOptions,
+  size: Size,
+): { preset: Preset } | { refusal: string; missing: boolean } {
+  const model = text(options[`${size}Model`])
+  const effort = text(options[`${size}Effort`])
+  if (model === undefined || effort === undefined) {
+    const fields = [
+      model === undefined ? `mdl.${size}Model` : undefined,
+      effort === undefined ? `mdl.${size}Effort` : undefined,
+    ].filter(field => field !== undefined)
 
-function describe(preset: Preset): string {
-  if (preset.model === undefined || preset.effort === undefined) return 'not set'
-  return `${preset.model} at ${preset.effort} effort`
+    return {
+      missing: true,
+      refusal:
+        `/mdl ${size} isn't configured: set ${fields.join(' and ')} in /config ` +
+        `(or under pluginConfigs in your settings.json). Nothing changed.`,
+    }
+  }
+  if (!(EFFORTS as readonly string[]).includes(effort.toLowerCase())) {
+    return {
+      missing: false,
+      refusal:
+        `/mdl ${size}: "${effort}" isn't an effort level (${EFFORTS.join(', ')}). ` +
+        `Fix mdl.${size}Effort in /config. Nothing changed.`,
+    }
+  }
+
+  return { preset: { model, effort: effort.toLowerCase() } }
 }
 
 export function usage(options: PluginOptions, model: string): string {
-  const rows = SIZES.map(size => `  ${size.padEnd(6)}  ${describe(presetOf(options, size))}`)
+  const rows = SIZES.map(size => {
+    const read = presetOf(options, size)
+    const shown =
+      'preset' in read
+        ? `${read.preset.model} at ${read.preset.effort} effort`
+        : read.missing
+          ? 'not set'
+          : 'its effort is not a level'
+
+    return `  ${size.padEnd(6)}  ${shown}`
+  })
+
   return [`Usage: /mdl big|medium|small. The session is on ${model}.`, ...rows].join('\n')
 }
 
-// The answer to /mdl <size> when the size can't run: what's missing or wrong,
-// and nothing changed. Undefined when the preset can run.
-export function problem(size: Size, preset: Preset): string | undefined {
-  const missing = [
-    preset.model === undefined ? `mdl.${size}Model` : undefined,
-    preset.effort === undefined ? `mdl.${size}Effort` : undefined,
-  ].filter(field => field !== undefined)
-  if (missing.length > 0) {
-    return (
-      `/mdl ${size} isn't configured: set ${missing.join(' and ')} in /config ` +
-      `(or under pluginConfigs in your settings.json). Nothing changed.`
-    )
-  }
-  const effort = preset.effort ?? ''
-  if (!(EFFORTS as readonly string[]).includes(effort.toLowerCase())) {
-    return (
-      `/mdl ${size}: "${effort}" isn't an effort level (${EFFORTS.join(', ')}). ` +
-      `Fix mdl.${size}Effort in /config. Nothing changed.`
-    )
-  }
-  return undefined
+function bare(model: string): string {
+  return model.toLowerCase().replace(/\[1m\]$/, '')
 }
 
-// Whether /model took: the /config model row now holds what was asked for, or
-// the session's model changed. /model prints its own line either way (a model
-// it doesn't know, one the account can't use yet); this only decides whether
-// /effort follows.
-async function modelTook($: EngineInterface, wanted: string, before: string): Promise<boolean> {
-  const after = await $.session.model()
-  if (after !== before || after.toLowerCase() === wanted.toLowerCase()) return true
-  const row = (await $.config.list()).find(one => one.key === 'model')
+// Whether PostModelSwitch's `requested_model` is what /mdl asked /model for:
+// the name as typed, or null for `default`.
+export function requested(asked: string, requestedModel: string | null): boolean {
+  if (requestedModel === null) return asked.toLowerCase() === 'default'
 
-  return typeof row?.value === 'string' && row.value.toLowerCase() === wanted.toLowerCase()
+  return requestedModel.toLowerCase() === asked.toLowerCase()
 }
 
-// Runs /model, then /effort if the model took. Called from a timer, so the
-// session is free to run them.
-async function apply($: EngineInterface, size: Size, model: string, effort: string) {
+// Whether the session is on the model /mdl asked for, so that a /model which
+// fired no switch changed nothing rather than refused: the same model ID, or a
+// model of the family an alias names.
+export function alreadyOn(asked: string, current: string): boolean {
+  const want = bare(asked)
+  const now = bare(current)
+  if (want === now) return true
+
+  return (FAMILIES as readonly string[]).includes(want) && now.startsWith(`claude-${want}-`)
+}
+
+// Runs /model, then /effort if the model took. Each prints its own line, as
+// typed ones do. Called from a timer, so the session can run them.
+async function apply($: EngineInterface, change: Switch) {
   try {
-    const before = await $.session.model()
-    await $.command.run({ command: 'model', args: model })
-    if (!(await modelTook($, model, before))) {
+    await $.command.run({ command: 'model', args: change.model })
+    if (!change.switched && !alreadyOn(change.model, await $.session.model())) {
       $.ui.log(
-        `/mdl ${size}: /model didn't switch to ${model} (its message is above), ` +
+        `/mdl ${change.size}: the model didn't switch to ${change.model}, ` +
           `so the effort was left as it was.`,
       )
       return
     }
-    await $.command.run({ command: 'effort', args: effort.toLowerCase() })
+    await $.command.run({ command: 'effort', args: change.effort })
   } catch (err) {
-    $.ui.log(`/mdl ${size} stopped: ${err instanceof Error ? err.message : String(err)}`)
+    $.ui.log(`/mdl ${change.size} stopped: ${err instanceof Error ? err.message : String(err)}`)
   }
 }
 
 export const register: Register = (on, options) => {
+  // The switch whose /model is running, for PostModelSwitch to mark.
+  let current: Switch | undefined
+  // The last switch queued, settled once it is over: each waits for the one
+  // before, so two /mdl in a row run model, effort, model, effort.
+  let last: Promise<void> = Promise.resolve()
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'mdl',
       description: 'Switch the model and effort together, to a preset set in /config',
       argumentHint: 'big|medium|small',
+      immediate: true,
     })
 
     return next(e)
@@ -111,20 +158,41 @@ export const register: Register = (on, options) => {
       return { text: lead + usage(options, await $.session.model()) }
     }
 
-    const preset = presetOf(options, size)
-    const refusal = problem(size, preset)
-    if (refusal !== undefined) return { text: refusal }
+    const read = presetOf(options, size)
+    if (!('preset' in read)) return { text: read.refusal }
 
-    const model = preset.model ?? ''
-    const effort = preset.effort ?? ''
+    const { model, effort } = read.preset
+    const change: Switch = { size, model, effort, switched: false }
+    const before = last
+    let done = () => {}
+    last = new Promise<void>(resolve => {
+      done = resolve
+    })
     $.clock.after(0, () => {
-      void apply($, size, model, effort)
+      void before
+        .then(async () => {
+          current = change
+          await apply($, change)
+        })
+        .finally(() => {
+          if (current === change) current = undefined
+          done()
+        })
     })
 
     return {
       text:
         `Switching to ${model} at ${effort} effort: /model and /effort run next, ` +
-        `and the new model and effort apply from your next message.`,
+        `and apply from your next message.`,
     }
   })
+
+  // Marks the switch in flight as taken when /model really switches to it.
+  on('classic.PostModelSwitch', ($, e, next) => {
+    if (current !== undefined && e.source === 'command' && requested(current.model, e.requested_model)) {
+      current.switched = true
+    }
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
 }
