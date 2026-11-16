@@ -2,7 +2,8 @@
 
 A throwaway mod for #319: four ways a ledger panel could work, for the owner
 to pick one for #316 to build. It isn't in the marketplace and never writes a
-ledger.
+ledger. The owner picked `inline`, for this session only for now, and #330
+built it in the `ledger` plugin as `/ledger-band`.
 
 ```sh
 claude --plugin-dir mocks/ledger-panel

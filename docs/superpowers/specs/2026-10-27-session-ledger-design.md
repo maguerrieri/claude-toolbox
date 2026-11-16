@@ -22,7 +22,8 @@ session records, resolves and lists its own decisions and needs. The
 ledger, session names from `claude agents`, and the owner or another session
 resolving a session's needs) is #316. PR #272 had built and reviewed both;
 the cross-session code is at its commit 5c8edb0, and the lessons it left are
-under *Deferred to #316* below.
+under *Deferred to #316* below. A band above the prompt of this session's own
+open needs came later, in #330 (*The band*, below).
 
 ## Decisions
 
@@ -48,6 +49,29 @@ under *Deferred to #316* below.
   skill: with `/ledger` left a command, an interactive session answers
   `Unknown command: /ledger` and only `/ledger:ledger` reaches it (verified on
   Claude Code 2.1.325). `AGENTS.md` has the rule.
+- **The band** (#330). The plugin's hooks module (`hooks/register.tsx`, a mod)
+  draws a row above the prompt while this session has an open need: the count
+  and the newest need, with Show and Hide. Show, or `/ledger-band`, expands it
+  in place into each open need, its first line, Why line, ref and age and a
+  Resolve button; Less, or the command again, folds it. Hide quiets it until
+  the set of open needs changes. It is option 4 (`inline`) of #319's mock, which
+  the owner picked on 2026-11-16 for this session alone, over the mock-up's
+  recommendation of option 3 (a band that opens a pane of every session).
+  So it shows no decisions or resolved needs, as the mock's option 4 doesn't.
+  It reads this session's ledger file and no other, through one function,
+  `readLedgers`, that #316 can widen to every session without redrawing the
+  band; it reads at the session's start, every 15 seconds, and as each turn
+  of the main loop ends (where a session records its needs), and keeps what it
+  last showed when a read fails. Resolve is the owner's, as `/ledger resolve`
+  is: it runs `ledger.sh resolve <id>` with `CLAUDE_CODE_SESSION_ID` set to
+  this session, so the script stays the one writer, and it refuses a need the
+  band showed before a `/clear` (an earlier session's). It has no hotkey, since
+  a digit typed into an empty prompt presses a band button, and a need id the
+  script would refuse gets no button. The toggle is a command the module
+  registers, which a bare `/ledger-band` reaches; a mod can't bind a key, so
+  the README gives the `keybindings.json` line for one. Its tests run under
+  `claude plugin test plugins/ledger`, in CI on the same pinned build as
+  validate.
 - **One JSONL file per session**, keyed like the role marker:
   `~/.claude/session-ledger/<session id>.jsonl` (`CLAUDE_SESSION_LEDGER_DIR`
   overrides it for tests). The session id is `CLAUDE_CODE_SESSION_ID`, else the
@@ -163,7 +187,11 @@ What PR #272 learned about the cross-session part, so #316 doesn't relearn it:
 - The panel's shape is #319's: it mocked four options in `mocks/ledger-panel/`
   for the owner to pick from, and `2026-11-15-ledger-panel-options.md` has
   them, what the mod API can do for toggling one (on 2.1.325), and a
-  recommendation.
+  recommendation. The owner picked option 4, built for this session alone in
+  #330 (*The band*, above). Widening it means widening `readLedgers` to every
+  ledger file, labeling each need with its session (the mock's `labelOf`), and
+  deciding whether Resolve reaches another session's need, which the band now
+  refuses.
 
 ## Out of scope
 
