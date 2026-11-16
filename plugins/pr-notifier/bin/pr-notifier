@@ -99,6 +99,7 @@ load_settings() {
 	local model_re='^[]A-Za-z0-9._[-]+$' # "]" first: inside brackets, a backslash doesn't escape it
 	[[ $relay_model =~ $model_re ]] || relay_model=haiku
 	case $(lc "$(setting relay true)") in false | 0 | no | off) relay_on=false ;; *) relay_on=true ;; esac
+	case $(lc "$(setting drop_comment true)") in false | 0 | no | off) drop_comment=false ;; *) drop_comment=true ;; esac
 	# The PATH every claude the notifier runs gets. A resumed session keeps
 	# its waker's PATH as its tool PATH (the spike's Trap 2), so a resume
 	# passes the session's own recorded PATH in front of this one
@@ -618,6 +619,35 @@ drop_session() { # drop_session <session id> <reason>: it can't be woken, so its
 	edit "$work_state" --arg s "$sid" '.pending |= del(.[$s])'
 }
 
+others_listed() { # others_listed <config dir> <session id>: fails only when other sessions are subscribed in that root and none is listed
+	# A deletion removes one session. A listing that has lost every one at
+	# once more likely changed or broke (a Claude Code update, say).
+	local listing
+	listing=$(agents "$1") || return 0
+	jq -e --arg c "$1" --arg s "$2" --argjson l "$listing" '
+		[.subscriptions[] | select((.config_dir // "") == $c and .session_id != $s) | .session_id] | unique
+		| length == 0 or any(.[]; . as $o | any($l[]; .sessionId == $o))' "$work_registry" >/dev/null
+}
+
+drop_notice() { # drop_notice <session id> <minutes>: a comment on each PR it's subscribed to, saying nothing is listening
+	# The log alone reaches no one, and whoever comments next on the PR
+	# would otherwise expect the session to wake. The notifier posts as the
+	# sessions' own login, whose comments wake no one (examine.jq).
+	local sid=$1 ref name text
+	name=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s) | .name // empty] | last // ""
+		| gsub("[`\u0000-\u001f]"; "") | .[0:80]' "$work_registry")
+	jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s) | .pr] | unique | .[]' "$work_registry" >"$run_tmp/notice"
+	while IFS= read -r ref; do
+		[ -n "$ref" ] || continue
+		text="pr-notifier: session \`$(short "$sid")\`${name:+ (\`$name\`)} has had no \`claude agents\` row for $2 minutes, so it's unsubscribed from this PR, and new activity here won't wake it. That usually means it was deleted (Ctrl-X in agent view, or \`claude rm\`). If it still exists, resubscribe it as its user: \`pr-notifier subscribe $ref --session $sid\`"
+		if "$gh_bin" api -X POST "repos/${ref%#*}/issues/${ref##*#}/comments" -f body="$text" </dev/null >/dev/null 2>"$run_tmp/err"; then
+			log "notice pr=$ref session=$(short "$sid") posted=yes"
+		else
+			log "notice pr=$ref session=$(short "$sid") error=$(head -c 200 "$run_tmp/err" | jq -Rrs '@json')"
+		fi
+	done <"$run_tmp/notice"
+}
+
 wake_prompt() { # wake_prompt <session id>: the fixed template, carrying only URLs
 	jq -r --arg s "$1" '
 		def url_ok: type == "string" and test("^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/pull/[0-9]+(#[A-Za-z0-9_-]+)?$");
@@ -938,7 +968,12 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 			return
 		fi
 		mins=$(((now - gone) / 60))
+		if ! others_listed "$cfg" "$sid"; then
+			hold "$sid" "session-gone; kept: no other session subscribed in its root is listed either"
+			return
+		fi
 		log "drop session=$(short "$sid") reason=session-gone gone=${mins}m"
+		[ "$drop_comment" = false ] || drop_notice "$sid" "$mins"
 		drop_session "$sid" session-gone
 		return
 	fi
