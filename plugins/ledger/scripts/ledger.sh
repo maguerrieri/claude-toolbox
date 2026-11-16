@@ -320,9 +320,6 @@ script_dir=${BASH_SOURCE[0]%/*}
 [ "$script_dir" != "${BASH_SOURCE[0]}" ] || script_dir=.
 entry_def=$(cat "$script_dir/is-entry.jq" 2>/dev/null) || fail 'is-entry.jq is missing beside the script'
 entry_filter="$entry_def"' fromjson? // empty | select(is_entry)'
-# How a view shows an entry's characters and orders entries: show.jq beside
-# this script, which the prompt-reminder hook reads too.
-show_def=$(cat "$script_dir/show.jq" 2>/dev/null) || fail 'show.jq is missing beside the script'
 
 # entries: this session's entries, one compact JSON object per line.
 entries() {
@@ -378,10 +375,10 @@ unlock() {
 
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# The jq helpers the listing uses: show.jq's (control characters shown as ?,
-# since a hand-edited file may hold one, and newest-first order), then a date
+# The jq helpers the listing uses, after show.jq's (control characters shown
+# as ?, since a hand-edited file may hold one, and newest-first order): a date
 # in local time, an entry's heading line, its Why line and its indented text.
-jq_defs="$show_def"'
+jq_defs='
 def when: (.at | (fromdateiso8601? // null)) as $t
 	| if $t == null then "?" else ($t | strflocaltime("%Y-%m-%d %H:%M")) end;
 def heading: ([.id, when] + (if (.ref | type) == "string" then [.ref] else [] end))
@@ -480,10 +477,14 @@ list)
 		echo "This session's ledger has no entries."
 		exit 0
 	fi
+	# How a view shows an entry's characters and orders entries: show.jq
+	# beside this script, which the prompt-reminder hook reads too. Only `list`
+	# needs it, so only `list` fails without it.
+	show_def=$(cat "$script_dir/show.jq" 2>/dev/null) || fail 'show.jq is missing beside the script'
 	# Read in full before anything is printed, so a ledger that can't be read
 	# fails without first claiming it has no entries.
 	read_entries=$(entries) || fail 'the ledger could not be read'
-	printf '%s\n' "$read_entries" | jq -rs "$jq_defs"'
+	printf '%s\n' "$read_entries" | jq -rs "$show_def$jq_defs"'
 		newest_first
 		| if length == 0 then "This session'"'"'s ledger has no entries." else
 			([.[] | select(.kind == "need" and .resolved_at == null)] | section("Open needs")),

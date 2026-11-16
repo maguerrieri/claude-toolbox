@@ -8,7 +8,7 @@
 # the Arabic letter mark, the Mongolian vowel separator, interlinear
 # annotation marks, tag characters) shown as ?. The script refuses them on a
 # write; a hand-edited ledger may still hold one.
-def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f​-‏ -‮⁠-⁤⁦-⁩﻿­؜᠎￹-￻󠀀-󠁿]"; "?");
+def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u00ad\u061c\u180e\ufff9-\ufffb\udb40\udc00-\udb40\udc7f]"; "?");
 
 # An entry's number, for ordering two entries written in the same second.
 def num: (.id[1:] | tonumber? // 0);

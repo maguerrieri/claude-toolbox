@@ -181,18 +181,22 @@ open needs came later, in #330 (*The band*, below).
   listing a need waited on, got it, and the need stayed open. A
   `UserPromptSubmit` hook (`hooks/ledger-prompt-reminder.sh`) now adds this
   session's open needs to each of the owner's prompts, with the rule: resolve
-  one the prompt clearly answers, name it in the reply, and leave it open when
-  unsure. It's bounded, since it rides every prompt while a need is open (five
-  needs, newest first, 120 characters a line, then a count of the rest), reads
-  the ledger without the lock (a write renames a whole file into place), and
-  prints nothing with no open need, no ledger, or no jq. Only the owner's
-  prompt can answer a need, and the hook's input names no source (checked on
+  one the owner has clearly answered, name it in the reply, and leave it open
+  when unsure. It's bounded, since it rides every prompt while a need is open
+  (five needs, newest first, 120 characters a line, then a count of the
+  rest), reads the ledger without the lock (a write renames a whole file into
+  place), and prints nothing with no open need, no ledger, or no jq. Only the
+  owner can answer a need, and the hook's input names no source (checked on
   Claude Code 2.1.325): a cross-session message and a background task's
   notification each fire the hook as a prompt of its own, told apart only by
   how it opens (`<cross-session-message `, `<task-notification>`). Those, a
-  teammate's message, a pr-notifier wake and an in-process agent's prompt
-  (its input carries an `agent_id`) get nothing, and the reminder says that
-  only the owner's words count, for whatever else it can't tell apart.
+  teammate's message, an in-process agent's prompt (its input carries an
+  `agent_id`) and the owner's own `/ledger` get nothing. A pr-notifier wake
+  gets the reminder, since it points at GitHub activity that may be the
+  owner's (a merge, an answer on the PR), and the rule says it counts only
+  for what the session checks there. For whatever else the hook can't tell
+  from the owner's prompt (a spawner resuming a stopped child with a prompt of
+  its own), the rule says only the owner's words and actions count.
 - **Garbage collection**: the SessionStart hook deletes ledger files untouched
   for 90 days. That's longer than the 30 ticket-workflow gives role markers,
   because a ledger holds what the owner decided and what a session still
