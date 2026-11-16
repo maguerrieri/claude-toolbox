@@ -116,7 +116,8 @@ GH_EOF
 # session whose socket it was given take the message as a turn in its
 # transcript (ok), hold it (held), fail the send (fail), change the text
 # (reworded), call no tool (none), exit 1 (crash), be killed after its call
-# (noresult), or turn the row busy with no transcript line (busy).
+# (noresult), turn the row busy with no transcript line (busy), or fail its
+# first send and succeed on a second (retry).
 cat >"$tmp/bin/claude" <<'CLAUDE_EOF'
 #!/usr/bin/env bash
 printf '%s|cfg=%s|path=%s|sock=%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "${CLAUDE_CONFIG_DIR-<unset>}" "$PATH" \
@@ -160,6 +161,12 @@ stop)
 	[ "$mode" != fail ] || ok=false
 	id=m-$n
 	jq -cn '{type: "system", subtype: "init"}'
+	if [ "$mode" = retry ]; then
+		jq -cn --arg to "$to" --arg m "$msg" \
+			'{type: "assistant", message: {content: [{type: "tool_use", id: "tu0", name: "SendMessage", input: {to: $to, message: $m}}]}}'
+		jq -cn '{type: "user", message: {content: [{type: "tool_result", tool_use_id: "tu0",
+			content: [{type: "text", text: ({success: false, message: "busy"} | tojson)}]}]}}'
+	fi
 	jq -cn --arg to "$to" --arg m "$msg" \
 		'{type: "assistant", message: {content: [{type: "tool_use", id: "tu1", name: "SendMessage", input: {to: $to, message: $m}}]}}'
 	[ "$mode" = noresult ] && exit 0
@@ -169,7 +176,7 @@ stop)
 	pid=${to##*/}
 	pid=${pid%.sock}
 	sid=$(jq -r --arg p "$pid" '[.[] | select((.pid // "" | tostring) == $p)] | first | .sessionId // empty' "$listing")
-	if [ "$mode" = ok ] && [ -n "$sid" ]; then
+	if { [ "$mode" = ok ] || [ "$mode" = retry ]; } && [ -n "$sid" ]; then
 		mkdir -p "$root/projects/p"
 		jq -cn --arg id "$id" --arg t "$text" '{type: "user", origin: {kind: "peer", msg_id: $id}, message: {content: $t}}' \
 			>>"$root/projects/p/$sid.jsonl"
@@ -708,6 +715,25 @@ nt $((T + 360)) check
 record '2|0|0' 'when an earlier relay is taken after a retry, it is the wake: nothing more is sent, nothing held' \
 	"$(relays)|$(wakes)|$(held)"
 record yes 'logged as late, naming the earlier message' "$(logged 'how=relay-late prs=o/r#7 events=1 msg=m-1')"
+
+deliver_case idle-done $((T - 3600)) '' retry
+record '1|0|0' 'a relay whose second send succeeds after a failed first is the wake' "$(relays)|$(wakes)|$(held)"
+
+# A late landing that leaves events held starts their hold clock over.
+deliver_case idle-done $((T - 3600)) '' held
+timeline 7 "$(comment 7 101 mari User "$T1")" "$(comment 7 102 mari User "$(iso $((T + 30)))")"
+take m-1
+nt $((T + 301)) check
+record "1|$((T + 301))|null" 'the events left after a late landing are held from then, not reported stale yet' \
+	"$(held)|$(jq -r --arg s "$SID" '.pending[$s] | "\(.first_at)|\(.stale_reported)"' "$PR_NOTIFIER_HOME/state.json")"
+
+# However often new events reset the tries, a session holds only so many unconfirmed relays.
+deliver_case interactive $((T - 3600)) '' held
+jq --arg s "$SID" '.pending[$s].relay_msgs += [range(2; 6) | {id: "m-old-\(.)", events: []}] | .pending[$s] |= del(.relay_unconfirmed)' \
+	"$PR_NOTIFIER_HOME/state.json" >"$tmp/st" && mv "$tmp/st" "$PR_NOTIFIER_HOME/state.json"
+nt $((T + 301)) check
+record 1 'five relays unconfirmed: no sixth' "$(relays)"
+record yes 'logged' "$(logged 'reason=relay gave up with 5 relays unconfirmed; live interactive session')"
 
 deliver_case idle-done $((T - 3600)) '' fail
 record '1|1' 'a failed send falls back too' "$(relays)|$(wakes)"
