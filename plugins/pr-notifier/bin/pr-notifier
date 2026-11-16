@@ -619,31 +619,38 @@ drop_session() { # drop_session <session id> <reason>: it can't be woken, so its
 	edit "$work_state" --arg s "$sid" '.pending |= del(.[$s])'
 }
 
-others_listed() { # others_listed <config dir> <session id>: fails only when other sessions are subscribed in that root and none is listed
-	# A deletion removes one session. A listing that has lost every one at
-	# once more likely changed or broke (a Claude Code update, say).
+listing_doubt() { # listing_doubt <config dir> <session id>: why that root's listing can't be trusted to show a deletion, or nothing
+	# A deletion removes one session. A listing that shows no session at
+	# all (an empty list, or rows whose fields were renamed), or has lost
+	# every other subscribed session too, more likely changed or broke (a
+	# Claude Code update, say).
 	local listing
 	listing=$(agents "$1") || return 0
-	jq -e --arg c "$1" --arg s "$2" --argjson l "$listing" '
-		[.subscriptions[] | select((.config_dir // "") == $c and .session_id != $s) | .session_id] | unique
-		| length == 0 or any(.[]; . as $o | any($l[]; .sessionId == $o))' "$work_registry" >/dev/null
+	jq -r --arg c "$1" --arg s "$2" --argjson l "$listing" '
+		if any($l[]; (.sessionId | type) == "string") | not then "the listing shows no session"
+		else [.subscriptions[] | select((.config_dir // "") == $c and .session_id != $s) | .session_id] | unique
+		  | if length > 0 and (any(.[]; . as $o | any($l[]; .sessionId == $o)) | not)
+		    then "no other session subscribed in its root is listed either" else empty end
+		end' "$work_registry"
 }
 
 drop_notice() { # drop_notice <session id> <minutes>: a comment on each PR it's subscribed to, saying nothing is listening
 	# The log alone reaches no one, and whoever comments next on the PR
 	# would otherwise expect the session to wake. The notifier posts as the
-	# sessions' own login, whose comments wake no one (examine.jq).
-	local sid=$1 ref name text
-	name=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s) | .name // empty] | last // ""
-		| gsub("[`\u0000-\u001f]"; "") | .[0:80]' "$work_registry")
+	# sessions' own login, whose comments wake no one (examine.jq). The PR
+	# may be public, so the comment names the session only by its short id
+	# (the handle claude agents shows), and the command that resubscribes
+	# it, with its full id, goes in the log.
+	local sid=$1 ref text again
 	jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s) | .pr] | unique | .[]' "$work_registry" >"$run_tmp/notice"
 	while IFS= read -r ref; do
 		[ -n "$ref" ] || continue
-		text="pr-notifier: session \`$(short "$sid")\`${name:+ (\`$name\`)} has had no \`claude agents\` row for $2 minutes, so it's unsubscribed from this PR, and new activity here won't wake it. That usually means it was deleted (Ctrl-X in agent view, or \`claude rm\`). If it still exists, resubscribe it as its user: \`pr-notifier subscribe $ref --session $sid\`"
+		text="pr-notifier: session \`$(short "$sid")\` has had no \`claude agents\` row for $2 minutes, so it's unsubscribed from this PR, and new activity here won't wake it. That usually means it was deleted (Ctrl-X in agent view, or \`claude rm\`). If it still exists, the notifier's log has the command that resubscribes it."
+		again=$(jq -rn --arg c "pr-notifier subscribe $ref --session $sid" '$c | @json')
 		if "$gh_bin" api -X POST "repos/${ref%#*}/issues/${ref##*#}/comments" -f body="$text" </dev/null >/dev/null 2>"$run_tmp/err"; then
-			log "notice pr=$ref session=$(short "$sid") posted=yes"
+			log "notice pr=$ref session=$(short "$sid") posted=yes resubscribe=$again"
 		else
-			log "notice pr=$ref session=$(short "$sid") error=$(head -c 200 "$run_tmp/err" | jq -Rrs '@json')"
+			log "notice pr=$ref session=$(short "$sid") resubscribe=$again error=$(head -c 200 "$run_tmp/err" | jq -Rrs '@json')"
 		fi
 	done <"$run_tmp/notice"
 }
@@ -957,7 +964,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		# session. Held for hold_bound in case the row comes back, then
 		# dropped: a deleted session can't be woken, and its PRs would
 		# otherwise be read, and its events held, for good.
-		local gone mins
+		local gone mins doubt
 		gone=$(jq -r --arg s "$sid" '.pending[$s].gone_since // empty' "$work_state")
 		if [ -z "$gone" ]; then
 			gone=$now
@@ -968,8 +975,9 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 			return
 		fi
 		mins=$(((now - gone) / 60))
-		if ! others_listed "$cfg" "$sid"; then
-			hold "$sid" "session-gone; kept: no other session subscribed in its root is listed either"
+		doubt=$(listing_doubt "$cfg" "$sid")
+		if [ -n "$doubt" ]; then
+			hold "$sid" "session-gone; kept: $doubt"
 			return
 		fi
 		log "drop session=$(short "$sid") reason=session-gone gone=${mins}m"

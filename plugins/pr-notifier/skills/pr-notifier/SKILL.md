@@ -58,8 +58,9 @@ A merged or closed PR ends its subscriptions by itself after the final wake, and
 stopped session whose cwd is gone is unsubscribed when the notifier finds it so. A session
 with no `claude agents` row (deleted from agent view, say) is held for 30 minutes, since a
 row can come back, then unsubscribed too, and the notifier comments on each of its PRs that
-no session is listening there. When every session subscribed in that root is missing at
-once, they're all held instead, since the listing more likely broke.
+no session is listening there. When the listing shows no session at all, or every session
+subscribed in that root is missing at once, they're all held instead, since the listing more
+likely broke.
 `status` lists the subscriptions and any held events; `check` runs one poll pass now
 (the launchd job's entry point, and a test hook).
 
