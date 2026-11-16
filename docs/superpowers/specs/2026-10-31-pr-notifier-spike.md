@@ -437,7 +437,7 @@ Then, first match wins:
 | Busy: `status: "busy"` or `state: "working"` | Hold and retry on the next poll. |
 | Live and idle: `status: "idle"`, `state` `done` or **`blocked`**, and its `cwd` exists | **Relay it in place (#305).** Details below the table. `--resume` would fork, and `respawn` takes no prompt. If the relay doesn't land, fall back to the next row. Before #305 lands, go straight to the next row. |
 | Fallback for a live, idle session | If `state.json` shows work in flight (`inFlight.tasks` or `inFlight.queued` above 0, or `inFlight.kinds` not empty), hold: a stop kills that work (background Bash, agents, monitors, session crons) and drops queued input. Otherwise re-read the row and the job state, `claude stop <short id>`, then the stopped-row command. |
-| Anything else: no row in `claude agents`, a live session whose `cwd` is gone, or a state not listed here | Hold and log it, under the same bound as every hold (below). |
+| Anything else: no row in `claude agents`, a live session whose `cwd` is gone, or a state not listed here | Hold and log it, under the same bound as every hold (below). In #305's review the owner chose to unsubscribe a session with no row once the bound passes, since a deleted session leaves none. |
 
 **The relay (#305).** A one-shot `claude -p --safe-mode --model haiku` sends the wake prompt
 by `SendMessage`, for about $0.003 a wake:
