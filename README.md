@@ -100,11 +100,11 @@ Per repo, in `.claude/settings.json`:
   "enabledPlugins": {
     "defaults@maguerrieri-toolbox": true,
     "conventions@maguerrieri-toolbox": true,
-    "spawn@maguerrieri-toolbox": true,
     "generate@maguerrieri-toolbox": true,
+    "ledger@maguerrieri-toolbox": true,
+    "spawn@maguerrieri-toolbox": true,
     "ticket-workflow@maguerrieri-toolbox": true,
-    "yaml@maguerrieri-toolbox": true,
-    "ledger@maguerrieri-toolbox": true
+    "yaml@maguerrieri-toolbox": true
   }
 }
 ```

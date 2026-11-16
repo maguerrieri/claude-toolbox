@@ -7,10 +7,10 @@
   },
   "dependencies": [
     "conventions",
-    "spawn",
     "generate",
+    "ledger",
+    "spawn",
     "ticket-workflow",
-    "yaml",
-    "ledger"
+    "yaml"
   ]
 }
