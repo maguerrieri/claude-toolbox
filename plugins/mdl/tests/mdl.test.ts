@@ -13,51 +13,65 @@ const CONFIGURED = {
   smallEffort: 'max',
 }
 
+// What the aliases resolve to in this stand-in engine.
+const IDS: Record<string, string> = {
+  default: 'claude-opus-5-5',
+  fable: 'claude-fable-5-2',
+  opus: 'claude-opus-5-5',
+  sonnet: 'claude-sonnet-5-5',
+}
+
 type World = {
   model: string
-  // What the engine's /model does with an argument: switch, or refuse.
-  accepts: (model: string) => boolean
   runs: { command: string; args: string }[]
   logs: string[]
 }
 
-// The engine beneath the plugin: /model and /effort as the session runs them,
-// the session's model, the /config model row, and the transcript's log lines.
-function engine(on: On, start: string, accepts: (model: string) => boolean = () => true) {
-  const world: World = { model: start, accepts, runs: [], logs: [] }
-  const ids: Record<string, string> = {
-    fable: 'claude-fable-5-2',
-    opus: 'claude-opus-5-5',
-    sonnet: 'claude-sonnet-5-5',
-  }
-  let row = start
+type Behavior = {
+  // Whether the engine's /model takes a name; a refused one changes nothing.
+  accepts?: (model: string) => boolean
+  // A command whose run fails before it runs, as past a Stop.
+  fails?: string
+}
+
+// The engine beneath the plugin: /model and /effort as the session runs them
+// (a real /model switch raises PostModelSwitch, a no-op or a refusal none), the
+// session's model, and the transcript's log lines.
+function engine($: Engine, on: On, start: string, behavior: Behavior = {}) {
+  const world: World = { model: start, runs: [], logs: [] }
+  const accepts = behavior.accepts ?? (() => true)
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.model', () => ({ value: world.model }))
-  on('config.list', () => ({
-    value: [
-      {
-        key: 'model',
-        label: 'Model',
-        kind: 'choice',
-        value: row,
-        provider: { plugin: 'engine', tier: 'core' },
-        isLocked: false,
-      },
-    ],
-  }))
-  on('command.run', (_, e) => {
+  on('command.run', async (_, e) => {
+    if (e.command === behavior.fails) throw new Error(`/${e.command} could not run`)
     world.runs.push({ command: e.command, args: e.args })
-    if (e.command === 'model' && world.accepts(e.args)) {
-      world.model = ids[e.args] ?? e.args
-      row = e.args
+    if (e.command === 'model' && accepts(e.args)) {
+      const to = IDS[e.args.toLowerCase()] ?? e.args
+      if (to !== world.model) {
+        const from = world.model
+        world.model = to
+        await $.classic.PostModelSwitch({
+          from_model: from,
+          to_model: to,
+          requested_model: e.args.toLowerCase() === 'default' ? null : e.args,
+          source: 'command',
+          context_tokens: 0,
+          prompt_cache_warm: false,
+          cache_ttl: '5m',
+          estimated_cache_write_usd: 0,
+          pricing: 'catalog',
+        })
+      }
     }
+
     return {}
   })
   on('ui.log', (_, e) => {
     world.logs.push(e.text)
     return { value: undefined }
   })
+  on('classic.PostModelSwitch', () => ({}))
 
   return world
 }
@@ -66,19 +80,24 @@ async function start($: Engine) {
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 }
 
-// /mdl as the person types it at the prompt: a bare /mdl reaches the hook as "".
-function mdl($: Engine, args: string) {
+// A command as the person types it at the prompt: a bare /mdl reaches the hook
+// as "".
+function typed($: Engine, command: string, args: string) {
   return $.command.run({
-    command: 'mdl',
+    command,
     args,
     origin: { kind: 'composer' },
     presentation: { isFullscreen: false, columns: 80 },
   })
 }
 
-test('/mdl big runs /model, then /effort, after answering', { options: CONFIGURED }, async ($, on) => {
+function mdl($: Engine, args: string) {
+  return typed($, 'mdl', args)
+}
+
+test('/mdl big answers, then runs /model and /effort', { options: CONFIGURED }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5')
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   const { text } = await mdl($, 'big')
@@ -97,7 +116,7 @@ test('/mdl big runs /model, then /effort, after answering', { options: CONFIGURE
 
 test('each size runs its own preset', { options: CONFIGURED }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-haiku-5-5')
+  const world = engine($, on, 'claude-haiku-5-5')
   await start($)
 
   for (const [size, model, effort] of [
@@ -115,11 +134,28 @@ test('each size runs its own preset', { options: CONFIGURED }, async ($, on) => 
   }
 })
 
+test('two /mdl in a row each run their own pair, in order', { options: CONFIGURED }, async ($, on) => {
+  const clock = mock.clock(on)
+  const world = engine($, on, 'claude-opus-5-5')
+  await start($)
+
+  await mdl($, 'small')
+  await mdl($, 'big')
+  await clock.settle()
+  expect(world.runs).toEqual([
+    { command: 'model', args: 'sonnet' },
+    { command: 'effort', args: 'max' },
+    { command: 'model', args: 'fable' },
+    { command: 'effort', args: 'medium' },
+  ])
+  expect(world.model).toBe('claude-fable-5-2')
+})
+
 test('the size is read in any case, and the effort goes in lower case', {
   options: { ...CONFIGURED, smallEffort: 'XHigh' },
 }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5')
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   await mdl($, '  Small ')
@@ -131,10 +167,10 @@ test('the size is read in any case, and the effort goes in lower case', {
 })
 
 test('no size lists the three and the current model, and changes nothing', {
-  options: { bigModel: 'fable', bigEffort: 'medium' },
+  options: { bigModel: 'fable', bigEffort: 'medium', smallModel: 'sonnet', smallEffort: 'turbo' },
 }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5')
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   const { text } = await mdl($, '')
@@ -142,7 +178,7 @@ test('no size lists the three and the current model, and changes nothing', {
   expect(text).toContain('claude-opus-5-5')
   expect(text).toContain('fable at medium effort')
   expect(text).toMatch(/medium\s+not set/)
-  expect(text).toMatch(/small\s+not set/)
+  expect(text).toMatch(/small\s+its effort is not a level/)
 
   await clock.settle()
   expect(world.runs).toEqual([])
@@ -150,7 +186,7 @@ test('no size lists the three and the current model, and changes nothing', {
 
 test('an unknown size says so, lists the sizes, and changes nothing', { options: CONFIGURED }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5')
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   const { text } = await mdl($, 'huge')
@@ -163,7 +199,7 @@ test('an unknown size says so, lists the sizes, and changes nothing', { options:
 
 test('an unset size says what to set, and changes nothing', async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5')
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   const { text } = await mdl($, 'medium')
@@ -178,7 +214,7 @@ test('a size with only its model set names the missing effort', {
   options: { smallModel: 'sonnet' },
 }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5')
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   const { text } = await mdl($, 'small')
@@ -192,7 +228,7 @@ test('an unknown effort level is reported, and nothing changes', {
   options: { ...CONFIGURED, bigEffort: 'turbo' },
 }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5')
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   const { text } = await mdl($, 'big')
@@ -203,11 +239,11 @@ test('an unknown effort level is reported, and nothing changes', {
   expect(world.runs).toEqual([])
 })
 
-test('a model /model refuses leaves the effort alone, and says so', {
+test('a model /model refuses holds the effort back', {
   options: { ...CONFIGURED, bigModel: 'fabel' },
 }, async ($, on) => {
   const clock = mock.clock(on)
-  const world = engine(on, 'claude-opus-5-5', model => model !== 'fabel')
+  const world = engine($, on, 'claude-opus-5-5', { accepts: model => model !== 'fabel' })
   await start($)
 
   await mdl($, 'big')
@@ -215,14 +251,29 @@ test('a model /model refuses leaves the effort alone, and says so', {
   expect(world.runs).toEqual([{ command: 'model', args: 'fabel' }])
   expect(world.model).toBe('claude-opus-5-5')
   expect(world.logs).toEqual([
-    `/mdl big: /model didn't switch to fabel (its message is above), so the effort was left as it was.`,
+    `/mdl big: the model didn't switch to fabel, so the effort was left as it was.`,
   ])
+})
+
+test('a refused model holds the effort back even when it is the saved default', {
+  options: CONFIGURED,
+}, async ($, on) => {
+  const clock = mock.clock(on)
+  // On Sonnet (say, started with --model sonnet), and /model opus is refused.
+  const world = engine($, on, 'claude-sonnet-5-5', { accepts: model => model !== 'opus' })
+  await start($)
+
+  await mdl($, 'medium')
+  await clock.settle()
+  expect(world.runs).toEqual([{ command: 'model', args: 'opus' }])
+  expect(world.model).toBe('claude-sonnet-5-5')
+  expect(world.logs).toHaveLength(1)
 })
 
 test('a preset whose model is already in use still sets the effort', { options: CONFIGURED }, async ($, on) => {
   const clock = mock.clock(on)
-  // Already on Opus, by its /config alias: /model opus changes nothing.
-  const world = engine(on, 'claude-opus-5-5')
+  // Already on Opus: /model opus changes nothing and raises no switch.
+  const world = engine($, on, 'claude-opus-5-5')
   await start($)
 
   await mdl($, 'medium')
@@ -231,5 +282,34 @@ test('a preset whose model is already in use still sets the effort', { options: 
     { command: 'model', args: 'opus' },
     { command: 'effort', args: 'xhigh' },
   ])
-  expect(world.logs).toEqual([])
+})
+
+test('a preset of the default model sets the effort once /model switches', {
+  options: { ...CONFIGURED, smallModel: 'default', smallEffort: 'low' },
+}, async ($, on) => {
+  const clock = mock.clock(on)
+  const world = engine($, on, 'claude-sonnet-5-5')
+  await start($)
+
+  await mdl($, 'small')
+  await clock.settle()
+  expect(world.runs).toEqual([
+    { command: 'model', args: 'default' },
+    { command: 'effort', args: 'low' },
+  ])
+  expect(world.model).toBe('claude-opus-5-5')
+})
+
+test('a run that fails says so in the transcript', {
+  options: CONFIGURED,
+}, async ($, on) => {
+  const clock = mock.clock(on)
+  const world = engine($, on, 'claude-opus-5-5', { fails: 'model' })
+  await start($)
+
+  await mdl($, 'small')
+  await clock.settle()
+  expect(world.logs).toHaveLength(1)
+  expect(world.logs[0]).toContain('/mdl small stopped:')
+  expect(world.model).toBe('claude-opus-5-5')
 })
