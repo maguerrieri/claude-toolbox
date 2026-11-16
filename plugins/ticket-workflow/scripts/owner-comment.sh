@@ -35,7 +35,10 @@
 #      editor is never checked by login), an edit GitHub names no editor for,
 #      an editor that can't be read, an editor the edit history disagrees
 #      with, a failed read, an item on another repo or that GitHub files under
-#      another URL, a usage error
+#      another URL, a URL that names no comment, review or line comment
+#   2  a usage error (no -R or a malformed one, no URL or two), unlike
+#      owner-check.sh's 1: a wrong call, never a verdict on the comment, so a
+#      caller fixes the call rather than reading the comment as anyone's
 #
 # On 0 and 3 it prints the item's text on stdout, from the same read that
 # named its last editor. Act on that text, not on a copy read earlier: an edit
@@ -46,7 +49,8 @@
 # GraphQL's resource(url:) can't do for a comment. The newest entry of the
 # item's edit history (userContentEdits, newest first) must agree with them,
 # editor and time, so that a GitHub `editor` that ever lagged behind the last
-# edit fails closed. Where GraphQL is refused (a cloud session's proxy) or
+# edit fails closed. Both checked live on github.com on 2026-11-16: the
+# history lists newest first, and its newest editedAt equals lastEditedAt. Where GraphQL is refused (a cloud session's proxy) or
 # fails, every item exits 1: REST's updated_at has one-second resolution, so
 # it can't show that an edit made within a comment's first second never
 # happened. A failed read looks like any other exit 1, as in owner-check.sh;
@@ -61,13 +65,17 @@ untrusted() {
 	echo "owner-comment.sh: $*" >&2
 	exit 1
 }
+usage_error() {
+	echo "owner-comment.sh: $*" >&2
+	exit 2
+}
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 expected= same_account= url= have_url=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-R)
-		[ $# -ge 2 ] || untrusted "$usage"
+		[ $# -ge 2 ] || usage_error "$usage"
 		expected=$2
 		shift 2
 		;;
@@ -76,19 +84,19 @@ while [ $# -gt 0 ]; do
 		shift
 		;;
 	*)
-		[ -z "$have_url" ] || untrusted "$usage"
+		[ -z "$have_url" ] || usage_error "$usage"
 		url=$1 have_url=1
 		shift
 		;;
 	esac
 done
-[ -n "$have_url" ] && [ -n "$expected" ] || untrusted "$usage"
+[ -n "$have_url" ] && [ -n "$expected" ] || usage_error "$usage"
 
 host_part='[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?'
 owner_part='[A-Za-z0-9][A-Za-z0-9-]*'
 repo_part='[A-Za-z0-9._-]+'
 repo_re="^($host_part)/($owner_part)/($repo_part)\$"
-[[ $expected =~ $repo_re ]] || untrusted "-R '$expected' is not a <host>/<owner>/<repo>"
+[[ $expected =~ $repo_re ]] || usage_error "-R '$expected' is not a <host>/<owner>/<repo>"
 
 # Groups: 1 host (2 its inner part), 3 owner, 4 repo, 5 pull|issues, 6 number,
 # 7 the anchor's kind, 8 its id.
