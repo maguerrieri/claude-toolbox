@@ -1,0 +1,27 @@
+name: mdl CI
+
+on:
+  push:
+    paths:
+      - "plugins/mdl/**"
+      - ".github/workflows/mdl-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/mdl/**"
+      - ".github/workflows/mdl-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Pinned, so a CLI release can't change the verdict under an unchanged
+      # plugin. The mod API it's written against is 2.1.325's. Neither command
+      # needs a login.
+      - name: Validate the plugin and its hooks module
+        run: npx -y @anthropic-ai/claude-code@2.1.325 plugin validate plugins/mdl
+      - name: Run the plugin's tests
+        run: npx -y @anthropic-ai/claude-code@2.1.325 plugin test plugins/mdl
