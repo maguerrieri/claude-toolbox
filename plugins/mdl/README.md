@@ -68,12 +68,19 @@ Those values are an example, not a recommendation. A plugin loaded with
   nothing, and the reply says what's wrong.
 - A model `/model` refuses (one it doesn't know, or one your account can't use
   yet) leaves the effort alone too: `/model` prints why, and `/mdl` adds a line
-  saying the effort wasn't changed.
+  saying the effort wasn't changed. Mid-conversation, `/model` may ask you to
+  confirm the switch, since the new model re-reads the whole history; answer
+  no and the effort stays as it was as well.
+- Two `/mdl` in a row run in order: the first one's `/model` and `/effort`,
+  then the second's.
 
 **The switch applies from your next message.** A command can't run another
 command while it runs, so `/mdl` answers first and `/model` and `/effort`
 follow straight after, once the session is idle. Typed while a turn is
-running, `/mdl` waits for that turn to end, as any slash command does.
+running, `/mdl` answers at once and runs `/model` when the turn ends, ahead of
+any message you type after it. `/effort` can only follow once `/model` has
+switched, so a message you queue during that turn runs on the new model at the
+old effort. To be sure of both, wait for `/effort`'s line before you send it.
 
 **It saves what `/model` and `/effort` save.** Typing those commands makes the
 model your default for new sessions, and the effort the default for that model
@@ -86,8 +93,13 @@ commands, so it does the same.
 `command.run` hook. That hook can't call `$.command.run` itself: the engine
 refuses, since the run would wait on the command the hook is holding. So the
 hook replies, and a `$.clock.after(0, …)` timer runs `/model`, checks that the
-model took (the `/config` model row now holds what was asked for, or the
-session's model changed), and only then runs `/effort`.
+model took, and only then runs `/effort`. `/model`'s result carries no text, so
+the check reads the `PostModelSwitch` event, which fires only when the model
+really changes. With none, the session was either already on that model (its
+model ID, or a model of the family an alias such as `opus` names) or `/model`
+refused it. `/effort` has to wait for that answer, since a plugin's own
+`command.run` hooks don't see the commands it runs, so it can't queue both and
+hold `/effort` back from a hook.
 
 `claude plugin test plugins/mdl` runs `tests/mdl.test.ts`, which stands in for
 the engine beneath the plugin. CI runs it and `claude plugin validate`
