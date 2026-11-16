@@ -67,7 +67,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   recording) plus `/ledger` (show the ledger, or resolve a need).
   While the session has an open need, a band above the prompt shows how many
   and the newest; Show (or `/ledger-band`) expands it in place into each one,
-  with its why and a Resolve button, Less (or `/ledger-band` again) folds it,
+  with its why and a Resolve button (which also tells the session, in a turn
+  of its own, so one waiting on that need carries on), Less (or `/ledger-band` again) folds it,
   and Hide quiets it until a need it didn't show opens. A plugin can't bind a key,
   so for one add a chord for the command to `~/.claude/keybindings.json`
   (`ctrl+x l` is free by default):

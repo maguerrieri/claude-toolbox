@@ -6,8 +6,9 @@
 //
 // It reads this session's ledger alone, the file scripts/ledger.sh writes,
 // every 15 seconds and at the end of each turn, and writes only through the
-// script (Resolve), so the file keeps one writer's format. The one reader is
-// readLedgers, which #316 can widen to every local session's ledger.
+// script (Resolve), so the file keeps one writer's format. A Resolve also
+// tells the session, in a turn of its own. The one reader is readLedgers,
+// which #316 can widen to every local session's ledger.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
@@ -21,6 +22,7 @@ import {
   isResolvable,
   ledgerFileOf,
   parseLedger,
+  resolvedNotice,
   viewOf,
 } from './model'
 import type { Entry, Ledgers } from './model'
@@ -206,6 +208,13 @@ async function resolveNeed($: EngineInterface, need: LedgerNeed): Promise<void> 
   if (ran.exitCode !== 0) {
     const why = firstLine(ran.stderr.trim()).replace(/^ledger resolve: /, '')
     $.ui.toast(`Couldn't resolve ${need.id}: ${why || 'ledger.sh failed'}`)
+  } else if (!/\bis already resolved\b/.test(ran.stderr)) {
+    // Tell the session, in a turn of its own once it is idle, so one that
+    // stopped for this need carries on (the owner's pick on PR #333). Framed
+    // as this plugin's message, never as the owner's words: a need's text can
+    // name a step such as "say finish", which only the owner's own words take.
+    // A need the session had already resolved itself needs no turn.
+    void $.prompt.submit({ text: resolvedNotice(need) }).catch(() => undefined)
   }
   await refreshQuietly($)
 }
