@@ -223,7 +223,8 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   relay is killed after a minute. Every relay, stop and resume holds the lock that
   `subscribe` waits only five minutes for, so no delivery starts once a check's deliveries
   have run 150 seconds (the poll and the PR reads before them don't count): the rest are
-  held for the next check.
+  held for the next check. Sessions take turns going first, one place a check, so a few
+  slow ones can't use up the budget every time and leave the rest unreached.
 - **Where it sends.** To the session's own messaging socket, `<pid>.sock` for the `pid`
   its row shows, in `/tmp/cc-socks` when that directory is this user's or root's and
   private, else in `/tmp/cc-socks-<uid>`, as Claude Code places them. A directory or socket

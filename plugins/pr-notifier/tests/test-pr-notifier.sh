@@ -908,6 +908,16 @@ timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
 record yes 'the mode comes from the newest of two transcripts' "$(logged 'how=relay prs=o/r#7 events=1 mode=auto')"
 
+# Sessions take turns going first, so a slow one can't use up every check's budget.
+reset
+CLAUDE_CODE_SESSION_ID=$SID2 nt "$T0" subscribe o/r#7 --name other >/dev/null
+agents "$(agent busy)" "$(agent busy "$SID2")"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+nt $((T + 60)) check
+record 'aaaaaaaa,bbbbbbbb|bbbbbbbb,aaaaaaaa' 'the first session held on one check comes second on the next' \
+	"$(grep 'hold session=' "$PR_NOTIFIER_HOME/notifier.log" | sed -n 's/.*hold session=\([a-f0-9]*\).*/\1/p' | paste -sd, - | sed 's/,/|/2')"
+
 # Rows that can't be woken now.
 reset
 agents "$(agent stopped "$SID" "$tmp/gone")"
