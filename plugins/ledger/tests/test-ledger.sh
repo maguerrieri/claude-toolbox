@@ -91,13 +91,14 @@ done
 
 for bad in '' 'a b' '$(id)' '-x' 'a;b' "$(printf 'x%.0s' $(seq 201))" \
 	'#' '#0' '#07' 'a#' 'PR#x' 'a#1#2' \
-	'https://github.com/acme/widgets/tree/main' 'https://github.com/acme/widgets/pull/' 'https://github.com/acme/widgets/pull/0'; do
+	'https://github.com/acme/widgets/tree/main' 'https://github.com/acme/widgets/pull/' 'https://github.com/acme/widgets/pull/0' \
+	'github.com/acme/widgets/pull/7' 'acme/widgets/issues/7'; do
 	reset
 	record "exit 1 none" "add: ref '${bad:0:40}' refused" "$(run t add-need --ref "$bad") $(ledger)"
 done
 # A GitHub issue or PR URL is stored as owner/repo#n, lowercased, whatever
 # follows the number.
-for url in 'https://github.com/Acme/Widgets/pull/12' 'https://github.com/acme/widgets/pull/12/files' \
+for url in 'https://github.com/Acme/Widgets/pull/12' 'https://github.com/acme/widgets/pull/12/files' 'HTTPS://github.com/acme/widgets/pull/12' \
 	'https://github.com/acme/widgets/issues/12#issuecomment-1' 'https://ghe.example.com/acme/widgets/pull/12?w=1'; do
 	reset
 	record "exit 0 acme/widgets#12" "add: URL ref ${url#https://} stored as owner/repo#n" \
@@ -105,7 +106,8 @@ for url in 'https://github.com/Acme/Widgets/pull/12' 'https://github.com/acme/wi
 done
 # Invisible formatting characters are refused: a bidi override and isolate, a
 # zero-width space and joiner, a line separator, a byte-order mark.
-for ch in $'\xe2\x80\xae' $'\xe2\x81\xa6' $'\xe2\x80\x8b' $'\xe2\x80\x8d' $'\xe2\x80\xa8' $'\xef\xbb\xbf'; do
+for ch in $'\xe2\x80\xae' $'\xe2\x81\xa6' $'\xe2\x80\x8b' $'\xe2\x80\x8d' $'\xe2\x80\xa8' $'\xef\xbb\xbf' \
+	$'\xe2\x81\xa0' $'\xc2\xad' $'\xd8\x9c' $'\xe1\xa0\x8e' $'\xef\xbf\xb9' $'\xf3\xa0\x81\x81'; do
 	reset
 	record "exit 1 none" "add: an invisible formatting character ($(printf '%s' "$ch" | od -An -tx1 | tr -d ' '))" \
 		"$(run "a${ch}b" add-need) $(ledger)"
@@ -315,7 +317,7 @@ hold_lock() {
 	done
 }
 # A held lock is waited for, and the write lands once it's released.
-hold_lock 1
+hold_lock 2
 started=$(date +%s)
 record "exit 0" "a held lock is waited out" "$(run 'after the wait' add-decision)"
 record yes "a held lock is waited for" "$([ $(($(date +%s) - started)) -ge 1 ] && echo yes)"
@@ -362,9 +364,17 @@ record "acme/widgets#13" "add: an https remote" "$(jq -r 'select(.id == "d1") | 
 git -C "$repo_dir" remote set-url origin https://github.com/acme/widgets.git/
 in_repo 'a trailing slash' add-decision --ref '#14' >/dev/null
 record "acme/widgets#14" "add: an origin with a trailing slash" "$(jq -r 'select(.id == "d2") | .ref' "$dir/$sid.jsonl")"
+# An origin that names no owner and repo (a local path, nested groups) leaves
+# the ref bare rather than invent a pair.
+for origin in /srv/git/widgets https://gitlab.com/group/sub/repo.git; do
+	git -C "$repo_dir" remote set-url origin "$origin"
+	reset
+	in_repo 'an odd origin' add-need --ref '#6' >/dev/null
+	record "#6" "add: origin $origin leaves a bare ref bare" "$(jq -r .ref "$dir/$sid.jsonl")"
+done
 git -C "$repo_dir" remote set-url origin https://github.com/acme/widgets
 record "exit 0" "add: outside a checkout a bare ref stays" "$(run 'no repo' add-need --ref '#12')"
-record "#12" "add: outside a checkout, the ref as given" "$(jq -r 'select(.id == "n5") | .ref' "$dir/$sid.jsonl")"
+record "#12" "add: outside a checkout, the ref as given" "$(jq -rs 'last | .ref' "$dir/$sid.jsonl")"
 # GitHub ignores an owner's and a repo's case, so a qualified ref's are
 # lowercased, whatever origin or the caller spelled.
 git -C "$repo_dir" remote set-url origin git@github.com:Acme/Widgets.git
@@ -413,7 +423,7 @@ record "exit 0" "resolve --ref: no ledger yet" "$(run '' resolve --ref 'ABC-12')
 # another.
 reset
 run 'mine' add-need >/dev/null
-hold_lock 1
+hold_lock 2
 started=$(date +%s)
 record "exit 0" "a held lock holds another session's write too" "$(run_as "$other" 'theirs' add-need)"
 record yes "another session's write waited for it" "$([ $(($(date +%s) - started)) -ge 1 ] && echo yes)"

@@ -89,8 +89,8 @@ bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list
   it's stored as the entry's `why`, and `list` prints it above the text. The
   text after it is at most 4000 bytes. Neither may hold a control character
   but tab and newline, or an invisible formatting character (a bidi override,
-  a zero-width character), which could make `list` read differently from what
-  was recorded.
+  a zero-width or tag character, a soft hyphen), which could make `list` read
+  differently from what was recorded.
 - `resolve <need id>` marks one of this session's needs resolved.
 - `resolve --ref <ref>` resolves every open need of this session's with that
   ref, the hand-back's and any `blocked:` one, and prints their ids. It's for a
@@ -117,8 +117,7 @@ directory, the highest version if several match) and run it by that path.
 A ledger is keyed on the session id, so after `/clear` or a fork (which start
 a new one) entries recorded earlier stay under the old id, out of `list`'s
 reach. Resuming the session (`claude --resume`) keeps its id and its ledger.
-The SessionStart hook reaps a ledger untouched for 30 days when it has no open
-need, and one with an open need after 90.
+The SessionStart hook reaps a ledger untouched for 90 days.
 
 A ledger write that fails never blocks the work it describes: carry on, and
 say in your next report what wasn't recorded and why.

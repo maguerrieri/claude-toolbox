@@ -63,7 +63,9 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   unmerged. One line per state change; detail
   belongs in the PR/tracker.
 - **Record what you need from the owner** in your ledger, where the `ledger`
-  plugin is installed (its skill says how): the reviewed PR at hand-back
+  plugin is installed (its skill says how) and your session is local, not a
+  cloud session or Projects mode, which the ledger doesn't reach: the
+  reviewed PR at hand-back
   (START Step 9), and a `blocked:` or `declined:` that waits on the owner,
   under your PR's `<owner>/<repo>#<pr>` once it exists (as Step 9 spells it),
   so that FINISH Step 5's `resolve --ref` closes it with the hand-back. Your

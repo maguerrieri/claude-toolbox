@@ -109,7 +109,7 @@ id_ok() {
 normalize_ref() {
 	local rest owner repo kind num url
 	case "$ref" in
-	http://* | https://*)
+	[Hh][Tt][Tt][Pp]://* | [Hh][Tt][Tt][Pp][Ss]://*)
 		rest=${ref#*://}
 		rest=${rest#*/}
 		owner=${rest%%/*}
@@ -142,16 +142,29 @@ normalize_ref() {
 		esac
 		;;
 	esac
+	# A URL that wasn't taken above (no scheme, say) would be stored as it is
+	# and never match the owner/repo#n a resolve is given.
+	case "$ref" in
+	*/pull/* | */issues/*) fail 'give a URL ref with its scheme (https://github.com/owner/repo/pull/12), or as owner/repo#12' ;;
+	esac
 	case "$ref" in
 	'#'*)
 		url=$(git -C "$PWD" remote get-url origin 2>/dev/null) || url=
 		# Less any trailing slashes, which would leave the repo empty.
 		url=${url%"${url##*[!/]}"}
+		# Only an origin of the shape host:owner/repo or scheme://host/owner/repo
+		# names an owner and a repo. A local path, or a host with nested groups,
+		# would yield a wrong pair, so there the ref stays bare.
 		rest=${url%.git}
-		repo=${rest##*/}
-		rest=${rest%/*}
-		owner=${rest##*[:/]}
-		if [ -n "$url" ] && id_ok "$repo" && id_ok "$owner"; then
+		case "$rest" in
+		*://*) rest=${rest#*://} rest=${rest#*/} ;;
+		/* | .* | *:*:*) rest='' ;;
+		*:*) rest=${rest#*:} ;;
+		*) rest='' ;;
+		esac
+		owner=${rest%%/*}
+		repo=${rest#*/}
+		if [ "$rest" = "$owner/$repo" ] && id_ok "$repo" && id_ok "$owner"; then
 			ref="$owner/$repo$ref"
 		fi
 		;;
@@ -205,11 +218,21 @@ add-decision | add-need)
 	# pasted from an issue can carry one, and it can make `list` read
 	# differently from what was recorded.
 	fmt=$'*\xe2\x80[\x8b-\x8f\xa8-\xae]*'
-	iso=$'*\xe2\x81[\xa6-\xa9]*'
+	# U+2060 to U+2064 (word joiner, invisible operators) with the isolates.
+	iso=$'*\xe2\x81[\xa0-\xa4\xa6-\xa9]*'
 	bom=$'*\xef\xbb\xbf*'
+	# A soft hyphen (U+00AD), the Arabic letter mark (U+061C), the Mongolian
+	# vowel separator (U+180E), interlinear annotation marks (U+FFF9 to
+	# U+FFFB), and the tag characters (U+E0000 to U+E007F: F3 A0 80/81 ..),
+	# which hide text from a person while a model still reads it.
+	shy=$'*\xc2\xad*'
+	alm=$'*\xd8\x9c*'
+	mvs=$'*\xe1\xa0\x8e*'
+	ann=$'*\xef\xbf[\xb9-\xbb]*'
+	tag=$'*\xf3\xa0[\x80\x81]*'
 	# shellcheck disable=SC2254 # the patterns are meant to match
 	case "$text" in
-	$fmt | $iso | $bom) fail 'the text has an invisible formatting character (a bidi override or isolate, a zero-width character, a line separator or a byte-order mark)' ;;
+	$fmt | $iso | $bom | $shy | $alm | $mvs | $ann | $tag) fail 'the text has an invisible formatting character (a bidi override or isolate, a zero-width character, a line separator or a byte-order mark)' ;;
 	esac
 	# The first line is the Why line; the rest, past any blank lines, the text.
 	why=${text%%$'\n'*}
@@ -355,7 +378,7 @@ now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 # line, its Why line and its indented text, control characters shown as ? (a
 # hand-edited file may hold one), and newest-first order.
 jq_defs='
-def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]"; "?");
+def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u00ad\u061c\u180e\ufff9-\ufffb\udb40\udc00-\udb40\udc7f]"; "?");
 def when: (.at | (fromdateiso8601? // null)) as $t
 	| if $t == null then "?" else ($t | strflocaltime("%Y-%m-%d %H:%M")) end;
 def num: (.id[1:] | tonumber? // 0);

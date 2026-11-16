@@ -165,7 +165,8 @@ receivers and greps treat the two channels uniformly:
   also sends the same line to its child as a nudge. The owner verifies it
   and restacks per START Step 8's *Restack on request*.
 
-Where the `ledger` plugin is installed, the session that sends a ping saying
+Where the `ledger` plugin is installed, a local session (the ledger doesn't
+reach a cloud one) that sends a ping saying
 the owner is needed (`blocked: merge needs the owner`, a `declined: … needs
 the owner` line, a `ready; needs the owner` report) records that need in its
 own ledger (its skill says how). Its receiver doesn't copy it into its own
