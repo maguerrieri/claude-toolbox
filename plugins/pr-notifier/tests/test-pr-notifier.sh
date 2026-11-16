@@ -955,9 +955,11 @@ nt $((T + 1801)) check
 record '0|0|' 'no row for the hold bound: unsubscribed, its events dropped' "$(wakes)|$(held)|$(subs)"
 record yes 'logged' "$(logged 'drop session=aaaaaaaa reason=session-gone gone=30m')"
 record '1|repos/o/r/issues/7/comments' 'and the PR is told, once' "$(wc -l <"$STUB/posts" | tr -d ' ')|$(jq -r .ep "$STUB/posts")"
-record yes 'saying what happened' "$(jq -r .body "$STUB/posts" | has - 'session `aaaaaaaa` (`r #7: x`) has had no `claude agents` row for 30 minutes')"
-record yes 'and how to resubscribe it' "$(jq -r .body "$STUB/posts" | has - "pr-notifier subscribe o/r#7 --session $SID")"
-record yes 'logged' "$(logged 'notice pr=o/r#7 session=aaaaaaaa posted=yes')"
+record yes 'saying what happened' "$(jq -r .body "$STUB/posts" | has - 'session `aaaaaaaa` has had no `claude agents` row for 30 minutes')"
+record no 'without its name' "$(jq -r .body "$STUB/posts" | has - 'r #7: x')"
+record no 'or its full id' "$(jq -r .body "$STUB/posts" | has - "$SID")"
+record yes 'which go in the log, with the command that resubscribes it' \
+	"$(logged "notice pr=o/r#7 session=aaaaaaaa posted=yes resubscribe=\"pr-notifier subscribe o/r#7 --session $SID\"")"
 
 # A comment that can't be posted doesn't stop the drop.
 reset
@@ -967,7 +969,7 @@ nt "$T" check
 : >"$STUB/post.fail"
 nt $((T + 1801)) check
 record '0|' 'a failed comment: still unsubscribed' "$(held)|$(subs)"
-record yes 'and the failure logged' "$(logged 'notice pr=o/r#7 session=aaaaaaaa error=')"
+record yes 'and the failure logged' "$(logged 'notice pr=o/r#7 session=aaaaaaaa resubscribe=')"
 rm -f "$STUB/post.fail"
 
 # drop_comment: false drops without a comment.
@@ -993,6 +995,18 @@ record 0 'and nothing posted' "$(cat "$STUB/posts" 2>/dev/null | wc -l | tr -d '
 agents "$(agent busy "$SID2")"
 nt $((T + 1900)) check 2>/dev/null
 record "o/r#7@bbbbbbbb" 'once another is listed, the missing one drops' "$(subs)"
+
+# A listing with no session in it at all is a broken listing too.
+reset
+agents
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+nt $((T + 1801)) check 2>/dev/null
+record 'o/r#7@aaaaaaaa|1' 'an empty listing: kept' "$(subs)|$(held)"
+record yes 'logged' "$(logged 'reason=session-gone; kept: the listing shows no session')"
+agents '{"id": "cccccccc", "session": "cccccccc-1111-2222-3333-444444444444", "state": "done"}'
+nt $((T + 1900)) check 2>/dev/null
+record 'o/r#7@aaaaaaaa' 'rows without a sessionId: kept' "$(subs)"
 
 # A row seen in between starts the bound over.
 reset
