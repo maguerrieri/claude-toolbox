@@ -664,7 +664,7 @@ finish_wake() { # finish_wake <session id> <how> [log detail] [event ids, a JSON
 	edit "$work_state" --arg s "$sid" --argjson ids "$ids" '
 		.pending[$s].events = [.pending[$s].events[] | select("\(.pr)|\(.key)" as $i | $ids | index($i) | not)]
 		| if (.pending[$s].events | length) == 0 then .pending |= del(.[$s])
-		  else .pending[$s] |= del(.relay_msg, .relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at)
+		  else .pending[$s] |= del(.relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at)
 		  end'
 	while IFS= read -r ref; do
 		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "pr-final-wake"
@@ -847,8 +847,9 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 			relay_failed "$sid" "$mode" "sent as $id, but no turn took it within ${relay_wait}s (held, refused or stopped)" maybe
 			# Later checks look for this message first (deliver), so one the
 			# session takes late counts as the wake for what it carried.
-			edit "$work_state" --arg s "$sid" --arg id "$id" \
-				'.pending[$s].relay_msg = {id: $id, events: [.pending[$s].events[] | "\(.pr)|\(.key)"]}'
+			edit "$work_state" --arg s "$sid" --arg id "$id" '
+				.pending[$s].relay_msgs = (((.pending[$s].relay_msgs // [])
+					+ [{id: $id, events: [.pending[$s].events[] | "\(.pr)|\(.key)"]}]) | .[-5:])'
 			return 2
 		fi
 		sleep 1
@@ -875,18 +876,25 @@ over_budget() { # over_budget <session id> [why]: holds it and returns 0 once th
 }
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind next tries why late f files=()
+	local sid=$1 cfg row id cwd pid status st kind next tries why ids late evs f files=()
 	! over_budget "$sid" || return
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
-	# A relay a check ago that no turn had taken yet may have been taken since
-	# (a held message, approved): then it was the wake for what it carried.
-	late=$(jq -r --arg s "$sid" '.pending[$s].relay_msg.id // empty' "$work_state")
-	if [ -n "$late" ]; then
+	# Relays sent but not yet taken (relay_msgs, the last five) may have been
+	# taken since: a held message, approved. Each one that was is the wake for
+	# whatever it carried that is still held. A later relay doesn't replace an
+	# earlier one, which the session can still take first.
+	ids=$(jq -r --arg s "$sid" '.pending[$s].relay_msgs // [] | .[].id' "$work_state")
+	if [ -n "$ids" ]; then
 		while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
-		if landed "$late" ${files[@]+"${files[@]}"}; then
-			finish_wake "$sid" relay-late "msg=$late" "$(jq -c --arg s "$sid" '.pending[$s].relay_msg.events' "$work_state")"
+		while IFS= read -r late; do
+			[ -n "$late" ] && landed "$late" ${files[@]+"${files[@]}"} || continue
+			evs=$(jq -c --arg s "$sid" --arg m "$late" '.pending[$s] as $p
+				| [($p.relay_msgs // [])[] | select(.id == $m) | .events[]]
+				| map(select(. as $i | any($p.events[]; "\(.pr)|\(.key)" == $i)))' "$work_state")
+			edit "$work_state" --arg s "$sid" --arg m "$late" '.pending[$s].relay_msgs |= map(select(.id != $m))'
+			[ "$evs" = "[]" ] || finish_wake "$sid" relay-late "msg=$late" "$evs"
 			jq -e --arg s "$sid" '.pending[$s] != null' "$work_state" >/dev/null || return
-		fi
+		done <<<"$ids"
 	fi
 	row=$(session_row "$cfg" "$sid") || {
 		hold "$sid" listing-failed
