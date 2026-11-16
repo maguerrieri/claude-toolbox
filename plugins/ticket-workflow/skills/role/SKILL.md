@@ -1,8 +1,11 @@
 ---
+name: role
 description: Pin this session to a role charter (planner / epic-coordinator / implementer) or drop it with "none" — persists across resume and compaction, reminds a planner or coordinator of its actor test on every prompt, and arms a drift guard for planner (edits and entering a worktree prompt for approval) and implementer (issue-spawning launches are denied)
 argument-hint: <planner | epic-coordinator | implementer | none>
 ---
 Pin (or unpin) this session's role charter: **$ARGUMENTS**
+
+When the line above shows no arguments (this skill loaded on its own trigger rather than typed), take them from the request instead, wherever the steps below use them.
 
 In a Claude Project (any `mcp__hearthbot__` tool present), don't pin or unpin anything: the harness's coordinator/thread split is the altitude there, and the skill's Step 0 *Projects mode* never writes the marker. Say so in one line and stop.
 
