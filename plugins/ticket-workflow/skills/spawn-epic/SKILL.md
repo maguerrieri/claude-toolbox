@@ -5,8 +5,6 @@ argument-hint: <epic-id> [briefing] [--finish] [--coordinate | --independent]
 ---
 Spawn a background epic run for: **$ARGUMENTS**
 
-When the line above shows no arguments (this skill loaded on its own trigger rather than typed), take them from the request instead, wherever the steps below use them.
-
 Thin launcher over `/start-epic`: spawn ONE background session that runs the full EPIC cycle, then hand back immediately. Don't run any EPIC step yourself — no fetching the epic, no enumerating children, no Step 0 beyond the model lookup in step 2; the spawned session does all of it.
 
 **Projects mode, before anything else.** In a Claude Project (any `mcp__hearthbot__` tool present), launch nothing and follow the skill's Step 0 *Projects mode*: in a thread, say in one line to ask the project chat to start a thread per child of the epic; in the channel session, start those threads yourself.

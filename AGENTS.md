@@ -246,8 +246,9 @@ entry points (`/role`, `/make-ticket`, `/start-ticket`, `/finish-ticket`,
 each handing off to the `ticket-workflow` skill. `spawn` and `generate` each
 have one skill, which takes the typed arguments itself (`argument-hint` and
 `$ARGUMENTS`), since there the typed form and the model's trigger run the same
-procedure. A skill invoked with no arguments gets an empty `$ARGUMENTS`, so
-its text must read right either way. `gm` keeps its commands: its docs give
+procedure. A skill loaded with no arguments, by the model on its own trigger
+or by another skill, gets an empty `$ARGUMENTS`, so those two say where their
+input comes from then. `gm` keeps its commands: its docs give
 only the qualified form (`/gm:play`), which a command answers to, and its
 names are too generic to take bare (Claude Code has its own `/rewind`). A
 user-level command of the same name, such as a copy in `~/.claude/commands/`,
@@ -280,7 +281,9 @@ interactively, launch a throwaway `claude --bg --setting-sources local
 local` leaves out both the project settings that enable the installed copy
 and the user-level commands, which `user` would load and let shadow the
 plugin. Read its transcript under the worktree's slug, then `claude stop` and
-`claude rm` it. A session pinned as an implementer can't launch one that
+`claude rm` it before the worktree goes: a background session records its
+launch directory, which is why lasting ones launch from the main checkout. A
+session pinned as an implementer can't launch one that
 leads with `/start-ticket`, `/start-epic`, `/spawn-tickets`, `/spawn-epic`, or
 `/make-ticket` with `--spawn` or `--start`: the role guard denies it as an
 issue spawn, so check those from an unpinned session.

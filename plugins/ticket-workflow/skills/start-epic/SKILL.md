@@ -5,8 +5,6 @@ argument-hint: <epic-id> [briefing] [--finish] [--coordinate | --independent]
 ---
 Run the epic: **$ARGUMENTS**
 
-When the line above shows no arguments (this skill loaded on its own trigger rather than typed), take them from the request instead, wherever the steps below use them.
-
 **Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), run no EPIC step and follow the skill's Step 0 *Projects mode* routing instead of what this skill says below.
 
 **Invoke the `ticket-workflow` skill now via the Skill tool** and run its **EPIC** phase, following the skill's EPIC steps — the skill is authoritative; don't restate the steps here (that just lets the two skills drift). The skill content loads when you invoke it; don't read its `SKILL.md` file directly. Parse "$ARGUMENTS" as:

@@ -10,7 +10,7 @@ Fan out one or more **independent** background sessions for arbitrary work, name
 
 **How** a session is launched depends on where you're running — local `claude --bg` jobs, or cloud sessions via MCP. That's the **backend** (step 3); everything else on this page is the same either way.
 
-**Typed as `/spawn`**, this skill takes the task (or several, separated by `;`) as its arguments, which step 1 parses: **$ARGUMENTS**. When that's empty (the skill loaded on its own trigger, or `/spawn` came mid-sentence), the request is the user's message.
+**Typed as `/spawn`**, this skill takes the task (or several, separated by `;`) as its arguments, which step 1 parses: **$ARGUMENTS**. When that's empty, or reads as a literal placeholder (a harness that doesn't fill one in), the request is what you were loaded for: the units a calling skill built (ticket-workflow's SPAWN and EPIC phases hand theirs over, directives and all), else the user's message (the skill loaded on its own trigger, or `/spawn` came mid-sentence).
 
 ## When to use
 
@@ -18,7 +18,7 @@ Fan out one or more **independent** background sessions for arbitrary work, name
 - "Fan out 3 agents to each try X." — several independent tasks at once.
 - Any time you want work to run in its own durable background session and keep your current session free.
 
-**Not for:** work you must watch to completion or aggregate (that's babysitting — do it inline, or use the ticket-workflow EPIC phase). Issue/ticket fan-out → use the `/spawn-tickets` command (the `ticket-workflow` skill).
+**Not for:** work you must watch to completion or aggregate (that's babysitting — do it inline, or use the ticket-workflow EPIC phase). Issue/ticket fan-out → use `/spawn-tickets` (the `ticket-workflow` plugin).
 
 ## Invocation discipline
 
@@ -106,4 +106,4 @@ Then point at the inspect path **for your backend** — the local CLI commands a
 - Babysit or poll the sessions — each runs on its own.
 - Block on completion — spawn, report, hand back.
 - Add any cap — bounds live in the prompt text.
-- Know about issues / tickets / trackers / profiles — that's the `/spawn-tickets` command (the `ticket-workflow` skill).
+- Know about issues / tickets / trackers / profiles — that's `/spawn-tickets` (the `ticket-workflow` plugin).
