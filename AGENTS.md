@@ -190,6 +190,30 @@ sender by name (the FINISH intro's `finish:` clearance) must name `from-name`.
 Checked against real transcripts on 2026-10-05, after #157's rework briefly
 switched to `from` on the tool description's word.
 
+## Plugin commands and skills: one name each
+
+A plugin's `commands/<name>.md` and `skills/<name>/SKILL.md` both register as
+`<plugin>:<name>`, so a command and a skill with the same name collide. The
+session's skill list then shows one entry with the command's description, and
+invoking it, typed or through the Skill tool, loads the skill's body. The
+skill's trigger description is hidden and the command's body never loads.
+So give every command and skill in a plugin its own name. And make whatever
+users type bare a skill: a bare `/<name>` resolves only to a skill, while a
+plugin command answers only to `/<plugin>:<name>` (an interactive session
+says `Unknown command: /<name>`). That's why `/ledger` is a skill
+(`skills/ledger/`) beside the recording rules (`skills/record/`). Verified on
+Claude Code 2.1.325 while fixing `ledger` (#318). `spawn` and `generate`
+still have the clash (#321).
+
+To check a plugin's registrations, run a headless session from a directory
+outside the repo, so no settings enable the installed copy:
+`claude -p --output-format stream-json --verbose --setting-sources project
+--strict-mcp-config --plugin-dir <plugin dir> --model haiku "<prompt>"`. Its
+`init` event's `skills` and `slash_commands` list the names. Its transcript
+(`~/.claude/projects/<cwd slug>/<session id>.jsonl`) shows which body a
+prompt such as `/<name>` loaded, since a skill's starts `Base directory for
+this skill:`.
+
 ## SKILL.md size — when to split phases into their own files
 
 ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~430

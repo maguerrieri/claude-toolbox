@@ -33,6 +33,17 @@ under *Deferred to #316* below.
   list it under `dependencies`: the install that repo settings trigger doesn't
   resolve dependencies (`AGENTS.md`), so a repo whose settings predate
   `ledger` would lose `ticket-workflow` entirely.
+- **Two skills, `ledger:ledger` and `ledger:record`, and no command** (#318).
+  `/ledger` is `skills/ledger/`, which shows the ledger or resolves a need, and
+  the recording rules are `skills/record/`, which `ticket-workflow` names. The
+  plugin first shipped `/ledger` as `commands/ledger.md` beside a skill also
+  named `ledger`. A plugin's commands and skills share one namespace, so the
+  two registered as one `ledger:ledger` entry: the listing showed the
+  command's description, and invoking it loaded the skill's body. Renaming the
+  skill alone isn't enough, because a bare `/ledger` resolves only to a
+  skill: with `/ledger` left a command, an interactive session answers
+  `Unknown command: /ledger` and only `/ledger:ledger` reaches it (verified on
+  Claude Code 2.1.325). `AGENTS.md` has the rule.
 - **One JSONL file per session**, keyed like the role marker:
   `~/.claude/session-ledger/<session id>.jsonl` (`CLAUDE_SESSION_LEDGER_DIR`
   overrides it for tests). The session id is `CLAUDE_CODE_SESSION_ID`, else the

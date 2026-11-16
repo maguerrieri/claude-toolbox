@@ -63,7 +63,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 - **ledger** — a per-session record of the decisions the owner made and what
   the session needs from them (a review, a merge, a permission prompt, a
   credential), each with a one-line why (the history and goal of the work)
-  and the exact step that unblocks it: the `ledger` skill plus `/ledger`.
+  and the exact step that unblocks it: the `ledger:record` skill (the rules for
+  recording) plus `/ledger` (show the ledger, or resolve a need).
   `ticket-workflow`'s sessions record into it and start their "status?"
   answers from it. Local sessions only: the ledgers are files under
   `~/.claude/session-ledger/`. A glanceable view across every session's
