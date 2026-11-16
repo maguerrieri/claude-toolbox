@@ -283,10 +283,11 @@ whole environment, since it restarts nothing.
   so far was by the sessions' own login (a session's own FINISH, or an EPIC
   coordinator's Step 7), so the actor can't say which session merged. A session that
   merges its own PR isn't woken in practice: it's busy through FINISH, which
-  unsubscribes it (Step 3) before its turn ends, and that drops the held merge event. A
-  coordinator's merge of a child's PR wakes the child, which runs its own cleanup
-  (ticket-workflow's `notifier.md`), harmlessly if the coordinator already did some of
-  it.
+  unsubscribes it (Step 3) before its turn ends, and that drops the held merge event.
+  An EPIC coordinator that lands a local child's PR and removes its worktree unsubscribes
+  the child first (FINISH Step 2), so the child isn't woken either. A merge that leaves
+  the cleanup to the child (a stacked PR landed from the owner's session) does wake it,
+  and it runs that cleanup (ticket-workflow's `notifier.md`).
 - **The sessions' own comments and reviews wake no one.** The filter drops the
   sessions' login, and those posts never reach a conditional poll anyway (the spike's
   §4). That includes another session's posts, such as a coordinator's `restack:`
