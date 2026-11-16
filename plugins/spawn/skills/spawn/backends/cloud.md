@@ -148,7 +148,12 @@ there, even though the repo may carry it — the harness rejects the prompt with
 "Unknown command" and the session never does anything; it looks launched and
 simply produces nothing. Observed 2026-09-10 on a real fan-out from a cloud
 session: children briefed with a leading `/start-ticket` were rejected this way;
-the relaunch with prose worked.
+the relaunch with prose worked. Installation may not have been the cause there:
+`/start-ticket` was then a plugin *command*, and a bare `/<name>` never reaches a
+plugin command, only a skill, so it was "Unknown command" even where the plugin
+was installed (claude-toolbox #322). The typed entry points are skills now, which
+a bare name does reach wherever the plugin is installed; when you can't be sure
+it is, lead with prose as below.
 
 The child inherits the spawner's environment, so the test is local: if *you* can
 invoke the command as a slash command in this session, so can the child, and a

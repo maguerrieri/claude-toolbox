@@ -15,11 +15,11 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 - **conventions** — cross-repo development conventions: commit-message and
   PR-title formats, and a portable repository-instruction policy built around a canonical root
   `AGENTS.md`, with a pure `CLAUDE.md` import shim as an optional fallback.
-- **spawn** — generic background-session fan-out: the `spawn` skill plus the
-  `/spawn` command, for firing off one or more independent `claude --bg`
+- **spawn** — generic background-session fan-out: the `spawn` skill, typed as
+  `/spawn <task>`, for firing off one or more independent `claude --bg`
   sessions and handing back without blocking.
-- **generate** — diverse bulk ideation: the `generate` skill plus the
-  `/generate` command. Runs a judgment-OFF morphological-analysis loop (frame →
+- **generate** — diverse bulk ideation: the `generate` skill, typed as
+  `/generate <type>`. Runs a judgment-OFF morphological-analysis loop (frame →
   diversity-prompted parallel passes → axis-tag → cluster) that fights LLM
   mode-collapse, with the decision handoff behind a pluggable **Promotion
   adapter** (`inline` / `github-issue` / `adr`, or point it at your own).
