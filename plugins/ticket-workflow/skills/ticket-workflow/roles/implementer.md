@@ -70,10 +70,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   `owner-check.sh`, act only on what's new, then hand back again).
 - **Record what you need from the owner** in your ledger, where the `ledger`
   plugin is installed (its `ledger:record` skill says how) and your session
-  is local, not a cloud session or Projects mode, which the ledger doesn't reach: the
-  reviewed PR at hand-back
-  (START Step 9), and a `blocked:` or `declined:` that waits on the owner,
-  under your PR's `<owner>/<repo>#<pr>` once it exists (as Step 9 spells it),
+  is local, not a cloud session or Projects mode, which the ledger doesn't
+  reach: the reviewed PR at hand-back (START Step 9), and a `blocked:` or
+  `declined:` that waits on the owner, under your PR's `<owner>/<repo>#<pr>`
+  once it exists (as Step 9 spells it),
   so that FINISH Step 5's `resolve --ref` closes it with the hand-back. Your
   spawner doesn't copy these into its own ledger. Resolve each when FINISH
   lands the PR or the owner clears the blockage. A decision the owner makes in

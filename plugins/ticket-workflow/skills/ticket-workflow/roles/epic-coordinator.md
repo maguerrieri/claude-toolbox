@@ -43,11 +43,11 @@ and assemble what comes back up.
   back, and don't raise its cap for it: only automated review rounds count.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
   installs it; its `ledger:record` skill says how) and the session is local,
-  not a cloud session, which the ledger doesn't reach. Record each decision the owner makes
-  here, and each thing you stop for that only the owner can give, with its
-  exact unblock step, each under a Why line saying why the work exists, and
-  resolve each once the owner answers. Your own `ready; needs the owner`
-  stack is one, recorded under the epic's ref in full
+  not a cloud session, which the ledger doesn't reach. Record each decision
+  the owner makes here, and each thing you stop for that only the owner can
+  give, with its exact unblock step, each under a Why line saying why the work
+  exists, and resolve each once the owner answers. Your own `ready; needs the
+  owner` stack is one, recorded under the epic's ref in full
   (`--ref '<owner>/<repo>#<epic>'` for a GitHub epic, the epic's key such as
   `--ref 'ABC-40'` for a Jira one) and resolved by its id once the whole
   stack has merged, since FINISH resolves needs by a single PR's ref. A

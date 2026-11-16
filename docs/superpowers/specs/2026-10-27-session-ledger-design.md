@@ -27,20 +27,21 @@ under *Deferred to #316* below.
 ## Decisions
 
 - **Its own plugin, `ledger`.** A non-ticket session can keep a ledger too, so
-  the script, the hooks, `/ledger` and a short skill live in `plugins/ledger/`.
-  `ticket-workflow`'s charters, START and FINISH point to the skill where the
-  plugin is installed, and `defaults` pulls it in. `ticket-workflow` doesn't
-  list it under `dependencies`: the install that repo settings trigger doesn't
-  resolve dependencies (`AGENTS.md`), so a repo whose settings predate
-  `ledger` would lose `ticket-workflow` entirely.
+  the script, the hooks, `/ledger` and the short recording rules live in
+  `plugins/ledger/`. `ticket-workflow`'s charters, START and FINISH point to
+  the rules where the plugin is installed, and `defaults` pulls it in.
+  `ticket-workflow` doesn't list it under `dependencies`: the install that
+  repo settings trigger doesn't resolve dependencies (`AGENTS.md`), so a repo
+  whose settings predate `ledger` would lose `ticket-workflow` entirely.
 - **Two skills, `ledger:ledger` and `ledger:record`, and no command** (#318).
   `/ledger` is `skills/ledger/`, which shows the ledger or resolves a need, and
   the recording rules are `skills/record/`, which `ticket-workflow` names.
-  `/ledger` is the owner's alone (`disable-model-invocation: true`), since
-  resolving a need is the owner's act and a session reads its ledger by the
-  rules' *When to read*. The rules are the model's alone (`user-invocable:
-  false`). The plugin first shipped `/ledger` as `commands/ledger.md` beside a skill also
-  named `ledger`. A plugin's commands and skills share one namespace, so the
+  `/ledger` is the owner's alone (`disable-model-invocation: true`): its
+  `resolve` form is the owner marking a need answered, and a session reads and
+  resolves its ledger by the rules (*When to read*, *Resolve a need*) instead.
+  The rules are the model's alone (`user-invocable: false`). The plugin first
+  shipped `/ledger` as `commands/ledger.md` beside a skill also named
+  `ledger`. A plugin's commands and skills share one namespace, so the
   two registered as one `ledger:ledger` entry: the listing showed the
   command's description, and invoking it loaded the skill's body. Renaming the
   skill alone isn't enough, because a bare `/ledger` resolves only to a

@@ -203,9 +203,11 @@ plugin command answers only to `/<plugin>:<name>` (an interactive session
 says `Unknown command: /<name>`). That's why `/ledger` is a skill
 (`skills/ledger/`) beside the recording rules (`skills/record/`). Each is
 scoped to its reader. `/ledger` has `disable-model-invocation: true`, so
-only the owner runs it, and resolving a need stays the owner's act. The
-recording rules have `user-invocable: false`, so the model's skill list
-carries their trigger description and a bare `/record` doesn't load them.
+only the owner runs it: its `resolve` form is the owner marking a need
+answered, and its plain form prints the list bare. A session reads and
+resolves its ledger through the recording rules instead, which have
+`user-invocable: false`, so the model's skill list carries their trigger
+description and a bare `/record` doesn't load them.
 Verified on Claude Code 2.1.325 while fixing `ledger` (#318). `spawn` and
 `generate` still have the clash (#321). Most of this repo's typed entry
 points (`/role`, `/start-ticket`, the `gm` commands) are still plugin
@@ -216,9 +218,11 @@ To check a plugin's registrations, run a headless session from a directory
 outside the repo, so no settings enable the installed copy:
 `claude -p --output-format stream-json --verbose --setting-sources project
 --strict-mcp-config --plugin-dir <plugin dir> --model haiku "<prompt>"`. Its
-`init` event's `skills` and `slash_commands` list the names the user can type.
-A skill with `user-invocable: false` is missing from both, so ask the model to
-quote its skill list to see it. The transcript
+`init` event's `skills` and `slash_commands` list what the user can type, in
+the `<plugin>:<name>` form only, so they can't show whether a bare `/<name>`
+resolves: type it and read the transcript. A skill with `user-invocable:
+false` is missing from both, so ask the model to quote its skill list to see
+it. The transcript
 (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<cwd slug>/<session id>.jsonl`)
 shows which body a prompt such as `/<name>` loaded, since a skill's starts
 `Base directory for this skill:`.
