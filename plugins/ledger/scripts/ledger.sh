@@ -157,6 +157,7 @@ normalize_ref() {
 		# would yield a wrong pair, so there the ref stays bare.
 		rest=${url%.git}
 		case "$rest" in
+		[Ff][Ii][Ll][Ee]://*) rest='' ;;
 		*://*) rest=${rest#*://} rest=${rest#*/} ;;
 		/* | .* | *:*:*) rest='' ;;
 		*:*) rest=${rest#*:} ;;
