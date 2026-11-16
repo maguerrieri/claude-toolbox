@@ -249,10 +249,11 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   another tool or address, a send that failed) falls back at once. One whose message may
   have reached it (sent but not yet a turn, sent with the text changed, or killed before
   its result) may still be taken, so the session is held for that check and the fallback
-  waits for the next. A message sent but not yet taken is remembered with the events it
-  carried, and every later check looks for it in the transcript first: once the session
-  has taken it, those events count as delivered (`wake … how=relay-late`), and only
-  events queued since need a wake of their own. Either way, relays to that session then
+  waits for the next. Each message sent but not yet taken (the last five) is remembered
+  with the events it carried, since a retry doesn't stop the session taking an earlier
+  one, and every later check looks for each in the transcript first: once the session has
+  taken one, those of its events still held count as delivered (`wake … how=relay-late`),
+  and only events queued since need a wake of their own. Either way, relays to that session then
   back off (5, 10, 20, 40, then 60 minutes). After three relays that may have reached it
   without landing, the notifier stops relaying to it until a wake lands or a new event
   arrives, since a terminal session, whose fallback only holds, would otherwise get one

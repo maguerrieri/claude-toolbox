@@ -700,6 +700,15 @@ record '2|0|0' 'when it lands late, events queued since (read on the next sweep)
 record '- comment https://github.com/o/r/pull/7#issuecomment-102' 'carrying only the new event' "$(relayed 2 | tail -n 1)"
 record 3 'one PR line and one event line' "$(relayed 2 | wc -l | tr -d ' ' | awk '{ print $1 + 1 }')"
 
+# A retried relay doesn't replace one still unconfirmed: the session can take the earlier one.
+deliver_case interactive $((T - 3600)) '' held
+nt $((T + 300)) check
+take m-1
+nt $((T + 360)) check
+record '2|0|0' 'when an earlier relay is taken after a retry, it is the wake: nothing more is sent, nothing held' \
+	"$(relays)|$(wakes)|$(held)"
+record yes 'logged as late, naming the earlier message' "$(logged 'how=relay-late prs=o/r#7 events=1 msg=m-1')"
+
 deliver_case idle-done $((T - 3600)) '' fail
 record '1|1' 'a failed send falls back too' "$(relays)|$(wakes)"
 record yes 'logged as not sent' "$(logged 'relay-failed session=aaaaaaaa mode=auto reason="not sent: {')"
