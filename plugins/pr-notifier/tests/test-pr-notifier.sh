@@ -124,7 +124,11 @@ printf '%s|cfg=%s|path=%s|sock=%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" "${CLAU
 listing=$STUB/agents${CLAUDE_CONFIG_DIR:+-${CLAUDE_CONFIG_DIR##*/}}.json
 root=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
 case $1 in
-agents) cat "$listing" ;;
+agents)
+	cat "$listing"
+	# A session that changes right after it was listed: the next listing reads $STUB/agents.next.
+	[ ! -f "$STUB/agents.next" ] || mv "$STUB/agents.next" "$listing"
+	;;
 stop)
 	jq --arg id "$2" 'map(if .id == $id then del(.pid, .status) else . end)' "$listing" >"$listing.new" &&
 		mv "$listing.new" "$listing"
@@ -675,6 +679,27 @@ record 'agents,relay,agents,agents,stop,agents,resume' 'by stop, a check that it
 record yes 'and the stop names the short id' "$(has "$STUB/claude.log" 'stop aaaaaaaa|')"
 record yes 'the resume is logged as the fallback' "$(logged 'wake session=aaaaaaaa how=live-idle')"
 
+# A relay the session takes a check late was the wake for what it carried.
+take() { # take <message id>: the session takes that relayed message as a turn
+	jq -cn --arg id "$1" '{type: "user", origin: {kind: "peer", msg_id: $id}, message: {content: "wake"}}' \
+		>>"$HOME/.claude/projects/p/$SID.jsonl"
+}
+deliver_case idle-done $((T - 3600)) '' held
+take m-1
+nt $((T + 60)) check
+record '1|0|0' 'a held relay taken after its check is the wake: no stop, no resume, nothing held' "$(relays)|$(wakes)|$(held)"
+record yes 'logged as a late relay' "$(logged 'wake session=aaaaaaaa how=relay-late prs=o/r#7 events=1 msg=m-1')"
+record no 'and never stopped' "$(has "$STUB/claude.log" stop)"
+
+deliver_case idle-done $((T - 3600)) '' held
+timeline 7 "$(comment 7 101 mari User "$T1")" "$(comment 7 102 mari User "$(iso $((T + 30)))")"
+take m-1
+echo ok >"$STUB/relay.mode"
+nt $((T + 301)) check
+record '2|0|0' 'when it lands late, events queued since (read on the next sweep) go in a wake of their own, at once' "$(relays)|$(wakes)|$(held)"
+record '- comment https://github.com/o/r/pull/7#issuecomment-102' 'carrying only the new event' "$(relayed 2 | tail -n 1)"
+record 3 'one PR line and one event line' "$(relayed 2 | wc -l | tr -d ' ' | awk '{ print $1 + 1 }')"
+
 deliver_case idle-done $((T - 3600)) '' fail
 record '1|1' 'a failed send falls back too' "$(relays)|$(wakes)"
 record yes 'logged as not sent' "$(logged 'relay-failed session=aaaaaaaa mode=auto reason="not sent: {')"
@@ -731,8 +756,11 @@ nt $((T + 900)) check
 nt $((T + 2100)) check 2>/dev/null
 record 3 'its relays stop after three unconfirmed tries' "$(relays)"
 record yes 'logged' "$(logged 'reason=relay gave up after 3 unconfirmed tries; live interactive session')"
+timeline 7 "$(comment 7 101 mari User "$T1")" "$(comment 7 103 mari User "$(iso $((T + 2110)))")"
+nt $((T + 2401)) check 2>/dev/null
+record 4 'a new event earns fresh tries: it is relayed, on the sweep that reads it' "$(relays)"
 agents "$(agent interactive-exited)"
-nt $((T + 2160)) check 2>/dev/null
+nt $((T + 2461)) check 2>/dev/null
 record 1 'once it has exited, it is resumed' "$(wakes)"
 
 deliver_case interactive $((T - 3600)) '' crash
@@ -824,6 +852,26 @@ timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
 nt $((T + 60)) check
 record '1|1' 'and a row that stays idle does not' "$(relays)|$(wakes)"
+
+# A stopped session is read afresh before its resume, since resuming a live one forks it.
+reset
+agent idle-blocked | jq -s . >"$STUB/agents.next"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '0|1' 'a session listed stopped but live on a fresh read is not resumed' "$(wakes)|$(held)"
+record yes 'logged' "$(logged 'reason=changed since the listing; next check')"
+nt $((T + 60)) check
+record '1|0' 'and the next check relays to it' "$(relays)|$(wakes)"
+
+# The mode logged is the one the newest transcript last recorded.
+reset
+mkdir -p "$HOME/.claude/projects/q"
+printf '%s\n' '{"type":"permission-mode","permissionMode":"plan"}' >"$HOME/.claude/projects/q/$SID.jsonl"
+touch -t 202001010000 "$HOME/.claude/projects/q/$SID.jsonl"
+agents "$(agent idle-done)"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record yes 'the mode comes from the newest of two transcripts' "$(logged 'how=relay prs=o/r#7 events=1 mode=auto')"
 
 # Rows that can't be woken now.
 reset
