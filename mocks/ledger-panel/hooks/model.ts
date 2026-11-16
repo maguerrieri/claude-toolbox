@@ -172,27 +172,36 @@ export const hasOthersNeed = (ledgers: Readonly<Record<string, readonly Entry[]>
 /** Which ledgers a panel option reads: this session's alone, or every local session's. */
 export type Scope = 'session' | 'all'
 
+// The latest resolved first, then as byNewest.
+const byResolved = (a: MockNeed, b: MockNeed): number => {
+  const [left, right] = [a.resolvedAt ?? '', b.resolvedAt ?? '']
+  if (left !== right) {
+    return left < right ? 1 : -1
+  }
+
+  return byNewest(a, b)
+}
+
 /**
  * The view an option draws: the open needs in scope, each in the ledger of the
  * session that needs the owner and each its own row (two needs that share a
  * ref stay two rows, a lesson of PR #272's review); the latest resolved ones;
  * and this session's latest ten decisions. <resolvedHere> holds the needs a
- * Resolve press marked resolved in the mock alone, at <nowIso>.
+ * Resolve press marked resolved in the mock alone, each with the time pressed.
  */
 export const viewOf = (
   ledgers: Readonly<Record<string, readonly Entry[]>>,
   me: string,
   names: Readonly<Record<string, string>>,
   scope: Scope,
-  resolvedHere: readonly string[] = [],
-  nowIso = '',
+  resolvedHere: Readonly<Record<string, string>> = {},
 ): MockView => {
   const inScope = Object.entries(ledgers).filter(([session]) => scope === 'all' || session === me)
   const all: MockNeed[] = inScope.flatMap(([session, entries]) =>
     entries
       .filter(entry => entry.kind === 'need')
       .map((entry): MockNeed => {
-        const resolvedAt = entry.resolved_at ?? (resolvedHere.includes(`${session}:${entry.id}`) ? nowIso : undefined)
+        const resolvedAt = entry.resolved_at ?? resolvedHere[`${session}:${entry.id}`]
 
         return {
           session,
@@ -220,7 +229,7 @@ export const viewOf = (
     needs: all.filter(need => need.resolvedAt === undefined).sort(byNewest),
     resolved: all
       .filter(need => need.resolvedAt !== undefined)
-      .sort(byNewest)
+      .sort(byResolved)
       .slice(0, 10),
     decisions: decisions.sort(byNewest).slice(0, 10),
   }
