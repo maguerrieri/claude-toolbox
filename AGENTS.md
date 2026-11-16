@@ -201,18 +201,27 @@ So give every command and skill in a plugin its own name. And make whatever
 users type bare a skill: a bare `/<name>` resolves only to a skill, while a
 plugin command answers only to `/<plugin>:<name>` (an interactive session
 says `Unknown command: /<name>`). That's why `/ledger` is a skill
-(`skills/ledger/`) beside the recording rules (`skills/record/`). Verified on
-Claude Code 2.1.325 while fixing `ledger` (#318). `spawn` and `generate`
-still have the clash (#321).
+(`skills/ledger/`) beside the recording rules (`skills/record/`). Each is
+scoped to its reader. `/ledger` has `disable-model-invocation: true`, so
+only the owner runs it, and resolving a need stays the owner's act. The
+recording rules have `user-invocable: false`, so the model's skill list
+carries their trigger description and a bare `/record` doesn't load them.
+Verified on Claude Code 2.1.325 while fixing `ledger` (#318). `spawn` and
+`generate` still have the clash (#321). Most of this repo's typed entry
+points (`/role`, `/start-ticket`, the `gm` commands) are still plugin
+commands, so bare they work only where a user-level copy in
+`~/.claude/commands/` stands in (#322).
 
 To check a plugin's registrations, run a headless session from a directory
 outside the repo, so no settings enable the installed copy:
 `claude -p --output-format stream-json --verbose --setting-sources project
 --strict-mcp-config --plugin-dir <plugin dir> --model haiku "<prompt>"`. Its
-`init` event's `skills` and `slash_commands` list the names. Its transcript
-(`~/.claude/projects/<cwd slug>/<session id>.jsonl`) shows which body a
-prompt such as `/<name>` loaded, since a skill's starts `Base directory for
-this skill:`.
+`init` event's `skills` and `slash_commands` list the names the user can type.
+A skill with `user-invocable: false` is missing from both, so ask the model to
+quote its skill list to see it. The transcript
+(`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<cwd slug>/<session id>.jsonl`)
+shows which body a prompt such as `/<name>` loaded, since a skill's starts
+`Base directory for this skill:`.
 
 ## SKILL.md size — when to split phases into their own files
 

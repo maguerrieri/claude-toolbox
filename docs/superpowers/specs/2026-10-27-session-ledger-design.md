@@ -35,8 +35,11 @@ under *Deferred to #316* below.
   `ledger` would lose `ticket-workflow` entirely.
 - **Two skills, `ledger:ledger` and `ledger:record`, and no command** (#318).
   `/ledger` is `skills/ledger/`, which shows the ledger or resolves a need, and
-  the recording rules are `skills/record/`, which `ticket-workflow` names. The
-  plugin first shipped `/ledger` as `commands/ledger.md` beside a skill also
+  the recording rules are `skills/record/`, which `ticket-workflow` names.
+  `/ledger` is the owner's alone (`disable-model-invocation: true`), since
+  resolving a need is the owner's act and a session reads its ledger by the
+  rules' *When to read*. The rules are the model's alone (`user-invocable:
+  false`). The plugin first shipped `/ledger` as `commands/ledger.md` beside a skill also
   named `ledger`. A plugin's commands and skills share one namespace, so the
   two registered as one `ledger:ledger` entry: the listing showed the
   command's description, and invoking it loaded the skill's body. Renaming the
