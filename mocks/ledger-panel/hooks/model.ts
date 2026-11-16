@@ -117,8 +117,17 @@ export const namesOf = (stdout: string): Record<string, string> => {
   }
 }
 
-/** Control characters (C0 but tab and newline, DEL, C1) shown as `?`, as the script lists them. */
-export const clean = (text: string): string => text.replace(/[\x01-\x08\x0b-\x1f\x7f-\x9f]/g, '?')
+/**
+ * The characters scripts/ledger.sh's `clean` shows as `?`: control characters
+ * (C0 but tab and newline, DEL, C1), zero-width and bidi-override ones, soft
+ * hyphens, invisible separators and tag characters, so a ledger's text can't
+ * reorder or hide what's drawn around it. Keep it in step with the script's.
+ */
+export const clean = (text: string): string =>
+  text.replace(
+    /[\u{1}-\u{8}\u{b}-\u{1f}\u{7f}-\u{9f}\u{200b}-\u{200f}\u{2028}-\u{202e}\u{2060}-\u{2064}\u{2066}-\u{2069}\u{feff}\u{ad}\u{61c}\u{180e}\u{fff9}-\u{fffb}\u{e0000}-\u{e007f}]/gu,
+    '?',
+  )
 
 // A Why line as one line, as the script lists it: a hand edit could hold a
 // newline.
@@ -201,12 +210,14 @@ export const viewOf = (
     entries
       .filter(entry => entry.kind === 'need')
       .map((entry): MockNeed => {
-        const resolvedAt = entry.resolved_at ?? resolvedHere[`${session}:${entry.id}`]
+        const key = keyOf({ session, id: entry.id })
+        const resolvedAt = entry.resolved_at ?? resolvedHere[key]
 
         return {
+          key,
           session,
           label: labelOf(session, me, names, entry.cwd),
-          id: entry.id,
+          id: clean(entry.id),
           ...whyOf(entry.why),
           text: clean(entry.text),
           ...(entry.ref === undefined ? {} : { ref: clean(entry.ref) }),
@@ -218,7 +229,7 @@ export const viewOf = (
   const decisions: MockDecision[] = (ledgers[me] ?? [])
     .filter(entry => entry.kind === 'decision')
     .map(entry => ({
-      id: entry.id,
+      id: clean(entry.id),
       ...whyOf(entry.why),
       text: clean(entry.text),
       ...(entry.ref === undefined ? {} : { ref: clean(entry.ref) }),
@@ -236,7 +247,7 @@ export const viewOf = (
 }
 
 /** The key Hide remembers: the open needs it was hidden for. */
-export const needsKey = (view: MockView): string => view.needs.map(keyOf).join(',')
+export const needsKey = (view: MockView): string => view.needs.map(need => need.key).join(',')
 
 /** How long ago <at> was, from <nowMs>: `now`, `5m`, `3h`, `2d`. */
 export const ageOf = (at: string, nowMs: number): string => {

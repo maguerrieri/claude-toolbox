@@ -65,7 +65,7 @@ toggle and drawing on the terminal and desktop trees).
 | Open a pane from a command | Yes: `$.command.register` and `$.ui.open` | Typed `/ledger-pane`: the pane docked beside the transcript |
 | Close its own pane from code | Yes: `$.ui.close({ id })`; `$.ui.panes()` says whether it is open, so one command toggles | `/ledger-pane` twice: open, then closed |
 | The person dismisses it | The pane's `✕` mark; `ctrl+x x` while the pane has the keyboard (`pane:close`, *Pane* context); Esc, when the mod opened it with `closeOnEscape`, both while the pane has the keyboard and at an idle, empty prompt. A mod's `ui.close` hook may refuse any of these | `ctrl+x x` from the prompt did nothing; after `ctrl+x tab` it closed the pane. Esc closed it in both places |
-| Give the pane the keyboard | `ctrl+x tab`; then a Button's one-key `hotkey` presses it | `r` toggled *Show resolved*, `1` pressed the first Resolve |
+| Give the pane the keyboard | `ctrl+x tab`; then a Button's one-key `hotkey` presses it | `r` toggled *Show resolved*, and `1` pressed the first Resolve (the mock has since dropped digit hotkeys, below) |
 | Bind a keyboard shortcut | **A mod can't register one.** The person can bind a chord to the mod's command in `keybindings.json`: `"ctrl+x l": "command:ledger-pane"`. That toggles, since the command does | Bound it as above: `ctrl+x l` opened the pane, and again closed it (expanded and folded the band for `inline`) |
 | Borrow an engine chord | A Button's `action` prop takes an engine keybinding action's chord, but only one with no engine handler mounted, and plugins can't define new actions | Read in the types; not tried, since no free engine action fits |
 | Hide or collapse a band | The person collapses the whole band with `ctrl+x ctrl+a` or its `[-]`; a mod can stop drawing its row (the mock's Hide) | Hide verified in tests; `[-]` seen on screen |
@@ -76,7 +76,9 @@ Two more limits shape the options:
 - A bare digit typed into an empty prompt presses a band Button with that
   hotkey (that's how surveys answer), so band buttons that act, like Resolve,
   must have no digit hotkey. A pane's hotkeys fire only while it has the
-  keyboard.
+  keyboard, but digits by position shift after each Resolve, so pressing `1`
+  twice would resolve two needs: the mock gives Resolve no digit hotkey
+  anywhere.
 - A status line (`$.ui.status`) is drawn after `⚠ <plugin name>:` and cut at
   the terminal's width, and it can't be pressed.
 
@@ -113,7 +115,7 @@ latest decisions; the same command, Esc, `✕` or *Close* closes it.
 
 - **Shows**: this session only, needs and decisions, resolved needs on
   request.
-- **Does**: Resolve per need (`1`–`9` while focused).
+- **Does**: Resolve per need.
 - **Loudness**: silent until asked.
 - **Costs**: the least to build; needs nothing from #316's reader. But it
   answers "what does *this* session need?", which the hand-back report
@@ -247,7 +249,7 @@ Keep from the other options:
   in the plugin's docs suggesting a `command:ledger-pane` chord, since the
   plugin can't bind one itself;
 - *Show resolved* in the pane;
-- no digit hotkeys on band buttons.
+- no digit hotkeys on Resolve, in the band or the pane.
 
 Questions for the owner:
 
