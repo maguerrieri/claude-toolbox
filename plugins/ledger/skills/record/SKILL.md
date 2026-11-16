@@ -1,6 +1,7 @@
 ---
 name: record
 description: 'Use when instructions (a ticket-workflow charter or step, a briefing) or the owner ask this session to record a decision the owner made or something it needs from the owner, or when the owner asks "status?" or what this session needs from them. Keeps the per-session ledger that /ledger shows.'
+user-invocable: false
 ---
 
 # Ledger: decisions made, and what a session needs from the owner

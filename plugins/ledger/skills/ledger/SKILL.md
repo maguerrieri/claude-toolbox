@@ -2,14 +2,16 @@
 name: ledger
 description: "Show this session's ledger (the owner's decisions and what the session needs from them), or resolve one of its needs: /ledger resolve <need id>"
 argument-hint: '[resolve <need id>]'
+disable-model-invocation: true
 ---
 Show or update this session's ledger: **$ARGUMENTS**
 
 The ledger is the `ledger` plugin's per-session record of the owner's
 decisions and what this session needs from the owner, each with a line on why
-the work exists. `/ledger` only shows the ledger or resolves a need: to
-record a decision or a need, use the plugin's `ledger:record` skill, which has
-the Why line, `--ref` and heredoc rules. Run its script from
+the work exists. `/ledger` is the owner's: it only shows the ledger or
+resolves a need. To record a decision or a need, use the plugin's
+`ledger:record` skill (`skills/record/SKILL.md` under `$CLAUDE_LEDGER_ROOT`),
+which has the Why line, `--ref` and heredoc rules. Run the plugin's script from
 `$CLAUDE_LEDGER_ROOT`, which the plugin's SessionStart hook sets. If a command
 stops with `parameter not set` or `No such file`, find the script with the
 Glob tool (`cache/*/ledger/*/scripts/ledger.sh` under your Claude config's
