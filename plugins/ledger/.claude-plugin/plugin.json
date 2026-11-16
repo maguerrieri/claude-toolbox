@@ -1,7 +1,7 @@
 {
   "name": "ledger",
   "description": "Per-session ledger of the owner's decisions and what the session needs from them, each with a one-line why, shown by /ledger",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Mari Guerrieri"
   }
