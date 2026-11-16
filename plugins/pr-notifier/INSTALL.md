@@ -14,11 +14,12 @@ checklist below once per Mac.
 | The job script | `~/.local/libexec/pr-notifier-job` | `install.sh`, from `scripts/pr-notifier-job.sh` |
 | `wake_path` | `~/.local/state/pr-notifier/config.json` | `install.sh`, captured from bot's login shell |
 | The `jq` the job reads `config.json` with | `~/.local/state/pr-notifier/jq-path` | `install.sh`: the one `wake_path` finds |
-| The launchd job | `/Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist` | Mari, as root (step 2) |
+| The launchd job | `/Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist` | Mari, as root, with `scripts/install-daemon.sh` (step 2) |
 | Logs | `~/.local/state/pr-notifier/`: `notifier.log` (the CLI), `job.log` and `job.last` (the job) | the notifier, as bot |
 
 `install.sh` runs as bot and changes only what differs, so running it again changes
-nothing. It never runs as root: the one root step is a paste (step 2).
+nothing. It never runs as root: the one root step is its own small script,
+`install-daemon.sh`, which Mari runs from their own checkout (step 2).
 
 **Each minute, the job:**
 
@@ -59,9 +60,11 @@ From the #292 spike ([findings](../../docs/superpowers/specs/2026-10-31-pr-notif
 So the default is the LaunchDaemon, with the user-domain agent as the fallback if step 4
 fails (*Fallback*, below).
 
-**The plist is a paste, from this file as reviewed on GitHub.** It's root's file, and its
-content decides which user the job runs as, so it never comes from a file bot can edit (a
-checkout of bot's, or the plugin cache). Nothing in it varies by install, and launchd opens
+**The plist comes from `scripts/install-daemon.sh`, run from Mari's own checkout of merged
+`main`.** It's root's file, and its content decides which user the job runs as, so neither
+it nor the script that writes it ever comes from a file bot can edit (a checkout of bot's,
+or the plugin cache): the script refuses to run when it belongs to bot or sits under bot's
+home. The plist is fixed text in that script. Nothing in it varies by install, and launchd opens
 no file for it: it has no `StandardOutPath` or `StandardErrorPath`, and the job script
 redirects its own output as bot. So root never writes into a directory bot controls
 (config#47's reason for keeping its logs out of bot's home). `AbandonProcessGroup` keeps a
@@ -106,61 +109,20 @@ session use many of them.
 
 ### 2. The LaunchDaemon (your own shell, as root)
 
-Copy this block from GitHub, not from a file on the Mac:
+Run the root script from **your own checkout** of this repo, on `main` with this PR
+merged, never from bot's checkout or the plugin cache. With your checkout in
+`~/Developer/claude-toolbox` (change the path if it's elsewhere):
 
 ```zsh
-sudo tee /Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist >/dev/null <<'PLIST_EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>works.sprue.bot.pr-notifier</string>
-  <key>UserName</key>
-  <string>bot</string>
-  <key>SessionCreate</key>
-  <true/>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/sh</string>
-    <string>/Users/bot/.local/libexec/pr-notifier-job</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HOME</key>
-    <string>/Users/bot</string>
-    <key>USER</key>
-    <string>bot</string>
-    <key>LOGNAME</key>
-    <string>bot</string>
-    <key>SHELL</key>
-    <string>/bin/zsh</string>
-    <key>LANG</key>
-    <string>en_US.UTF-8</string>
-    <key>PATH</key>
-    <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
-  </dict>
-  <key>WorkingDirectory</key>
-  <string>/</string>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>StartInterval</key>
-  <integer>60</integer>
-  <key>AbandonProcessGroup</key>
-  <true/>
-</dict>
-</plist>
-PLIST_EOF
-sudo chown root:wheel /Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist
-sudo chmod 644 /Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist
-sudo launchctl bootout system/works.sprue.bot.pr-notifier 2>/dev/null
-for i in {1..30}; do sudo launchctl print system/works.sprue.bot.pr-notifier >/dev/null 2>&1 || break; sleep 1; done
-sudo launchctl bootstrap system /Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist
+git -C ~/Developer/claude-toolbox pull --ff-only
+sudo ~/Developer/claude-toolbox/plugins/pr-notifier/scripts/install-daemon.sh
 ```
 
-The `bootout` and the wait only matter when replacing a loaded job (a bootstrap right
-after a bootout fails with `Bootstrap failed: 5`); the first time, they do nothing. The
-job runs at once, then every 60 seconds.
+It writes `/Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist` (`root:wheel`, mode
+644) and loads it into the system domain; the job runs at once, then every 60 seconds. A
+second run changes nothing, and it reloads the job when the plist has changed. It refuses
+to run when the script belongs to bot or sits under `/Users/bot`. To see the plist first,
+with no root: `…/install-daemon.sh plist`.
 
 ### 3. Check that it runs
 
@@ -246,8 +208,8 @@ claude-config's `AGENTS.md`, *The `bot` macOS user*.
 The CLI needs nothing: the shim runs the newest installed copy. `pni status` (step 3)
 says when the job script or the shim differs from the newest version's; run `pni` again.
 With no `--domain`, `pni` keeps whichever job is installed, so this is the same on the
-fallback. If `status` says the LaunchDaemon's plist differs, run step 2 again with this
-file's new block.
+fallback. If `status` says the LaunchDaemon's plist differs, run step 2 again: it pulls
+your checkout and reloads the job with the new plist.
 
 ## After changing bot's shell `PATH`
 
@@ -264,8 +226,7 @@ The LaunchDaemon first, in your own shell, so launchd isn't left running a job t
 gone:
 
 ```zsh
-sudo launchctl bootout system/works.sprue.bot.pr-notifier
-sudo rm /Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist
+sudo ~/Developer/claude-toolbox/plugins/pr-notifier/scripts/install-daemon.sh uninstall
 ```
 
 Then from a bot shell:
@@ -282,7 +243,7 @@ start over.
 ## Fallback: the user-domain agent
 
 If step 4 shows a LaunchDaemon can't resume sessions, uninstall the LaunchDaemon (its root
-lines above), then from a bot shell:
+command above), then from a bot shell:
 
 ```zsh
 pni --domain user

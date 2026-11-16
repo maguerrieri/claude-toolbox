@@ -25,6 +25,7 @@ LaunchDaemon. [INSTALL.md](INSTALL.md) has the checklist Mari runs, what
 | `scripts/owner-check.sh` | Vendored from ticket-workflow (#291), below |
 | `scripts/pr-notifier-shim.sh` | What the install copies to the stable path |
 | `scripts/install.sh` | The install: the shim, the job script, `wake_path`, and the launchd job |
+| `scripts/install-daemon.sh` | The one root step: writes and loads the LaunchDaemon's plist. Mari runs it from their own checkout |
 | `scripts/pr-notifier-job.sh` | What launchd runs: keychain, `PATH`, log rotation, then `check` |
 | `INSTALL.md` | Mari's install checklist, and why the job is a LaunchDaemon |
 | `skills/pr-notifier/SKILL.md` | When sessions call it, and the wake prompt's exact shape |

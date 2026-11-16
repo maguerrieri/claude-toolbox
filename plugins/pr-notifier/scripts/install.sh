@@ -94,9 +94,9 @@ login_shell=
 [ ! -x "$dscl" ] || login_shell=$("$dscl" . -read "/Users/$user" UserShell 2>/dev/null | sed -n 's/^UserShell: //p')
 login_shell=${login_shell:-${SHELL:-/bin/zsh}}
 # The plist carries nothing read from the machine but HOME and the user, so
-# the system one is exactly INSTALL.md's reviewed paste for bot: its SHELL is
+# the system one is exactly the fixed text install-daemon.sh writes for bot: its SHELL is
 # a constant, macOS's default, rather than the account's (which, if it ever
-# changed, would make every status FAIL against a paste that can't follow).
+# changed, would make every status FAIL against a plist that can't follow).
 plist_shell=/bin/zsh
 # The plist's own PATH only has to find what the job script runs before it
 # switches to wake_path (id, mkdir, wc, mv, date, sed).
@@ -186,7 +186,7 @@ $who
 PLIST_EOF
 }
 
-same_plist() { # same_plist <a> <b>: byte for byte, else as parsed (a paste can change whitespace)
+same_plist() { # same_plist <a> <b>: byte for byte, else as parsed (a hand edit can change whitespace)
 	cmp -s "$1" "$2" && return 0
 	command -v plutil >/dev/null 2>&1 || return 1
 	cmp -s <(plutil -convert xml1 -o - "$1" 2>/dev/null) <(plutil -convert xml1 -o - "$2" 2>/dev/null)
