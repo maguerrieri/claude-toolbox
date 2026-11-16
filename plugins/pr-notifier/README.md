@@ -169,7 +169,7 @@ own `PATH` (below). First match wins:
 | The listing fails | hold |
 | No row for the session | hold: a row can come back. The bound reports it once, and it stays held, its PRs still swept, until it's unsubscribed (`pr-notifier unsubscribe <pr> --session <id>`) |
 | Stopped (no `pid`), and its `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
-| Stopped | `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy) |
+| Stopped | read its row afresh, since the listing can be seconds old: still stopped, `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy); started since, hold for the next check, since resuming a live session forks it |
 | `status` `busy` or `waiting`, or `state` `working` | hold |
 | Any other live state but idle with `state` `done` or `blocked` | hold |
 | Idle with `state` `done` or `blocked` | relay the wake in place (below); if it doesn't land, the fallback |
@@ -249,12 +249,15 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   another tool or address, a send that failed) falls back at once. One whose message may
   have reached it (sent but not yet a turn, sent with the text changed, or killed before
   its result) may still be taken, so the session is held for that check and the fallback
-  waits for the next, by which time a session that took it is busy and isn't stopped.
-  Either way, relays to that session then back off (5, 10, 20, 40, then 60 minutes).
-  After three relays that may have reached it without landing, the notifier stops
-  relaying to it until a wake lands, since a terminal session, whose fallback only holds,
-  would otherwise get one an hour. Relays that sent nothing (a crash, a missing socket)
-  only back off, so they never stop relays for good.
+  waits for the next. A message sent but not yet taken is remembered with the events it
+  carried, and every later check looks for it in the transcript first: once the session
+  has taken it, those events count as delivered (`wake … how=relay-late`), and only
+  events queued since need a wake of their own. Either way, relays to that session then
+  back off (5, 10, 20, 40, then 60 minutes). After three relays that may have reached it
+  without landing, the notifier stops relaying to it until a wake lands or a new event
+  arrives, since a terminal session, whose fallback only holds, would otherwise get one
+  an hour. Relays that sent nothing (a crash, a missing socket) only back off, so they
+  never stop relays for good.
 - **What the session sees.** `Another Claude session sent a message:`, then
   `<cross-session-message from="uds:…" from-name="pr-notifier" from-mode="prompting">`,
   with the wake prompt inside. `from-mode` stayed `prompting` with or without

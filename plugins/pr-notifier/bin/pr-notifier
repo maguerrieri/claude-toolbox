@@ -488,7 +488,10 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 			reduce ($x.events[] | select(.at >= $s.subscribed_at)) as $e (.;
 				.pending[$s.session_id] //= {first_at: $now, events: []}
 				| if any(.pending[$s.session_id].events[]; .pr == $r and .key == $e.key) then .
-				  else .pending[$s.session_id].events += [$e + {pr: $r, pr_url: $pr_url, pr_state: $x.ps.pr_state}] end))'
+				  # A new event earns the session fresh relay tries (relay_tries):
+				  # the ones it used up were for what was held before.
+				  else .pending[$s.session_id].events += [$e + {pr: $r, pr_url: $pr_url, pr_state: $x.ps.pr_state}]
+				       | .pending[$s.session_id] |= del(.relay_unconfirmed) end))'
 	# A subscription made after the PR closed would never hear of it.
 	local closed sid
 	closed=$(jq -r '.ps.closed_at // empty' "$result")
@@ -640,17 +643,29 @@ resume_path() { # resume_path <session id>: its recorded PATH, then any of wake_
 		| reduce .[] as $e ([]; if any(.[]; . == $e) then . else . + [$e] end) | join(":")'
 }
 
-finish_wake() { # finish_wake <session id> <how> [log detail]: the wake landed, so its events go
-	local sid=$1 ref
-	log "wake session=$(short "$sid") how=$2 prs=$(jq -r --arg s "$sid" '[.pending[$s].events[].pr] | unique | join(",")' "$work_state") events=$(jq -r --arg s "$sid" '.pending[$s].events | length' "$work_state")${3:+ $3}"
+finish_wake() { # finish_wake <session id> <how> [log detail] [event ids, a JSON list]: the wake landed, so the events it carried go
+	# The ids ("<pr>|<key>") default to every held event. A relay that lands
+	# a check late carried only the events held when it was sent, so any
+	# queued since stay for the next wake.
+	local sid=$1 ids=${4:-} ref
+	[ -n "$ids" ] || ids=$(jq -c --arg s "$sid" '[.pending[$s].events[] | "\(.pr)|\(.key)"]' "$work_state")
+	jq -c --arg s "$sid" --argjson ids "$ids" \
+		'[.pending[$s].events[] | select("\(.pr)|\(.key)" as $i | $ids | index($i))]' "$work_state" >"$run_tmp/landed"
+	log "wake session=$(short "$sid") how=$2 prs=$(jq -r '[.[].pr] | unique | join(",")' "$run_tmp/landed") events=$(jq -r length "$run_tmp/landed")${3:+ $3}"
 	# The final wake for a PR that merged or closed ends its subscription, if
 	# the PR is still merged or closed as last read: one reopened since its
 	# close was queued keeps its subscribers.
-	jq -r --arg s "$sid" '.prs as $prs
-		| [.pending[$s].events[] | select(.kind == "merged" or .kind == "closed") | .pr
+	jq -r --slurpfile ev "$run_tmp/landed" '.prs as $prs
+		| [$ev[0][] | select(.kind == "merged" or .kind == "closed") | .pr
 		   | select(($prs[.].pr_state // "closed") != "open")] | unique | .[]' \
 		"$work_state" >"$run_tmp/final"
-	edit "$work_state" --arg s "$sid" '.pending |= del(.[$s])'
+	# A landed wake also ends the relay and resume backoffs: they count
+	# failures to reach the session, which just ended.
+	edit "$work_state" --arg s "$sid" --argjson ids "$ids" '
+		.pending[$s].events = [.pending[$s].events[] | select("\(.pr)|\(.key)" as $i | $ids | index($i) | not)]
+		| if (.pending[$s].events | length) == 0 then .pending |= del(.[$s])
+		  else .pending[$s] |= del(.relay_msg, .relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at)
+		  end'
 	while IFS= read -r ref; do
 		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "pr-final-wake"
 	done <"$run_tmp/final"
@@ -714,8 +729,10 @@ transcripts() { # transcripts <config dir> <session id>: the session's transcrip
 }
 
 session_mode() { # session_mode <transcript...>: the permission mode it last recorded, for the log
-	local m=
-	[ $# -eq 0 ] || m=$(grep -hF '"permission-mode"' "$@" 2>/dev/null | tail -n 1 |
+	# Read oldest file first, so the last line found is the newest file's.
+	local m= f files=()
+	[ $# -eq 0 ] || while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(ls -tr -- "$@" 2>/dev/null)
+	[ ${#files[@]} -eq 0 ] || m=$(grep -hF '"permission-mode"' "${files[@]}" 2>/dev/null | tail -n 1 |
 		jq -r 'select(.type == "permission-mode") | .permissionMode | strings' 2>/dev/null)
 	[[ $m =~ ^[A-Za-z]+$ ]] || m=unknown
 	printf '%s' "$m"
@@ -828,6 +845,10 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 		fi
 		if [ "$waited" -ge "$relay_wait" ]; then
 			relay_failed "$sid" "$mode" "sent as $id, but no turn took it within ${relay_wait}s (held, refused or stopped)" maybe
+			# Later checks look for this message first (deliver), so one the
+			# session takes late counts as the wake for what it carried.
+			edit "$work_state" --arg s "$sid" --arg id "$id" \
+				'.pending[$s].relay_msg = {id: $id, events: [.pending[$s].events[] | "\(.pr)|\(.key)"]}'
 			return 2
 		fi
 		sleep 1
@@ -854,9 +875,19 @@ over_budget() { # over_budget <session id> [why]: holds it and returns 0 once th
 }
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind next tries why
+	local sid=$1 cfg row id cwd pid status st kind next tries why late f files=()
 	! over_budget "$sid" || return
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
+	# A relay a check ago that no turn had taken yet may have been taken since
+	# (a held message, approved): then it was the wake for what it carried.
+	late=$(jq -r --arg s "$sid" '.pending[$s].relay_msg.id // empty' "$work_state")
+	if [ -n "$late" ]; then
+		while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
+		if landed "$late" ${files[@]+"${files[@]}"}; then
+			finish_wake "$sid" relay-late "msg=$late" "$(jq -c --arg s "$sid" '.pending[$s].relay_msg.events' "$work_state")"
+			jq -e --arg s "$sid" '.pending[$s] != null' "$work_state" >/dev/null || return
+		fi
+	fi
 	row=$(session_row "$cfg" "$sid") || {
 		hold "$sid" listing-failed
 		return
@@ -869,6 +900,17 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	fi
 	IFS=$us read -r id cwd pid status st kind <<<"$row"
 	if [ -z "$pid" ]; then
+		# The listing can be seconds old, and resuming a session that has
+		# started since would fork it, so read its row afresh first.
+		row=$(session_row "$cfg" "$sid" fresh) || {
+			hold "$sid" listing-failed
+			return
+		}
+		IFS=$us read -r id cwd pid status st kind <<<"$row"
+		if [ -z "$row" ] || [ -n "$pid" ]; then
+			hold "$sid" "changed since the listing; next check"
+			return
+		fi
 		if [ -z "$cwd" ] || [ ! -d "$cwd" ]; then
 			# Stopped, and its resume would be refused (exit 1) with the
 			# prompt queued: usually FINISH removed its worktree.
