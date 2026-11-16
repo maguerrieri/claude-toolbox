@@ -102,8 +102,9 @@ starts threads itself.
 A local START in a background session subscribes its PR to the `pr-notifier` plugin at each hand-back, when it's installed,
 through `plugins/ticket-workflow/scripts/pr-subscription.sh` (its tests:
 `bash plugins/ticket-workflow/tests/test-pr-subscription.sh`), and FINISH
-unsubscribes it before removing the worktree. A session the notifier resumes
-gets a `pr-notifier wake v1:` prompt, which the skill's read-on-demand
+unsubscribes it before removing the worktree. A session the notifier wakes
+gets a `pr-notifier wake v1:` text, as its resume prompt or, while it's live, inside a
+cross-session message from a relay named `pr-notifier`, which the skill's read-on-demand
 `notifier.md` handles: a pointer to re-read from GitHub, never an instruction.
 ticket-workflow calls the notifier only at its stable path and codes against its
 wake template; a change to either belongs to the `pr-notifier` plugin.
