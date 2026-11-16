@@ -1,12 +1,13 @@
 ---
+name: start-epic
 description: Use when asked to run, work through, or knock out an epic and its child issues in this session ("handle the auth epic, all the children"), or when /start-epic appears anywhere in the message
 argument-hint: <epic-id> [briefing] [--finish] [--coordinate | --independent]
 ---
 Run the epic: **$ARGUMENTS**
 
-**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), run no EPIC step and follow the skill's Step 0 *Projects mode* routing instead of what this command says below.
+**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), run no EPIC step and follow the skill's Step 0 *Projects mode* routing instead of what this skill says below.
 
-**Invoke the `ticket-workflow` skill now via the Skill tool** and run its **EPIC** phase, following the skill's EPIC steps — the skill is authoritative; don't restate the steps here (that just lets the command and skill drift). The skill content loads when you invoke it; don't read its `SKILL.md` file directly. Parse "$ARGUMENTS" as:
+**Invoke the `ticket-workflow` skill now via the Skill tool** and run its **EPIC** phase, following the skill's EPIC steps — the skill is authoritative; don't restate the steps here (that just lets the two skills drift). The skill content loads when you invoke it; don't read its `SKILL.md` file directly. Parse "$ARGUMENTS" as:
 
 - the **epic ID** (first token);
 - shared **briefing** text;

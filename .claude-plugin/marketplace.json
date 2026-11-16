@@ -18,12 +18,12 @@
     {
       "name": "spawn",
       "source": "./plugins/spawn",
-      "description": "Generic background-session fan-out (spawn skill + /spawn command)"
+      "description": "Generic background-session fan-out (the spawn skill, typed as /spawn)"
     },
     {
       "name": "generate",
       "source": "./plugins/generate",
-      "description": "Diverse bulk ideation with a pluggable Promotion adapter (generate skill + /generate command)"
+      "description": "Diverse bulk ideation with a pluggable Promotion adapter (the generate skill, typed as /generate)"
     },
     {
       "name": "yaml",

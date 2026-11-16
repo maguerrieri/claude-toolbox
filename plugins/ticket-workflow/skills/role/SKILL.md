@@ -1,4 +1,5 @@
 ---
+name: role
 description: Pin this session to a role charter (planner / epic-coordinator / implementer) or drop it with "none" — persists across resume and compaction, reminds a planner or coordinator of its actor test on every prompt, and arms a drift guard for planner (edits and entering a worktree prompt for approval) and implementer (issue-spawning launches are denied)
 argument-hint: <planner | epic-coordinator | implementer | none>
 ---
