@@ -42,8 +42,8 @@ and assemble what comes back up.
   *Owner requests*; `phases/epic.md` Step 6). Don't wait for it to hand
   back, and don't raise its cap for it: only automated review rounds count.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
-  installs it; its skill says how) and the session is local, not a cloud
-  session, which the ledger doesn't reach. Record each decision the owner makes
+  installs it; its `ledger:record` skill says how) and the session is local,
+  not a cloud session, which the ledger doesn't reach. Record each decision the owner makes
   here, and each thing you stop for that only the owner can give, with its
   exact unblock step, each under a Why line saying why the work exists, and
   resolve each once the owner answers. Your own `ready; needs the owner`

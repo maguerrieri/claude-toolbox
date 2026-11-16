@@ -21,8 +21,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   and `messaging.md`). Don't wait for a hand-back or raise a cap for it:
   only automated review rounds count.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
-  installs it; its skill says how) and the session is local, not a cloud
-  session, which the ledger doesn't reach. Record each decision the owner makes
+  installs it; its `ledger:record` skill says how) and the session is local,
+  not a cloud session, which the ledger doesn't reach. Record each decision the owner makes
   here, and each thing you stop for that only the owner can give, with its
   exact unblock step, each under a Why line saying why the work exists, and
   resolve each once the owner answers. A child's need (`blocked: merge needs
