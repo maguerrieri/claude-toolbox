@@ -56,7 +56,8 @@ whose cwd is gone can't be resumed):
 
 A merged or closed PR ends its subscriptions by itself after the final wake, and a
 stopped session whose cwd is gone is unsubscribed when the notifier finds it so. A session
-with no `claude agents` row is held instead, since a row can come back.
+with no `claude agents` row (deleted from agent view, say) is held for 30 minutes, since a
+row can come back, then unsubscribed too.
 `status` lists the subscriptions and any held events; `check` runs one poll pass now
 (the launchd job's entry point, and a test hook).
 

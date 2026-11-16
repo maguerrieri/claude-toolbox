@@ -167,7 +167,7 @@ own `PATH` (below). First match wins:
 | State | Action |
 |---|---|
 | The listing fails | hold |
-| No row for the session | hold: a row can come back. The bound reports it once, and it stays held, its PRs still swept, until it's unsubscribed (`pr-notifier unsubscribe <pr> --session <id>`) |
+| No row for the session | hold, since a row can come back. Once it has had none for `hold_bound` (30 minutes), unsubscribe it and drop its events: a session deleted from agent view (Ctrl-X) or by `claude rm` leaves no row, and can't be woken. A row seen in between starts the bound over |
 | Stopped (no `pid`), and its `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
 | Stopped | read its row afresh, since the listing can be seconds old: still stopped, `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy); started since, hold for the next check, since resuming a live session forks it |
 | `status` `busy` or `waiting`, or `state` `working` | hold |

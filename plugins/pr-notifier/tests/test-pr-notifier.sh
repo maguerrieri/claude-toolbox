@@ -932,11 +932,31 @@ timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
 record '0|1|o/r#7@aaaaaaaa' 'no row for the session: held, and still subscribed' "$(wakes)|$(held)|$(subs)"
 record yes 'logged' "$(logged 'hold session=aaaaaaaa reason=session-gone')"
-nt $((T + 1801)) check 2>"$tmp/err"
-record yes 'and reported once held past the bound' "$(has "$tmp/err" 'events for session aaaaaaaa held 30m (last: session-gone)')"
 agents "$(agent stopped)"
-nt $((T + 1900)) check
-record '1|0' 'a row that comes back is woken' "$(wakes)|$(held)"
+nt $((T + 600)) check
+record '1|0' 'a row that comes back within the hold bound is woken' "$(wakes)|$(held)"
+
+# Gone for the whole hold bound: deleted (Ctrl-X in agent view, claude rm), so unsubscribed.
+reset
+agents "$(agent stopped "$SID2")"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+nt $((T + 1799)) check
+record '1|o/r#7@aaaaaaaa' 'no row for just under the hold bound: still held' "$(held)|$(subs)"
+nt $((T + 1801)) check
+record '0|0|' 'no row for the hold bound: unsubscribed, its events dropped' "$(wakes)|$(held)|$(subs)"
+record yes 'logged' "$(logged 'drop session=aaaaaaaa reason=session-gone gone=30m')"
+
+# A row seen in between starts the bound over.
+reset
+agents "$(agent stopped "$SID2")"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+agents "$(agent busy)"
+nt $((T + 600)) check
+agents "$(agent stopped "$SID2")"
+nt $((T + 1801)) check 2>/dev/null
+record '0|1|o/r#7@aaaaaaaa' 'a row seen in between: held from its next absence, not dropped' "$(wakes)|$(held)|$(subs)"
 
 reset
 echo 1 >"$STUB/resume.rc"

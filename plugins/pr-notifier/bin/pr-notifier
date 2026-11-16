@@ -922,11 +922,28 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		return
 	}
 	if [ -z "$row" ]; then
-		# No row in its root: removed, or not yet listed. Held under the
-		# bound like any hold, since a missing row may come back.
-		hold "$sid" session-gone
+		# No row in its root: usually deleted from agent view (Ctrl-X, or
+		# claude rm), since the workflow unsubscribes before it removes a
+		# session. Held for hold_bound in case the row comes back, then
+		# dropped: a deleted session can't be woken, and its PRs would
+		# otherwise be read, and its events held, for good.
+		local gone mins
+		gone=$(jq -r --arg s "$sid" '.pending[$s].gone_since // empty' "$work_state")
+		if [ -z "$gone" ]; then
+			gone=$now
+			edit "$work_state" --arg s "$sid" --argjson now "$now" '.pending[$s].gone_since = $now'
+		fi
+		if [ $((now - gone)) -lt "$hold_bound" ]; then
+			hold "$sid" session-gone
+			return
+		fi
+		mins=$(((now - gone) / 60))
+		log "drop session=$(short "$sid") reason=session-gone gone=${mins}m"
+		drop_session "$sid" session-gone
 		return
 	fi
+	jq -e --arg s "$sid" '.pending[$s].gone_since == null' "$work_state" >/dev/null ||
+		edit "$work_state" --arg s "$sid" '.pending[$s] |= del(.gone_since)'
 	IFS=$us read -r id cwd pid status st kind <<<"$row"
 	if [ -z "$pid" ]; then
 		# The listing can be seconds old, and resuming a session that has
