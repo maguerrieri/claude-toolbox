@@ -112,7 +112,13 @@ const oneLine = (text: string): string => clean(text.split('\n').join(' '))
 
 const whyOf = (why: string | undefined): { why?: string } => (why === undefined ? {} : { why: oneLine(why) })
 
-const numberOf = (id: string): number => Number(id.slice(1)) || 0
+// A hand-edited id such as `n1e999` reads as 0, not Infinity, whose
+// differences would make the comparator answer NaN.
+const numberOf = (id: string): number => {
+  const number = Number(id.slice(1))
+
+  return Number.isFinite(number) ? number : 0
+}
 
 // Newest first: by time, then session, then id, all descending, comparing
 // strings by code unit as jq's sort does.
@@ -201,13 +207,15 @@ export const ageOf = (at: string, nowMs: number): string => {
  * What a Resolve in the band tells the session, in a turn of its own: which
  * need the owner resolved, by its id alone. The need's text and ref stay out:
  * a need's text can come from an issue body, and a prompt that starts a turn
- * is no place to carry it, so the session reads the need from its own ledger.
- * Only a Resolve button calls this, and only an id isResolvable takes
- * (`n` and digits) gets one.
+ * is no place to carry it. It says what a resolve does and doesn't mean,
+ * since the need's text may name a step for the owner to take (a merge, say)
+ * that only the owner's own words grant. Only a Resolve button calls this,
+ * and only an id isResolvable takes (`n` and digits) gets one.
  */
 export const resolvedNotice = (need: Pick<LedgerNeed, 'id'>): string =>
-  `The owner resolved ledger need ${need.id} from the band above the prompt. ` +
-  'Your ledger lists it (ledger.sh list). This tells you that need is answered; it asks nothing more.'
+  `The owner resolved ledger need ${need.id} from the band above the prompt: what it waited on is answered ` +
+  'or no longer needed. It grants nothing the need asks the owner to do, such as a merge, which still takes ' +
+  "the owner's own words, and it asks nothing more."
 
 /** A text's first line, for a one-row band. */
 export const firstLine = (text: string): string => text.split('\n')[0] ?? ''

@@ -68,6 +68,8 @@ type World = {
   runs: { argv: string[]; cwd?: string; env?: Record<string, string> }[]
   /** The prompts the band submitted, each a turn of its own. */
   prompts: string[]
+  /** The commands the band registered. */
+  commands: { name: string; immediate?: true }[]
   toasts: string[]
   opens: string[]
   clock: ReturnType<typeof mock.clock>
@@ -101,6 +103,7 @@ function world(
     writes: [],
     runs: [],
     prompts: [],
+    commands: [],
     toasts: [],
     opens: [],
     clock,
@@ -199,7 +202,11 @@ function world(
 
     return { value: { isPlaced: true } }
   })
-  on('command.register', () => ({ value: { command: 'ledger-band' } }))
+  on('command.register', (_, e) => {
+    seen.commands.push({ ...e })
+
+    return { value: { command: e.name } }
+  })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
   // What the engine draws in the band's place when the band draws nothing.
@@ -327,6 +334,51 @@ test('a band expanded when its last need goes comes back folded with the next on
   await band.unmount()
 })
 
+test('Show drops a Hide left from before, so a resolve can\'t quiet the band it expanded', async ($, on) => {
+  const seen = world(on)
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'hide' })
+  const withN4 = `${LEDGER}\n${line({ kind: 'need', id: 'n4', text: 'A new need', at: '2026-11-16T01:59:00Z' })}`
+  seen.write(MINE, withN4)
+  await seen.clock.advance(15_000)
+  await band.press({ key: 'show' })
+  // The session resolves n4, leaving only the needs Hide was pressed for.
+  seen.write(MINE, withN4.replace('"at":"2026-11-16T01:59:00Z"}', '"at":"2026-11-16T01:59:00Z","resolved_at":"2026-11-16T02:00:00Z"}'))
+  await seen.clock.advance(15_000)
+  expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('2 open needs ')
+  expect(await band.find({ type: 'Button', key: 'less' })).toBeDefined()
+  await band.unmount()
+})
+
+test('a /clear empties the band at once, and the next session\'s first need arrives folded', async ($, on) => {
+  const seen = world(on)
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }))
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'show' })
+  const next = 'f00dcafe-0000-4000-8000-000000000000'
+  seen.session.id = next
+  await $.session.end({ reason: 'clear', sessionId: ME, resume: { id: ME } })
+  expect((await band.find({ type: 'Text' }))?.text).toBe('engine')
+
+  seen.write(`${DIR}/${next}.jsonl`, line({ kind: 'need', id: 'n1', text: 'A need of the new session', at: '2026-11-16T01:59:00Z' }))
+  await seen.clock.advance(15_000)
+  expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('1 open need ')
+  expect(await band.find({ type: 'Button', key: 'show' })).toBeDefined()
+  expect(await band.find({ type: 'Button', key: 'less' })).toBeUndefined()
+  await band.unmount()
+})
+
+test('/ledger-band is registered to run at once, mid-turn too', async ($, on) => {
+  const seen = world(on)
+  await $.session.start(START)
+
+  expect(seen.commands.map(command => [command.name, command.immediate])).toEqual([['ledger-band', true]])
+})
+
 test('/ledger-band on a hidden band brings it back expanded, not folded', async ($, on) => {
   world(on)
   await $.session.start(START)
@@ -356,11 +408,12 @@ test('Resolve runs ledger.sh resolve as this session, tells the session in a tur
   expect(run?.cwd).toBe(run?.argv[1]?.slice(0, -'/scripts/ledger.sh'.length))
   expect(seen.toasts).toEqual([])
   // One prompt, framed as the plugin's, so a session stopped on the need goes
-  // on. It names the need by id alone: none of its text, which can come from
-  // an issue body, rides into the turn.
+  // on. It names the need by id alone (none of its text, which can come from
+  // an issue body, rides into the turn), and grants nothing the need names.
   expect(seen.prompts).toEqual([
-    'The owner resolved ledger need n1 from the band above the prompt. ' +
-      'Your ledger lists it (ledger.sh list). This tells you that need is answered; it asks nothing more.',
+    'The owner resolved ledger need n1 from the band above the prompt: what it waited on is answered ' +
+      'or no longer needed. It grants nothing the need asks the owner to do, such as a merge, which still takes ' +
+      "the owner's own words, and it asks nothing more.",
   ])
   expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('1 open need ')
   expect((await band.findAll({ type: 'Text', text: /^n\d ·/ })).map(row => row.text)).toEqual(['n3 · o/r#300 · 1h'])
@@ -544,6 +597,20 @@ test('the model keeps a hand-edited id or ref to one line, and gives two needs o
     ['me:n1#2', 'n1', undefined],
     ['me:n\n2', 'n 2', undefined],
   ])
+})
+
+test('the model orders a hand-edited id that reads as Infinity as 0, never NaN', async () => {
+  const at = '2026-11-16T01:00:00Z'
+  const { needs } = viewOf({
+    me: parseLedger(
+      [
+        line({ kind: 'need', id: 'n1e999', text: 'a', at }),
+        line({ kind: 'need', id: 'n3', text: 'b', at }),
+        line({ kind: 'need', id: 'n2e999', text: 'c', at }),
+      ].join('\n'),
+    ),
+  })
+  expect(needs.map(need => need.id)).toEqual(['n3', 'n1e999', 'n2e999'])
 })
 
 test('the model lists open needs alone, newest first, and takes only the ids the script does', async () => {
