@@ -49,49 +49,56 @@ open needs came later, in #330 (*The band*, below).
   skill: with `/ledger` left a command, an interactive session answers
   `Unknown command: /ledger` and only `/ledger:ledger` reaches it (verified on
   Claude Code 2.1.325). `AGENTS.md` has the rule.
-- **The band** (#330). The plugin's hooks module (`hooks/register.tsx`, a mod)
-  draws a row above the prompt while this session has an open need: the count
-  and the newest need, with Show and Hide. Show, or `/ledger-band`, expands it
-  in place into each open need, its first line, Why line, ref and age and a
-  Resolve button; Less, or the command again, folds it. Hide quiets it until
-  a need it didn't show opens: the mock came back when the set of open needs
-  changed at all, a resolve included, which brought back needs the owner had
-  just dismissed. A band whose last need goes folds, so the next need arrives
-  as the one-row summary. It is option 4 (`inline`) of #319's mock, which
-  the owner picked on 2026-11-16 for this session alone, over the mock-up's
-  recommendation of option 3 (a band that opens a pane of every session).
-  So it shows no decisions or resolved needs, as the mock's option 4 doesn't.
-  It reads this session's ledger file and no other, through one function,
-  `readLedgers`, that #316 can widen to every session without redrawing the
-  band; it reads at the session's start, every 15 seconds, and as each turn
-  of the main loop ends (where a session records its needs), and keeps what it
-  last showed when a read fails. Only a stat that fails `ENOENT` reads as no
-  ledger yet: `$.fs.exists` says false for a file in a directory it can't
-  search, which the script refuses (checked on 2.1.325). Resolve is the
-  owner's, as `/ledger resolve` is: it runs `ledger.sh resolve <id>` from the
-  plugin's folder (the session's own may be a removed worktree, where no child
-  starts) with `CLAUDE_CODE_SESSION_ID` set to this session and
-  `CLAUDE_SESSION_LEDGER_DIR` to the directory the band read, made absolute,
-  so the script stays the one writer and writes the ledger the band showed,
-  and it refuses a need the
-  band showed before a `/clear` (an earlier session's). Once the script has
-  resolved the need, Resolve tells the session with `$.prompt.submit`, a turn
-  of its own once the session is idle, so a session that stopped for the need
-  carries on without the owner typing; the owner picked that on PR #333 over a
-  quiet note the model would read only at the next prompt. The prompt is
-  framed as the plugin's message, never as the owner's own words, since a
-  need's text can name a step such as "say finish" that only the owner's own
-  words take. It names the need by its id alone and says it asks nothing
-  more: the need's text can come from an issue body, so none of it rides into
-  a turn the band starts, and the session reads the need from its own ledger.
-  A need the script finds
-  already resolved (the session resolved it itself) starts no turn. It has no hotkey, since
-  a digit typed into an empty prompt presses a band button, and a need id the
-  script would refuse gets no button. The toggle is a command the module
-  registers, which a bare `/ledger-band` reaches; a mod can't bind a key, so
-  the README gives the `keybindings.json` line for one. Its tests run under
-  `claude plugin test plugins/ledger`, and CI runs them and validate on the
-  build the band was checked on, pinned (2.1.325).
+- **The band** (#330), the plugin's hooks module (`hooks/register.tsx`, a
+  mod). It is option 4 (`inline`) of #319's mock, which the owner picked on
+  2026-11-16 for this session alone, over the mock-up's recommendation of
+  option 3 (a band that opens a pane of every session), so like the mock's
+  option 4 it shows no decisions or resolved needs.
+  - *What it draws.* A row above the prompt while this session has an open
+    need: the count and the newest need, with Show and Hide. Show expands it
+    in place into each open need (its first line, Why line, ref and age, and
+    a Resolve button), and Less folds it. Each row hands the engine at most
+    the band's width of text. Hide quiets it until a need it didn't show
+    opens (the mock came back on any change, a resolve included, which
+    brought back needs the owner had just dismissed); Show drops any Hide
+    left from before. A band whose last need goes folds, so the next need
+    arrives as the one-row summary.
+  - *The toggle.* `/ledger-band`, a command the module registers with
+    `immediate`, so it runs mid-turn and a key bound to it toggles when
+    pressed; a bare `/ledger-band` reaches it. A mod can't bind a key, so the
+    README gives the `keybindings.json` line for one.
+  - *What it reads.* This session's ledger file and no other, through one
+    function, `readLedgers`, that #316 can widen to every session without
+    redrawing the band: at the session's start, every 15 seconds, and as each
+    turn of the main loop ends (where a session records its needs), one read
+    at a time. A failed read keeps what it last showed; only a stat that fails
+    `ENOENT` reads as no ledger yet, since `$.fs.exists` says false for a file
+    in a directory it can't search, which the script refuses (checked on
+    2.1.325). A `/clear` or `/resume` (`session.end`, with no `session.start`
+    after it) empties the band and forgets Show and Hide at once, then reads
+    the new session's ledger.
+  - *Resolve* is the owner's, as `/ledger resolve` is. It runs `ledger.sh
+    resolve <id>` from the plugin's folder (the session's own may be a removed
+    worktree, where no child starts) with `CLAUDE_CODE_SESSION_ID` set to this
+    session and `CLAUDE_SESSION_LEDGER_DIR` to the directory the band read,
+    made absolute, so the script stays the one writer and writes the ledger
+    the band showed. It refuses a need the band showed before a `/clear` (an
+    earlier session's), has no hotkey (a digit typed into an empty prompt
+    presses a band button), and a need id the script would refuse gets no
+    button.
+  - *Telling the session.* Once the script has resolved the need, Resolve
+    submits a prompt (`$.prompt.submit`), a turn of its own once the session
+    is idle, so a session that stopped for the need carries on without the
+    owner typing; the owner picked that on PR #333 over a quiet note the model
+    would read only at the next prompt. The prompt is framed as the plugin's
+    message, never as the owner's own words, and names the need by its id
+    alone: a need's text can come from an issue body, so none of it rides into
+    a turn the band starts. It says the resolve grants nothing the need asks
+    the owner to do (a merge, a "say finish"), which still takes the owner's
+    own words, and asks nothing more. A need the script finds already resolved
+    (the session resolved it itself) starts no turn.
+  - *Tests* run under `claude plugin test plugins/ledger`, and CI runs them
+    and validate on the build the band was checked on, pinned (2.1.325).
 - **One JSONL file per session**, keyed like the role marker:
   `~/.claude/session-ledger/<session id>.jsonl` (`CLAUDE_SESSION_LEDGER_DIR`
   overrides it for tests). The session id is `CLAUDE_CODE_SESSION_ID`, else the

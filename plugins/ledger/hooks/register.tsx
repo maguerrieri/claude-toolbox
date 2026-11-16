@@ -43,10 +43,18 @@ const minute = atom({ plugin: 'ledger', key: 'minute' } as const, 0)
 // always writes).
 let lastRead: { file: string; mtimeMs: number; size: number; entries: Entry[] } | undefined
 let shown: string | undefined
-// The number of the latest refresh begun: one a later refresh overtook (a poll
-// still reading while Resolve's refresh ran) publishes nothing, so an older
-// snapshot never overwrites a newer one.
-let latest = 0
+// The band's reads and writes run one at a time, in the order asked: each
+// reads after the one before it wrote, so an older snapshot never overwrites
+// a newer one (a poll still reading while Resolve's refresh ran), and `shown`
+// always matches the view last written.
+let queue: Promise<unknown> = Promise.resolve()
+
+function serially<T>(job: () => Promise<T>): Promise<T> {
+  const run = queue.then(job, job)
+  queue = run.catch(() => undefined)
+
+  return run
+}
 // The poll, one per module: a second session.start (a reload of the plugin,
 // never a /clear) replaces it.
 let poll: Timer | undefined
@@ -104,19 +112,13 @@ async function readLedgers($: EngineInterface): Promise<Ledgers | undefined> {
   return { [me]: entries }
 }
 
-// A refresh answers the view it read (undefined when the read failed), whether
-// or not it published it, so a caller that needs this moment's needs has them.
+// A refresh answers the view it read and published (undefined when the read
+// failed), so a caller that needs this moment's needs has them. Run it only
+// through refreshQuietly, which queues it.
 async function refresh($: EngineInterface): Promise<LedgerView | undefined> {
-  latest += 1
-  const turn = latest
   const ledgers = await readLedgers($)
   const now = await $.clock.now()
   const next = ledgers === undefined ? undefined : viewOf(ledgers)
-  // The last await before the writes: past here no later refresh can have
-  // begun unseen, so this one's snapshot is the newest.
-  if (turn !== latest) {
-    return next
-  }
   if (next !== undefined) {
     const json = JSON.stringify(next)
     if (json !== shown) {
@@ -140,15 +142,28 @@ async function refresh($: EngineInterface): Promise<LedgerView | undefined> {
   return next
 }
 
-// A refresh that fails waits for the next tick.
+// A refresh, queued behind any other; one that fails waits for the next tick.
 async function refreshQuietly($: EngineInterface): Promise<LedgerView | undefined> {
-  return refresh($).catch(() => undefined)
+  return serially(() => refresh($)).catch(() => undefined)
+}
+
+// A /clear, or a /resume of another session, goes on under another session id
+// with no session.start: empty the band and forget its Show and Hide, in the
+// queue so no read of the old ledger lands after, then read the new one.
+async function forgetSession($: EngineInterface): Promise<void> {
+  await serially(async () => {
+    lastRead = undefined
+    await update($, view, () => EMPTY_VIEW)
+    shown = JSON.stringify(EMPTY_VIEW)
+    await update($, hiddenFor, () => [])
+    await update($, isExpanded, () => false)
+  }).catch(() => undefined)
+  void refreshQuietly($)
 }
 
 // The toggle: a band that shows its list folds; one that is folded or hidden
-// shows its list. It judges on its own refresh's read, even one a poll
-// overtook (which publishes the newer view itself), so it never expands needs
-// already resolved; only a failed read falls back to the view last shown.
+// shows its list. It judges on its own refresh's read, so it never expands
+// needs already resolved; only a failed read falls back to the view last shown.
 async function toggle($: EngineInterface): Promise<string | undefined> {
   const current: LedgerView = (await refreshQuietly($)) ?? (await read($, view))
   if (current.needs.length === 0) {
@@ -170,6 +185,27 @@ async function hideBand($: EngineInterface, keys: readonly string[]): Promise<vo
   await update($, isExpanded, () => false)
 }
 
+// Show: expand the list, and drop any Hide left from before, as the toggle
+// does; a stale one would quiet the expanded band once a resolve left only
+// needs it had hidden.
+async function showList($: EngineInterface): Promise<void> {
+  await update($, hiddenFor, () => [])
+  await update($, isExpanded, () => true)
+}
+
+// The directory the band read, made absolute, so the script, which runs in
+// the plugin's folder (resolveNeed), writes the ledger the band showed: a
+// relative CLAUDE_SESSION_LEDGER_DIR is the session directory's. Undefined
+// when there is none, or it can't be found.
+async function absoluteLedgerDir($: EngineInterface): Promise<string | undefined> {
+  const dir = await ledgerDir($)
+  if (dir === undefined || dir.startsWith('/')) {
+    return dir
+  }
+
+  return (await $.fs.stat(dir, { resolve: true }).catch(() => undefined))?.realPath
+}
+
 // The owner marking a need answered, through the script like every other
 // write, as this session: a need the band showed before a /clear belongs to
 // the session before it, whose ledger this one never writes. A need the
@@ -182,15 +218,7 @@ async function resolveNeed($: EngineInterface, need: LedgerNeed): Promise<void> 
 
     return
   }
-  // The directory the band read, made absolute, so the script, which runs
-  // elsewhere (below), writes the ledger the band showed: a relative
-  // CLAUDE_SESSION_LEDGER_DIR is the session directory's.
-  const dir = await ledgerDir($)
-  const absolute = dir?.startsWith('/')
-    ? dir
-    : dir === undefined
-      ? undefined
-      : (await $.fs.stat(dir, { resolve: true }).catch(() => undefined))?.realPath
+  const absolute = await absoluteLedgerDir($)
   if (absolute === undefined) {
     $.ui.toast(`Couldn't resolve ${need.id}: the ledger directory could not be found`)
 
@@ -228,6 +256,9 @@ export const register: Register = on => {
     await $.command.register({
       name: 'ledger-band',
       description: "Expand or fold the band of this session's open needs above the prompt",
+      // At once, mid-turn too, so a key bound to it toggles when pressed: it
+      // touches only the band, never the turn.
+      immediate: true,
     })
     await refreshQuietly($)
     poll?.cancel()
@@ -245,6 +276,15 @@ export const register: Register = on => {
     }
 
     return completed
+  })
+
+  on('session.end', async ($, e, next) => {
+    const ended = await next(e)
+    if (e.reason === 'clear' || e.reason === 'resume') {
+      await forgetSession($)
+    }
+
+    return ended
   })
 
   // One command expands what is folded and folds what is expanded, so a
@@ -277,7 +317,7 @@ export const register: Register = on => {
     )
     const buttons = (first: 'show' | 'less') => (
       <Box flexShrink={0} columnGap={1} marginLeft={1}>
-        {first === 'show' && <Button key="show" label="Show" onPress={() => update($, isExpanded, () => true)} />}
+        {first === 'show' && <Button key="show" label="Show" onPress={() => showList($)} />}
         {first === 'less' && <Button key="less" label="Less" onPress={() => update($, isExpanded, () => false)} />}
         <Button key="hide" label="Hide" dimColor onPress={() => hideBand($, keys)} />
       </Box>
