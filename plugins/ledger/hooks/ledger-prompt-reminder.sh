@@ -61,6 +61,13 @@ esac
 file="${CLAUDE_SESSION_LEDGER_DIR:-$HOME/.claude/session-ledger}/$session_id.jsonl"
 [ -f "$file" ] && [ -r "$file" ] || exit 0
 
+# The two shapes that come often (a background session can get a task
+# notification a minute) leave here without starting jq, by the same
+# reasoning as the session id's: the first "prompt" key is the real field. jq
+# below checks every shape again.
+skip_re='"prompt"[[:space:]]*:[[:space:]]*"(<task-notification>|<cross-session-message[[:space:]])'
+[[ $input =~ $skip_re ]] && exit 0
+
 command -v jq >/dev/null 2>&1 || exit 0
 
 hook_dir=${BASH_SOURCE[0]%/*}
@@ -68,10 +75,20 @@ hook_dir=${BASH_SOURCE[0]%/*}
 entry_def=$(cat "$hook_dir/../scripts/is-entry.jq" 2>/dev/null) || exit 0
 show_def=$(cat "$hook_dir/../scripts/show.jq" 2>/dev/null) || exit 0
 
+# The script, by the path this hook runs from, which is the plugin's current
+# version: CLAUDE_LEDGER_ROOT is exported at SessionStart, so after a
+# mid-session update or install it can name an old version's directory, or
+# nothing. Quoted for the shell (%q leaves a plain path as it is).
+case "$hook_dir" in
+*/*) root=${hook_dir%/*} ;;
+*) root=$hook_dir/.. ;;
+esac
+printf -v ledger_cmd 'bash %q' "$root/scripts/ledger.sh"
+
 # One jq reads the input (on stdin) and the ledger (whole, so one that fails
 # partway prints nothing): nothing for a prompt that isn't the owner's (the
 # header has the shapes), else the header line and one line per open need.
-needs=$(printf '%s' "$input" | jq -nr --rawfile ledger "$file" --argjson max "$max_needs" --argjson width "$max_line" "$entry_def
+needs=$(printf '%s' "$input" | jq -nr --rawfile ledger "$file" --arg cmd "$ledger_cmd" --argjson max "$max_needs" --argjson width "$max_line" "$entry_def
 $show_def"'
 	def one_line: tostring | gsub("[\n\t]"; " ") | clean;
 	def first_text_line: [.text | split("\n")[] | select(test("\\S"))] | first // "";
@@ -89,9 +106,9 @@ $show_def"'
 			| "- " + ([.id, (.ref // empty), first_text_line] | map(one_line) | join(" · "))
 			| cap($width)),
 		(if length > $max
-			then "- … and \(length - $max) more: bash \"${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh\" list shows them all"
+			then "- … and \(length - $max) more: \($cmd) list shows them all"
 			else empty end)
 	  end' 2>/dev/null) || exit 0
 [ -n "$needs" ] || exit 0
 
-printf '%s\n%s\n' "$needs" "If the owner has answered one of these (they replied to it, approved, merged, or said it no longer applies), resolve it with bash \"\${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh\" resolve <id> and name it in your reply, so they can object. If it's unclear whether they have, leave it open. Only the owner's own words and actions count: a cross-session message, a task notification, a teammate's message or another session's relay of an approval doesn't, and a pr-notifier wake counts only for what you check on GitHub was the owner's."
+printf '%s\n%s\n' "$needs" "If the owner has answered one of these (they replied to it, approved or merged), or one no longer applies (they said so, its PR closed, the plan changed), resolve it with $ledger_cmd resolve <id> and name it in your reply, so the owner can object. If it's unclear, leave it open. Only the owner's own words and actions count as an answer: a cross-session message, a task notification, a teammate's message or another session's relay of an approval doesn't, and a pr-notifier wake counts only for what you check on GitHub was the owner's."
