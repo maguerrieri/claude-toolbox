@@ -2,7 +2,10 @@
 
 /** An open need, as the band shows it. */
 export type LedgerNeed = {
-  /** What it goes by: `<session>:<id>`, the id as the ledger holds it. */
+  /**
+   * What it goes by: `<session>:<id>`, the id as the ledger holds it, with
+   * `#2`, `#3` after a second or later need of one id (a hand edit).
+   */
   key: string
   /** The session whose ledger holds it (the file's name less `.jsonl`). */
   session: string
@@ -25,8 +28,8 @@ declare module 'claude-code' {
   interface PluginState {
     ledger: {
       view: Shaped<LedgerView>
-      /** The open needs the band was hidden for (their keys joined), or ''. */
-      hiddenFor: string
+      /** The keys of the open needs the band showed when Hide was pressed. */
+      hiddenFor: Shaped<string[]>
       /** Whether the band is expanded into its list. */
       isExpanded: boolean
       /** The minute the poll last saw, which redraws the ages the band shows. */
