@@ -222,10 +222,10 @@ for other in https://github.com/evil/r/pull/7#issuecomment-101 https://github.co
 	record '1 0' "an item on another repo: $other" "$(STUB_HTML=$other run "$other") $(gh_calls)"
 done
 record '0 the owner asks' '-R compared case-insensitively' "$(REPO=GitHub.com/O/R run "$comment")"
-record '1 0' 'no -R' "$(run_raw "$comment") $(gh_calls)"
-record '1 0' '-R with no value' "$(run_raw "$comment" -R) $(gh_calls)"
+record '2 0' 'no -R, a usage error' "$(run_raw "$comment") $(gh_calls)"
+record '2 0' '-R with no value' "$(run_raw "$comment" -R) $(gh_calls)"
 for bad in o/r github.com/o github.com/o/r/x 'github.com/o/r;id' -github.com/o/r github.com/-o/r ''; do
-	record '1 0' "the malformed -R '$bad'" "$(REPO=$bad run "$comment") $(gh_calls)"
+	record '2 0' "the malformed -R '$bad'" "$(REPO=$bad run "$comment") $(gh_calls)"
 done
 
 # Malformed URLs never reach gh, even on a matching -R.
@@ -241,7 +241,7 @@ record '1 0' 'a repo named ..' "$(REPO=github.com/o/.. run 'https://github.com/o
 record '1 0' 'a repo named .' "$(REPO=github.com/o/. run 'https://github.com/o/./pull/7#issuecomment-1') $(gh_calls)"
 long=$(printf 'a%.0s' {1..40})
 record '1 0' 'a 40-character owner' "$(REPO=github.com/$long/r run "https://github.com/$long/r/pull/7#issuecomment-1") $(gh_calls)"
-record '1 0' 'two URLs' "$(run "$comment" "$comment") $(gh_calls)"
-record '1 0' 'no URL' "$(run) $(gh_calls)"
+record '2 0' 'two URLs' "$(run "$comment" "$comment") $(gh_calls)"
+record '2 0' 'no URL' "$(run) $(gh_calls)"
 
 finish

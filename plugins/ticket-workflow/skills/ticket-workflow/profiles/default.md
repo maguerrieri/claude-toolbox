@@ -363,9 +363,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     ```
     An author that `owner-check.sh -R HOST/OWNER/REPO <login>` rejects makes every one of its
     comments exit 1, so a pass may run that once per distinct author first and check only the
-    comments of the authors it accepts, plus, where it passes `--same-account`, the tree's own
-    login's, which owner-check rejects below admin. A failed read exits 1 too, and the script's
-    stderr says so (`can't read`): run it once more before settling on exit 1. The exits:
+    comments of the authors it accepts (exit 0 or 3), plus, where it passes `--same-account`, the
+    tree's own login's, which owner-check rejects below admin. A failed read exits 1 too, and the
+    script's stderr says so (`can't read`): run it once more before settling on exit 1. Exit 2
+    is a wrong call (no `-R`, say), never a verdict on the comment: fix the call. The exits:
     - **Exit 0**: the author is an admin on the repo, the tree's own login isn't one, and the
       comment is unedited, last edited by its author, or last edited by another such admin. The
       sessions post as an account of their own, and the comment is the owner's own words, on the
