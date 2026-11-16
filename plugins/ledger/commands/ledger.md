@@ -6,7 +6,10 @@ Show or update this session's ledger: **$ARGUMENTS**
 
 The ledger is the `ledger` plugin's per-session record of the owner's
 decisions and what this session needs from the owner, each with a line on why
-the work exists (the `ledger` skill has the details). Run its script from
+the work exists. This command only shows the ledger or resolves a need: to
+record a decision or a need, read the plugin's skill file,
+`skills/ledger/SKILL.md` under `$CLAUDE_LEDGER_ROOT`, which has the Why line,
+`--ref` and heredoc rules. Run its script from
 `$CLAUDE_LEDGER_ROOT`, which the plugin's SessionStart hook sets. If a command
 stops with `parameter not set` or `No such file`, find the script with the
 Glob tool (`cache/*/ledger/*/scripts/ledger.sh` under your Claude config's

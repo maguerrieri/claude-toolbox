@@ -108,19 +108,25 @@ under *Deferred to #316* below.
   start from `ledger.sh list` (their own decisions and needs), then sweep the
   children as before, until #316 brings the children's ledgers into one view.
 - **Garbage collection**: the SessionStart hook deletes ledger files untouched
-  for 30 days that hold no open need, as ticket-workflow's does for role
-  markers. A ledger with an open need is kept for 90 days, since its session
-  may be resumed after a month away and the need is still the owner's to
-  answer; past that it goes too, or a need no session can resolve (a child's
-  hand-back whose PR its coordinator landed) would keep its ledger forever. The
+  for 90 days. That's longer than the 30 ticket-workflow gives role markers,
+  because a ledger holds what the owner decided and what a session still
+  needs from them, and a session may be resumed after a month away. One age
+  for every ledger keeps the reaping to a `find`: an earlier version kept
+  ledgers with an open need longer by parsing each one under the lock. The
   reaping runs under the directory's lock: unlocked, it could check a ledger's
   age just before a write renamed an updated one into place, and delete the
   new entry with the old ones. When the lock can't be had within two seconds,
   it skips its turn. The hook's refresh of its own session's ledger happens
   under the same lock, so another session's reaping sees the ledger fresh or
-  not at all (Copilot found it could pick an old ledger, see it refreshed, and
-  delete it anyway). Without the lock the refresh still runs, and the reaping
-  checks each ledger's age and open needs again just before deleting it.
+  not at all; without the lock the refresh still runs.
+- **Local sessions only.** The charters, START and FINISH record only in a
+  local session: a cloud session can have the plugin installed (this repo's
+  SessionStart hook installs it there), but its ledger dies with its
+  container and nothing the owner reads reaches it.
+- **Refs from origin.** A bare `#<n>` is qualified only from an origin shaped
+  `host:owner/repo` or `scheme://host/owner/repo`; a local path or nested
+  groups would yield a wrong pair, so the ref then stays bare. A URL ref needs
+  its scheme, and one without is refused rather than stored unmatched.
 
 ## Deferred to #316
 

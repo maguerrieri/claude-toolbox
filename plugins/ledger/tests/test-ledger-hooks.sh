@@ -90,19 +90,11 @@ mkdir -p "$ledgers"
 : >"$ledgers/keep.txt"
 # The directory's lock file, however old, is never reaped.
 : >"$ledgers/.lock"
-# A month-old ledger that still has an open need is kept; one whose needs are
-# all resolved is reaped, and so is one whose only "need" isn't an entry
-# (ledger.sh's list skips it too), and one with an open need past 90 days.
-open_need='{"kind":"need","id":"n1","text":"t","at":"2020-01-01T00:00:00Z"}'
-printf '%s\n' "$open_need" >"$ledgers/open.jsonl"
-printf '%s\n' "$open_need" >"$ledgers/ancient.jsonl"
-printf '%s\n' '{"kind":"need","id":"n1","text":"t","at":"2020-01-01T00:00:00Z","resolved_at":"2020-01-02T00:00:00Z"}' >"$ledgers/closed.jsonl"
-printf '%s\n' '{"kind":"need"}' >"$ledgers/malformed.jsonl"
+# A ledger is kept for 90 days, open needs or not: one 45 days old stays.
+printf '%s\n' '{"kind":"decision","id":"d1","text":"t","at":"2020-01-01T00:00:00Z"}' >"$ledgers/recent.jsonl"
 touch -t 202001010000 "$ledgers/old.jsonl" "$ledgers/mine.jsonl" "$ledgers/.old.jsonl.Ab12Cd" "$ledgers/keep.txt" \
-	"$ledgers/.lock" "$ledgers/ancient.jsonl"
-# 45 days old: past the 30-day reaping, short of the 90-day one.
-perl -e 'my $t = time - 45 * 86400; utime($t, $t, @ARGV) or die' \
-	"$ledgers/open.jsonl" "$ledgers/closed.jsonl" "$ledgers/malformed.jsonl"
+	"$ledgers/.lock"
+perl -e 'my $t = time - 45 * 86400; utime($t, $t, @ARGV) or die' "$ledgers/recent.jsonl"
 env_file="$tmp/env"
 : >"$env_file"
 printf '%s' '{"session_id": "mine", "source": "startup"}' |
@@ -110,7 +102,7 @@ printf '%s' '{"session_id": "mine", "source": "startup"}' |
 record "0" "session start exits 0" "$?"
 record 'export CLAUDE_LEDGER_ROOT=/plugins/led\ ger|export CLAUDE_SESSION_ID=mine' \
 	"exports the plugin root, and the session id on a CLI without its own" "$(tr '\n' '|' <"$env_file" | sed 's/|$//')"
-record ".lock fresh.jsonl keep.txt mine.jsonl open.jsonl" "reaps month-old ledgers without an open need and temp files, keeps its own and the lock file" \
+record ".lock fresh.jsonl keep.txt mine.jsonl recent.jsonl" "reaps 90-day-old ledgers and month-old temp files, keeps a 45-day-old one, its own and the lock file" \
 	"$(ls -A "$ledgers" | tr '\n' ' ' | sed 's/ $//')"
 # The reaping runs under the directory's lock, and skips a turn when a write
 # holds it.

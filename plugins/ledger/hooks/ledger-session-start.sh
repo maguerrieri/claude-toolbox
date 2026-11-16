@@ -10,15 +10,13 @@
 #    inherits that export; the spawn edges strip it.)
 #
 # 2. Opportunistic GC: ledgers outlive their sessions and nothing else reaps
-#    them. Delete those untouched for 30 days that hold no open need, after
-#    touching this session's own so a still-live session doesn't lose an old
-#    one. A ledger with an open need is kept for 90 days: its session may be
-#    resumed after a month away, and the need is still the owner's to answer.
-#    Past that it goes too, since a need no session can resolve (a child's
-#    hand-back whose PR another session landed; resolving it from there is
-#    #316) would otherwise keep its ledger forever. Only in the default
-#    location: an overridden directory (test scaffolding, or a misconfigured
-#    broad path) must never have its contents deleted by this hook.
+#    them. Delete those untouched for 90 days, after touching this session's
+#    own so a still-live session doesn't lose an old one. 90 days, not the
+#    role markers' 30, because a ledger holds what the owner decided and what
+#    a session still needs from them, and a session may be resumed after a
+#    month away. Only in the default location: an overridden directory (test
+#    scaffolding, or a misconfigured broad path) must never have its contents
+#    deleted by this hook.
 #
 # Fails open: this hook must never block a session from starting.
 set -uo pipefail
@@ -70,29 +68,12 @@ fi
 # again just before deleting it, which leaves only that instant open.
 [ -z "$session_id" ] || [ ! -f "$dir/$session_id.jsonl" ] || touch "$dir/$session_id.jsonl" 2>/dev/null
 
-# A ledger with no open need, or a temp file a killed write left behind
-# (`.<ledger>.XXXXXX`), reaped only under the lock; without it, or without
-# jq, the reaping skips its turn (it's opportunistic). Each ledger's age and
-# open needs are checked again just before it's deleted. The lock file
-# itself, `.lock`, matches neither pattern and is never reaped: deleting a
-# lock file a writer has just opened would let the next writer lock a new
-# file at the same path.
-[ "$locked" = yes ] && command -v jq >/dev/null 2>&1 || exit 0
-# An open need is one ledger.sh counts as one: is-entry.jq, which it reads too.
-hook_dir=${BASH_SOURCE[0]%/*}
-[ "$hook_dir" != "${BASH_SOURCE[0]}" ] || hook_dir=.
-entry_def=$(cat "$hook_dir/../scripts/is-entry.jq" 2>/dev/null) || exit 0
+# A ledger untouched for 90 days, or a temp file a killed write left behind
+# (`.<ledger>.XXXXXX`) 30 days ago, reaped only under the lock; without it the
+# reaping skips its turn (it's opportunistic). The lock file itself, `.lock`,
+# matches neither pattern and is never reaped: deleting a lock file a writer
+# has just opened would let the next writer lock a new file at the same path.
+[ "$locked" = yes ] || exit 0
 find "$dir" -maxdepth 1 -type f -name '.*.jsonl.*' -mtime +30 -delete 2>/dev/null || true
-find "$dir" -maxdepth 1 -type f -name '*.jsonl' -mtime +30 -print0 2>/dev/null |
-	while IFS= read -r -d '' ledger; do
-		[ -n "$(find "$ledger" -maxdepth 0 -type f -mtime +30 2>/dev/null)" ] || continue
-		# Kept, until it's 90 days old, when it has an open need, and always
-		# when it can't be read to tell.
-		open=$(jq -R "$entry_def"' fromjson? // empty | select(is_entry and .kind == "need" and .resolved_at == null) | 1' "$ledger" 2>/dev/null) ||
-			continue
-		if [ -n "$open" ] && [ -z "$(find "$ledger" -maxdepth 0 -type f -mtime +90 2>/dev/null)" ]; then
-			continue
-		fi
-		rm -f "$ledger"
-	done
+find "$dir" -maxdepth 1 -type f -name '*.jsonl' -mtime +90 -delete 2>/dev/null || true
 exec 9>&-

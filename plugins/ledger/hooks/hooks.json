@@ -1,5 +1,5 @@
 {
-  "description": "Session ledger: export the plugin root so the docs can run scripts/ledger.sh, reap ledgers untouched for 30 days that hold no open need, and keep in-process subagents from writing their parent's ledger.",
+  "description": "Session ledger: export the plugin root so the docs can run scripts/ledger.sh, reap ledgers untouched for 90 days, and keep in-process subagents from writing their parent's ledger.",
   "hooks": {
     "SessionStart": [
       {
