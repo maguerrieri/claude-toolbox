@@ -2,7 +2,7 @@
 // while this session has an open need, its count and the newest one, that
 // expands in place into every open need, each with its Why line and a Resolve
 // button. /ledger-band expands and folds it, Show and Less do the same, and
-// Hide quiets it until the set of open needs changes.
+// Hide quiets it until a need it didn't show opens.
 //
 // It reads this session's ledger alone, the file scripts/ledger.sh writes,
 // every 15 seconds and at the end of each turn, and writes only through the
@@ -17,9 +17,9 @@ import {
   ageOf,
   countOf,
   firstLine,
+  isHiddenBy,
   isResolvable,
   ledgerFileOf,
-  needsKey,
   parseLedger,
   viewOf,
 } from './model'
@@ -31,7 +31,7 @@ const POLL_MS = 15_000
 // version stored, which outlives a reload. (PR #272's unreleased mod stored
 // view-3 under the same key.)
 const view = atom({ plugin: 'ledger', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-4' })
-const hiddenFor = atom({ plugin: 'ledger', key: 'hiddenFor' } as const, '')
+const hiddenFor = atom({ plugin: 'ledger', key: 'hiddenFor' } as const, [] as string[], { shape: 'hidden-1' })
 const isExpanded = atom({ plugin: 'ledger', key: 'isExpanded' } as const, false)
 const minute = atom({ plugin: 'ledger', key: 'minute' } as const, 0)
 
@@ -48,15 +48,18 @@ let latest = 0
 // The poll, one per module: a second session.start (a reload of the plugin,
 // never a /clear) replaces it.
 let poll: Timer | undefined
+// The ledger directory, fixed for the process, so read once per load. The
+// session id is read on every refresh instead, since a /clear changes it.
+let dirRead: { dir: string | undefined } | undefined
 
 async function ledgerDir($: EngineInterface): Promise<string | undefined> {
-  const override = await $.env.get('CLAUDE_SESSION_LEDGER_DIR')
-  if (override) {
-    return override
+  if (dirRead === undefined) {
+    const override = await $.env.get('CLAUDE_SESSION_LEDGER_DIR')
+    const home = override ? undefined : await $.env.get('HOME')
+    dirRead = { dir: override || (home ? `${home}/.claude/session-ledger` : undefined) }
   }
-  const home = await $.env.get('HOME')
 
-  return home ? `${home}/.claude/session-ledger` : undefined
+  return dirRead.dir
 }
 
 /**
@@ -72,13 +75,17 @@ async function readLedgers($: EngineInterface): Promise<Ledgers | undefined> {
   if (file === undefined) {
     return undefined
   }
-  const isThere = await $.fs.exists(file).catch(() => true)
-  if (!isThere) {
+  // Only a stat that fails ENOENT means no ledger yet: `$.fs.exists` also says
+  // false for a file in a directory it can't search, which the script refuses
+  // ("the ledger directory could not be read") and the band must not read as
+  // no needs. The engine's rejection ends in the error's code (checked on
+  // 2.1.325: `failed: ENOENT`, `failed: EACCES`).
+  const stat = await $.fs.stat(file).catch((error: unknown) => (/\bENOENT\b/.test(String(error)) ? null : undefined))
+  if (stat === null) {
     return { [me]: [] }
   }
   // Something other than a file there is a ledger the script can't read
   // either ("the ledger path is not a regular file").
-  const stat = await $.fs.stat(file).catch(() => undefined)
   if (stat === undefined || stat.kind !== 'file') {
     return undefined
   }
@@ -113,6 +120,11 @@ async function refresh($: EngineInterface): Promise<void> {
       // Marked only once written, so a write that fails is tried again next tick.
       shown = json
     }
+    // With nothing open the band is gone: fold it, so the next need arrives
+    // as the one-row summary rather than the whole list.
+    if (next.needs.length === 0 && (await read($, isExpanded))) {
+      await update($, isExpanded, () => false)
+    }
   }
   // The ages the band shows come from the clock, not the view: a new minute
   // redraws them, which the unchanged view never would.
@@ -136,17 +148,19 @@ async function toggle($: EngineInterface): Promise<string | undefined> {
   if (current.needs.length === 0) {
     return 'This session needs nothing from you.'
   }
-  const isListShown = (await read($, isExpanded)) && (await read($, hiddenFor)) !== needsKey(current)
-  await update($, hiddenFor, () => '')
+  const isListShown = (await read($, isExpanded)) && !isHiddenBy(current, await read($, hiddenFor))
+  await update($, hiddenFor, () => [])
   await update($, isExpanded, () => !isListShown)
 
   return undefined
 }
 
-// Hide: quiet the band until the set of open needs changes, and fold it, so
-// it comes back as the one-row summary rather than the whole list.
-async function hideBand($: EngineInterface, key: string): Promise<void> {
-  await update($, hiddenFor, () => key)
+// Hide: quiet the band until a need it didn't show opens, and fold it, so it
+// comes back as the one-row summary rather than the whole list. <keys> are
+// the needs the pressed band drew, not a fresh read: a need that opened since
+// was never seen, so it still shows.
+async function hideBand($: EngineInterface, keys: readonly string[]): Promise<void> {
+  await update($, hiddenFor, () => [...keys])
   await update($, isExpanded, () => false)
 }
 
@@ -164,6 +178,9 @@ async function resolveNeed($: EngineInterface, need: LedgerNeed): Promise<void> 
   }
   const ran = await $.process
     .run(['bash', `${$.plugin.root}/scripts/ledger.sh`, 'resolve', need.id], {
+      // The plugin's own folder: the session's directory may be gone (a
+      // worktree FINISH removed), and a child can't start in one.
+      cwd: $.plugin.root,
       env: { CLAUDE_CODE_SESSION_ID: me },
       timeoutMs: 15_000,
     })
@@ -212,8 +229,8 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const current: LedgerView = await read($, view)
-    const key = needsKey(current)
-    const isQuiet = e.props.hasSurvey || current.needs.length === 0 || (await read($, hiddenFor)) === key
+    const keys = current.needs.map(need => need.key)
+    const isQuiet = e.props.hasSurvey || current.needs.length === 0 || isHiddenBy(current, await read($, hiddenFor))
     if (isQuiet) {
       return next(e)
     }
@@ -230,7 +247,7 @@ export const register: Register = on => {
       <Box flexShrink={0} columnGap={1} marginLeft={1}>
         {first === 'show' && <Button key="show" label="Show" onPress={() => update($, isExpanded, () => true)} />}
         {first === 'less' && <Button key="less" label="Less" onPress={() => update($, isExpanded, () => false)} />}
-        <Button key="hide" label="Hide" dimColor onPress={() => hideBand($, key)} />
+        <Button key="hide" label="Hide" dimColor onPress={() => hideBand($, keys)} />
       </Box>
     )
 

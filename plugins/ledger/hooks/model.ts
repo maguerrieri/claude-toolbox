@@ -106,10 +106,11 @@ export const clean = (text: string): string =>
     '?',
   )
 
-// A Why line as one line, as the script lists it: a hand edit could hold a
-// newline.
-const whyOf = (why: string | undefined): { why?: string } =>
-  why === undefined ? {} : { why: clean(why.split('\n').join(' ')) }
+// One line, for a field the band draws on one row: a hand edit could hold a
+// newline in an id, a ref or a Why line, which the script never writes.
+const oneLine = (text: string): string => clean(text.split('\n').join(' '))
+
+const whyOf = (why: string | undefined): { why?: string } => (why === undefined ? {} : { why: oneLine(why) })
 
 const numberOf = (id: string): number => Number(id.slice(1)) || 0
 
@@ -129,33 +130,54 @@ const byNewest = (a: LedgerNeed, b: LedgerNeed): number => {
 /** The key a need goes by: its session and its id, never its ref. */
 export const keyOf = (need: { session: string; id: string }): string => `${need.session}:${need.id}`
 
+// Each key once: a hand edit can leave two open needs with one id, and the
+// band tells its rows and buttons apart by key. The second and later take
+// `#2`, `#3`, in the view's order.
+const distinct = (needs: LedgerNeed[]): LedgerNeed[] => {
+  const seen = new Map<string, number>()
+
+  return needs.map(need => {
+    const count = (seen.get(need.key) ?? 0) + 1
+    seen.set(need.key, count)
+
+    return count === 1 ? need : { ...need, key: `${need.key}#${count}` }
+  })
+}
+
 /**
  * The view the band draws: the open needs of every ledger it is given, newest
  * first, each its own row (two needs that share a ref stay two rows, a lesson
  * of PR #272's review). Which ledgers it is given is the reader's call.
  */
 export const viewOf = (ledgers: Ledgers): LedgerView => ({
-  needs: Object.entries(ledgers)
-    .flatMap(([session, entries]) =>
-      entries
-        .filter(entry => entry.kind === 'need' && entry.resolved_at === undefined)
-        .map(
-          (entry): LedgerNeed => ({
-            key: keyOf({ session, id: entry.id }),
-            session,
-            id: clean(entry.id),
-            ...whyOf(entry.why),
-            text: clean(entry.text),
-            ...(entry.ref === undefined ? {} : { ref: clean(entry.ref) }),
-            at: entry.at,
-          }),
-        ),
-    )
-    .sort(byNewest),
+  needs: distinct(
+    Object.entries(ledgers)
+      .flatMap(([session, entries]) =>
+        entries
+          .filter(entry => entry.kind === 'need' && entry.resolved_at === undefined)
+          .map(
+            (entry): LedgerNeed => ({
+              key: keyOf({ session, id: entry.id }),
+              session,
+              id: oneLine(entry.id),
+              ...whyOf(entry.why),
+              text: clean(entry.text),
+              ...(entry.ref === undefined ? {} : { ref: oneLine(entry.ref) }),
+              at: entry.at,
+            }),
+          ),
+      )
+      .sort(byNewest),
+  ),
 })
 
-/** The key Hide remembers: the open needs it was hidden for. */
-export const needsKey = (view: LedgerView): string => view.needs.map(need => need.key).join(',')
+/**
+ * Whether Hide quiets the band: every open need is one the band showed when
+ * Hide was pressed (<hidden>, their keys). A need resolved since leaves it
+ * quiet; one that opened since brings it back.
+ */
+export const isHiddenBy = (view: LedgerView, hidden: readonly string[]): boolean =>
+  view.needs.length > 0 && view.needs.every(need => hidden.includes(need.key))
 
 /** How long ago <at> was, from <nowMs>: `now`, `5m`, `3h`, `2d`. */
 export const ageOf = (at: string, nowMs: number): string => {

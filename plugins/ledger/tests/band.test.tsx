@@ -25,6 +25,11 @@ const LEDGER = [
   line({ kind: 'need', id: 'n3', text: 'Review PR #300', ref: 'o/r#300', at: '2026-11-16T00:30:00Z' }),
   'not json',
 ].join('\n')
+// The same ledger once the session has resolved n1.
+const RESOLVED_N1 = LEDGER.replace(
+  '"at":"2026-11-16T01:50:00Z"}',
+  '"at":"2026-11-16T01:50:00Z","resolved_at":"2026-11-16T01:55:00Z"}',
+)
 const FILES: Record<string, string> = {
   [MINE]: LEDGER,
   [THEIRS]: line({ kind: 'need', id: 'n1', why: 'PRs wait unseen', text: 'Run the PR #300 checklist', ref: 'o/r#300', at: '2026-11-15T16:00:00Z' }),
@@ -51,12 +56,15 @@ type World = {
   /** The ledger files by path; `write` changes one as the script would. */
   files: Record<string, string>
   write: (path: string, text: string) => void
-  /** Set to make every read fail. */
-  fault: { isReadFailing: boolean; resolveError?: string }
+  /**
+   * Set to make every read fail, or the directory unsearchable (as the engine
+   * answers one: `exists` false, `stat` failing EACCES), or Resolve fail.
+   */
+  fault: { isReadFailing: boolean; isDirLocked: boolean; resolveError?: string }
   reads: string[]
   lists: string[]
   writes: string[]
-  runs: { argv: string[]; env?: Record<string, string> }[]
+  runs: { argv: string[]; cwd?: string; env?: Record<string, string> }[]
   toasts: string[]
   opens: string[]
   clock: ReturnType<typeof mock.clock>
@@ -75,7 +83,7 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
       seen.files[path] = text
       mtimes[path] = (mtimes[path] ?? 1) + 1
     },
-    fault: { isReadFailing: false },
+    fault: { isReadFailing: false, isDirLocked: false },
     reads: [],
     lists: [],
     writes: [],
@@ -86,11 +94,16 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
   }
   mock.env(on, env)
   on('session.id', () => ({ value: seen.session.id }))
-  on('fs.exists', (_, e) => ({ value: e.path in seen.files }))
+  on('fs.exists', (_, e) => ({ value: !seen.fault.isDirLocked && e.path in seen.files }))
+  // Refused with the OS's code, as the engine's rejection carries it
+  // (checked on 2.1.325: `$.fs.stat(<path>) failed: ENOENT`).
   on('fs.stat', (_, e) => {
     const text = seen.files[e.path]
+    if (seen.fault.isDirLocked) {
+      return { deny: 'EACCES' }
+    }
     if (text === undefined) {
-      throw new Error(`ENOENT: ${e.path}`)
+      return { deny: 'ENOENT' }
     }
 
     return { value: { kind: 'file' as const, size: text.length, mtimeMs: mtimes[e.path] ?? 1, isLink: false } }
@@ -98,7 +111,7 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
   on('fs.read', (_, e) => {
     seen.reads.push(e.path)
     if (seen.fault.isReadFailing) {
-      throw new Error('EACCES')
+      return { deny: 'EACCES' }
     }
 
     return { value: seen.files[e.path] ?? '' }
@@ -114,8 +127,12 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
     return { value: undefined }
   })
   on('process.run', (_, e) => {
-    const env = e.init?.env
-    seen.runs.push({ argv: [...e.argv], ...(env === undefined ? {} : { env: { ...env } }) })
+    const { cwd, env } = e.init ?? {}
+    seen.runs.push({
+      argv: [...e.argv],
+      ...(cwd === undefined ? {} : { cwd }),
+      ...(env === undefined ? {} : { env: { ...env } }),
+    })
     if (seen.fault.resolveError !== undefined) {
       return { value: { exitCode: 1, stdout: '', stderr: seen.fault.resolveError, isStdoutTruncated: false, isStderrTruncated: false } }
     }
@@ -233,7 +250,7 @@ test('the band yields to a survey', async ($, on) => {
   await band.unmount()
 })
 
-test('Hide quiets the band until the open needs change, and it comes back folded', async ($, on) => {
+test('Hide quiets the band until a need it didn\'t show opens, a resolve included, and it comes back folded', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
 
@@ -244,9 +261,32 @@ test('Hide quiets the band until the open needs change, and it comes back folded
   await seen.clock.advance(15_000)
   expect((await band.find({ type: 'Text' }))?.text).toBe('engine')
 
-  seen.write(MINE, `${LEDGER}\n${line({ kind: 'need', id: 'n4', text: 'A new need', at: '2026-11-16T01:59:00Z' })}`)
+  // The session resolves n1: still nothing the owner hasn't seen.
+  seen.write(MINE, RESOLVED_N1)
   await seen.clock.advance(15_000)
-  expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('3 open needs ')
+  expect((await band.find({ type: 'Text' }))?.text).toBe('engine')
+
+  seen.write(MINE, `${RESOLVED_N1}\n${line({ kind: 'need', id: 'n4', text: 'A new need', at: '2026-11-16T01:59:00Z' })}`)
+  await seen.clock.advance(15_000)
+  expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('2 open needs ')
+  expect(await band.find({ type: 'Button', key: 'show' })).toBeDefined()
+  expect(await band.find({ type: 'Button', key: 'less' })).toBeUndefined()
+  await band.unmount()
+})
+
+test('a band expanded when its last need goes comes back folded with the next one', async ($, on) => {
+  const seen = world(on)
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'show' })
+  await band.press({ key: `resolve:${ME}:n1` })
+  await band.press({ key: `resolve:${ME}:n3` })
+  expect((await band.find({ type: 'Text' }))?.text).toBe('engine')
+
+  seen.write(MINE, `${seen.files[MINE] ?? ''}\n${line({ kind: 'need', id: 'n4', text: 'A new need', at: '2026-11-16T01:59:00Z' })}`)
+  await seen.clock.advance(15_000)
+  expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('1 open need ')
   expect(await band.find({ type: 'Button', key: 'show' })).toBeDefined()
   expect(await band.find({ type: 'Button', key: 'less' })).toBeUndefined()
   await band.unmount()
@@ -276,6 +316,8 @@ test('Resolve runs ledger.sh resolve as this session, and the need leaves the ba
   expect(run?.argv[1]).toEndWith('/scripts/ledger.sh')
   expect(run?.argv.slice(2)).toEqual(['resolve', 'n1'])
   expect(run?.env).toEqual({ CLAUDE_CODE_SESSION_ID: ME })
+  // In the plugin's folder, which is there even when the session's isn't.
+  expect(run?.cwd).toBe(run?.argv[1]?.slice(0, -'/scripts/ledger.sh'.length))
   expect(seen.toasts).toEqual([])
   expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('1 open need ')
   expect((await band.findAll({ type: 'Text', text: /^n\d ·/ })).map(row => row.text)).toEqual(['n3 · o/r#300 · 1h'])
@@ -337,6 +379,18 @@ test('a read that fails keeps what the band last showed', async ($, on) => {
   await band.unmount()
 })
 
+test('a ledger directory it can\'t search is a failed read, not a missing ledger', async ($, on) => {
+  const seen = world(on)
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  seen.fault.isDirLocked = true
+  await seen.clock.advance(15_000)
+  expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('2 open needs ')
+  expect(await $.command.run(RUN)).toEqual({})
+  await band.unmount()
+})
+
 test('the ages it shows move on with the clock while it stays expanded', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
@@ -379,6 +433,23 @@ test('the model shows as ? the characters the script does, ids included', async 
   }
   const [need] = viewOf(ledgers).needs
   expect([need?.id, need?.why, need?.text, need?.key]).toEqual(['n1?', 'a?goal', 'Read? this?', 'me:n1\u0007'])
+})
+
+test('the model keeps a hand-edited id or ref to one line, and gives two needs of one id their own keys', async () => {
+  const { needs } = viewOf({
+    me: parseLedger(
+      [
+        line({ kind: 'need', id: 'n1', text: 'First', ref: 'o/r#1\nINJECTED', at: '2026-11-16T01:00:00Z' }),
+        line({ kind: 'need', id: 'n1', text: 'Second', at: '2026-11-16T00:00:00Z' }),
+        line({ kind: 'need', id: 'n\n2', text: 'Third', at: '2026-11-15T00:00:00Z' }),
+      ].join('\n'),
+    ),
+  })
+  expect(needs.map(need => [need.key, need.id, need.ref])).toEqual([
+    ['me:n1', 'n1', 'o/r#1 INJECTED'],
+    ['me:n1#2', 'n1', undefined],
+    ['me:n\n2', 'n 2', undefined],
+  ])
 })
 
 test('the model lists open needs alone, newest first, and takes only the ids the script does', async () => {
