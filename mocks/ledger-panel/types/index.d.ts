@@ -35,7 +35,7 @@ export type MockDecision = {
 export type MockView = {
   /** The open needs in scope, newest first. */
   needs: MockNeed[]
-  /** The resolved needs in scope, newest first, the latest ten. */
+  /** The resolved needs in scope, the latest resolved first, ten at most. */
   resolved: MockNeed[]
   /** This session's decisions, newest first, the latest ten. */
   decisions: MockDecision[]
@@ -45,10 +45,14 @@ declare module 'claude-code' {
   interface PluginState {
     'ledger-panel-mock': {
       view: Shaped<MockView>
-      /** The open needs the band or status line was hidden for (their keys joined), or ''. */
+      /** The open needs the band was hidden for (their keys joined), or ''. */
       hiddenFor: string
-      /** Needs a Resolve press marked resolved in this mock only (`<session>:<id>`); nothing is written. */
-      resolvedHere: string[]
+      /**
+       * Needs a Resolve press marked resolved in this mock only, by key
+       * (`<session>:<id>`), each with the ISO-8601 UTC time it was pressed.
+       * Nothing is written to a ledger.
+       */
+      resolvedHere: Shaped<Record<string, string>>
       /** Whether the pane lists resolved needs too. */
       isShowingResolved: boolean
       /** Whether the inline band is expanded into its list. */

@@ -38,11 +38,14 @@ const NAMES_MS = 60_000
 
 const VARIANTS: readonly Variant[] = ['pane', 'status', 'band', 'inline']
 
+
 // Change a tag when its value's fields change: it declines what an earlier
 // version stored, which outlives a reload.
 const view = atom({ plugin: 'ledger-panel-mock', key: 'view' } as const, EMPTY_VIEW, { shape: 'view-1' })
 const hiddenFor = atom({ plugin: 'ledger-panel-mock', key: 'hiddenFor' } as const, '')
-const resolvedHere = atom({ plugin: 'ledger-panel-mock', key: 'resolvedHere' } as const, [] as string[])
+const resolvedHere = atom({ plugin: 'ledger-panel-mock', key: 'resolvedHere' } as const, {} as Record<string, string>, {
+  shape: 'resolved-1',
+})
 const isShowingResolved = atom({ plugin: 'ledger-panel-mock', key: 'isShowingResolved' } as const, false)
 const isExpanded = atom({ plugin: 'ledger-panel-mock', key: 'isExpanded' } as const, false)
 
@@ -50,22 +53,23 @@ const isExpanded = atom({ plugin: 'ledger-panel-mock', key: 'isExpanded' } as co
 type Shape = {
   /** Which ledgers it reads. */
   scope: Scope
-  /** Whether it has a pane (`inline` draws everything in the band). */
-  hasPane: boolean
   /** Whether Escape closes the pane (a pane opened on demand, not a sidebar). */
   isClosedByEscape: boolean
   /** Whether it shows a status line under the prompt while a need is open. */
   hasStatus: boolean
-  /** The band row above the prompt: none, a one-row summary, or one that expands. */
+  /** The band row above the prompt: none, a one-row summary, or one that expands in place of a pane. */
   band: 'none' | 'row' | 'expanding'
 }
 
 const SHAPES: Readonly<Record<Variant, Shape>> = {
-  pane: { scope: 'session', hasPane: true, isClosedByEscape: true, hasStatus: false, band: 'none' },
-  status: { scope: 'session', hasPane: true, isClosedByEscape: true, hasStatus: true, band: 'none' },
-  band: { scope: 'all', hasPane: true, isClosedByEscape: false, hasStatus: false, band: 'row' },
-  inline: { scope: 'all', hasPane: false, isClosedByEscape: false, hasStatus: false, band: 'expanding' },
+  pane: { scope: 'session', isClosedByEscape: true, hasStatus: false, band: 'none' },
+  status: { scope: 'session', isClosedByEscape: true, hasStatus: true, band: 'none' },
+  band: { scope: 'all', isClosedByEscape: false, hasStatus: false, band: 'row' },
+  inline: { scope: 'all', isClosedByEscape: false, hasStatus: false, band: 'expanding' },
 }
+
+/** Whether an option has a pane: every one but the band that expands in its place. */
+const hasPane = (of: Shape): boolean => of.band !== 'expanding'
 
 const variantOf = (value: unknown): Variant =>
   VARIANTS.includes(value as Variant) ? (value as Variant) : 'pane'
@@ -86,13 +90,14 @@ let shape: Shape = SHAPES.pane
 let isFixtures = true
 
 // Caches, which a reload starts over: each file's entries as last read, kept
-// while its size and mtime hold; the session names; and the view this module
-// last wrote (unknown at first, since the atom keeps what an earlier load
-// wrote, so the first refresh always writes).
+// while its size and mtime hold; the session names; and the view and status
+// line this module last wrote (unknown at first, since the atom and the line
+// keep what an earlier load wrote, so the first refresh always writes).
 const files = new Map<string, { mtimeMs: number; size: number; entries: Entry[] }>()
 let names: Record<string, string> = {}
 let namesAt = 0
 let shown: string | undefined
+let statusShown: { text: string | undefined } | undefined
 // The number of the latest refresh begun: one a later refresh overtook
 // publishes nothing, so an older snapshot never overwrites a newer one.
 let latest = 0
@@ -134,6 +139,28 @@ async function namesFor($: EngineInterface, ledgers: Record<string, Entry[]>, me
   }
 }
 
+// The status line, set only when its text changes: `$.ui.status` keeps a line
+// until the next call replaces it, so there is nothing to repeat.
+function setStatus($: EngineInterface, text: string | undefined): void {
+  if (statusShown !== undefined && statusShown.text === text) {
+    return
+  }
+  $.ui.status(text)
+  statusShown = { text }
+}
+
+// The ledger directory's files, or undefined when a listing failed. A missing
+// directory is no ledgers yet; any other failure keeps what was last read
+// rather than show its needs as gone.
+async function listLedgers($: EngineInterface, dir: string) {
+  const isThere = await $.fs.exists(dir).catch(() => true)
+  if (!isThere) {
+    return []
+  }
+
+  return $.fs.list(dir).catch(() => undefined)
+}
+
 async function refresh($: EngineInterface): Promise<void> {
   latest += 1
   const turn = latest
@@ -141,9 +168,7 @@ async function refresh($: EngineInterface): Promise<void> {
   if (dir === undefined) {
     return
   }
-  // A missing directory is no ledgers yet; any other failed listing keeps
-  // what was last read rather than show its needs as gone.
-  const listed = await $.fs.list(dir).catch((error: unknown) => (String(error).includes('ENOENT') ? [] : undefined))
+  const listed = await listLedgers($, dir)
   if (listed === undefined) {
     return
   }
@@ -177,11 +202,13 @@ async function refresh($: EngineInterface): Promise<void> {
 
   const me = isFixtures ? FIXTURE_ME : await $.session.id()
   await namesFor($, ledgers, me)
+  const marked = await read($, resolvedHere)
+  // The last await before the write: past here no later refresh can have
+  // begun unseen, so this one's snapshot is the newest.
   if (turn !== latest) {
     return
   }
-  const nowIso = new Date(await $.clock.now()).toISOString()
-  const next = viewOf(ledgers, me, names, shape.scope, await read($, resolvedHere), nowIso)
+  const next = viewOf(ledgers, me, names, shape.scope, marked)
   const json = JSON.stringify(next)
   if (json !== shown) {
     await update($, view, () => next)
@@ -192,10 +219,9 @@ async function refresh($: EngineInterface): Promise<void> {
     // The engine draws it after the plugin's name and cuts its end at the
     // terminal's width, so the count and the command come first.
     const [newest] = next.needs
-    $.ui.status(
-      newest === undefined
-        ? undefined
-        : `${countOf(next.needs.length)} (/${COMMAND}), newest: ${firstLine(newest.text)}`,
+    setStatus(
+      $,
+      newest === undefined ? undefined : `${countOf(next.needs.length)} (/${COMMAND}), newest: ${firstLine(newest.text)}`,
     )
   }
 }
@@ -221,19 +247,41 @@ async function openPane($: EngineInterface): Promise<string | undefined> {
   return opened.isPlaced ? undefined : opened.reason
 }
 
+// The band's Open: a pane that waits undrawn says why, as the command does.
+async function openFromBand($: EngineInterface): Promise<void> {
+  const waits = await openPane($)
+  if (waits !== undefined) {
+    $.ui.toast(`The ledger pane waits: ${waits}`)
+  }
+}
+
 async function closePane($: EngineInterface): Promise<void> {
   await $.ui.close({ id: PANE })
+}
+
+// The inline band's toggle: a band that shows its list folds; one that is
+// folded or hidden shows its list.
+async function toggleInline($: EngineInterface): Promise<string | undefined> {
+  const current: MockView = await read($, view)
+  if (current.needs.length === 0) {
+    return 'No session needs you.'
+  }
+  const isListShown = (await read($, isExpanded)) && (await read($, hiddenFor)) !== needsKey(current)
+  await update($, hiddenFor, () => '')
+  await update($, isExpanded, () => !isListShown)
+
+  return undefined
 }
 
 // Resolve in the mock: marked resolved here, written nowhere. The real panel
 // would run the ledger plugin's `ledger.sh resolve <id> --session <session>`.
 async function resolveHere($: EngineInterface, need: MockNeed): Promise<void> {
-  await update($, resolvedHere, keys => [...new Set([...keys, keyOf(need)])])
+  const at = new Date(await $.clock.now()).toISOString()
+  await update($, resolvedHere, marks => ({ [keyOf(need)]: at, ...marks }))
   $.ui.toast(
     `Mock: ${need.id} marked resolved here only. The panel would run ledger.sh resolve ${need.id} --session ${need.session.slice(0, 8)}.`,
   )
   // The marks are part of the view: draw them now, not at the next tick.
-  shown = undefined
   await refreshQuietly($)
 }
 
@@ -246,10 +294,15 @@ export const register: Register = (on, options) => {
     const started = await next(e)
     await $.command.register({
       name: COMMAND,
-      description: shape.hasPane
+      description: hasPane(shape)
         ? `Open or close the ledger pane (mock of #319, option: ${variant})`
         : `Expand or fold the ledger band (mock of #319, option: ${variant})`,
     })
+    // A line an earlier load set stays until replaced: an option without one
+    // clears it, so switching options in /config leaves none behind.
+    if (!shape.hasStatus) {
+      setStatus($, undefined)
+    }
     await refreshQuietly($)
     poll?.cancel()
     poll = $.clock.every(POLL_MS, () => refreshQuietly($))
@@ -260,13 +313,10 @@ export const register: Register = (on, options) => {
   // The toggle: one command opens what is closed and closes what is open, so a
   // keybinding to `command:ledger-pane` is a toggle key.
   on('command.run', { command: COMMAND }, async $ => {
-    if (!shape.hasPane) {
-      await update($, hiddenFor, () => '')
-      const wasExpanded = await read($, isExpanded)
-      await update($, isExpanded, () => !wasExpanded)
-      await refreshQuietly($)
+    if (!hasPane(shape)) {
+      const said = await toggleInline($)
 
-      return {}
+      return said === undefined ? {} : { text: said }
     }
     if (await isPaneOpen($)) {
       await closePane($)
@@ -277,6 +327,7 @@ export const register: Register = (on, options) => {
 
     return waits === undefined ? {} : { text: `The ledger pane waits: ${waits}` }
   })
+
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (shape.band === 'none') {
@@ -306,7 +357,7 @@ export const register: Register = (on, options) => {
     )
     const buttons = (first: 'open' | 'show' | 'less') => (
       <Box flexShrink={0} columnGap={1} marginLeft={1}>
-        {first === 'open' && <Button key="open" label="Open" onPress={() => openPane($)} />}
+        {first === 'open' && <Button key="open" label="Open" onPress={() => openFromBand($)} />}
         {first === 'show' && <Button key="show" label="Show" onPress={() => update($, isExpanded, () => true)} />}
         {first === 'less' && <Button key="less" label="Less" onPress={() => update($, isExpanded, () => false)} />}
         <Button key="hide" label="Hide" dimColor onPress={() => update($, hiddenFor, () => key)} />
@@ -387,7 +438,7 @@ export const register: Register = (on, options) => {
             label={isShowing ? 'Hide resolved' : 'Show resolved'}
             hotkey="r"
             dimColor
-            onPress={() => update($, isShowingResolved, shown => !shown)}
+            onPress={() => update($, isShowingResolved, isOn => !isOn)}
           />
           <Button key="close" label="Close" role="dismiss" hotkey="x" dimColor onPress={() => closePane($)} />
         </Box>
