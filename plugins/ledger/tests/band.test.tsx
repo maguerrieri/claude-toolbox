@@ -355,10 +355,12 @@ test('Resolve runs ledger.sh resolve as this session, tells the session in a tur
   // In the plugin's folder, which is there even when the session's isn't.
   expect(run?.cwd).toBe(run?.argv[1]?.slice(0, -'/scripts/ledger.sh'.length))
   expect(seen.toasts).toEqual([])
-  // One prompt, framed as the plugin's, so a session stopped on the need goes on.
+  // One prompt, framed as the plugin's, so a session stopped on the need goes
+  // on. It names the need by id alone: none of its text, which can come from
+  // an issue body, rides into the turn.
   expect(seen.prompts).toEqual([
-    'The owner resolved ledger need n1 from the band above the prompt (o/r#300). It read: "Do the manual check". ' +
-      'This tells you that need is answered; it asks nothing more.',
+    'The owner resolved ledger need n1 from the band above the prompt. ' +
+      'Your ledger lists it (ledger.sh list). This tells you that need is answered; it asks nothing more.',
   ])
   expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('1 open need ')
   expect((await band.findAll({ type: 'Text', text: /^n\d ·/ })).map(row => row.text)).toEqual(['n3 · o/r#300 · 1h'])

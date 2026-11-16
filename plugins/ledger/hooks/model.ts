@@ -199,13 +199,15 @@ export const ageOf = (at: string, nowMs: number): string => {
 
 /**
  * What a Resolve in the band tells the session, in a turn of its own: which
- * need the owner resolved, and its first line. It says plainly that it asks
- * nothing more, since a need's text may name a step for the owner to take.
+ * need the owner resolved, by its id alone. The need's text and ref stay out:
+ * a need's text can come from an issue body, and a prompt that starts a turn
+ * is no place to carry it, so the session reads the need from its own ledger.
+ * Only a Resolve button calls this, and only an id isResolvable takes
+ * (`n` and digits) gets one.
  */
-export const resolvedNotice = (need: Pick<LedgerNeed, 'id' | 'text' | 'ref'>): string =>
-  `The owner resolved ledger need ${need.id} from the band above the prompt` +
-  `${need.ref === undefined ? '' : ` (${need.ref})`}. It read: "${firstLine(need.text)}". ` +
-  'This tells you that need is answered; it asks nothing more.'
+export const resolvedNotice = (need: Pick<LedgerNeed, 'id'>): string =>
+  `The owner resolved ledger need ${need.id} from the band above the prompt. ` +
+  'Your ledger lists it (ledger.sh list). This tells you that need is answered; it asks nothing more.'
 
 /** A text's first line, for a one-row band. */
 export const firstLine = (text: string): string => text.split('\n')[0] ?? ''

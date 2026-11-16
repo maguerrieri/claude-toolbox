@@ -81,7 +81,10 @@ open needs came later, in #330 (*The band*, below).
   quiet note the model would read only at the next prompt. The prompt is
   framed as the plugin's message, never as the owner's own words, since a
   need's text can name a step such as "say finish" that only the owner's own
-  words take, and it says it asks nothing more. A need the script finds
+  words take. It names the need by its id alone and says it asks nothing
+  more: the need's text can come from an issue body, so none of it rides into
+  a turn the band starts, and the session reads the need from its own ledger.
+  A need the script finds
   already resolved (the session resolved it itself) starts no turn. It has no hotkey, since
   a digit typed into an empty prompt presses a band button, and a need id the
   script would refuse gets no button. The toggle is a command the module

@@ -211,8 +211,9 @@ async function resolveNeed($: EngineInterface, need: LedgerNeed): Promise<void> 
   } else if (!/\bis already resolved\b/.test(ran.stderr)) {
     // Tell the session, in a turn of its own once it is idle, so one that
     // stopped for this need carries on (the owner's pick on PR #333). Framed
-    // as this plugin's message, never as the owner's words: a need's text can
-    // name a step such as "say finish", which only the owner's own words take.
+    // as this plugin's message, never as the owner's words, and naming the
+    // need by id alone: a need's text can come from an issue body, or name a
+    // step such as "say finish" that only the owner's own words take.
     // A need the session had already resolved itself needs no turn.
     void $.prompt.submit({ text: resolvedNotice(need) }).catch(() => undefined)
   }
