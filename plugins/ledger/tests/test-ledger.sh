@@ -366,7 +366,7 @@ in_repo 'a trailing slash' add-decision --ref '#14' >/dev/null
 record "acme/widgets#14" "add: an origin with a trailing slash" "$(jq -r 'select(.id == "d2") | .ref' "$dir/$sid.jsonl")"
 # An origin that names no owner and repo (a local path, nested groups) leaves
 # the ref bare rather than invent a pair.
-for origin in /srv/git/widgets https://gitlab.com/group/sub/repo.git; do
+for origin in /srv/git/widgets file:///srv/widgets.git https://gitlab.com/group/sub/repo.git; do
 	git -C "$repo_dir" remote set-url origin "$origin"
 	reset
 	in_repo 'an odd origin' add-need --ref '#6' >/dev/null
