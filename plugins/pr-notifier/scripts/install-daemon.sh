@@ -15,7 +15,10 @@
 # and launchd opens no file for the job. scripts/install.sh, run as bot, does
 # everything else, and its `status` checks this plist against the same text.
 #
-# It refuses to run when this file belongs to bot or sits under bot's home.
+# It refuses to run when this file belongs to bot, sits under bot's home, is
+# a symbolic link, or is writable by its group or by everyone. Whether the
+# checkout holds main's reviewed copy is INSTALL.md step 2's check, made
+# before sudo: root running git in a user's repository is its own hazard.
 #
 # Test seams, honored only when NOT root (as root they are ignored, and it
 # always writes the real path with the real launchctl, and guards against
@@ -110,9 +113,15 @@ self_dir=$(cd "$(dirname "$0")" && pwd -P)
 self=$self_dir/$(basename "$0")
 
 # This file is about to run as root, so it must not be one bot can edit.
-owner=$(stat -f %Su "$self" 2>/dev/null || stat -c %U "$self")
+# GNU's form first: given BSD's -f, GNU stat prints filesystem details before
+# failing, where BSD stat given -c prints nothing (the tests run on Linux too).
+[ ! -L "$0" ] && [ ! -L "$self" ] || die "$0 is a symbolic link; run the file itself, in your own checkout of this repo"
+owner=$(stat -c %U "$self" 2>/dev/null || stat -f %Su "$self")
 case $self/ in "$guard_home"/*) die "$self is under $guard_user's home; run the copy in your own checkout of this repo, on merged main" ;; esac
 [ "$owner" != "$guard_user" ] || die "$self belongs to $guard_user; run the copy in your own checkout of this repo, on merged main"
+# Nor one anybody but its owner can write: -rwxr-xr-x, not -rwxrwxr-x.
+mode=$(ls -ld "$self" | cut -c1-10)
+case $mode in ?????w???? | ????????w?) die "$self is writable by its group or by everyone ($mode); run a copy only you can write" ;; esac
 
 if [ -z "$testing" ] && [ "$(id -u)" != 0 ]; then
 	echo "install-daemon.sh needs root; asking sudo."
@@ -126,13 +135,13 @@ loaded() { "$launchctl" print "system/$label" >/dev/null 2>&1; }
 # bootout returns before launchd is done, and a bootstrap too soon after
 # fails with "Bootstrap failed: 5"; launchd gives a job 20 seconds to exit.
 unload() {
-	local i
-	"$launchctl" bootout "system/$label" 2>/dev/null || true
+	local i err
+	err=$("$launchctl" bootout "system/$label" 2>&1) || true
 	for i in $(seq 1 300); do
 		loaded || return 0
 		sleep 0.1
 	done
-	die "system/$label is still loaded"
+	die "system/$label is still loaded${err:+ (launchctl bootout said: $err)}"
 }
 
 if [ "$cmd" = uninstall ]; then
@@ -164,16 +173,20 @@ if [ -f "$plist" ] && cmp -s "$tmp/plist" "$plist" && right_owner; then
 	fi
 	echo "$plist is current but not loaded; loading it"
 else
-	# Unloaded first, so the old job is gone before the new plist replaces it.
-	unload
-	rm -f "$plist"
+	# The new plist is written beside the old one first, so a failed write
+	# leaves the old job running. Then the old job is unloaded, so it's gone
+	# before the new plist takes its place.
+	[ ! -d "$plist" ] || die "$plist is a directory; move it aside and run this again"
+	rm -f "$plist.new"
 	if [ -n "$testing" ]; then
 		mkdir -p "$daemons"
-		cp "$tmp/plist" "$plist"
-		chmod 644 "$plist"
+		cp "$tmp/plist" "$plist.new"
+		chmod 644 "$plist.new"
 	else
-		install -m 644 -o root -g wheel "$tmp/plist" "$plist"
+		install -m 644 -o root -g wheel "$tmp/plist" "$plist.new"
 	fi
+	unload
+	mv -f "$plist.new" "$plist"
 	echo "wrote $plist"
 fi
 "$launchctl" bootstrap system "$plist"

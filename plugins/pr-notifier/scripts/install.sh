@@ -34,7 +34,7 @@
 #                         fallback, not the default.
 #
 # status reports each piece (ok, warn or FAIL; exit 1 on any FAIL). plist
-# prints the job's plist for a domain, the one INSTALL.md has Mari install.
+# prints the job's plist for a domain, the one install-daemon.sh installs.
 # uninstall removes the user-domain agent, the job script and the shim, and
 # keeps the state directory (subscriptions, logs, config.json).
 #

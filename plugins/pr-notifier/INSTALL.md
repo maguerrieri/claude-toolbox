@@ -109,20 +109,28 @@ session use many of them.
 
 ### 2. The LaunchDaemon (your own shell, as root)
 
-Run the root script from **your own checkout** of this repo, on `main` with this PR
-merged, never from bot's checkout or the plugin cache. With your checkout in
-`~/Developer/claude-toolbox` (change the path if it's elsewhere):
+Run the root script from **your own checkout** of this repo, never from bot's checkout or
+the plugin cache. With your checkout in `~/Developer/claude-toolbox` (change `repo` if
+it's elsewhere), paste all four lines:
 
 ```zsh
-git -C ~/Developer/claude-toolbox pull --ff-only
-sudo ~/Developer/claude-toolbox/plugins/pr-notifier/scripts/install-daemon.sh
+repo=~/Developer/claude-toolbox
+git -C $repo fetch origin main &&
+  git -C $repo diff --quiet origin/main -- plugins/pr-notifier/scripts/install-daemon.sh &&
+  sudo $repo/plugins/pr-notifier/scripts/install-daemon.sh
 ```
 
-It writes `/Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist` (`root:wheel`, mode
-644) and loads it into the system domain; the job runs at once, then every 60 seconds. A
-second run changes nothing, and it reloads the job when the plist has changed. It refuses
-to run when the script belongs to bot or sits under `/Users/bot`. To see the plist first,
-with no root: `…/install-daemon.sh plist`.
+The `git diff --quiet` line is the check that matters: `sudo` runs only when your copy of
+the script is exactly the one on `origin/main`, whatever branch your checkout is on. If
+nothing happens after the fetch, your copy differs: `git -C $repo switch main && git -C
+$repo pull --ff-only`, then paste again.
+
+The script writes `/Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist`
+(`root:wheel`, mode 644) and loads it into the system domain; the job runs at once, then
+every 60 seconds. A second run changes nothing, and it reloads the job when the plist has
+changed. It refuses to run when it belongs to bot, sits under `/Users/bot`, is a symbolic
+link, or is writable by anyone but its owner. To see the plist first, with no root:
+`$repo/plugins/pr-notifier/scripts/install-daemon.sh plist`.
 
 ### 3. Check that it runs
 
@@ -208,8 +216,8 @@ claude-config's `AGENTS.md`, *The `bot` macOS user*.
 The CLI needs nothing: the shim runs the newest installed copy. `pni status` (step 3)
 says when the job script or the shim differs from the newest version's; run `pni` again.
 With no `--domain`, `pni` keeps whichever job is installed, so this is the same on the
-fallback. If `status` says the LaunchDaemon's plist differs, run step 2 again: it pulls
-your checkout and reloads the job with the new plist.
+fallback. If `status` says the LaunchDaemon's plist differs, run step 2 again: it
+checks your copy against `origin/main`, then reloads the job with the new plist.
 
 ## After changing bot's shell `PATH`
 
@@ -226,7 +234,10 @@ The LaunchDaemon first, in your own shell, so launchd isn't left running a job t
 gone:
 
 ```zsh
-sudo ~/Developer/claude-toolbox/plugins/pr-notifier/scripts/install-daemon.sh uninstall
+repo=~/Developer/claude-toolbox
+git -C $repo fetch origin main &&
+  git -C $repo diff --quiet origin/main -- plugins/pr-notifier/scripts/install-daemon.sh &&
+  sudo $repo/plugins/pr-notifier/scripts/install-daemon.sh uninstall
 ```
 
 Then from a bot shell:

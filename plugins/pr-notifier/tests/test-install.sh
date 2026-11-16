@@ -2,10 +2,14 @@
 # Tests for scripts/install.sh and scripts/pr-notifier-job.sh against stubbed
 # launchctl and security: the copies and wake_path, PATH capture and
 # cleaning, both launchd domains, idempotence, status, uninstall, the plist
-# INSTALL.md has Mari paste, and each run of the job (keychain, PATH, logs).
+# the root script installs (and that script itself), and each run of the job (keychain, PATH, logs).
 #
 #   bash plugins/pr-notifier/tests/test-install.sh
 set -u
+
+# Never as root: the install refuses root, and as root the root script
+# ignores its test seams and would act on the real /Library/LaunchDaemons.
+[ "$(id -u)" != 0 ] || { echo "test-install.sh: don't run these tests as root" >&2; exit 1; }
 
 here=$(cd "$(dirname "$0")" && pwd)
 plugin=$(cd "$here/.." && pwd)
@@ -313,7 +317,7 @@ fi
 HOME="$tmp/has space" bash "$install" plist >"$out" 2>&1
 record 1 "plist: refuses a HOME it can't carry" "$?"
 # SHELL is a constant: neither the account's nor the caller's shell moves the
-# plist away from INSTALL.md's paste.
+# plist away from the one the root script writes.
 echo /bin/fish >"$STUB/dscl.shell"
 SHELL=/bin/bash bash "$install" plist >"$tmp/dscl.plist"
 record yes "plist: SHELL is /bin/zsh" "$(has "$tmp/dscl.plist" "<string>/bin/zsh</string>")"
@@ -377,8 +381,32 @@ PR_NOTIFIER_DAEMON_TEST=1 PR_NOTIFIER_DAEMON_GUARD_USER=nobody-here PR_NOTIFIER_
 	bash "$daemon_script" >"$out" 2>&1
 record 1 "root script under the guarded home: refused" "$?"
 record no "root script refused: nothing written" "$([ -e "$daemon" ] && echo yes || echo no)"
-# Without the test seam and without root it only asks sudo; the seams alone change nothing.
-record yes "root script: seams need the test flag" "$(grep -q 'PR_NOTIFIER_DAEMON_TEST:-}" = 1' "$daemon_script" && echo yes || echo no)"
+# Nor a symbolic link to it, nor a copy its group or everyone can write.
+mkdir -p "$tmp/copy"
+ln -sf "$daemon_script" "$tmp/copy/link.sh"
+PR_NOTIFIER_DAEMON_TEST=1 PR_NOTIFIER_DAEMON_GUARD_USER=nobody-here PR_NOTIFIER_DAEMON_GUARD_HOME=/nonexistent/home \
+	bash "$tmp/copy/link.sh" >"$out" 2>&1
+record 1 "root script through a symlink: refused" "$?"
+record yes "root script through a symlink: says so" "$(has "$out" "is a symbolic link")"
+cp "$daemon_script" "$tmp/copy/install-daemon.sh"
+chmod 775 "$tmp/copy/install-daemon.sh"
+PR_NOTIFIER_DAEMON_TEST=1 PR_NOTIFIER_DAEMON_GUARD_USER=nobody-here PR_NOTIFIER_DAEMON_GUARD_HOME=/nonexistent/home \
+	bash "$tmp/copy/install-daemon.sh" >"$out" 2>&1
+record 1 "root script, group-writable copy: refused" "$?"
+chmod 757 "$tmp/copy/install-daemon.sh"
+PR_NOTIFIER_DAEMON_TEST=1 PR_NOTIFIER_DAEMON_GUARD_USER=nobody-here PR_NOTIFIER_DAEMON_GUARD_HOME=/nonexistent/home \
+	bash "$tmp/copy/install-daemon.sh" >"$out" 2>&1
+record 1 "root script, world-writable copy: refused" "$?"
+record no "root script refused: still nothing written" "$([ -e "$daemon" ] && echo yes || echo no)"
+# A plist that can't be replaced leaves the loaded job alone.
+root_script
+mkdir -p "$daemon.new/blocker"
+echo changed >>"$daemon"
+: >"$STUB/launchctl.log"
+root_script
+record 1 "root script, write fails: exit" "$?"
+record no "root script, write fails: old job not booted out" "$(has "$STUB/launchctl.log" bootout)"
+rm -rf "$daemon.new"
 
 # --- status ---------------------------------------------------------------
 
