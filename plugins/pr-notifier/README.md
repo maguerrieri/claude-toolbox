@@ -221,8 +221,9 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   argument after it, so a prompt there would be read as a tool name. Safe mode loads no
   plugins, hooks or `CLAUDE.md`, and `--no-session-persistence` leaves no transcript. A
   relay is killed after a minute. Every relay, stop and resume holds the lock that
-  `subscribe` waits only five minutes for, so no delivery starts once a check has run 150
-  seconds: the rest are held for the next check.
+  `subscribe` waits only five minutes for, so no delivery starts once a check's deliveries
+  have run 150 seconds (the poll and the PR reads before them don't count): the rest are
+  held for the next check.
 - **Where it sends.** To the session's own messaging socket, `<pid>.sock` for the `pid`
   its row shows, in `/tmp/cc-socks` when that directory is this user's or root's and
   private, else in `/tmp/cc-socks-<uid>`, as Claude Code places them. A directory or socket
@@ -232,9 +233,9 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   or shared by a forked copy, but a socket can't, so the relay resolves no name and
   needs no `ListAgents` match (the spike's suggestion).
 - **Did it send?** The exit code says nothing: `claude -p` exits 0 when the model never
-  sends, or rewords the text. So the stream must show exactly one tool call,
-  `SendMessage`, to that address, with the wake prompt unchanged, and its tool result
-  must say `success: true` with a `msg_id`.
+  sends, or rewords the text. So the stream must show a `SendMessage` call to that address
+  whose tool result says `success: true` with a `msg_id`, the wake prompt unchanged. When
+  the relay retries after a send that failed, the last one that succeeded decides.
 - **Did it land?** A successful send means only that the message reached the session's
   inbox. One held for approval, refused, or sent to a session that has just stopped
   reports the same. So the notifier waits up to `relay_wait` (30 seconds) for the
@@ -249,16 +250,18 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   another tool or address, a send that failed) falls back at once. One whose message may
   have reached it (sent but not yet a turn, sent with the text changed, or killed before
   its result) may still be taken, so the session is held for that check and the fallback
-  waits for the next. Each message sent but not yet taken (the last five) is remembered
-  with the events it carried, since a retry doesn't stop the session taking an earlier
-  one, and every later check looks for each in the transcript first: once the session has
-  taken one, those of its events still held count as delivered (`wake … how=relay-late`),
-  and only events queued since need a wake of their own. Either way, relays to that session then
-  back off (5, 10, 20, 40, then 60 minutes). After three relays that may have reached it
-  without landing, the notifier stops relaying to it until a wake lands or a new event
-  arrives, since a terminal session, whose fallback only holds, would otherwise get one
-  an hour. Relays that sent nothing (a crash, a missing socket) only back off, so they
-  never stop relays for good.
+  waits for the next. Each message sent but not yet taken is remembered with the events
+  it carried, since a retry doesn't stop the session taking an earlier one, and every
+  later check looks for each in the transcript first: once the session has taken one,
+  those of its events still held count as delivered (`wake … how=relay-late`), and the
+  events left start a hold of their own. Either way, relays to that session then back off
+  (5, 10, 20, 40, then 60 minutes). After three relays that may have reached it without
+  landing, the notifier stops relaying to it until a wake lands or a new event arrives,
+  since a terminal session, whose fallback only holds, would otherwise get one an hour.
+  And with five still unconfirmed, it stops until one lands, however many new events
+  arrive, so a session holding peer messages for approval never gets more than five.
+  Relays that sent nothing (a crash, a missing socket) only back off, so they never stop
+  relays for good.
 - **What the session sees.** `Another Claude session sent a message:`, then
   `<cross-session-message from="uds:…" from-name="pr-notifier" from-mode="prompting">`,
   with the wake prompt inside. `from-mode` stayed `prompting` with or without

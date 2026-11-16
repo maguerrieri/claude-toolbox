@@ -661,10 +661,13 @@ finish_wake() { # finish_wake <session id> <how> [log detail] [event ids, a JSON
 		"$work_state" >"$run_tmp/final"
 	# A landed wake also ends the relay and resume backoffs: they count
 	# failures to reach the session, which just ended.
-	edit "$work_state" --arg s "$sid" --argjson ids "$ids" '
+	# The events left are a hold of their own, so their clock and stale
+	# report start over.
+	edit "$work_state" --arg s "$sid" --argjson ids "$ids" --argjson now "$now" '
 		.pending[$s].events = [.pending[$s].events[] | select("\(.pr)|\(.key)" as $i | $ids | index($i) | not)]
 		| if (.pending[$s].events | length) == 0 then .pending |= del(.[$s])
-		  else .pending[$s] |= del(.relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at)
+		  else .pending[$s] |= (del(.relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at,
+		                            .stale_reported, .last_hold) | .first_at = $now)
 		  end'
 	while IFS= read -r ref; do
 		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "pr-final-wake"
@@ -760,29 +763,37 @@ relay_prompt() { # relay_prompt <address> <text>: what the relay session is aske
 
 relay_result() { # relay_result <stream-json file> <address> <text>: "ok <msg id>", "maybe: <why>" or "no: <why>"
 	# The exit code says nothing (claude -p exits 0 when the model never
-	# sends, or rewords the text), so the one SendMessage call is checked, and
-	# so is what the tool answered. "no" is a relay that sent nothing to the
-	# session; "maybe" is one whose message may have reached it (a changed
-	# text, or no result because the relay was killed after the call).
+	# sends, or rewords the text), so the SendMessage calls are checked, and
+	# so is what the tool answered each. The last call to the session's
+	# address that the tool reports sent decides, so a retry after a failed
+	# first call still gives its message id. "no" is a relay that sent
+	# nothing to the session; "maybe" is one whose message may have reached
+	# it (a changed text, a send with no usable id, or a call with no result
+	# because the relay was killed after it).
 	jq -nrR --arg to "$2" --arg text "$3" '
 		def rstrip: sub("\\s+$"; "");
+		def body: .content | if type == "array" then map(.text? // "") | join("") elif type == "string" then . else "" end;
 		[inputs | fromjson? | select(type == "object")] as $m
 		| [$m[] | select(.type == "assistant") | .message.content[]? | select(type == "object" and .type == "tool_use")] as $uses
+		| [$m[] | select(.type == "user") | .message.content[]? | select(type == "object" and .type == "tool_result")] as $results
+		| [$uses[] | select(.name == "SendMessage" and (.input.to // "") == $to)
+		   | . as $u | ([$results[] | select(.tool_use_id == $u.id)] | first) as $r
+		   | {same: ((($u.input.message // "") | tostring | rstrip) == ($text | rstrip)),
+		      r: $r, body: (if $r == null then "" else ($r | body) end)}
+		   | . + {j: (.body | fromjson? // null)}] as $sends
+		| [$sends[] | select(.r != null and .r.is_error != true and (.j | type) == "object" and .j.success == true)] as $sent
 		| if ($uses | length) == 0 then "no: no tool call"
-		  elif ($uses | length) != 1 then "maybe: \($uses | length) tool calls"
-		  elif $uses[0].name != "SendMessage" then "no: called \($uses[0].name)"
-		  elif ($uses[0].input.to // "") != $to then "no: sent to another address"
-		  else
-		    ([$m[] | select(.type == "user") | .message.content[]?
-		      | select(type == "object" and .type == "tool_result" and .tool_use_id == $uses[0].id)] | first) as $r
-		    | ($r.content | if type == "array" then map(.text? // "") | join("") elif type == "string" then . else "" end) as $body
-		    | ($body | fromjson? // null) as $j
-		    | if $r == null then "maybe: no tool result"
-		      elif $r.is_error == true then "no: \($body | .[0:160])"
-		      elif ($j | type) != "object" or $j.success != true then "no: not sent: \($body | .[0:160])"
-		      elif ((($uses[0].input.message // "") | tostring | rstrip) != ($text | rstrip)) then "maybe: sent with the text changed"
-		      elif (($j.msg_id | type) != "string") or ($j.msg_id | test("^[A-Za-z0-9-]+$") | not) then "maybe: sent with no message id"
-		      else "ok \($j.msg_id)" end
+		  elif ($sends | length) == 0 then
+		    (if any($uses[]; .name != "SendMessage") then "no: called \([$uses[].name] | unique | join(","))"
+		     else "no: sent to another address" end)
+		  elif ($sent | length) > 0 then
+		    ($sent | last) as $s
+		    | if ($s.same | not) then "maybe: sent with the text changed"
+		      elif (($s.j.msg_id | type) != "string") or ($s.j.msg_id | test("^[A-Za-z0-9_.:-]+$") | not) then "maybe: sent with no message id"
+		      else "ok \($s.j.msg_id)" end
+		  elif any($sends[]; .r == null) then "maybe: no tool result"
+		  else ($sends | last) as $s
+		    | if $s.r.is_error == true then "no: \($s.body | .[0:160])" else "no: not sent: \($s.body | .[0:160])" end
 		  end' "$1" 2>/dev/null || echo "no: unreadable output"
 }
 
@@ -816,7 +827,8 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 		--model "$relay_model" --max-turns 3 --output-format stream-json --verbose --tools SendMessage \
 		<"$run_tmp/relay.in" >"$run_tmp/relay.out" 2>"$run_tmp/relay.err"
 	res=$(relay_result "$run_tmp/relay.out" "$to" "$text")
-	while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
+	find_transcripts "$cfg" "$sid"
+	files=(${found_transcripts[@]+"${found_transcripts[@]}"})
 	mode=$(session_mode ${files[@]+"${files[@]}"})
 	case $res in
 	"ok "*) id=${res#ok } ;;
@@ -847,9 +859,9 @@ relay() { # relay <session id> <config dir> <pid>: 0 once the wake is a turn in 
 			relay_failed "$sid" "$mode" "sent as $id, but no turn took it within ${relay_wait}s (held, refused or stopped)" maybe
 			# Later checks look for this message first (deliver), so one the
 			# session takes late counts as the wake for what it carried.
-			edit "$work_state" --arg s "$sid" --arg id "$id" '
+			edit "$work_state" --arg s "$sid" --arg id "$id" --argjson max "$relay_outstanding" '
 				.pending[$s].relay_msgs = (((.pending[$s].relay_msgs // [])
-					+ [{id: $id, events: [.pending[$s].events[] | "\(.pr)|\(.key)"]}]) | .[-5:])'
+					+ [{id: $id, events: [.pending[$s].events[] | "\(.pr)|\(.key)"]}]) | .[-$max:])'
 			return 2
 		fi
 		sleep 1
@@ -865,18 +877,26 @@ resume_backoff() { # resume_backoff <session id>: holds it and returns 0 while a
 	hold "$1" "wake-backoff until $(iso "$next")"
 }
 
-relay_tries=3      # relays that may have reached a session, unconfirmed, before it waits for the fallback alone
-delivery_budget=150 # seconds into a check after which no delivery starts
+relay_tries=3        # relays that may have reached a session, unconfirmed, before it waits for the fallback alone
+relay_outstanding=5  # unconfirmed relays a session may have waiting at once (relay_msgs), all of them watched
+delivery_budget=150  # seconds of delivery in one check, after which no delivery starts
+delivery_start=0     # SECONDS when this check's deliveries began (cmd_check)
 
 over_budget() { # over_budget <session id> [why]: holds it and returns 0 once this check has run its delivery budget
 	# Every relay, stop and resume holds the lock, which subscribe waits
 	# only five minutes for, so a long check leaves the rest to the next.
-	[ "$SECONDS" -ge "$delivery_budget" ] || return 1
-	hold "$1" "${2:+$2; }deferred: this check has run ${SECONDS}s"
+	[ $((SECONDS - delivery_start)) -ge "$delivery_budget" ] || return 1
+	hold "$1" "${2:+$2; }deferred: this check has delivered for $((SECONDS - delivery_start))s"
+}
+
+find_transcripts() { # find_transcripts <config dir> <session id>: sets found_transcripts to the session's transcript files
+	local f
+	found_transcripts=()
+	while IFS= read -r f; do [ -z "$f" ] || found_transcripts+=("$f"); done < <(transcripts "$1" "$2")
 }
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind next tries why ids late evs f files=()
+	local sid=$1 cfg row id cwd pid status st kind next tries outstanding why ids late evs files=()
 	! over_budget "$sid" || return
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	# Relays sent but not yet taken (relay_msgs, the last five) may have been
@@ -885,7 +905,8 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	# earlier one, which the session can still take first.
 	ids=$(jq -r --arg s "$sid" '.pending[$s].relay_msgs // [] | .[].id' "$work_state")
 	if [ -n "$ids" ]; then
-		while IFS= read -r f; do [ -z "$f" ] || files+=("$f"); done < <(transcripts "$cfg" "$sid")
+		find_transcripts "$cfg" "$sid"
+		files=(${found_transcripts[@]+"${found_transcripts[@]}"})
 		while IFS= read -r late; do
 			[ -n "$late" ] && landed "$late" ${files[@]+"${files[@]}"} || continue
 			evs=$(jq -c --arg s "$sid" --arg m "$late" '.pending[$s] as $p
@@ -942,13 +963,19 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 	esac
 	# Live and idle, in a terminal or in the background: relay the wake in
 	# place. Neither its cwd nor its work in flight matters to the relay.
-	read -r next tries <<<"$(jq -r --arg s "$sid" '.pending[$s] | "\(.next_relay_at // 0 | floor) \(.relay_unconfirmed // 0)"' "$work_state")"
+	read -r next tries outstanding <<<"$(jq -r --arg s "$sid" '.pending[$s]
+		| "\(.next_relay_at // 0 | floor) \(.relay_unconfirmed // 0) \(.relay_msgs // [] | length)"' "$work_state")"
 	if [ "$relay_on" = false ]; then
 		why="relay off"
 	elif [ "$tries" -ge "$relay_tries" ]; then
 		# Each unconfirmed relay may still have reached the session, so after
 		# a few it stops trying until a wake lands and the count resets.
 		why="relay gave up after $tries unconfirmed tries"
+	elif [ "$outstanding" -ge "$relay_outstanding" ]; then
+		# New events reset the tries, but not this: a session holding peer
+		# messages for approval gets no more than these few, every one
+		# still watched for, until one lands.
+		why="relay gave up with $outstanding relays unconfirmed"
 	elif [ "$now" -lt "$next" ]; then
 		why="relay backoff until $(iso "$next")"
 	else
@@ -1068,6 +1095,7 @@ cmd_check() {
 	examine_due
 	local sid
 	jq -r '.pending // {} | keys[]' "$work_state" >"$run_tmp/sessions"
+	delivery_start=$SECONDS # the poll and the PR reads above don't count against delivery_budget
 	while IFS= read -r sid; do
 		[ -n "$sid" ] || continue
 		deliver "$sid"
