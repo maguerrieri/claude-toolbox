@@ -180,6 +180,15 @@ Tool commands run under zsh. Do not use `path` as a loop or script variable:
 zsh ties the `path` array to `PATH`, so assigning `path` replaces command lookup.
 Use a task-specific name such as `file_path` instead.
 
+## Bash scripts: no apostrophe in a `${var:-word}` default
+
+The plugins' scripts run under bash. Inside double quotes, bash still reads an
+apostrophe in a `${var:-word}` default as a quote, so
+`"by ${editor:-an account GitHub doesn't name}"` leaves a quote open: `bash -n`
+fails, and the script dies with `unexpected EOF` when it reaches that line.
+Keep defaults apostrophe-free. Found while writing `owner-comment.sh` (#301),
+on bash 5.3.
+
 ## Cross-session messages: `from-name`, not `from`
 
 A SendMessage delivery arrives wrapped as `<cross-session-message
