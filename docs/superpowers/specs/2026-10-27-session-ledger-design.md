@@ -145,6 +145,10 @@ What PR #272 learned about the cross-session part, so #316 doesn't relearn it:
 - `list --all` should skip and report one unreadable ledger rather than fail;
   a sweeping `resolve --ref` should report a ledger it left unresolved while
   still resolving the rest.
+- The panel's shape is #319's: it mocked four options in `mocks/ledger-panel/`
+  for the owner to pick from, and `2026-11-15-ledger-panel-options.md` has
+  them, what the mod API can do for toggling one (on 2.1.325), and a
+  recommendation.
 
 ## Out of scope
 

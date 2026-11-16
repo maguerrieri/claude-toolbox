@@ -3,7 +3,10 @@
 Portable coding-agent conventions and Claude Code workflows, published as the
 **`maguerrieri-toolbox`** plugin marketplace. Each plugin is registered in
 `.claude-plugin/marketplace.json` and lives in `plugins/<name>/`, except one sourced
-from another repo (today only `provenance`; see Releasing).
+from another repo (today only `provenance`; see Releasing). `mocks/` holds
+throwaway mods for design work (today #319's ledger panel). They aren't in the
+marketplace, so they take no version bump and load only with
+`claude --plugin-dir mocks/<name>`.
 
 ## Repository instructions
 
