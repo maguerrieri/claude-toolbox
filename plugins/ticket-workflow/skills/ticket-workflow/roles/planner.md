@@ -22,15 +22,16 @@ it. You are the **root**: the one session that sees the entire initiative.
   only automated review rounds count.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
   installs it; its `ledger:record` skill says how) and the session is local,
-  not a cloud session, which the ledger doesn't reach. Record each decision the owner makes
-  here, and each thing you stop for that only the owner can give, with its
-  exact unblock step, each under a Why line saying why the work exists, and
-  resolve each once the owner answers. A child's need (`blocked: merge needs
-  the owner`, a `declined:` line, a stack `ready; needs the owner`) stays in
-  the child's own ledger, so don't copy it into yours; relay it to the owner
-  as before. When the owner asks "status?", start from `ledger.sh list` (your
-  own decisions and needs), then sweep the children as before: GitHub and
-  `claude agents`. (A view across every session's ledger is #316.)
+  not a cloud session, which the ledger doesn't reach. Record each decision
+  the owner makes here, and each thing you stop for that only the owner can
+  give, with its exact unblock step, each under a Why line saying why the work
+  exists, and resolve each once the owner answers. A child's need (`blocked:
+  merge needs the owner`, a `declined:` line, a stack `ready; needs the
+  owner`) stays in the child's own ledger, so don't copy it into yours; relay
+  it to the owner as before. When the owner asks "status?", start from
+  `ledger.sh list` (your own decisions and needs), then sweep the children as
+  before: GitHub and `claude agents`. (A view across every session's ledger
+  is #316.)
 
 ## You do NOT
 

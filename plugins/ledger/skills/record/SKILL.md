@@ -7,11 +7,12 @@ user-invocable: false
 # Ledger: decisions made, and what a session needs from the owner
 
 Each session keeps a **ledger**: the decisions the owner made in it, and what
-it needs from the owner, each with a line saying why the work exists. `/ledger`
-prints it. So when the owner asks this session "status?", the answer starts
-there instead of being rebuilt from GitHub and memory, and what the owner has
-to do is written down before they ask. (A view of every local session's
-ledger at once, a glanceable mod among them, is #316.)
+it needs from the owner, each with a line saying why the work exists. The
+owner's `/ledger` prints it; it's theirs to type, not a skill you can load, so
+read it with `list` (below). So when the owner asks this session "status?",
+the answer starts there instead of being rebuilt from GitHub and memory, and
+what the owner has to do is written down before they ask. (A view of every
+local session's ledger at once, a glanceable mod among them, is #316.)
 
 A ledger is one file per session, written only by that session through
 `scripts/ledger.sh`. An in-process subagent shares its parent's session, so a
