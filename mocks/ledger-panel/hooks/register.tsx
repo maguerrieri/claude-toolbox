@@ -189,11 +189,13 @@ async function refresh($: EngineInterface): Promise<void> {
     shown = json
   }
   if (shape.hasStatus) {
+    // The engine draws it after the plugin's name and cuts its end at the
+    // terminal's width, so the count and the command come first.
     const [newest] = next.needs
     $.ui.status(
       newest === undefined
         ? undefined
-        : `ledger: ${countOf(next.needs.length)}, newest ${firstLine(newest.text)} · /${COMMAND}`,
+        : `${countOf(next.needs.length)} (/${COMMAND}), newest: ${firstLine(newest.text)}`,
     )
   }
 }
@@ -288,33 +290,35 @@ export const register: Register = (on, options) => {
     }
     const { Box, Button, Text } = $.ui.resolve(e)
     const [newest] = current.needs
-    const hide = (
-      <Button key="hide" label="Hide" dimColor onPress={() => update($, hiddenFor, () => key)} />
+    // The count and the buttons keep their width; the summary between them
+    // takes what is left and is cut at its end.
+    const count = (
+      <Box flexShrink={0}>
+        <Text color="warning">{`${countOf(current.needs.length)} `}</Text>
+      </Box>
     )
     const summary = (
-      <Text dimColor wrap="truncate-end">
-        {newest ? `${newest.label}: ${firstLine(newest.text)} ` : ''}
-      </Text>
+      <Box flexGrow={1} flexShrink={1}>
+        <Text dimColor wrap="truncate-end">
+          {newest ? `${newest.label}: ${firstLine(newest.text)}` : ''}
+        </Text>
+      </Box>
+    )
+    const buttons = (first: 'open' | 'show' | 'less') => (
+      <Box flexShrink={0} columnGap={1} marginLeft={1}>
+        {first === 'open' && <Button key="open" label="Open" onPress={() => openPane($)} />}
+        {first === 'show' && <Button key="show" label="Show" onPress={() => update($, isExpanded, () => true)} />}
+        {first === 'less' && <Button key="less" label="Less" onPress={() => update($, isExpanded, () => false)} />}
+        <Button key="hide" label="Hide" dimColor onPress={() => update($, hiddenFor, () => key)} />
+      </Box>
     )
 
-    if (shape.band === 'row') {
+    if (shape.band === 'row' || !(await read($, isExpanded))) {
       return (
         <Box>
-          <Text color="warning">{countOf(current.needs.length)} </Text>
+          {count}
           {summary}
-          <Button key="open" label="Open" onPress={() => openPane($)} />
-          {hide}
-        </Box>
-      )
-    }
-
-    if (!(await read($, isExpanded))) {
-      return (
-        <Box>
-          <Text color="warning">{countOf(current.needs.length)} </Text>
-          {summary}
-          <Button key="show" label="Show" onPress={() => update($, isExpanded, () => true)} />
-          {hide}
+          {buttons(shape.band === 'row' ? 'open' : 'show')}
         </Box>
       )
     }
@@ -325,24 +329,23 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         <Box>
-          <Text color="warning">{countOf(current.needs.length)} </Text>
-          <Button key="less" label="Less" onPress={() => update($, isExpanded, () => false)} />
-          {hide}
+          {count}
+          {buttons('less')}
         </Box>
         {current.needs.map(need => (
           <Box key={`need:${keyOf(need)}`} flexDirection="column">
             <Box>
-              <Button key={`resolve:${keyOf(need)}`} label="Resolve" dimColor onPress={() => resolveHere($, need)} />
-              <Box marginLeft={1}>
-                <Text color="warning">{`${meta([need.label, need.id, need.ref, ageOf(need.at, now)])} `}</Text>
+              <Box flexShrink={0} marginRight={1}>
+                <Button key={`resolve:${keyOf(need)}`} label="Resolve" dimColor onPress={() => resolveHere($, need)} />
               </Box>
-              <Text wrap="truncate-end">{firstLine(need.text)}</Text>
+              <Text color="warning" wrap="truncate-end">
+                {meta([need.label, need.id, need.ref, ageOf(need.at, now)])}
+              </Text>
             </Box>
-            {need.why !== undefined && (
-              <Box marginLeft={2}>
-                <Text dimColor wrap="truncate-end">{`Why: ${need.why}`}</Text>
-              </Box>
-            )}
+            <Box marginLeft={12} flexDirection="column">
+              <Text wrap="truncate-end">{firstLine(need.text)}</Text>
+              {need.why !== undefined && <Text dimColor wrap="truncate-end">{`Why: ${need.why}`}</Text>}
+            </Box>
           </Box>
         ))}
       </Box>
@@ -377,8 +380,8 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column">
-        <Box>
-          <Text bold>{isEveryone ? 'Every session' : 'This session'} </Text>
+        <Box columnGap={1}>
+          <Text bold>{isEveryone ? 'Every session' : 'This session'}</Text>
           <Button
             key="resolved"
             label={isShowing ? 'Hide resolved' : 'Show resolved'}
