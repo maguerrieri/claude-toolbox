@@ -1,0 +1,8 @@
+[
+  { "sessionId": "064d2730-a02f-402d-a56b-b51e807c396e", "id": "064d2730", "name": "claude-toolbox #208: decisions and needs mod" },
+  { "sessionId": "2b5adebb-5083-4c42-8c1c-0d192e1f7216", "id": "2b5adebb", "name": "claude-toolbox #307: model-critique skill" },
+  { "sessionId": "33110d45-2ef7-44b0-ac19-8876d71e2138", "id": "33110d45", "name": "claude-toolbox planning (studio bot)" },
+  { "sessionId": "b55d97c7-d2d7-4968-92fc-11bf386f1ac9", "id": "b55d97c7", "name": "claude-toolbox #295: notifier launchd install" },
+  { "sessionId": "d9495075-5cda-49cc-8040-e34743066ff3", "id": "d9495075", "name": "claude-toolbox #294: ticket-workflow notifier hookup" },
+  { "sessionId": "e81a4c19-3426-4687-8a56-da3e44bdb6b5", "id": "e81a4c19", "name": "claude-toolbox #305: notifier in-place relay wake" }
+]

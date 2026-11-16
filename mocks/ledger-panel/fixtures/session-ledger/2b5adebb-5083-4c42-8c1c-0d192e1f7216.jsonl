@@ -1,0 +1,1 @@
+{"kind":"need","id":"n1","why":"#307: the model-critique method lives in two places that have drifted, so one skill becomes its home","text":"Review PR #315, then run /finish-ticket 307 in this session (claude attach 2b5adebb, say finish)","ref":"maguerrieri/claude-toolbox#315","at":"2026-11-15T21:05:00Z","cwd":"/Users/bot/Developer/claude-toolbox"}

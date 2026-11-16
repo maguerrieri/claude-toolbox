@@ -1,0 +1,1 @@
+{"kind":"need","id":"n1","why":"#290: a comment on a bot PR should reach the session that opened it; #305 wakes a live one in place","text":"Review PR #306, then run /finish-ticket 305 in this session (claude attach e81a4c19, say finish)","ref":"maguerrieri/claude-toolbox#306","at":"2026-11-15T18:40:00Z","cwd":"/Users/bot/Developer/claude-toolbox"}

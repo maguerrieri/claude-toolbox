@@ -1,0 +1,22 @@
+{
+  "name": "ledger-panel-mock",
+  "version": "0.1.0",
+  "description": "Throwaway mock of four ledger panel options for #319: not in the marketplace, never writes a ledger",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "variant": {
+      "type": "string",
+      "title": "Panel option",
+      "description": "pane: a pane on demand (this session). status: that pane plus a status line. band: a band row that opens a pane of every session. inline: a band row that expands in place (every session).",
+      "default": "pane",
+      "options": ["pane", "status", "band", "inline"]
+    },
+    "source": {
+      "type": "string",
+      "title": "Ledger source",
+      "description": "fixtures: the ledgers bundled with the mock. live: your own ledgers (~/.claude/session-ledger, or CLAUDE_SESSION_LEDGER_DIR), read only.",
+      "default": "fixtures",
+      "options": ["fixtures", "live"]
+    }
+  }
+}
