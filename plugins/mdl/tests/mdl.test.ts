@@ -360,6 +360,23 @@ test('a refused [1m] variant holds the effort back, though the family matches', 
   expect(world.logs).toHaveLength(1)
 })
 
+test('a refused [1m] variant holds the effort back on another model, though the setting names it', {
+  options: { ...CONFIGURED, bigModel: 'opus[1m]' },
+}, async ($, on) => {
+  const clock = mock.clock(on)
+  // Saved opus[1m], but this session runs Sonnet (say, --model sonnet).
+  const world = engine($, on, 'claude-sonnet-5-5', {
+    setting: 'opus[1m]',
+    accepts: model => model !== 'opus[1m]',
+  })
+  await start($)
+
+  await mdl($, 'big')
+  await clock.settle()
+  expect(world.runs).toEqual([{ command: 'model', args: 'opus[1m]' }])
+  expect(world.logs).toHaveLength(1)
+})
+
 test('a [1m] variant /model takes sets the effort, with no switch to see', {
   options: { ...CONFIGURED, bigModel: 'opus[1m]' },
 }, async ($, on) => {
@@ -378,20 +395,41 @@ test('a [1m] variant /model takes sets the effort, with no switch to see', {
   expect(world.logs).toEqual([])
 })
 
-test('alreadyOn: a family alias goes by the session model, whatever the setting', () => {
-  expect(alreadyOn('opus', 'claude-opus-5-5', 'sonnet')).toBe(true)
-  expect(alreadyOn('Opus', 'us.anthropic.claude-opus-5-5-v1:0', undefined)).toBe(true)
-  expect(alreadyOn('opus', 'claude-opus-5-5@20261001', undefined)).toBe(true)
-  // Refused, though the setting already names it.
-  expect(alreadyOn('opus', 'claude-sonnet-5-5', 'opus')).toBe(false)
-})
+// Whether a /model that fired no switch found the session already there, as
+// [asked, the session's model, the model setting, expected].
+const ALREADY_ON: [string, string, string | undefined, boolean][] = [
+  // A plain family alias: the session's model decides, whatever the setting.
+  ['opus', 'claude-opus-5-5', 'sonnet', true],
+  ['Opus', 'us.anthropic.claude-opus-5-5-v1:0', undefined, true],
+  ['opus', 'claude-opus-5-5@20261001', undefined, true],
+  ['opus', 'claude-sonnet-5-5', 'opus', false],
+  // A plain model ID: the session's model decides.
+  ['claude-opus-5-5', 'claude-opus-5-5', 'sonnet', true],
+  ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', false],
+  ['fabel', 'claude-opus-5-5', 'opus', false],
+  // A [1m] variant: on the family, and the setting holds the variant.
+  ['opus[1m]', 'claude-opus-5-5', 'opus[1m]', true],
+  ['opus[1m]', 'claude-opus-5-5', 'opus', false],
+  ['opus[1m]', 'claude-sonnet-5-5', 'opus[1m]', false],
+  ['claude-opus-5-5[1m]', 'claude-opus-5-5', 'claude-opus-5-5[1m]', true],
+  // opusplan: on Opus, and the setting holds opusplan.
+  ['opusplan', 'claude-opus-5-5', 'opusplan', true],
+  ['opusplan', 'claude-opus-5-5', 'opus', false],
+  ['opusplan', 'claude-sonnet-5-5', 'opusplan', false],
+  // default and best: the setting alone; default is no setting.
+  ['default', 'claude-opus-5-5', undefined, true],
+  ['default', 'claude-opus-5-5', 'sonnet', false],
+  ['best', 'claude-fable-5-2', 'best', true],
+  ['best', 'claude-fable-5-2', 'fable', false],
+]
 
-test('alreadyOn: anything else goes by the model ID, then the setting', () => {
-  expect(alreadyOn('claude-opus-5-5', 'claude-opus-5-5', 'sonnet')).toBe(true)
-  expect(alreadyOn('opus[1m]', 'claude-opus-5-5', 'opus[1m]')).toBe(true)
-  expect(alreadyOn('opus[1m]', 'claude-opus-5-5', 'opus')).toBe(false)
-  expect(alreadyOn('opusplan', 'claude-opus-5-5', 'opusplan')).toBe(true)
-  expect(alreadyOn('default', 'claude-opus-5-5', undefined)).toBe(true)
-  expect(alreadyOn('default', 'claude-opus-5-5', 'sonnet')).toBe(false)
-  expect(alreadyOn('fabel', 'claude-opus-5-5', 'opus')).toBe(false)
+test('alreadyOn trusts the session model first, then the setting for what it cannot show', () => {
+  for (const [asked, current, setting, expected] of ALREADY_ON) {
+    expect([asked, current, setting, alreadyOn(asked, current, setting)]).toEqual([
+      asked,
+      current,
+      setting,
+      expected,
+    ])
+  }
 })

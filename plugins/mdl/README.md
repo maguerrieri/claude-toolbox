@@ -96,11 +96,13 @@ hook replies, and a `$.clock.after(0, …)` timer runs `/model`, checks that the
 model took, and only then runs `/effort`. `/model`'s result carries no text, so
 the check reads the `PostModelSwitch` event, which fires only when the model
 really changes. With none, the session was either already on that model or
-`/model` refused it. For a plain family alias (`opus`, `sonnet`, `haiku`,
-`fable`) the session's model decides: it's of that family or it isn't. For
-anything else (a full ID, a `[1m]` variant, `best`, `opusplan`, `default`) a
-session model ID that matches exactly settles it, and past that the model
-setting read after `/model` decides, since `/model` saves what it takes.
+`/model` refused it. The session's model is the evidence wherever it shows
+anything: a session on another model, or another family, isn't on the preset,
+whatever the setting says. A plain family alias (`opus`, `sonnet`, `haiku`,
+`fable`) or model ID needs nothing more. What the session's model can't tell
+apart (a `[1m]` variant from its plain model, `opusplan` from Opus, `default`
+and `best`) also needs the model setting, read after `/model`, to hold the name
+as asked, since `/model` saves what it takes.
 `/effort` has to wait for that answer, since a plugin's own
 `command.run` hooks don't see the commands it runs, so it can't queue both and
 hold `/effort` back from a hook.

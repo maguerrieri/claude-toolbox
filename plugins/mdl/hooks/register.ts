@@ -26,10 +26,14 @@ type Size = (typeof SIZES)[number]
 // What /effort takes, less its `ultracode` switch, which isn't a level.
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'] as const
 
-// The aliases /model takes that name a model family: a session already on a
-// model of that family (an ID holding `claude-opus-`, first-party or a cloud
-// provider's) is on the alias, and /model then changes nothing.
+// The aliases /model takes that name a model family. A session on a model of
+// that family (an ID holding `claude-opus-`, first-party or a cloud
+// provider's) is on the alias.
 const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable'] as const
+
+// The aliases whose model the session's model ID can't show: `default` and
+// `best` name whichever model the account resolves them to.
+const OPAQUE = ['default', 'best'] as const
 
 type Preset = { model: string; effort: string }
 
@@ -98,18 +102,33 @@ function requested(asked: string, requestedModel: string | null): boolean {
   return requestedModel.toLowerCase() === asked.toLowerCase()
 }
 
+// What the session's model shows of the name /mdl asked for: whether the
+// session is on that model ID, or on the family an alias names (`opusplan`
+// runs on Opus, and a `[1m]` variant on its plain model); undefined for a name
+// it can't show at all.
+function shows(asked: string, current: string): boolean | undefined {
+  const base = asked.replace(/\[1m\]$/, '')
+  const family = base === 'opusplan' ? 'opus' : base
+  if ((FAMILIES as readonly string[]).includes(family)) return current.includes(`claude-${family}-`)
+  if ((OPAQUE as readonly string[]).includes(base)) return undefined
+
+  return base === current
+}
+
 // Whether a /model that fired no switch found the session already on the
-// model /mdl asked for, rather than refusing it. For a plain family alias the
-// session's model decides: it's of that family or it isn't, whatever the
-// setting says. For anything else, the session's model ID can match exactly;
-// past that, the model setting read after /model decides, since /model saves
-// what it takes: that's how a [1m] variant, `best` or `opusplan` shows, and
-// `default` is no setting at all.
+// model /mdl asked for, rather than refusing it. The session's model is the
+// evidence wherever it shows anything, so a session on another model is never
+// on it, whatever the setting says. A plain family alias or model ID needs
+// nothing more. What the session's model can't tell apart (a `[1m]` variant
+// from its plain model, `opusplan` from Opus, `default` and `best`) also needs
+// the model setting, read after /model, to hold the name as asked: /model
+// saves what it takes, and `default` is no setting at all.
 export function alreadyOn(asked: string, current: string, setting: unknown): boolean {
   const want = asked.toLowerCase()
-  const now = current.toLowerCase()
-  if ((FAMILIES as readonly string[]).includes(want)) return now.includes(`claude-${want}-`)
-  if (want === now) return true
+  const active = shows(want, current.toLowerCase())
+  if (active === false) return false
+  const plain = active === true && !want.endsWith('[1m]') && want !== 'opusplan'
+  if (plain) return true
   const saved = typeof setting === 'string' && setting.trim() !== '' ? setting.trim() : 'default'
 
   return saved.toLowerCase() === want
