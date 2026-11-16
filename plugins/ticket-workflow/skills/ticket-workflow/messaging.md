@@ -225,10 +225,12 @@ content, which the child records before landing them, and lifts no hold.)
   line, and PR comments, which are read as review feedback. A comment
   `scripts/owner-comment.sh` accepts as the owner's (by an admin on the
   repo, while the tree's login isn't one, and edited since by no login but
-  such an admin) is read as the owner's request
-  instead, about that PR's content only (the profile's `REVIEW_BOT`, *The
-  owner's comments*), so the owner's own account can steer a child's PR from
-  a comment. What's taken only from the tree's own login (the records and
+  such an admin) is read as the owner's request instead, about that PR's
+  content only (the profile's `REVIEW_BOT`, *The owner's comments*), so the
+  owner's own account can steer a local child's PR from a comment. A cloud
+  child takes no comment as the owner's, since its proxy refuses the GraphQL
+  read of the comment's last editor. What's taken only from the tree's own
+  login (the records and
   cloud `request:` comments of the profile's `REVIEW_BOT`, *Owner requests*,
   and EPIC Step 6's `request:` markers) isn't taken from another login. To
   act inside the tree, the owner attaches to one of its sessions as its user.

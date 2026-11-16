@@ -65,11 +65,17 @@ graphql)
 		echo 'HTTP 403: GitHub GraphQL is not available from Claude Code sessions' >&2
 		exit 1
 	}
-	answer "$(jq -n --arg t "${STUB_GQL_TYPE-IssueComment}" --arg et "${STUB_EDITOR_TYPE-User}" \
-		--arg el "${STUB_EDITOR:-}" --arg at "${STUB_EDITED_AT:-}" --arg body "${STUB_GQL_BODY-the owner asks}" \
-		'{data: {node: {__typename: $t,
-		  editor: (if $el == "" or $et == "" then null else {__typename: $et, login: $el} end),
-		  lastEditedAt: (if $at == "" then null else $at end), body: $body}}}')"
+	# The edit history's newest entry mirrors editor and lastEditedAt unless
+	# STUB_HIST_* say otherwise; STUB_HIST_EMPTY gives an empty history.
+	et=${STUB_EDITOR_TYPE-User} el=${STUB_EDITOR:-} at=${STUB_EDITED_AT:-}
+	answer "$(jq -n --arg t "${STUB_GQL_TYPE-IssueComment}" --arg et "$et" --arg el "$el" --arg at "$at" \
+		--arg ht "${STUB_HIST_TYPE-$et}" --arg hl "${STUB_HIST_EDITOR-$el}" --arg hat "${STUB_HIST_AT-$at}" \
+		--arg empty "${STUB_HIST_EMPTY:-}" --arg body "${STUB_GQL_BODY-the owner asks}" \
+		'def actor($type; $login): if $login == "" or $type == "" then null else {__typename: $type, login: $login} end;
+		 {data: {node: {__typename: $t, editor: actor($et; $el),
+		  lastEditedAt: (if $at == "" then null else $at end),
+		  userContentEdits: {nodes: (if $at == "" or $empty != "" then [] else [{editedAt: $hat, editor: actor($ht; $hl)}] end)},
+		  body: $body}}}')"
 	;;
 *) echo "unexpected endpoint $endpoint" >&2; exit 1 ;;
 esac
@@ -126,6 +132,19 @@ record 1 'an edit by a Bot is never checked by login, even the owner'"'"'s' \
 record 1 'an edit GitHub names no editor for (a deleted account)' \
 	"$(STUB_EDITOR_TYPE= STUB_EDITED_AT=$edited run "$comment")"
 
+# The edit history's newest entry must agree with editor and lastEditedAt, so
+# an editor field that lagged behind a later edit fails closed.
+record 1 'editor says the owner, but the newest edit is a collaborator'"'"'s' \
+	"$(STUB_EDITOR=maguerrieri STUB_HIST_EDITOR=mate STUB_EDITED_AT=$edited STUB_GQL_BODY='drop the tests' run "$comment")"
+record 1 'the newest edit is at another time than lastEditedAt' \
+	"$(STUB_EDITOR=maguerrieri STUB_EDITED_AT=$edited STUB_HIST_AT=2026-11-03T00:00:00Z run "$comment")"
+record 1 'the newest edit is by a Bot of the same login' \
+	"$(STUB_EDITOR=maguerrieri STUB_HIST_TYPE=Bot STUB_EDITED_AT=$edited run "$comment")"
+record 1 'an edited item with no edit history' \
+	"$(STUB_EDITOR=maguerrieri STUB_EDITED_AT=$edited STUB_HIST_EMPTY=1 run "$comment")"
+record '0 x' 'the history naming the editor in another case still agrees' \
+	"$(STUB_EDITOR=maguerrieri STUB_HIST_EDITOR=MaGuerrieri STUB_EDITED_AT=$edited STUB_GQL_BODY=x run "$comment")"
+
 # The text it prints is the one its editor check covered, from GraphQL.
 record '0 the edited text' 'the printed text is GraphQL'"'"'s, read with the editor' \
 	"$(STUB_BODY='the REST text' STUB_GQL_BODY='the edited text' STUB_EDITOR=maguerrieri STUB_EDITED_AT=$edited run "$comment")"
@@ -152,6 +171,7 @@ record '3 x' 'and edited by that same login' \
 	"$(STUB_ME=maguerrieri STUB_PERMS=$same STUB_EDITOR=maguerrieri STUB_EDITED_AT=$edited STUB_GQL_BODY=x run "$comment")"
 record 1 'and edited by another admin' \
 	"$(STUB_ME=maguerrieri STUB_PERMS=$same STUB_EDITOR=coadmin STUB_EDITED_AT=$edited run "$comment")"
+record 0 'which needs no permission read of the editor' "$(calls 'collaborators/coadmin/')"
 record 1 'and edited by a write collaborator' \
 	"$(STUB_ME=maguerrieri STUB_PERMS=$same STUB_EDITOR=mate STUB_EDITED_AT=$edited run "$comment")"
 # The shared account below admin (an owner with write on an org repo): exit 3
