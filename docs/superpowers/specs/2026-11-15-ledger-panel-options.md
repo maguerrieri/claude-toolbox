@@ -6,6 +6,11 @@ build a glanceable view across sessions. This doc offers four ways that view
 could work, each a working mock, so the owner can pick one before #316 builds
 it. It also says what the mod API can and can't do for toggling a panel.
 
+**The owner's pick (2026-11-16): option 4, `inline`, for this session only for
+now.** #330 built it in the `ledger` plugin as `/ledger-band` (the session-ledger
+design's *The band* has what it kept), and the view across sessions stays
+#316. The recommendation below, option 3, wasn't taken.
+
 Everything here was checked on Claude Code **2.1.325**, in a 160×50 terminal
 in the fullscreen layout, by driving `claude --plugin-dir mocks/ledger-panel`
 in a pseudo-terminal and reading its screen. The captures below are that
@@ -270,4 +275,5 @@ Questions for the owner:
 - The mock reads every ledger file itself. #316's `list --all` and its error
   handling (an unreadable ledger, a hanging `claude agents`) are #316's, as
   the session-ledger design's *Deferred to #316* says.
-- Once the owner picks, record the choice on #316.
+- Once the owner picks, record the choice on #316. (They picked option 4,
+  above.)

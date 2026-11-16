@@ -65,10 +65,17 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   credential), each with a one-line why (the history and goal of the work)
   and the exact step that unblocks it: the `ledger:record` skill (the rules for
   recording) plus `/ledger` (show the ledger, or resolve a need).
+  While the session has an open need, a band above the prompt shows how many
+  and the newest; Show (or `/ledger-band`) expands it in place into each one,
+  with its why and a Resolve button, Less (or `/ledger-band` again) folds it,
+  and Hide quiets it until the open needs change. A plugin can't bind a key,
+  so for one add a chord for the command to `~/.claude/keybindings.json`
+  (`ctrl+x l` is free by default):
+  `{ "bindings": [{ "context": "Chat", "bindings": { "ctrl+x l": "command:ledger-band" } }] }`.
   `ticket-workflow`'s sessions record into it and start their "status?"
   answers from it. Local sessions only: the ledgers are files under
-  `~/.claude/session-ledger/`. A glanceable view across every session's
-  ledger is #316.
+  `~/.claude/session-ledger/`. The band shows this session's ledger alone; a
+  glanceable view across every session's ledger is #316.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —

@@ -214,6 +214,13 @@ points (`/role`, `/start-ticket`, the `gm` commands) are still plugin
 commands, so bare they work only where a user-level copy in
 `~/.claude/commands/` stands in (#322).
 
+A command a plugin's hooks module (a mod) registers with
+`$.command.register` is a third kind, and it is bare: `ledger`'s band
+toggle is `/ledger-band`, the `init` event below lists it as `ledger-band`
+with no prefix, and a headless `claude -p "/ledger-band"` runs it (checked on
+2.1.325, #330). Give it a name no skill or command of the plugin has, as
+above.
+
 To check a plugin's registrations, run a headless session from a directory
 outside the repo, so no settings enable the installed copy:
 `claude -p --output-format stream-json --verbose --setting-sources project
