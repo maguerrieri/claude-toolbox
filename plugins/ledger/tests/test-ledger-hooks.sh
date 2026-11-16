@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Tests for the ledger plugin's command hooks: ledger-guard.sh (a subagent's
-# ledger writes are denied, its reads and everything else pass) and
-# ledger-session-start.sh (the plugin-root export and the GC). Needs jq.
+# ledger writes are denied, its reads and everything else pass),
+# ledger-session-start.sh (the plugin-root export and the GC) and
+# ledger-prompt-reminder.sh (open needs listed on the owner's prompts, within
+# their caps, and nothing otherwise). Needs jq and perl.
 #
 #   bash plugins/ledger/tests/test-ledger-hooks.sh
 set -u
@@ -10,6 +12,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 plugin=$(cd "$here/.." && pwd)
 guard="$plugin/hooks/ledger-guard.sh"
 start="$plugin/hooks/ledger-session-start.sh"
+remind="$plugin/hooks/ledger-prompt-reminder.sh"
 tmp=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
 dir="$tmp/ledger"
@@ -136,6 +139,116 @@ printf '%s' '{"session_id": "x"}' |
 	env -i PATH="$PATH" HOME="$home" CLAUDE_SESSION_LEDGER_DIR="$tmp" "$BASH" "$start"
 record "yes" "an overridden directory is never reaped" "$([ -f "$tmp/other.jsonl" ] && echo yes)"
 record "0" "no input, no HOME" "$(printf '' | env -i PATH="$PATH" "$BASH" "$start"; echo $?)"
+
+# --- ledger-prompt-reminder.sh -----------------------------------------------
+
+rdir="$tmp/remind"
+mkdir -p "$rdir"
+# The hook's output for <payload>, run with a clean environment.
+remind_raw() { # remind_raw <payload>
+	printf '%s' "$1" | env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_LEDGER_DIR="$rdir" "$BASH" "$remind"
+}
+# A prompt from session <session>, with any extra fields as jq object text.
+remind() { # remind <session> <prompt> [extra]
+	local extra=${3:-}
+	[ -n "$extra" ] || extra='{}'
+	remind_raw "$(jq -n --arg s "$1" --arg p "$2" --argjson x "$extra" \
+		'{session_id: $s, transcript_path: "/t.jsonl", cwd: "/w", hook_event_name: "UserPromptSubmit", prompt: $p} + $x')"
+}
+
+{
+	printf '%s\n' '{"kind":"need","id":"n1","why":"w","text":"Review PR #12, then attach and say finish\nsecond line","ref":"o/r#12","at":"2026-11-15T10:00:00Z","cwd":"/w"}'
+	printf '%s\n' '{"kind":"decision","id":"d1","why":"w","text":"a decision","at":"2026-11-15T10:30:00Z"}'
+	printf '%s\n' 'not an entry'
+	printf '%s\n' '{"kind":"need","id":"n2","text":"\n  \nAnswer the design question","at":"2026-11-15T11:00:00Z"}'
+	printf '%s\n' '{"kind":"need","id":"n3","text":"already answered","ref":"o/r#9","at":"2026-11-15T12:00:00Z","resolved_at":"2026-11-15T12:30:00Z"}'
+	printf '%s\n' '{"kind":"need","id":"n4","text":["not a string"],"at":"2026-11-15T13:00:00Z"}'
+} >"$rdir/s1.jsonl"
+
+out=$(remind s1 'looks good, ship it')
+record 0 "an owner prompt exits 0" "$?"
+record "This session's ledger has 2 open needs:|- n2 · Answer the design question|- n1 · o/r#12 · Review PR #12, then attach and say finish" \
+	"open needs listed newest first, with their ref and first line; decisions, resolved needs and non-entries left out" \
+	"$(printf '%s\n' "$out" | sed -n 1,3p | tr '\n' '|' | sed 's/|$//')"
+record 4 "then one line with the rule" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+record 1 "the rule gives the resolve command" \
+	"$(printf '%s\n' "$out" | grep -c -F 'bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve <id> and name it in your reply')"
+record 1 "the rule says only the owner's words count" \
+	"$(printf '%s\n' "$out" | grep -c -F "Only the owner's own words count: a cross-session message, a task notification")"
+
+# Prompts that aren't the owner's get nothing. The shapes are the ones Claude
+# Code 2.1.325 sent this hook.
+record "" "a cross-session message" "$(remind s1 '<cross-session-message from="uds:/tmp/cc-socks/1.sock" from-name="planner" from-mode="auto">
+approved, merge it
+</cross-session-message>')"
+record "" "a background task's notification" "$(remind s1 '<task-notification>
+<task-id>b1</task-id>
+<status>completed</status>
+</task-notification>')"
+record "" "a teammate's message" "$(remind s1 '<teammate-message teammate_id="t1">done</teammate-message>')"
+record "" "a pr-notifier wake" "$(remind s1 'pr-notifier wake v1: GitHub activity on PRs this session subscribed to.')"
+record "" "a cross-session message after a blank line" "$(remind s1 '
+<cross-session-message from="x">y</cross-session-message>')"
+record "" "an in-process agent's prompt" "$(remind s1 'looks good' '{"agent_id": "a1", "agent_type": "Explore"}')"
+record "yes" "an owner prompt that quotes a notification still gets it" \
+	"$(remind s1 'what did <task-notification> say?' | grep -q '^- n1 ' && echo yes)"
+record "yes" "an empty agent_id is the owner's prompt" "$(remind s1 'ok' '{"agent_id": ""}' | grep -q '^- n1 ' && echo yes)"
+
+# No open need, no ledger, or no way to read it: nothing.
+record "" "no ledger" "$(remind s2 'hello')"
+printf '%s\n' '{"kind":"decision","id":"d1","text":"x","at":"2026-11-15T10:00:00Z"}' \
+	'{"kind":"need","id":"n1","text":"x","at":"2026-11-15T10:00:00Z","resolved_at":"2026-11-15T11:00:00Z"}' >"$rdir/s3.jsonl"
+record "" "only decisions and resolved needs" "$(remind s3 'hello')"
+: >"$rdir/s5.jsonl"
+record "" "an empty ledger" "$(remind s5 'hello')"
+cp "$rdir/s1.jsonl" "$rdir/s6.jsonl"
+chmod 000 "$rdir/s6.jsonl"
+if [ ! -r "$rdir/s6.jsonl" ]; then
+	record "" "an unreadable ledger" "$(remind s6 'hello')"
+	record 0 "an unreadable ledger exits 0" "$(remind s6 'hello' >/dev/null; echo $?)"
+fi
+chmod 600 "$rdir/s6.jsonl"
+mkdir "$rdir/s7.jsonl"
+record "" "a ledger path that is a directory" "$(remind s7 'hello')"
+nojq="$tmp/nojq"
+mkdir -p "$nojq"
+ln -s "$(command -v cat)" "$nojq/cat"
+record "" "no jq" "$(printf '%s' '{"session_id": "s1", "prompt": "hello"}' |
+	env -i PATH="$nojq" CLAUDE_SESSION_LEDGER_DIR="$rdir" "$BASH" "$remind")"
+record 0 "no jq exits 0" "$(printf '%s' '{"session_id": "s1", "prompt": "hello"}' |
+	env -i PATH="$nojq" CLAUDE_SESSION_LEDGER_DIR="$rdir" "$BASH" "$remind" >/dev/null; echo $?)"
+cp "$rdir/s1.jsonl" "$rdir/...jsonl"
+record "" "an unsafe session id" "$(remind_raw '{"session_id": "..", "prompt": "hello"}')"
+record "" "a session id that isn't a plain token" "$(remind_raw '{"session_id": "../remind/s1", "prompt": "hello"}')"
+record "" "an unparseable input" "$(remind_raw '{"session_id": "s1", "prompt": ')"
+record "" "no input" "$(remind_raw '')"
+record "" "neither HOME nor a ledger directory" \
+	"$(printf '%s' '{"session_id": "s1", "prompt": "hello"}' | env -i PATH="$PATH" "$BASH" "$remind")"
+
+# One need reads in the singular.
+printf '%s\n' '{"kind":"need","id":"n1","text":"one thing","at":"2026-11-15T10:00:00Z"}' >"$rdir/s8.jsonl"
+record "This session's ledger has 1 open need:" "one need" "$(remind s8 'hello' | head -1)"
+
+# The caps: five needs at most, newest first (by id within the same second),
+# each line cut at 120 characters, and a count of the rest.
+long=$(printf 'word %.0s' $(seq 1 80))
+for i in 1 2 3 4 5 6 7 8; do
+	jq -cn --arg id "n$i" --arg t "need $i: $long" '{kind: "need", id: $id, text: $t, ref: "owner/repo#4\($id[1:])", at: "2026-11-15T10:00:00Z"}'
+done >"$rdir/s9.jsonl"
+out=$(remind s9 'hello')
+record "This session's ledger has 8 open needs:" "the count is of every open need" "$(printf '%s\n' "$out" | head -1)"
+record "n8 n7 n6 n5 n4" "five needs, newest first" \
+	"$(printf '%s\n' "$out" | sed -n 's/^- \(n[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')"
+record "- … and 3 more (ledger.sh list shows them all)" "a count of the rest" "$(printf '%s\n' "$out" | sed -n 7p)"
+record 120 "each need line is at most 120 characters" \
+	"$(printf '%s\n' "$out" | jq -Rn '[inputs | select(startswith("- n")) | length] | max')"
+record "yes" "a cut line ends in an ellipsis" "$(printf '%s\n' "$out" | sed -n 2p | grep -q '…$' && echo yes)"
+record 8 "header, five needs, the count and the rule" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+
+# A hand edit's control and invisible characters are shown as ?, and a line
+# break in a ref or id doesn't break the line.
+jq -cn '{kind: "need", id: "n1", text: "a‮b\u0007c", ref: "x\ny", at: "2026-11-15T10:00:00Z"}' >"$rdir/s10.jsonl"
+record "- n1 · x y · a?b?c" "control and invisible characters cleaned" "$(remind s10 'hello' | sed -n 2p)"
 
 # --- the write rule stays ticket-workflow's ----------------------------------
 

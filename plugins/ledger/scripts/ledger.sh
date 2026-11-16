@@ -313,13 +313,16 @@ fi
 [ "$has_ref" = no ] || normalize_ref
 
 # What counts as an entry, for every read and every resolve: is-entry.jq
-# beside this script, which the SessionStart hook's reaping reads too.
-# Anything else a hand edit left is skipped, so one bad line can't break a
-# listing, and a resolve leaves it as it is.
+# beside this script, which the prompt-reminder hook reads too. Anything else
+# a hand edit left is skipped, so one bad line can't break a listing, and a
+# resolve leaves it as it is.
 script_dir=${BASH_SOURCE[0]%/*}
 [ "$script_dir" != "${BASH_SOURCE[0]}" ] || script_dir=.
 entry_def=$(cat "$script_dir/is-entry.jq" 2>/dev/null) || fail 'is-entry.jq is missing beside the script'
 entry_filter="$entry_def"' fromjson? // empty | select(is_entry)'
+# How a view shows an entry's characters and orders entries: show.jq beside
+# this script, which the prompt-reminder hook reads too.
+show_def=$(cat "$script_dir/show.jq" 2>/dev/null) || fail 'show.jq is missing beside the script'
 
 # entries: this session's entries, one compact JSON object per line.
 entries() {
@@ -375,14 +378,12 @@ unlock() {
 
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-# The jq helpers the listing uses: a date in local time, an entry's heading
-# line, its Why line and its indented text, control characters shown as ? (a
-# hand-edited file may hold one), and newest-first order.
-jq_defs='
-def clean: gsub("[\u0001-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u00ad\u061c\u180e\ufff9-\ufffb\udb40\udc00-\udb40\udc7f]"; "?");
+# The jq helpers the listing uses: show.jq's (control characters shown as ?,
+# since a hand-edited file may hold one, and newest-first order), then a date
+# in local time, an entry's heading line, its Why line and its indented text.
+jq_defs="$show_def"'
 def when: (.at | (fromdateiso8601? // null)) as $t
 	| if $t == null then "?" else ($t | strflocaltime("%Y-%m-%d %H:%M")) end;
-def num: (.id[1:] | tonumber? // 0);
 def heading: ([.id, when] + (if (.ref | type) == "string" then [.ref] else [] end))
 	| map(clean) | join(" · ");
 def why: if (.why | type) == "string" then ["    Why: " + (.why | split("\n") | join(" ") | clean)] else [] end;
@@ -483,7 +484,7 @@ list)
 	# fails without first claiming it has no entries.
 	read_entries=$(entries) || fail 'the ledger could not be read'
 	printf '%s\n' "$read_entries" | jq -rs "$jq_defs"'
-		sort_by(.at, num) | reverse
+		newest_first
 		| if length == 0 then "This session'"'"'s ledger has no entries." else
 			([.[] | select(.kind == "need" and .resolved_at == null)] | section("Open needs")),
 			([.[] | select(.kind == "decision")] | section("Decisions")),

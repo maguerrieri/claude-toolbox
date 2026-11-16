@@ -1,5 +1,5 @@
 {
-  "description": "Session ledger: export the plugin root so the docs can run scripts/ledger.sh, reap ledgers untouched for 90 days, and keep in-process subagents from writing their parent's ledger. The module is the band above the prompt of this session's open needs, and /ledger-band.",
+  "description": "Session ledger: export the plugin root so the docs can run scripts/ledger.sh, reap ledgers untouched for 90 days, remind the session of its open needs on each of the owner's prompts so it resolves the ones the owner answered, and keep in-process subagents from writing their parent's ledger. The module is the band above the prompt of this session's open needs, and /ledger-band.",
   "modules": [
     "./register.tsx"
   ],
@@ -11,6 +11,16 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ledger-session-start.sh\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/ledger-prompt-reminder.sh\""
           }
         ]
       }
