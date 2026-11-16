@@ -70,15 +70,17 @@ open needs came later, in #330 (*The band*, below).
   search, which the script refuses (checked on 2.1.325). Resolve is the
   owner's, as `/ledger resolve` is: it runs `ledger.sh resolve <id>` from the
   plugin's folder (the session's own may be a removed worktree, where no child
-  starts) with `CLAUDE_CODE_SESSION_ID` set to this session, so the script
-  stays the one writer, and it refuses a need the
+  starts) with `CLAUDE_CODE_SESSION_ID` set to this session and
+  `CLAUDE_SESSION_LEDGER_DIR` to the directory the band read, made absolute,
+  so the script stays the one writer and writes the ledger the band showed,
+  and it refuses a need the
   band showed before a `/clear` (an earlier session's). It has no hotkey, since
   a digit typed into an empty prompt presses a band button, and a need id the
   script would refuse gets no button. The toggle is a command the module
   registers, which a bare `/ledger-band` reaches; a mod can't bind a key, so
   the README gives the `keybindings.json` line for one. Its tests run under
-  `claude plugin test plugins/ledger`, in CI on the same pinned build as
-  validate.
+  `claude plugin test plugins/ledger`, and CI runs them and validate on the
+  build the band was checked on, pinned (2.1.325).
 - **One JSONL file per session**, keyed like the role marker:
   `~/.claude/session-ledger/<session id>.jsonl` (`CLAUDE_SESSION_LEDGER_DIR`
   overrides it for tests). The session id is `CLAUDE_CODE_SESSION_ID`, else the

@@ -102,18 +102,20 @@ async function readLedgers($: EngineInterface): Promise<Ledgers | undefined> {
   return { [me]: entries }
 }
 
-async function refresh($: EngineInterface): Promise<void> {
+// A refresh answers the view it read (undefined when the read failed), whether
+// or not it published it, so a caller that needs this moment's needs has them.
+async function refresh($: EngineInterface): Promise<LedgerView | undefined> {
   latest += 1
   const turn = latest
   const ledgers = await readLedgers($)
   const now = await $.clock.now()
+  const next = ledgers === undefined ? undefined : viewOf(ledgers)
   // The last await before the writes: past here no later refresh can have
   // begun unseen, so this one's snapshot is the newest.
   if (turn !== latest) {
-    return
+    return next
   }
-  if (ledgers !== undefined) {
-    const next = viewOf(ledgers)
+  if (next !== undefined) {
     const json = JSON.stringify(next)
     if (json !== shown) {
       await update($, view, () => next)
@@ -132,19 +134,21 @@ async function refresh($: EngineInterface): Promise<void> {
   if ((await read($, minute)) !== thisMinute) {
     await update($, minute, () => thisMinute)
   }
+
+  return next
 }
 
 // A refresh that fails waits for the next tick.
-async function refreshQuietly($: EngineInterface): Promise<void> {
-  await refresh($).catch(() => undefined)
+async function refreshQuietly($: EngineInterface): Promise<LedgerView | undefined> {
+  return refresh($).catch(() => undefined)
 }
 
 // The toggle: a band that shows its list folds; one that is folded or hidden
-// shows its list. It reads a fresh view, so it never expands needs already
-// resolved.
+// shows its list. It judges on its own refresh's read, even one a poll
+// overtook (which publishes the newer view itself), so it never expands needs
+// already resolved; only a failed read falls back to the view last shown.
 async function toggle($: EngineInterface): Promise<string | undefined> {
-  await refreshQuietly($)
-  const current: LedgerView = await read($, view)
+  const current: LedgerView = (await refreshQuietly($)) ?? (await read($, view))
   if (current.needs.length === 0) {
     return 'This session needs nothing from you.'
   }
@@ -176,12 +180,26 @@ async function resolveNeed($: EngineInterface, need: LedgerNeed): Promise<void> 
 
     return
   }
+  // The directory the band read, made absolute, so the script, which runs
+  // elsewhere (below), writes the ledger the band showed: a relative
+  // CLAUDE_SESSION_LEDGER_DIR is the session directory's.
+  const dir = await ledgerDir($)
+  const absolute = dir?.startsWith('/')
+    ? dir
+    : dir === undefined
+      ? undefined
+      : (await $.fs.stat(dir, { resolve: true }).catch(() => undefined))?.realPath
+  if (absolute === undefined) {
+    $.ui.toast(`Couldn't resolve ${need.id}: the ledger directory could not be found`)
+
+    return
+  }
   const ran = await $.process
     .run(['bash', `${$.plugin.root}/scripts/ledger.sh`, 'resolve', need.id], {
       // The plugin's own folder: the session's directory may be gone (a
       // worktree FINISH removed), and a child can't start in one.
       cwd: $.plugin.root,
-      env: { CLAUDE_CODE_SESSION_ID: me },
+      env: { CLAUDE_CODE_SESSION_ID: me, CLAUDE_SESSION_LEDGER_DIR: absolute },
       timeoutMs: 15_000,
     })
     .catch((error: unknown) => ({ exitCode: 1, stderr: String(error) }))
@@ -236,6 +254,10 @@ export const register: Register = on => {
     }
     const { Box, Button, Text } = $.ui.resolve(e)
     const [newest] = current.needs
+    // A row shows one line cut at the band's width, so hand the engine no
+    // more than that: a need's text can run to 4000 bytes on one line, and
+    // past a tree's 100,000 characters the engine drops later rows' buttons.
+    const fit = (text: string): string => Array.from(firstLine(text)).slice(0, Math.max(e.props.bodyColumns, 1)).join('')
     // The count and the buttons keep their width; the summary between them
     // takes what is left and is cut at its end.
     const count = (
@@ -257,7 +279,7 @@ export const register: Register = on => {
           {count}
           <Box flexGrow={1} flexShrink={1}>
             <Text dimColor wrap="truncate-end">
-              {newest ? firstLine(newest.text) : ''}
+              {newest ? fit(newest.text) : ''}
             </Text>
           </Box>
           {buttons('show')}
@@ -285,12 +307,12 @@ export const register: Register = on => {
                 )}
               </Box>
               <Text color="warning" wrap="truncate-end">
-                {meta([need.id, need.ref, ageOf(need.at, now)])}
+                {fit(meta([need.id, need.ref, ageOf(need.at, now)]))}
               </Text>
             </Box>
             <Box marginLeft={12} flexDirection="column">
-              <Text wrap="truncate-end">{firstLine(need.text)}</Text>
-              {need.why !== undefined && <Text dimColor wrap="truncate-end">{`Why: ${need.why}`}</Text>}
+              <Text wrap="truncate-end">{fit(need.text)}</Text>
+              {need.why !== undefined && <Text dimColor wrap="truncate-end">{fit(`Why: ${need.why}`)}</Text>}
             </Box>
           </Box>
         ))}
