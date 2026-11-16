@@ -156,7 +156,7 @@ test('pane: it lists this session\'s needs and decisions alone, on each surface,
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /^This session/ }))?.text).toBe('This session ')
+    expect((await ui.find({ type: 'Text', text: /^This session/ }))?.text).toBe('This session')
     expect((await ui.find({ type: 'Text', text: /^Open needs/ }))?.text).toBe('Open needs (1)')
     expect((await ui.find({ type: 'Text', text: /^n1 ·/ }))?.text).toBe('n1 · o/r#300 · 10m')
     expect((await ui.find({ type: 'Text', text: /^Why: status/ }))?.text).toBe('Why: status answers get rebuilt')
@@ -199,7 +199,7 @@ test('status: a status line names the open need while one is open', { options: {
   const seen = world(on)
   await $.session.start(START)
 
-  expect(seen.statuses.at(-1)).toBe('ledger: 1 open need, newest Do the manual check · /ledger-pane')
+  expect(seen.statuses.at(-1)).toBe('1 open need (/ledger-pane), newest: Do the manual check')
 })
 
 test('band: a row counts every session\'s open needs, Open shows the pane of all of them, and Hide quiets it', { options: { variant: 'band' } }, async ($, on) => {
@@ -214,7 +214,7 @@ test('band: a row counts every session\'s open needs, Open shows the pane of all
   for (const surface of ['terminal', 'desktop'] as const) {
     const band = await $.ui.mount({ ...BAND, surface })
     expect((await band.find({ type: 'Text', text: /open needs/ }))?.text).toBe('2 open needs ')
-    expect((await band.find({ type: 'Text', text: /^this session/ }))?.text).toBe('this session: Do the manual check ')
+    expect((await band.find({ type: 'Text', text: /^this session/ }))?.text).toBe('this session: Do the manual check')
     await band.unmount()
   }
 
@@ -224,7 +224,7 @@ test('band: a row counts every session\'s open needs, Open shows the pane of all
   expect(seen.opens).toEqual([{ id: 'ledger' }])
 
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await pane.find({ type: 'Text', text: /^Every session/ }))?.text).toBe('Every session ')
+  expect((await pane.find({ type: 'Text', text: /^Every session/ }))?.text).toBe('Every session')
   // The other session's need shares n1's ref and is still a row of its own.
   expect((await pane.find({ type: 'Text', text: /^toolbox/ }))?.text).toBe('toolbox #295: notifier install (b55d97c7) · n1 · o/r#300 · 10h')
   expect((await pane.find({ type: 'Text', text: /^this session ·/ }))?.text).toBe('this session · n1 · o/r#300 · 10m')
@@ -242,7 +242,7 @@ test('inline: Show expands the row into every need, Less folds it, and /ledger-p
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect(await band.find({ type: 'Text', text: /^toolbox/ })).toBeUndefined()
   await band.press({ key: 'show' })
-  expect((await band.find({ type: 'Text', text: /^toolbox/ }))?.text).toBe('toolbox #295: notifier install (b55d97c7) · n1 · o/r#300 · 10h ')
+  expect((await band.find({ type: 'Text', text: /^toolbox/ }))?.text).toBe('toolbox #295: notifier install (b55d97c7) · n1 · o/r#300 · 10h')
   expect((await band.find({ type: 'Text', text: /^Why: PRs/ }))?.text).toBe('Why: PRs wait unseen')
   await band.press({ key: 'less' })
   expect(await band.find({ type: 'Text', text: /^toolbox/ })).toBeUndefined()
