@@ -34,6 +34,6 @@ jobs:
       # plugin: the function-hook API the band's module is written against is
       # early access and moves between releases. Neither command needs a login.
       - name: Validate the plugin, its hooks and its hooks module
-        run: npx -y @anthropic-ai/claude-code@2.1.312 plugin validate plugins/ledger
+        run: npx -y @anthropic-ai/claude-code@2.1.325 plugin validate plugins/ledger
       - name: Band tests
-        run: npx -y @anthropic-ai/claude-code@2.1.312 plugin test plugins/ledger
+        run: npx -y @anthropic-ai/claude-code@2.1.325 plugin test plugins/ledger

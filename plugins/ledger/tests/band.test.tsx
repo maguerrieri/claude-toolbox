@@ -61,6 +61,7 @@ type World = {
    * answers one: `exists` false, `stat` failing EACCES), or Resolve fail.
    */
   fault: { isReadFailing: boolean; isDirLocked: boolean; resolveError?: string }
+  stats: string[]
   reads: string[]
   lists: string[]
   writes: string[]
@@ -71,9 +72,17 @@ type World = {
 }
 
 // The engine beneath the band: the ledger files served by path, each with an
-// mtime that moves when `write` changes it, and a `ledger.sh resolve` that
-// stamps the need in the ledger of the session its environment names.
-function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<string, string> } = {}): World {
+// mtime that moves when `write` changes it, directories by the path where
+// each lands (<dirs>), and a `ledger.sh resolve` that stamps the need in the
+// ledger of the session its environment names.
+function world(
+  on: On,
+  {
+    files = FILES,
+    env = { HOME: '/home/u' } as Record<string, string>,
+    dirs = {} as Record<string, string>,
+  } = {},
+): World {
   const clock = mock.clock(on, { now: NOW })
   const mtimes: Record<string, number> = {}
   const seen: World = {
@@ -84,6 +93,7 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
       mtimes[path] = (mtimes[path] ?? 1) + 1
     },
     fault: { isReadFailing: false, isDirLocked: false },
+    stats: [],
     reads: [],
     lists: [],
     writes: [],
@@ -92,21 +102,32 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
     opens: [],
     clock,
   }
+  // A hook gets a relative path made absolute, against the working directory
+  // (the plugin's folder under `claude plugin test`), so a relative key
+  // matches the path it ends.
+  const at = (map: Record<string, unknown>, path: string): string =>
+    Object.keys(map).find(key => key === path || (!key.startsWith('/') && path.endsWith(`/${key}`))) ?? path
   mock.env(on, env)
   on('session.id', () => ({ value: seen.session.id }))
-  on('fs.exists', (_, e) => ({ value: !seen.fault.isDirLocked && e.path in seen.files }))
+  on('fs.exists', (_, e) => ({ value: !seen.fault.isDirLocked && at(seen.files, e.path) in seen.files }))
   // Refused with the OS's code, as the engine's rejection carries it
   // (checked on 2.1.325: `$.fs.stat(<path>) failed: ENOENT`).
   on('fs.stat', (_, e) => {
-    const text = seen.files[e.path]
+    seen.stats.push(e.path)
+    const file = at(seen.files, e.path)
+    const text = seen.files[file]
     if (seen.fault.isDirLocked) {
       return { deny: 'EACCES' }
+    }
+    const realPath = dirs[at(dirs, e.path)]
+    if (realPath !== undefined) {
+      return { value: { kind: 'dir' as const, size: 0, mtimeMs: 1, isLink: false, ...(e.resolve ? { realPath } : {}) } }
     }
     if (text === undefined) {
       return { deny: 'ENOENT' }
     }
 
-    return { value: { kind: 'file' as const, size: text.length, mtimeMs: mtimes[e.path] ?? 1, isLink: false } }
+    return { value: { kind: 'file' as const, size: text.length, mtimeMs: mtimes[file] ?? 1, isLink: false } }
   })
   on('fs.read', (_, e) => {
     seen.reads.push(e.path)
@@ -114,7 +135,7 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
       return { deny: 'EACCES' }
     }
 
-    return { value: seen.files[e.path] ?? '' }
+    return { value: seen.files[at(seen.files, e.path)] ?? '' }
   })
   on('fs.list', (_, e) => {
     seen.lists.push(e.path ?? '.')
@@ -137,7 +158,7 @@ function world(on: On, { files = FILES, env = { HOME: '/home/u' } as Record<stri
       return { value: { exitCode: 1, stdout: '', stderr: seen.fault.resolveError, isStdoutTruncated: false, isStderrTruncated: false } }
     }
     const [, , subcommand, id] = e.argv
-    const path = `${DIR}/${env?.CLAUDE_CODE_SESSION_ID ?? ''}.jsonl`
+    const path = `${env?.CLAUDE_SESSION_LEDGER_DIR ?? DIR}/${env?.CLAUDE_CODE_SESSION_ID ?? ''}.jsonl`
     if (subcommand === 'resolve' && path in seen.files) {
       seen.write(
         path,
@@ -200,6 +221,7 @@ test('the band counts this session\'s open needs and shows the newest, reading n
   }
 
   await seen.clock.advance(30_000)
+  expect([...new Set(seen.stats)]).toEqual([MINE])
   expect([...new Set(seen.reads)]).toEqual([MINE])
   expect(seen.lists).toEqual([])
   expect(seen.writes).toEqual([])
@@ -315,7 +337,8 @@ test('Resolve runs ledger.sh resolve as this session, and the need leaves the ba
   expect(run?.argv.slice(0, 1)).toEqual(['bash'])
   expect(run?.argv[1]).toEndWith('/scripts/ledger.sh')
   expect(run?.argv.slice(2)).toEqual(['resolve', 'n1'])
-  expect(run?.env).toEqual({ CLAUDE_CODE_SESSION_ID: ME })
+  // As this session, in the directory the band read.
+  expect(run?.env).toEqual({ CLAUDE_CODE_SESSION_ID: ME, CLAUDE_SESSION_LEDGER_DIR: DIR })
   // In the plugin's folder, which is there even when the session's isn't.
   expect(run?.cwd).toBe(run?.argv[1]?.slice(0, -'/scripts/ledger.sh'.length))
   expect(seen.toasts).toEqual([])
@@ -411,6 +434,39 @@ test('CLAUDE_SESSION_LEDGER_DIR names the directory it reads', async ($, on) => 
   const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
   expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('2 open needs ')
   expect([...new Set(seen.reads)]).toEqual([elsewhere])
+  await band.unmount()
+})
+
+test('a relative CLAUDE_SESSION_LEDGER_DIR reaches the script as the absolute directory the band read', async ($, on) => {
+  // The script runs in the plugin's folder, not the session's, so it gets
+  // the directory where the band's relative one lands.
+  const seen = world(on, {
+    files: { [`ledgers/${ME}.jsonl`]: LEDGER },
+    env: { HOME: '/home/u', CLAUDE_SESSION_LEDGER_DIR: 'ledgers' },
+    dirs: { ledgers: '/work/repo/ledgers' },
+  })
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'show' })
+  await band.press({ key: `resolve:${ME}:n1` })
+  expect(seen.runs.map(run => run.env)).toEqual([
+    { CLAUDE_CODE_SESSION_ID: ME, CLAUDE_SESSION_LEDGER_DIR: '/work/repo/ledgers' },
+  ])
+  await band.unmount()
+})
+
+test('each row hands the engine no more than the band\'s width of a long need', async ($, on) => {
+  world(on, {
+    files: { [MINE]: line({ kind: 'need', id: 'n1', why: 'w'.repeat(200), text: 'x'.repeat(4000), at: '2026-11-16T01:00:00Z' }) },
+  })
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect((await band.find({ type: 'Text', text: /^x+$/ }))?.text.length).toBe(BAND.props.bodyColumns)
+  await band.press({ key: 'show' })
+  expect((await band.find({ type: 'Text', text: /^x+$/ }))?.text.length).toBe(BAND.props.bodyColumns)
+  expect((await band.find({ type: 'Text', text: /^Why: w+$/ }))?.text.length).toBe(BAND.props.bodyColumns)
   await band.unmount()
 })
 
