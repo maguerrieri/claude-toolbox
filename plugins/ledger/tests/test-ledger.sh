@@ -437,4 +437,16 @@ reset
 record "exit 1 none" "add: a ref over 200 bytes with its repo" "$(in_repo 'x' add-need --ref '#12') $(ledger)"
 record 1 "add: a long qualified ref says so" "$(grep -c 'the ref is over 200 bytes' "$tmp/err")"
 
+# show.jq is list's alone: without it, a write and a resolve still work, and
+# list fails saying why.
+mkdir "$tmp/noshow"
+cp "$script" "$plugin/scripts/is-entry.jq" "$tmp/noshow/"
+script="$tmp/noshow/ledger.sh"
+reset
+record "exit 0" "without show.jq: add" "$(run 'x' add-need)"
+record "exit 0" "without show.jq: resolve" "$(run '' resolve n1)"
+record "exit 1" "without show.jq: list" "$(run '' list)"
+record 1 "without show.jq: list says why" "$(grep -c 'show.jq is missing beside the script' "$tmp/err")"
+script="$plugin/scripts/ledger.sh"
+
 finish
