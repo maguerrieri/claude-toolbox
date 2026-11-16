@@ -74,7 +74,15 @@ open needs came later, in #330 (*The band*, below).
   `CLAUDE_SESSION_LEDGER_DIR` to the directory the band read, made absolute,
   so the script stays the one writer and writes the ledger the band showed,
   and it refuses a need the
-  band showed before a `/clear` (an earlier session's). It has no hotkey, since
+  band showed before a `/clear` (an earlier session's). Once the script has
+  resolved the need, Resolve tells the session with `$.prompt.submit`, a turn
+  of its own once the session is idle, so a session that stopped for the need
+  carries on without the owner typing; the owner picked that on PR #333 over a
+  quiet note the model would read only at the next prompt. The prompt is
+  framed as the plugin's message, never as the owner's own words, since a
+  need's text can name a step such as "say finish" that only the owner's own
+  words take, and it says it asks nothing more. A need the script finds
+  already resolved (the session resolved it itself) starts no turn. It has no hotkey, since
   a digit typed into an empty prompt presses a band button, and a need id the
   script would refuse gets no button. The toggle is a command the module
   registers, which a bare `/ledger-band` reaches; a mod can't bind a key, so

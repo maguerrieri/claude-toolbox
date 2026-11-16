@@ -197,6 +197,16 @@ export const ageOf = (at: string, nowMs: number): string => {
   return hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`
 }
 
+/**
+ * What a Resolve in the band tells the session, in a turn of its own: which
+ * need the owner resolved, and its first line. It says plainly that it asks
+ * nothing more, since a need's text may name a step for the owner to take.
+ */
+export const resolvedNotice = (need: Pick<LedgerNeed, 'id' | 'text' | 'ref'>): string =>
+  `The owner resolved ledger need ${need.id} from the band above the prompt` +
+  `${need.ref === undefined ? '' : ` (${need.ref})`}. It read: "${firstLine(need.text)}". ` +
+  'This tells you that need is answered; it asks nothing more.'
+
 /** A text's first line, for a one-row band. */
 export const firstLine = (text: string): string => text.split('\n')[0] ?? ''
 

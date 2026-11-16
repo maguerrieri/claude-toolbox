@@ -66,6 +66,8 @@ type World = {
   lists: string[]
   writes: string[]
   runs: { argv: string[]; cwd?: string; env?: Record<string, string> }[]
+  /** The prompts the band submitted, each a turn of its own. */
+  prompts: string[]
   toasts: string[]
   opens: string[]
   clock: ReturnType<typeof mock.clock>
@@ -98,6 +100,7 @@ function world(
     lists: [],
     writes: [],
     runs: [],
+    prompts: [],
     toasts: [],
     opens: [],
     clock,
@@ -159,11 +162,16 @@ function world(
     }
     const [, , subcommand, id] = e.argv
     const path = `${env?.CLAUDE_SESSION_LEDGER_DIR ?? DIR}/${env?.CLAUDE_CODE_SESSION_ID ?? ''}.jsonl`
+    const lines = (seen.files[path] ?? '').split('\n')
+    const needs = lines.flatMap(text => parseLedger(text)).filter(entry => entry.kind === 'need' && entry.id === id)
+    // As the script answers one it finds resolved already: exit 0, said on stderr.
+    if (subcommand === 'resolve' && needs.length > 0 && needs.every(need => need.resolved_at !== undefined)) {
+      return { value: { exitCode: 0, stdout: '', stderr: `ledger resolve: ${id} is already resolved\n`, isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     if (subcommand === 'resolve' && path in seen.files) {
       seen.write(
         path,
-        (seen.files[path] ?? '')
-          .split('\n')
+        lines
           .map(text => {
             const entry = parseLedger(text)[0]
             return entry?.kind === 'need' && entry.id === id && entry.resolved_at === undefined
@@ -175,6 +183,11 @@ function world(
     }
 
     return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('prompt.submit', (_, e) => {
+    seen.prompts.push(e.text)
+
+    return { text: e.text }
   })
   on('ui.toast', (_, e) => {
     seen.toasts.push(e.text)
@@ -325,7 +338,7 @@ test('/ledger-band on a hidden band brings it back expanded, not folded', async 
   await band.unmount()
 })
 
-test('Resolve runs ledger.sh resolve as this session, and the need leaves the band', async ($, on) => {
+test('Resolve runs ledger.sh resolve as this session, tells the session in a turn, and the need leaves the band', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
 
@@ -342,6 +355,11 @@ test('Resolve runs ledger.sh resolve as this session, and the need leaves the ba
   // In the plugin's folder, which is there even when the session's isn't.
   expect(run?.cwd).toBe(run?.argv[1]?.slice(0, -'/scripts/ledger.sh'.length))
   expect(seen.toasts).toEqual([])
+  // One prompt, framed as the plugin's, so a session stopped on the need goes on.
+  expect(seen.prompts).toEqual([
+    'The owner resolved ledger need n1 from the band above the prompt (o/r#300). It read: "Do the manual check". ' +
+      'This tells you that need is answered; it asks nothing more.',
+  ])
   expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('1 open need ')
   expect((await band.findAll({ type: 'Text', text: /^n\d ·/ })).map(row => row.text)).toEqual(['n3 · o/r#300 · 1h'])
   // Nothing but the script wrote, and nothing read the other session's ledger.
@@ -359,7 +377,24 @@ test('a Resolve the script refuses says why, and the need stays', async ($, on) 
   await band.press({ key: 'show' })
   await band.press({ key: `resolve:${ME}:n1` })
   expect(seen.toasts).toEqual(["Couldn't resolve n1: another write held the ledger for 10 seconds; nothing written"])
+  expect(seen.prompts).toEqual([])
   expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('2 open needs ')
+  await band.unmount()
+})
+
+test('a Resolve of a need the session already resolved starts no turn', async ($, on) => {
+  const seen = world(on)
+  await $.session.start(START)
+
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await band.press({ key: 'show' })
+  // The session resolves n1 itself before the band's next read.
+  seen.write(MINE, RESOLVED_N1)
+  await band.press({ key: `resolve:${ME}:n1` })
+  expect(seen.runs.length).toBe(1)
+  expect(seen.toasts).toEqual([])
+  expect(seen.prompts).toEqual([])
+  expect((await band.find({ type: 'Text', text: /open need/ }))?.text).toBe('1 open need ')
   await band.unmount()
 })
 
@@ -372,6 +407,7 @@ test('after a /clear, a need the band still shows is not resolved as the new ses
   seen.session.id = 'f00dcafe-0000-4000-8000-000000000000'
   await band.press({ key: `resolve:${ME}:n1` })
   expect(seen.runs).toEqual([])
+  expect(seen.prompts).toEqual([])
   expect(seen.toasts).toEqual(["Didn't resolve n1: it is an earlier session's need, not this one's."])
   // The new session has no ledger yet, so the band has nothing to show.
   expect((await band.find({ type: 'Text' }))?.text).toBe('engine')
