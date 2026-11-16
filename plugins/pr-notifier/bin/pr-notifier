@@ -1093,8 +1093,14 @@ cmd_check() {
 	fi
 	poll_feed
 	examine_due
-	local sid
-	jq -r '.pending // {} | keys[]' "$work_state" >"$run_tmp/sessions"
+	local sid off
+	# Sessions take turns going first: a few slow ones early in a fixed order
+	# could otherwise spend delivery_budget on every check, and the rest
+	# would never be reached.
+	off=$(jq -r '.feed.delivery_turn // 0 | floor' "$work_state")
+	jq -r --argjson off "$off" '.pending // {} | keys | (length) as $n
+		| if $n == 0 then empty else (.[($off % $n):] + .[:($off % $n)])[] end' "$work_state" >"$run_tmp/sessions"
+	edit "$work_state" --argjson off "$off" '.feed.delivery_turn = $off + 1'
 	delivery_start=$SECONDS # the poll and the PR reads above don't count against delivery_budget
 	while IFS= read -r sid; do
 		[ -n "$sid" ] || continue
