@@ -33,17 +33,24 @@
 #   1  anything else, not the owner's words: an author or last editor
 #      owner-check rejects, a bot (GraphQL drops a Bot's [bot] suffix, so a Bot
 #      editor is never checked by login), an edit GitHub names no editor for,
-#      an editor that can't be read, a failed read, an item on another repo or
-#      that GitHub files under another URL, a usage error
+#      an editor that can't be read, an editor the edit history disagrees
+#      with, a failed read, an item on another repo or that GitHub files under
+#      another URL, a usage error
 #
 # On 0 and 3 it prints the item's text on stdout, from the same read that
 # named its last editor. Act on that text, not on a copy read earlier: an edit
 # can land between two reads.
 #
 # REST names no editor, so the editor comes from GraphQL (editor,
-# lastEditedAt). Where GraphQL is refused (a cloud session's proxy) or fails,
-# every item exits 1: REST's updated_at has one-second resolution, so it can't
-# show that an edit made within a comment's first second never happened.
+# lastEditedAt), and REST only maps the URL to the item's node id, which
+# GraphQL's resource(url:) can't do for a comment. The newest entry of the
+# item's edit history (userContentEdits, newest first) must agree with them,
+# editor and time, so that a GitHub `editor` that ever lagged behind the last
+# edit fails closed. Where GraphQL is refused (a cloud session's proxy) or
+# fails, every item exits 1: REST's updated_at has one-second resolution, so
+# it can't show that an edit made within a comment's first second never
+# happened. A failed read looks like any other exit 1, as in owner-check.sh;
+# stderr names it (can't read), and a caller may run the script once more.
 #
 # Lines on stderr say why (owner-check.sh's own among them). Needs gh and
 # owner-check.sh; OWNER_CHECK_GH overrides the gh binary for both (tests).
@@ -107,25 +114,13 @@ owner_check() { # owner_check <login>: owner-check.sh's exit code for it on this
 	bash "$here/owner-check.sh" -R "$host/$owner/$repo" "$1" </dev/null >/dev/null
 }
 
-split() { # split <n> <text>: its first <n> lines into fields[0..n-1], and the rest into rest
-	local n=$1 i line
-	fields=()
-	rest=$2
-	for ((i = 0; i < n; i++)); do
-		line=${rest%%$'\n'*}
-		fields+=("$line")
-		if [ "$line" = "$rest" ]; then rest=; else rest=${rest#*$'\n'}; fi
-	done
-}
-
 # The item by REST: who wrote it (with an app's [bot] suffix and its type,
 # which GraphQL drops), and its node id. A failed read prints its error body
 # on stdout too, so only the exit status says it worked.
 rest_out=$("$gh_bin" api "$endpoint" --hostname "$host" --jq \
 	'"\(.user.login // "")\n\(.user.type // "")\n\(.node_id // "")\n\(.html_url // "")"' \
 	</dev/null 2>/dev/null) || untrusted "can't read $url"
-split 4 "$rest_out"
-author=${fields[0]} author_type=${fields[1]} node_id=${fields[2]} html_url=${fields[3]}
+{ IFS= read -r author; IFS= read -r author_type; IFS= read -r node_id; IFS= read -r html_url; } <<<"$rest_out"
 [ "$(lower "$html_url")" = "$(lower "$url")" ] ||
 	untrusted "GitHub files that item under ${html_url:-no URL}, not $url"
 [ "$author_type" = User ] && [ -n "$author" ] ||
@@ -145,21 +140,30 @@ case $verdict in
 *) untrusted "$url's author $author isn't the owner" ;;
 esac
 
-# Its last editor, with the text that edit left, in one GraphQL read.
+# Its last editor, the newest entry of its edit history, and the text that
+# edit left, in one GraphQL read.
 gql_out=
 node_re='^[A-Za-z0-9_=-]+$'
 if [[ $node_id =~ $node_re ]]; then
-	gql_out=$("$gh_bin" api graphql --hostname "$host" -f id="$node_id" -f query='query($id:ID!){node(id:$id){__typename
-		... on IssueComment{editor{__typename login} lastEditedAt body}
-		... on PullRequestReviewComment{editor{__typename login} lastEditedAt body}
-		... on PullRequestReview{editor{__typename login} lastEditedAt body}}}' \
-		--jq '.data.node | "\(.__typename // "")\n\(.editor.__typename // "")\n\(.editor.login // "")\n\(.lastEditedAt // "")\n\(.body // "")"' \
+	fields='editor{__typename login} lastEditedAt userContentEdits(first:1){nodes{editedAt editor{__typename login}}} body'
+	gql_out=$("$gh_bin" api graphql --hostname "$host" -f id="$node_id" -f query="query(\$id:ID!){node(id:\$id){__typename
+		... on IssueComment{$fields} ... on PullRequestReviewComment{$fields} ... on PullRequestReview{$fields}}}" \
+		--jq '.data.node | (.userContentEdits.nodes[0] // {}) as $newest
+			| "\(.__typename // "")\n\(.editor.__typename // "")\n\(.editor.login // "")\n\(.lastEditedAt // "")\n\($newest.editedAt // "")\n\($newest.editor.__typename // "")\n\($newest.editor.login // "")\n\(.body // "")"' \
 		</dev/null 2>/dev/null) || gql_out=
 fi
-split 4 "$gql_out"
-[ "${fields[0]}" = "$node_kind" ] ||
+{
+	IFS= read -r node_type
+	IFS= read -r editor_type
+	IFS= read -r editor
+	IFS= read -r edited_at
+	IFS= read -r newest_at
+	IFS= read -r newest_type
+	IFS= read -r newest_editor
+	body=$(cat)
+} <<<"$gql_out"
+[ "$node_type" = "$node_kind" ] ||
 	untrusted "can't read who last edited $url (GraphQL refused or failed), so it isn't read as the owner's"
-editor_type=${fields[1]} editor=${fields[2]} edited_at=${fields[3]} body=$rest
 
 if [ -z "$edited_at" ]; then
 	echo "owner-comment.sh: $url is unedited: $author's" >&2
@@ -167,13 +171,16 @@ elif [ "$editor_type" != User ] || [ -z "$editor" ]; then
 	# No apostrophe inside ${...:-}: bash reads one there as a quote, even
 	# within double quotes.
 	untrusted "$url was last edited by ${editor:-an unnamed account}, a ${editor_type:-deleted account}, not a user"
+elif [ "$newest_at" != "$edited_at" ] || [ "$newest_type" != "$editor_type" ] ||
+	[ "$(lower "$newest_editor")" != "$(lower "$editor")" ]; then
+	untrusted "$url's edit history (newest: ${newest_editor:-none} at ${newest_at:-no time}) disagrees with its last editor $editor at $edited_at"
 elif [ "$(lower "$editor")" = "$(lower "$author")" ]; then
 	echo "owner-comment.sh: $url was last edited by its author $author" >&2
 else
-	owner_check "$editor"
-	editor_verdict=$?
-	[ "$verdict" = 0 ] && [ "$editor_verdict" = 0 ] ||
-		untrusted "$url was last edited by $editor, who isn't the owner"
+	# Another login's edit counts only on the owner's own comment (exit 0):
+	# under exit 3 it never does, so that needs no check.
+	[ "$verdict" = 0 ] || untrusted "$url was last edited by $editor, not by the sessions' own login"
+	owner_check "$editor" || untrusted "$url was last edited by $editor, who isn't the owner"
 	echo "owner-comment.sh: $url was last edited by $editor, also the owner" >&2
 fi
 printf '%s\n' "$body"
