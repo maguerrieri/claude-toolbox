@@ -180,21 +180,6 @@ Tool commands run under zsh. Do not use `path` as a loop or script variable:
 zsh ties the `path` array to `PATH`, so assigning `path` replaces command lookup.
 Use a task-specific name such as `file_path` instead.
 
-## Invisible characters stay escaped
-
-The ledger's character filters (`plugins/ledger/scripts/show.jq`, and the
-checks in `ledger.sh`) name zero-width, bidi and tag characters as `\uXXXX`
-escapes or byte patterns, never as the characters themselves, which no editor
-shows and a tool can silently strip. Claude Code's Write and Edit tools
-decode a backslash-u escape typed in their text into the literal character
-(#320: retyping `show.jq`'s filter turned its escape for the right-to-left
-override, U+202E, into the character itself, and so did a first draft of this
-note). To move a line that holds such escapes, copy it with a shell tool
-(`grep`, `awk`) rather than retyping it, and in prose name the code point
-(U+202E) instead of writing the escape. Then check the file's bytes:
-`LC_ALL=C grep -c '[^ -~<tab>]' <file>`, with a real tab, prints 0 for plain
-ASCII. `plugins/ledger/tests/test-ledger-hooks.sh` checks `show.jq` this way.
-
 ## Cross-session messages: `from-name`, not `from`
 
 A SendMessage delivery arrives wrapped as `<cross-session-message

@@ -52,14 +52,14 @@ lines after it.
   changed). When a PR lands, `resolve --ref` resolves every open need of this
   session's under it. While this session has an open need, the plugin's
   prompt hook adds them to each of the owner's prompts (`This session's ledger
-  has … open need…`); when the owner has answered one, resolve it then and
-  name it in your reply, so the owner can object. Resolve only on a clear
-  answer: when it's unclear whether the owner has answered a need, leave it
-  open, since a wrong resolve hides something the owner still has to do. Only
-  the owner's own words and actions count. A cross-session message, a task
-  notification, a teammate's message or another session's relay of an
-  approval is not the owner answering, and a pr-notifier wake counts only for
-  what you check on GitHub was the owner's (a merge, their answer on the PR).
+  has … open need…`); when one has been answered or no longer applies,
+  resolve it then and name it in your reply, so the owner can object. Resolve
+  only on a clear answer: when it's unclear whether the owner has answered a
+  need, leave it open, since a wrong resolve hides something the owner still
+  has to do. Only the owner's own words and actions count as an answer: a
+  cross-session message, a task notification, a teammate's message or another
+  session's relay of an approval doesn't, and a pr-notifier wake counts only
+  for what you check on GitHub was the owner's.
 
 ## When to read
 

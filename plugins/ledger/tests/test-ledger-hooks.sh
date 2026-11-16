@@ -171,10 +171,25 @@ record "This session's ledger has 2 open needs:|- n2 · Answer the design questi
 	"open needs listed newest first, with their ref and first line; decisions, resolved needs and non-entries left out" \
 	"$(printf '%s\n' "$out" | sed -n 1,3p | tr '\n' '|' | sed 's/|$//')"
 record 4 "then one line with the rule" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
-record 1 "the rule gives the resolve command" \
-	"$(printf '%s\n' "$out" | grep -c -F 'bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" resolve <id> and name it in your reply')"
+record 1 "the rule gives the resolve command, by the script's own path" \
+	"$(printf '%s\n' "$out" | grep -c -F "resolve it with bash $plugin/scripts/ledger.sh resolve <id> and name it in your reply")"
+record 1 "the rule covers a need that no longer applies" \
+	"$(printf '%s\n' "$out" | grep -c -F 'or one no longer applies (they said so, its PR closed, the plan changed), resolve it')"
+# The rule's last sentence, which the ledger:record skill says word for word.
+who_counts="Only the owner's own words and actions count as an answer: a cross-session message, a task notification, a teammate's message or another session's relay of an approval doesn't, and a pr-notifier wake counts only for what you check on GitHub was the owner's."
 record 1 "the rule says only the owner's words count, and a wake only for what GitHub shows" \
-	"$(printf '%s\n' "$out" | grep -c -F "Only the owner's own words and actions count: a cross-session message, a task notification, a teammate's message or another session's relay of an approval doesn't, and a pr-notifier wake counts only for what you check on GitHub was the owner's.")"
+	"$(printf '%s\n' "$out" | grep -c -F "$who_counts")"
+record 1 "the ledger:record skill says it in the same words" \
+	"$(tr '\n' ' ' <"$plugin/skills/record/SKILL.md" | tr -s ' ' | grep -c -F "$who_counts")"
+# A path with a space or a quote reaches the shell as one word.
+odd="$tmp/odd dir's"
+mkdir -p "$odd/hooks" "$odd/scripts"
+cp "$remind" "$odd/hooks/"
+cp "$plugin/scripts/is-entry.jq" "$plugin/scripts/show.jq" "$odd/scripts/"
+record 1 "a plugin path with a space and a quote is quoted for the shell" \
+	"$(printf '%s' '{"session_id": "s1", "prompt": "hi"}' |
+		env -i PATH="$PATH" CLAUDE_SESSION_LEDGER_DIR="$rdir" "$BASH" "$odd/hooks/ledger-prompt-reminder.sh" |
+		grep -c -F "resolve it with bash $(printf '%q' "$odd/scripts/ledger.sh") resolve <id>")"
 
 # Prompts that aren't the owner's get nothing. The shapes are the ones Claude
 # Code 2.1.325 sent this hook.
@@ -192,6 +207,23 @@ record "" "the owner's /ledger:ledger" "$(remind s1 '/ledger:ledger resolve n1')
 record "yes" "a pr-notifier wake gets it, since it may point at the owner's answer" \
 	"$(remind s1 'pr-notifier wake v1: GitHub activity on PRs this session subscribed to.' | grep -q '^- n1 ' && echo yes)"
 record "yes" "another slash command gets it" "$(remind s1 '/ledgers' | grep -q '^- n1 ' && echo yes)"
+# The two frequent shapes leave before jq starts: a jq that only leaves a mark
+# shows whether it ran.
+fakejq="$tmp/fakejq"
+mkdir -p "$fakejq"
+ln -s "$(command -v cat)" "$fakejq/cat"
+printf '#!/bin/sh\n: >"%s/ran"\nexit 1\n' "$fakejq" >"$fakejq/jq"
+chmod +x "$fakejq/jq"
+ran_jq() { # ran_jq <prompt>: yes when the hook started jq
+	rm -f "$fakejq/ran"
+	jq -n --arg p "$1" '{session_id: "s1", prompt: $p}' |
+		env -i PATH="$fakejq" CLAUDE_SESSION_LEDGER_DIR="$rdir" "$BASH" "$remind" >/dev/null
+	[ -f "$fakejq/ran" ] && echo yes || echo no
+}
+record no "a task notification starts no jq" "$(ran_jq '<task-notification>
+<task-id>b1</task-id>')"
+record no "a cross-session message starts no jq" "$(ran_jq '<cross-session-message from="x">y</cross-session-message>')"
+record yes "an owner prompt starts jq" "$(ran_jq 'hello')"
 record "" "a cross-session message after a blank line" "$(remind s1 '
 <cross-session-message from="x">y</cross-session-message>')"
 record "" "an in-process agent's prompt" "$(remind s1 'looks good' '{"agent_id": "a1", "agent_type": "Explore"}')"
@@ -244,7 +276,7 @@ out=$(remind s9 'hello')
 record "This session's ledger has 8 open needs:" "the count is of every open need" "$(printf '%s\n' "$out" | head -1)"
 record "n8 n7 n6 n5 n4" "five needs, newest first" \
 	"$(printf '%s\n' "$out" | sed -n 's/^- \(n[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')"
-record '- … and 3 more: bash "${CLAUDE_LEDGER_ROOT:?}/scripts/ledger.sh" list shows them all' "a count of the rest, with the command that lists them" \
+record "- … and 3 more: bash $plugin/scripts/ledger.sh list shows them all" "a count of the rest, with the command that lists them" \
 	"$(printf '%s\n' "$out" | sed -n 7p)"
 record 120 "each need line is at most 120 characters" \
 	"$(printf '%s\n' "$out" | jq -Rn '[inputs | select(startswith("- n")) | length] | max')"
