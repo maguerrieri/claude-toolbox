@@ -48,7 +48,7 @@ cat >"$tmp/bin/gh" <<'GH_EOF'
 printf '%s\n' "$*" >>"$STUB/gh.log"
 [ "$1" = api ] || exit 1
 shift
-inc= hdr= ep= filter= slurp= ids=()
+inc= hdr= ep= filter= slurp= ids=() method=GET body=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-i) inc=1; shift ;;
@@ -57,8 +57,9 @@ while [ $# -gt 0 ]; do
 	--slurp) slurp=1; shift ;;
 	--jq | -q) filter=$2; shift 2 ;;
 	--hostname) shift 2 ;;
+	-X) method=$2; shift 2 ;;
 	-f | -F)
-		case $2 in "ids[]="*) ids+=("${2#ids\[\]=}") ;; esac
+		case $2 in "ids[]="*) ids+=("${2#ids\[\]=}") ;; body=*) body=${2#body=} ;; esac
 		shift 2
 		;;
 	*) ep=$1; shift ;;
@@ -98,6 +99,13 @@ repos/*/collaborators/*/permission)
 	;;
 repos/*/pulls/*)
 	out=$(cat "$STUB/pr-${ep##*/}.json")
+	;;
+repos/*/issues/*/comments)
+	# A POST is saved, one JSON line per comment, to $STUB/posts.
+	[ "$method" = POST ] || { echo "gh stub: $method $ep" >&2; exit 1; }
+	[ ! -f "$STUB/post.fail" ] || { echo 'gh: HTTP 403' >&2; exit 1; }
+	jq -cn --arg ep "$ep" --arg b "$body" '{ep: $ep, body: $b}' >>"$STUB/posts"
+	out='{}'
 	;;
 repos/*/issues/*/timeline*)
 	n=${ep%/timeline*}
@@ -946,6 +954,45 @@ record '1|o/r#7@aaaaaaaa' 'no row for just under the hold bound: still held' "$(
 nt $((T + 1801)) check
 record '0|0|' 'no row for the hold bound: unsubscribed, its events dropped' "$(wakes)|$(held)|$(subs)"
 record yes 'logged' "$(logged 'drop session=aaaaaaaa reason=session-gone gone=30m')"
+record '1|repos/o/r/issues/7/comments' 'and the PR is told, once' "$(wc -l <"$STUB/posts" | tr -d ' ')|$(jq -r .ep "$STUB/posts")"
+record yes 'saying what happened' "$(jq -r .body "$STUB/posts" | has - 'session `aaaaaaaa` (`r #7: x`) has had no `claude agents` row for 30 minutes')"
+record yes 'and how to resubscribe it' "$(jq -r .body "$STUB/posts" | has - "pr-notifier subscribe o/r#7 --session $SID")"
+record yes 'logged' "$(logged 'notice pr=o/r#7 session=aaaaaaaa posted=yes')"
+
+# A comment that can't be posted doesn't stop the drop.
+reset
+agents "$(agent stopped "$SID2")"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+: >"$STUB/post.fail"
+nt $((T + 1801)) check
+record '0|' 'a failed comment: still unsubscribed' "$(held)|$(subs)"
+record yes 'and the failure logged' "$(logged 'notice pr=o/r#7 session=aaaaaaaa error=')"
+rm -f "$STUB/post.fail"
+
+# drop_comment: false drops without a comment.
+reset
+settings '{"drop_comment": false}'
+agents "$(agent stopped "$SID2")"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+nt $((T + 1801)) check
+record '|0' 'drop_comment off: unsubscribed, no comment' "$(subs)|$(cat "$STUB/posts" 2>/dev/null | wc -l | tr -d ' ')"
+
+# Every session subscribed in a root missing at once looks like a broken
+# listing, not deletions: held, not dropped.
+reset
+CLAUDE_CODE_SESSION_ID=$SID2 nt "$T0" subscribe o/r#7 --name other >/dev/null
+agents "$(agent stopped cccccccc-1111-2222-3333-444444444444)"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+nt $((T + 1801)) check 2>/dev/null
+record "o/r#7@aaaaaaaa,o/r#7@bbbbbbbb|1" 'two subscribed, neither listed: both kept' "$(subs)|$(held)"
+record yes 'logged' "$(logged 'reason=session-gone; kept: no other session subscribed in its root is listed either')"
+record 0 'and nothing posted' "$(cat "$STUB/posts" 2>/dev/null | wc -l | tr -d ' ')"
+agents "$(agent busy "$SID2")"
+nt $((T + 1900)) check 2>/dev/null
+record "o/r#7@bbbbbbbb" 'once another is listed, the missing one drops' "$(subs)"
 
 # A row seen in between starts the bound over.
 reset
