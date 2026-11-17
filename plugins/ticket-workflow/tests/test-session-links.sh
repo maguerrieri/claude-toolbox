@@ -57,26 +57,33 @@ expected=$(printf '%s\t%s\n' \
 shells=(bash)
 command -v zsh >/dev/null 2>&1 && shells+=(zsh)
 
+# zsh runs with -f, so a ~/.zshenv that sets CLAUDE_CONFIG_DIR can't undo
+# the environment each case sets up.
+run() { # run <shell> <script>
+	if [ "$1" = zsh ]; then zsh -f -c "$2"; else "$1" -c "$2"; fi
+}
 for sh in "${shells[@]}"; do
-	got=$(CLAUDE_CONFIG_DIR="$tmp/config" "$sh" -c "$snippet" 2>&1)
+	got=$(CLAUDE_CONFIG_DIR="$tmp/config" run "$sh" "$snippet" 2>&1)
 	record "$expected" "$sh: CLAUDE_CONFIG_DIR's jobs: one link, a dash for every other case" "$got"
 
-	got=$(env -u CLAUDE_CONFIG_DIR HOME="$tmp/home" "$sh" -c "$snippet" 2>&1)
+	got=$(unset CLAUDE_CONFIG_DIR; HOME="$tmp/home" run "$sh" "$snippet" 2>&1)
 	record "$expected" "$sh: with no CLAUDE_CONFIG_DIR, \$HOME/.claude's jobs" "$got"
 
-	got=$(CLAUDE_CONFIG_DIR="$tmp/nowhere" "$sh" -c "$snippet" 2>&1 | cut -f2 | sort -u)
+	got=$(CLAUDE_CONFIG_DIR="$tmp/nowhere" run "$sh" "$snippet" 2>&1 | cut -f2 | sort -u)
 	record "-" "$sh: no jobs directory at all prints only dashes" "$got"
 done
 
 # The cloud backend builds its link from the id create_session returned. Run
 # the id pattern cloud.md gives (its one backticked ^session_ pattern) against
-# the shapes it must accept and refuse.
+# the shapes it must accept and refuse, each id matched as one string, as the
+# doc says.
 cloud_md="$spawn_plugin/skills/spawn/backends/cloud.md"
 pattern=$(grep -o '`\^session_[^`]*`' "$cloud_md" | tr -d '`')
 record 1 "cloud.md gives one session_ id pattern" "$(printf '%s\n' "$pattern" | grep -c .)"
-accepts() { printf '%s\n' "$1" | grep -cE "$pattern"; }
+accepts() { if [[ $1 =~ $pattern ]]; then echo 1; else echo 0; fi; }
 record 1 "cloud.md's pattern accepts a plain session_ id" "$(accepts session_01ABCDEFGHJKMNPQRSTVWXYZ)"
-for bad in cse_01ABCDEFGHJKMNPQRSTVWXYZ 'session_01AB](https://example.com/x' 'session_01AB?x=1' session_ ''; do
+for bad in cse_01ABCDEFGHJKMNPQRSTVWXYZ 'session_01AB](https://example.com/x' 'session_01AB?x=1' \
+	session_ '' $'session_01AB\nx' $'x\nsession_01AB' $'session_01AB\n'; do
 	record 0 "cloud.md's pattern refuses '$bad'" "$(accepts "$bad")"
 done
 
