@@ -256,7 +256,7 @@ record 0 'a collaborator'"'"'s rejection by a read that worked still falls back 
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate APPROVED "$head" "$t2")") run)"
 record 1 'but a failed read of that collaborator doesn'"'"'t' \
 	"$(STUB_PERM_FAIL=mate STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate APPROVED "$head" "$t2")") run)"
-record 0 'another owner'"'"'s approval of an older commit is left out' \
+record 1 'another owner'"'"'s newer approval of an older commit is the owners'"'"' latest word: no grant' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 coadmin APPROVED "$old" "$t2")") run)"
 record 0 'and a collaborator'"'"'s approval of the head' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate APPROVED "$head" "$t2")") run)"
@@ -363,7 +363,7 @@ record 1 'a failed PR read' "$(STUB_PR_FAIL=1 STUB_REVIEWS=$(reviews "$approve")
 record 1 'a failed reviews read' "$(STUB_REVIEWS_FAIL=1 STUB_REVIEWS=$(reviews "$approve") run)"
 record 1 'a head that is not a SHA' "$(STUB_HEAD='1111;id' STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED '1111;id' "$t1")") run)"
 STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$old" "$t1")") run >/dev/null
-record 1 'stderr says why there is no grant' "$(grep -c "^owner-approval.sh: no grant: .*$old" "$tmp/err")"
+record 1 'stderr says why there is no grant' "$(grep -q "^owner-approval.sh: no grant: .*$old" "$tmp/err" && echo 1)"
 record 0 'and stdout carries nothing' "$(wc -c <"$tmp/out" | tr -d ' ')"
 
 # Every read goes to the repo's own host.
@@ -410,6 +410,12 @@ g checkout -q main && g checkout -q -b whitespace
 HW=$(commit_file c.txt $'child\n\tindented' '[#2] child')
 g checkout -q restacked && g checkout -q -b extra
 HE=$(commit_file e.txt 'unreviewed' '[#2] more')
+# HS: main + a commit adding c.txt and a secret, then one removing the secret:
+# the same final tree as H, through a state nobody approved.
+g checkout -q main && g checkout -q -b secret
+printf '%s\n' $'child\n  indented' >"$repo/c.txt" && printf 'token\n' >"$repo/s.txt" && g add c.txt s.txt && g commit -q -m '[#2] child'
+g rm -q s.txt && g commit -q -m '[#2] tidy'
+HS=$(g rev-parse HEAD)
 g checkout -q main && g checkout -q -b mode
 printf '%s\n' $'child\n  indented' >"$repo/c.txt" && chmod +x "$repo/c.txt" && g add c.txt && g commit -q -m '[#2] child'
 HX=$(g rev-parse HEAD)
@@ -436,7 +442,7 @@ record 1 'it reads the base'"'"'s tip from GitHub' "$(calls '^api repos/o/r/git/
 record 1 'a restack that changed the diff' "$(STUB_HEAD=$H2 STUB_REVIEWS=$carried in_repo)"
 record 1 'one that changed only whitespace' "$(STUB_HEAD=$HW STUB_REVIEWS=$carried in_repo)"
 record 1 'one that changed only a file mode' "$(STUB_HEAD=$HX STUB_REVIEWS=$carried in_repo)"
-record 0 'no base change since the approval (already based on main): its whole diff, the parent'"'"'s change included, replays onto main as the head' \
+record 1 'no base change since the approval (already based on main): its range holds the parent'"'"'s commit too, one more than the head'"'"'s' \
 	"$(STUB_BASE_CHANGES='[]' STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record 1 'a force-push of the base since the approval' \
 	"$(STUB_BASE_CHANGES=$(jq --argjson f "$force_push" '. + [$f]' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
@@ -448,7 +454,7 @@ record 1 'a head that adds something the approved commit didn'"'"'t' \
 	"$(STUB_HEAD=$HE STUB_REVIEWS=$carried in_repo)"
 record 1 'a head that drops something it did' \
 	"$(STUB_BASE_CHANGES='[]' STUB_HEAD=$M STUB_REVIEWS=$carried in_repo)"
-record 0 'a base change before the approval, which then showed the parent'"'"'s change too' \
+record 1 'a base change before the approval, likewise' \
 	"$(STUB_BASE_CHANGES=$(jq '.[0].createdAt = "2026-11-17T04:00:00Z"' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record 1 'two base changes since it' \
 	"$(STUB_BASE_CHANGES=$(jq '. + [.[0] | .createdAt = "2026-11-17T05:40:00Z"]' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
@@ -470,6 +476,11 @@ record 1 'two that could be the parent' \
 	"$(STUB_MERGED_PRS=$(landed | jq '. + .') STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record 1 'an approved commit this checkout lacks' \
 	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED 3333333333333333333333333333333333333333 "$t1")") in_repo)"
+record 1 'and stderr names it to fetch' "$(grep -c 'lacks 3333333333333333333333333333333333333333' "$tmp/err")"
+record 1 'the same final tree through a commit nobody approved' "$(STUB_HEAD=$HS STUB_REVIEWS=$carried in_repo)"
+record 1 'the owner'"'"'s newer approval of another commit, though an older one covers the head' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$A" "$t1")" "$(review 12 maguerrieri APPROVED "$H2" "$t2" User 'hold until Friday')") in_repo)"
+record 1 'which stderr names as the owner'"'"'s newest' "$(grep -c "the owner's newest approval, by maguerrieri, is of $H2" "$tmp/err")"
 record 1 'a base tip GitHub won'"'"'t give' "$(STUB_BASE_TIP= STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record 1 'a base tip this checkout lacks' \
 	"$(STUB_BASE_TIP=3333333333333333333333333333333333333333 STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
