@@ -10,6 +10,7 @@
 #   STUB_REVIEWS           the PR's reviews, a JSON array (see review below)
 #   STUB_PR_FAIL, STUB_REVIEWS_FAIL, STUB_GQL_FAIL
 #                          set: that read fails (GraphQL as behind the cloud proxy)
+#   STUB_PERM_FAIL         logins whose permission read fails
 #   STUB_NODES             a JSON object keyed by review node id, merged into
 #                          the GraphQL node the stub derives from the review
 #                          (its state, commit, body, no edit and no line
@@ -51,6 +52,7 @@ user) answer "$(jq -n --arg l "${STUB_ME:-}" '{login: $l}')" ;;
 repos/*/collaborators/*/permission)
 	who=${endpoint%/permission}
 	who=$(lower "${who##*/}")
+	case " $(lower "${STUB_PERM_FAIL:-}") " in *" $who "*) echo '{"message": "Server Error"}'; exit 1 ;; esac
 	for pair in ${STUB_PERMS:-}; do
 		[ "$(lower "${pair%%=*}")" = "$who" ] && { answer "$(jq -n --arg p "${pair#*=}" '{permission: $p}')"; exit 0; }
 	done
@@ -220,6 +222,13 @@ record 0 'two owners'"'"' approvals of the head' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 coadmin APPROVED "$head" "$t2" User 'not yet')") run)"
 record 'coadmin not yet' 'print the newest, whose body is the latest word' "$(out '"\(.reviewer) \(.body)"')"
 record 0 'the newer owner approval checked first, the older never' "$(calls 'collaborators/maguerrieri/')"
+record 1 'a failed owner check of the newer approver fails closed, never falling back to the older approval' \
+	"$(STUB_PERM_FAIL=coadmin STUB_REVIEWS=$(reviews "$approve" "$(review 12 coadmin APPROVED "$head" "$t2" User 'do not merge yet')") run)"
+record 1 'and says it couldn'"'"'t read the check' "$(grep -c "can't read whether coadmin" "$tmp/err")"
+record 0 'a collaborator'"'"'s rejection by a read that worked still falls back to the owner' \
+	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate APPROVED "$head" "$t2")") run)"
+record 1 'but a failed read of that collaborator doesn'"'"'t' \
+	"$(STUB_PERM_FAIL=mate STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate APPROVED "$head" "$t2")") run)"
 record 0 'another owner'"'"'s approval of an older commit is left out' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 coadmin APPROVED "$old" "$t2")") run)"
 record 0 'and a collaborator'"'"'s approval of the head' \
