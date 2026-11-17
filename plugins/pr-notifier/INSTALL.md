@@ -21,7 +21,8 @@ checklist below once per Mac.
 nothing. It never runs as root: the one root step is its own small script,
 `install-daemon.sh`, which Mari runs from their own checkout (step 2).
 
-**Each minute, the job:**
+**Every 15 seconds, the job** (every 60 before #349; the [README](README.md)'s *Why
+every 15 seconds, from launchd* says why the interval moved rather than a loop):
 
 1. rotates `job.log` and `notifier.log` once either passes 1 MiB, keeping one old copy
    as `<log>.1`, so each takes at most about 2 MiB;
@@ -138,7 +139,7 @@ $repo pull --ff-only`, then paste again.
 
 The script writes `/Library/LaunchDaemons/works.sprue.bot.pr-notifier.plist`
 (`root:wheel`, mode 644) and loads it into the system domain; the job runs at once, then
-every 60 seconds. A second run changes nothing, and it reloads the job when the plist has
+every 15 seconds. A second run changes nothing, and it reloads the job when the plist has
 changed. It refuses to run when it belongs to bot, sits under `/Users/bot`, is a symbolic
 link, or is writable by anyone but its owner. To see the plist first, with no root:
 `$repo/plugins/pr-notifier/scripts/install-daemon.sh plist`.
@@ -152,7 +153,7 @@ pni status
 Expect `status: ok`, with `system/works.sprue.bot.pr-notifier is loaded: state=…
 runs=… last-exit=0` and `the job's last run: … ran check`. Any `FAIL` line says what to
 fix; `job.last` also records a `check` that failed (`check failed: exit …`). With nothing subscribed yet, `notifier.log` gains a `check skipped=no-subscriptions`
-line a minute.
+line an hour, and `job.last` is rewritten every 15 seconds.
 
 ### 4. Test a wake from the LaunchDaemon
 
@@ -182,9 +183,9 @@ fi
 ```
 
 **The relay.** The session is live and idle: `"status": "idle"`, with a `pid`. Comment on
-the PR from your own GitHub account (anything, such as "notifier test 1"). Within about two
-minutes, or six if the notification doesn't move (the notifier also reads every subscribed
-PR every five minutes):
+the PR from your own GitHub account (anything, such as "notifier test 1"). Within about 15
+seconds, or about two minutes on a plist from before #349 (the notifier reads every
+subscribed PR's summary each run):
 
 ```zsh
 grep "session=${sid:0:8}" ~/.local/state/pr-notifier/notifier.log | tail -n 3
@@ -249,6 +250,19 @@ says when the job script or the shim differs from the newest version's; run `pni
 With no `--domain`, `pni` keeps whichever job is installed, so this is the same on the
 fallback. If `status` says the LaunchDaemon's plist differs, run step 2 again: it
 checks your copy against `origin/main`, then reloads the job with the new plist.
+
+**From before 0.5.0** (#349), all three apply: the plist's `StartInterval` went from 60 to
+15, and the job script's comments changed with it. So, once the update is on `main`:
+
+1. `pni` from a bot shell, for the job script (on the fallback, it also rewrites the
+   user-domain agent's plist and reloads it);
+2. step 2 from your own shell, for the LaunchDaemon's plist;
+3. `pni status`, expecting `status: ok`. In `~/.local/state/pr-notifier/notifier.log`, a
+   PR that moves now shows a `poll-prs prs=… moved=…` line, and `pr-notifier status`
+   has a `pr-poll last=… status=ok` line.
+
+Until step 2 runs, the new CLI runs every 60 seconds under the old plist, direct poll
+included, so nothing breaks in between; it just isn't faster yet.
 
 ## After changing bot's shell `PATH`
 
