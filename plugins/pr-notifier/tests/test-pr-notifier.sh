@@ -2,7 +2,8 @@
 # Tests for bin/pr-notifier against stubbed gh and claude: subscribe and
 # unsubscribe, the filter (owner, configured bot, stranger, own login, a user
 # posing as a bot), coalescing, each delivery state, the feed's 304 and poll
-# interval, a missed notification and catch-up after downtime, merges, Codex's
+# interval, the direct poll (its pace, batching, failures and rate limit, and
+# dedup with the feed), a missed notification and catch-up after downtime, merges, Codex's
 # edited summary, the wake environment, bounded holds, the lock, and the
 # stable-path shim. The vendored owner-check.sh runs for real, on the gh stub.
 #
@@ -1569,8 +1570,10 @@ reset
 rm "$STUB/pr-7.json"
 nt "$T" check 2>/dev/null
 : >"$STUB/gh.log"
+nt $((T + 15)) check 2>/dev/null
+record no 'an unreadable PR is not retried 15 seconds on, so an outage is not hammered' "$(has "$STUB/gh.log" 'pulls/7')"
 nt $((T + 60)) check 2>/dev/null
-record yes 'an unreadable PR is retried on the next check' "$(has "$STUB/gh.log" 'pulls/7')"
+record yes 'it is retried a minute on' "$(has "$STUB/gh.log" 'pulls/7')"
 nt $((T + 1801)) check 2>"$tmp/err"
 record yes 'once it has failed past the bound, it is reported' "$(has "$tmp/err" 'o/r#7 has been unreadable for 30m')"
 record yes 'and logged' "$(logged 'stale pr=o/r#7 unreadable=30m')"
