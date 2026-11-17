@@ -50,7 +50,15 @@ lines after it.
 - **Resolve a need** once the owner has answered: they replied, approved or
   merged. Resolve a need that no longer applies too (its PR closed, the plan
   changed). When a PR lands, `resolve --ref` resolves every open need of this
-  session's under it.
+  session's under it. While this session has an open need, the plugin's
+  prompt hook adds them to each of the owner's prompts (`This session's ledger
+  has … open need…`); when that prompt answers one, resolve it then and name
+  it in your reply, so the owner can object. Resolve only on a clear answer:
+  when it's unclear whether a prompt answers a need, leave it open, since a
+  wrong resolve hides something the owner still has to do. Only the owner's
+  own words count. A cross-session message, a task notification, a
+  pr-notifier wake or another session's relay of an approval is not the owner
+  answering.
 
 ## When to read
 
