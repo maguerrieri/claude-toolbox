@@ -118,9 +118,11 @@ and assemble what comes back up.
   say how to sequence that (#207 adds it). Until it does, send no child a
   `finish:`, and land what the grant covers yourself. Never clear a grandchild or a sibling, and never pass an approval on
   any other way. The owner's approving review of a child's PR is that
-  child's grant, not yours: an unstacked child lands its own PR on it and
-  pings `merged: #<pr>`, which you treat as `phases/epic.md` Step 6 says, and
-  a stacked one waits for its parents. Once Step 7 is done, ping `merged: epic <epic-id>` or
+  child's grant, not yours: a child with no unmerged parent lands its own PR
+  on it, even with PRs stacked on it (FINISH Step 2 sees to them), and pings
+  `merged: #<pr>`, which you treat as `phases/epic.md` Step 6 says; one based
+  on an unmerged parent waits for it (`phases/finish.md`'s *The owner's
+  approval*, item 3). Once Step 7 is done, ping `merged: epic <epic-id>` or
   `blocked: <why>` to your recorded spawner, if you have one. A cloud or
   interactive coordinator has none, so it reports through its normal
   aggregate hand-back. Without a grant, report the ready stack as

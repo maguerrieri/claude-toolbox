@@ -21,21 +21,26 @@
 #   - Anything else, or a force-push of the base since the approval (which
 #     GitHub records on the PR): nothing carries. An event in the approval's
 #     own second counts as after it.
-# What the approved commit changed since that base, merged onto the head's
-# own base (git merge-tree --write-tree --merge-base), must give exactly the
-# head's tree: the same changes, in the same places, with nothing added. A
-# merge that conflicts, or a git too old for merge-tree's --merge-base
-# (before 2.40), carries nothing. Those reads are in the caller's checkout,
-# which must hold the commits (fetch them first); a commit missing there
-# carries nothing. Reads the PR and every page of its
+# A rebase merge lands each of the head's commits, not just its last tree, so
+# the head's commits since its own base must replay the approved commit's
+# since that base one for one: both linear, as many of them, and each head
+# commit's tree exactly its approved counterpart merged onto the head commit
+# before it (git merge-tree --write-tree --merge-base). The same changes, in
+# the same places, with nothing added, even for a moment. A merge that
+# conflicts, or a git too old for merge-tree's --merge-base (before 2.40),
+# carries nothing. Those reads are in the caller's checkout, which must hold
+# the commits (fetch the base, and the approved commit by its sha); a commit
+# missing there carries nothing, and stderr names it. Only the owner's newest
+# approval is weighed: an older one never stands in for a newer one that
+# doesn't cover the head, whose body may hold. Reads the PR and every page of its
 # reviews by REST. A review is decisive when its state is APPROVED,
 # CHANGES_REQUESTED or DISMISSED (COMMENTED and PENDING never are), and
 # reviews are ordered by submission time, then id. An owner is a login
 # owner-check.sh (beside it) exits 0 for: an admin on the repo, while the
 # sessions' own login isn't one. Exits:
 #
-#   0  a grant: the PR is open and not a draft, and the approval is the newest APPROVED review
-#      by an owner that covers the PR's head (above), and:
+#   0  a grant: the PR is open and not a draft, and the owner's newest APPROVED
+#      review covers the PR's head (above), and:
 #      - no CHANGES_REQUESTED or DISMISSED review, by anyone, is newer than it;
 #      - no login's latest decisive review is CHANGES_REQUESTED, from before
 #        it either: the owner's, a collaborator's, a bot's or a deleted
@@ -174,17 +179,30 @@ latest=$(printf '%s\n' "$sorted" | awk -F "$sep" 'NF > 1 { last[$1] = $0; order[
 # same changes and nothing more (the header says how). Only commits GitHub
 # names are used; this checkout supplies their objects.
 sha_re='^[0-9a-f]{40}$'
-reasons= base_tip= checked=" " same=" "
+reasons= base_tip=
 have() { # have <sha>: the commit is in this checkout
 	git cat-file -e "$1^{commit}" 2>/dev/null
 }
-replays() { # replays <old base> <approved>: what <approved> changed since <old base>, merged onto the head's own base, is the head's tree
-	local nb tree
+replays() { # replays <old base> <approved>: the head's commits since its own base replay <approved>'s since <old base>, one for one
+	local nb approved_list head_list n i a h prev_a prev_h tree
 	[ "$1" != "$2" ] && git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
 	nb=$(git merge-base "$base_tip" "$head" 2>/dev/null) || return 1
-	tree=$(git merge-tree --write-tree --no-messages --merge-base="$1" "$nb" "$2" 2>/dev/null) || return 1
-	tree=$(printf '%s\n' "$tree" | head -n 1)
-	[[ $tree =~ $sha_re ]] && [ "$tree" = "$(git rev-parse --verify --quiet "$head^{tree}" 2>/dev/null)" ]
+	# Linear on both sides (a rebase flattens merges), with as many commits,
+	# since a rebase merge lands each commit, not just the last tree.
+	[ -z "$(git rev-list --merges "$1..$2" 2>/dev/null)" ] && [ -z "$(git rev-list --merges "$nb..$head" 2>/dev/null)" ] || return 1
+	approved_list=$(git rev-list --reverse "$1..$2" 2>/dev/null) && head_list=$(git rev-list --reverse "$nb..$head" 2>/dev/null) || return 1
+	n=$(printf '%s' "$approved_list" | grep -c . || true)
+	[ "$n" -ge 1 ] && [ "$n" -le 200 ] && [ "$(printf '%s' "$head_list" | grep -c . || true)" = "$n" ] || return 1
+	# Each head commit must be its approved counterpart merged onto the head
+	# commit before it: the same changes, in the same places, nothing else.
+	prev_a=$1 prev_h=$nb i=1
+	while [ "$i" -le "$n" ]; do
+		a=$(printf '%s\n' "$approved_list" | sed -n "${i}p") h=$(printf '%s\n' "$head_list" | sed -n "${i}p")
+		tree=$(git merge-tree --write-tree --no-messages --merge-base="$prev_a" "$prev_h" "$a" 2>/dev/null) || return 1
+		tree=$(printf '%s\n' "$tree" | head -n 1)
+		[[ $tree =~ $sha_re ]] && [ "$tree" = "$(git rev-parse --verify --quiet "$h^{tree}" 2>/dev/null)" ] || return 1
+		prev_a=$a prev_h=$h i=$((i + 1))
+	done
 }
 old_base() { # old_base <approval time> <approved>: the approved commit's base, as GitHub records it, or fail
 	local events changes count prev cur changed_at merged
@@ -223,48 +241,49 @@ old_base() { # old_base <approval time> <approved>: the approved commit's base, 
 covers() { # covers <commit> <approval time>: an approval of it covers the head
 	[ "$1" = "$head" ] && return 0
 	[[ $1 =~ $sha_re ]] || return 1
-	case $same in *" $1@$2 "*) return 0 ;; esac
-	case $checked in *" $1@$2 "*) return 1 ;; esac
-	checked+="$1@$2 "
-	if [ -z "$base_tip" ]; then
-		# The base branch's tip, read once.
-		if [[ $base_ref =~ ^[A-Za-z0-9._/-]+$ ]] &&
-			base_tip=$("$gh_bin" api "repos/$owner/$repo/git/ref/heads/$base_ref" --hostname "$host" \
-				--jq '.object.sha // ""' </dev/null 2>/dev/null) && [[ $base_tip =~ $sha_re ]] &&
-			have "$base_tip" && have "$head"; then
-			:
-		else
-			base_tip=none
-			reasons+="this checkout lacks the head or ${base_ref:-its base}'s tip (fetch both), so no earlier approval carries$nl"
-		fi
+	# The base branch's tip, from GitHub.
+	if ! [[ $base_ref =~ ^[A-Za-z0-9._/-]+$ ]] ||
+		! base_tip=$("$gh_bin" api "repos/$owner/$repo/git/ref/heads/$base_ref" --hostname "$host" \
+			--jq '.object.sha // ""' </dev/null 2>/dev/null) || ! [[ $base_tip =~ $sha_re ]]; then
+		reasons+="can't read ${base_ref:-the base}'s tip from GitHub, so no earlier approval carries$nl"
+		return 1
 	fi
-	[ "$base_tip" != none ] || return 1
-	local base
-	have "$1" && base=$(old_base "$2" "$1") && [[ $base =~ $sha_re ]] && replays "$base" "$1" || return 1
-	same+="$1@$2 "
+	local missing= c base
+	for c in "$head" "$base_tip" "$1"; do have "$c" || missing+=" $c"; done
+	if [ -n "$missing" ]; then
+		reasons+="this checkout lacks$missing (fetch the base, and the approved commit by its sha), so no earlier approval carries$nl"
+		return 1
+	fi
+	base=$(old_base "$2" "$1") && [[ $base =~ $sha_re ]] && replays "$base" "$1"
 }
 
-# The newest approval covering the head by an owner.
+# The owner's newest approval, which must cover the head: an older one never
+# stands in for it, since the newest is the owner's latest word and its body
+# may hold.
 approval= rejected=" "
 while IFS="$sep" read -r key at id login type state commit node url; do
-	[ "$state" = APPROVED ] && covers "$commit" "$at" || continue
+	[ "$state" = APPROVED ] || continue
 	case $rejected in *" $key "*) continue ;; esac
+	rejected+="$key "
 	if [ "$type" != User ] || [ -z "$login" ] || [ "$(lower "$login")" = ghost ]; then
 		reasons+="the approval by ${login:-a deleted account} is not a user's ($url)$nl"
 	elif owner_check "$login"; then
-		approval="$key$sep$at$sep$id$sep$login$sep$type$sep$state$sep$commit$sep$node$sep$url"
+		if covers "$commit" "$at"; then
+			approval="$key$sep$at$sep$id$sep$login$sep$type$sep$state$sep$commit$sep$node$sep$url"
+		else
+			reasons+="the owner's newest approval, by $login, is of ${commit:-no commit}, and the head $head doesn't make exactly its changes ($url)$nl"
+		fi
 		break
 	else
 		# owner-check.sh exits 1 for a failed read too. Only a read that worked
 		# may pass over this approval for an older one: else the newest
 		# approval, whose body may hold, goes unread.
 		case $owner_err in *"can't read"*)
-			no_grant "can't read whether $login, who approved the head, is the owner ($url): ${owner_err#owner-check.sh: }"
+			no_grant "can't read whether $login, who approved this PR, is the owner ($url): ${owner_err#owner-check.sh: }"
 			;;
 		esac
-		reasons+="$login approved the head but isn't the owner by owner-check.sh ($url)$nl"
+		reasons+="$login approved but isn't the owner by owner-check.sh ($url)$nl"
 	fi
-	rejected+="$key "
 done <<<"$newest_first"
 if [ -z "$approval" ]; then
 	while IFS="$sep" read -r key at id login type state commit node url; do
