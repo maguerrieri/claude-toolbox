@@ -489,6 +489,19 @@ cmd_status() {
 		fi
 	fi
 
+	# / must stay untrusted in every root: a resume that races a stop starts
+	# a copy of the session, and the trust check on / is what refuses it
+	# (the README's Resumes and copies, #338). Only that one flag is read.
+	local f root
+	for f in "$HOME/.claude.json" "$HOME"/.claude-*/.claude.json; do
+		[ -f "$f" ] || continue
+		root=${f%/.claude.json}
+		[ "$f" != "$HOME/.claude.json" ] || root="the default root"
+		if jq -e '.projects["/"].hasTrustDialogAccepted == true' "$f" >/dev/null 2>&1; then
+			warn "/ is trusted in $root ($f): a wake that races a stop would start a copy of the session there instead of being refused; take the trust for / out of that file (README, Resumes and copies)"
+		fi
+	done
+
 	# The job's last run, from job.last (the job script writes it each run).
 	last=
 	[ ! -f "$state/job.last" ] || last=$(tail -n 1 "$state/job.last")

@@ -426,6 +426,17 @@ record 0 "status, installed: exit" "$?"
 record yes "status, installed: ok" "$(has "$out" "status: ok")"
 record yes "status, installed: loaded, nested states left out" "$(grep -qx "ok: system/$label is loaded: state=running runs=3 last-exit=0" "$out" && echo yes || echo no)"
 record yes "status, installed: names the keychain" "$(has "$out" "unlocks the default keychain, $STUB/kc")"
+record no "status, / untrusted: no trust warning" "$(has "$out" "/ is trusted")"
+
+# / trusted in a root: a wake that races a stop would start a copy (#338).
+printf '%s\n' '{"projects": {"/": {"hasTrustDialogAccepted": false}, "/x": {"hasTrustDialogAccepted": true}}}' >"$HOME/.claude.json"
+mkdir -p "$HOME/.claude-alt"
+printf '%s\n' '{"projects": {"/": {"hasTrustDialogAccepted": true}}}' >"$HOME/.claude-alt/.claude.json"
+st
+record 0 "status, / trusted in a root: exit" "$?"
+record no "status, / trusted in a root: the default root, untrusted there, isn't named" "$(has "$out" "/ is trusted in the default root")"
+record yes "status, / trusted in a root: warns, naming the root" "$(has "$out" "warn: / is trusted in $HOME/.claude-alt ($HOME/.claude-alt/.claude.json)")"
+rm -rf "$HOME/.claude.json" "$HOME/.claude-alt"
 
 echo 1 >"$STUB/exit"
 st

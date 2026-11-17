@@ -227,11 +227,13 @@ First match wins:
   then a wake, landed. The fallback now waits for the worker itself. **Don't accept that
   trust prompt in `/`, whatever the log says**: from a trusted cwd (`/`, or the
   session's own) the copy runs, with the wake prompt, beside the session it copied. A
-  resume whose output shows it started a copy anyway (that note, or a `backgrounded ·`
-  line naming an id other than the session's) is no wake: the copy is stopped at once,
+  resume whose output carries that note anyway is no wake: the copy is stopped at once,
   with one retry a second on (its conversation is kept), the events stay held, and
-  `check` logs `wake-forked` and says so on stderr. Both signs are 2.1.325's wording, so
-  this is a backstop; `/` staying untrusted is the guard.
+  `check` logs `wake-forked` and says so on stderr. Only the note counts, since a real
+  wake never prints it; guessing from less (a `backgrounded ·` line's id, say) could stop
+  the session a real wake had just started. The note is 2.1.325's wording, so this is a
+  backstop: `/` staying untrusted is the guard, and `install.sh status` warns when any
+  config root trusts it.
 - **Bounded holds.** Holds rest on Claude Code's internal job state, which can change
   between versions. A session held past `hold_bound` (30 minutes) gets one `stale` log
   line and one stderr line from `check`, and stays held; `status` marks it `STALE`.
