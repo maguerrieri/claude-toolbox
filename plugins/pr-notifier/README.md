@@ -148,9 +148,18 @@ user's sessions share (`gh pr` commands are GraphQL too), so the poll reads `rat
 in the same query and leaves `graphql_reserve` points (1,000) to them. Below about
 `graphql_reserve` plus what the rest of the hour would take at full pace, it stretches its
 interval to spread what's left above the reserve over the time to the reset; with nothing
-left above the reserve, it waits for the reset. A failed poll backs off (30 seconds, then
-a minute, two and four, then every five minutes) and, when the rate limit failed it,
-waits past the reset it last read. Each change of pace is one `poll-prs mode=…` line in
+left above the reserve, it waits for the reset. A reset it can't read counts as an hour
+away. Each PR it marks costs a REST read, a budget of its own, so when it has marked
+something it also reads `GET /rate_limit`, which costs nothing: with `rest_reserve`
+requests (1,000) or fewer left, it marks nothing and records none of the summaries that
+moved, so the next poll marks them once the budget is back (`poll-prs rest-low`, then
+`rest-ok`). A failed poll backs off (30 seconds, then a minute, two and four, then every
+five minutes, or every `pr_poll_interval` past that) and, when GitHub's hourly limit failed
+it, waits past the reset it last read. A secondary limit, which clears in about a minute,
+takes the ordinary backoff. Past a hundred PRs, a query that fails leaves the others' at
+pace, and is logged at most every five minutes. A subscription whose PR number is past
+GraphQL's 32-bit `Int` (a typo `subscribe` accepted) would fail the whole query, so it is
+left out, and reading the PR reports it. Each change of pace is one `poll-prs mode=…` line in
 the log, and `status` shows the last one.
 
 **Why every 15 seconds, from launchd.** The job's `StartInterval` went from 60 to 15
@@ -168,8 +177,8 @@ token:
 
 | | GraphQL points an hour | REST requests an hour |
 |---|---|---|
-| The direct poll, 20 PRs | 240 (1 a query, 240 queries) | none |
-| The direct poll, 100 PRs | 480 (2 a query) | none |
+| The direct poll, 20 PRs | 240 (1 a query, 240 queries) | `GET /rate_limit` when it marks a PR, which costs none |
+| The direct poll, 100 PRs | 480 (2 a query) | the same |
 | The feed | none | up to 60 (a 304 doesn't count, the spike found) |
 | The sweep, 20 PRs | none | about 480 (the PR and its timeline, every five minutes) |
 | The sweep, 100 PRs | none | about 2,400 |
@@ -179,7 +188,9 @@ token:
 The query's cost was measured with `rateLimit(dryRun: true)`: 1 point for 20 PRs and 2 for
 100. A marked PR costs the same as before; the direct poll marks a PR for any change, the
 sessions' own comments and pushes included, so a busy PR is read once per check it moves
-in, and again when the feed names it. A relay wake is a short Haiku session on the user's
+in, and again when the feed names it. A PR in a review loop moves perhaps 20 to 60 times
+an hour (pushes, reviews, one review per thread reply, comments), about 60 to 180 REST
+requests; `rest_reserve` bounds the worst case. A relay wake is a short Haiku session on the user's
 Claude login, $0.0003 to $0.0009 each.
 
 ## The filter
@@ -430,6 +441,7 @@ inside a cross-session message.
 | `pr_poll` | `true` | `false` turns the direct poll off, leaving the feed and the sweep |
 | `pr_poll_interval` | `15` | Seconds between direct polls (at least 5), less five seconds of slack for launchd's firings. Above the job's 15 it slows the poll without a new plist |
 | `graphql_reserve` | `1000` | GraphQL points of the hourly budget the direct poll leaves to the sessions: it slows down to stay above them, and waits for the reset at them |
+| `rest_reserve` | `1000` | REST requests of the hourly budget the direct poll leaves: at or below it, the poll marks no PR to be read, and the feed and the sweep carry on |
 | `sweep_interval` | `300` | Seconds between reads of each subscribed PR when no notification marks it |
 | `retry_window` | `1800` | Seconds an item a failed owner check dropped is checked again |
 | `owner_ttl` | `3600` | Seconds an owner check's yes is cached |

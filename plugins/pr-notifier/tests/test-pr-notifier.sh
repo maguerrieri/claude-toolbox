@@ -94,6 +94,8 @@ graphql)
 		i=0 missing=
 		while [ "$i" -lt "$k" ]; do
 			n=$(jq -r --arg v "n$i" '.variables[$v]' "$input")
+			# $STUB/summary.fail-<n> fails any request that asks for PR n.
+			if [ -f "$STUB/summary.fail-$n" ]; then cat "$STUB/summary.fail-$n" >&2; exit 1; fi
 			if [ -f "$STUB/pr-$n.json" ] && [ ! -f "$STUB/summary-$n.null" ]; then
 				s=$(jq -n --slurpfile p "$STUB/pr-$n.json" --slurpfile t "$STUB/timeline-$n.json" '$p[0] as $pr | ($t[0] // []) as $tl
 					| [$tl[] | select(.event == "commented")] as $cs
@@ -125,6 +127,10 @@ graphql)
 			jq -n --arg id "$id" '{id: $id, editor: null}'
 		fi
 	done | jq -s '{data: {nodes: .}}')
+	;;
+rate_limit)
+	# The REST budget, from $STUB/rest.json.
+	out=$(cat "$STUB/rest.json" 2>/dev/null || echo '{"resources":{"core":{"remaining":4999,"reset":1793491200}}}')
 	;;
 user)
 	[ ! -f "$STUB/user.fail" ] || { echo 'gh: HTTP 401' >&2; exit 1; }
@@ -1434,6 +1440,43 @@ nt $((T + 15)) check 2>/dev/null
 record '3|2,100,2' 'a hundred and two PRs take two requests' "$(summaries)|$(paste -sd, - <"$STUB/summary.sizes")"
 record yes "PRs that don't resolve (here, no fixture) are counted, not failed" \
 	"$(nt $((T + 15)) status | grep -q 'pr-poll last=.* status=ok mode=normal prs=102 unread=100' && echo yes || echo no)"
+last=$(jq -r '.subscriptions | map(.pr) | unique | .[-1] | split("#")[1]' "$PR_NOTIFIER_HOME/registry.json")
+echo 'gh: HTTP 502' >"$STUB/summary.fail-$last"
+nt $((T + 30)) check 2>/dev/null
+record '0|normal' "a failed request for some of them leaves the others at pace" \
+	"$(jq -r '"\(.pr_poll.failures)|\(.pr_poll.mode)"' "$PR_NOTIFIER_HOME/state.json")"
+record yes 'and is logged' "$(logged 'poll-prs error prs=2 of=102 detail="gh: HTTP 502"')"
+nt $((T + 45)) check 2>/dev/null
+record 1 'at most every five minutes' "$(grep -c 'poll-prs error prs=2 of=102' "$PR_NOTIFIER_HOME/notifier.log")"
+
+# A PR number past GraphQL's 32-bit Int, or a ref of no shape, would fail the
+# whole query: it is left out, and the rest still line up.
+reset
+jq --arg at "$(iso $((T0 - 120)))" --arg sid "$SID" '.subscriptions += [{pr: "o/r#99999999999", session_id: $sid, name: "n",
+	config_dir: null, path: null, subscribed_at: $at}, {pr: "a/b#x", session_id: $sid, name: "n", config_dir: null, path: null,
+	subscribed_at: $at}]' "$PR_NOTIFIER_HOME/registry.json" >"$tmp/reg" && mv "$tmp/reg" "$PR_NOTIFIER_HOME/registry.json"
+nt "$T" check 2>/dev/null
+record '1|0' 'a PR number past 32 bits, or a ref of no shape, is left out of the query' \
+	"$(paste -sd, - <"$STUB/summary.sizes")|$(jq -r '.pr_poll.failures' "$PR_NOTIFIER_HOME/state.json")"
+timeline 7 "$(comment 7 101 mari User "$(iso $((T + 5)))")"
+nt $((T + 15)) check 2>/dev/null
+record '1|yes' 'and the PRs that are left still match their summaries' "$(wakes)|$(logged 'poll-prs prs=1 moved=o/r#7')"
+
+# The REST budget: each PR the poll marks costs a REST read, so at
+# rest_reserve nothing is marked until it's back.
+reset
+nt "$T" check
+echo "{\"resources\":{\"core\":{\"remaining\":500,\"reset\":$((T + 900))}}}" >"$STUB/rest.json"
+timeline 7 "$(comment 7 101 mari User "$(iso $((T + 5)))")"
+: >"$STUB/gh.log"
+nt $((T + 15)) check
+record 'no|0' 'with the REST budget at its reserve, a PR that moved is not read' "$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+record yes 'and that is logged' "$(logged "poll-prs rest-low remaining=500 reserve=1000 reset=$(iso $((T + 900))) held=o/r#7")"
+nt $((T + 30)) check
+record 1 'once' "$(grep -c 'poll-prs rest-low' "$PR_NOTIFIER_HOME/notifier.log")"
+echo "{\"resources\":{\"core\":{\"remaining\":4000,\"reset\":$((T + 900))}}}" >"$STUB/rest.json"
+nt $((T + 45)) check
+record '1|yes' "once it's back, the PR is read and wakes" "$(wakes)|$(logged 'poll-prs rest-ok remaining=4000')"
 
 # The interval: pr_poll_interval, less five seconds of slack for launchd's firings.
 reset
@@ -1495,6 +1538,23 @@ echo 'gh: API rate limit exceeded for user ID 1.' >"$STUB/summary.fail"
 nt $((reset_at + 40)) check
 record yes 'a rate-limited failure waits past the reset it last read' \
 	"$(logged "poll-prs error prs=1 failures=1 rate-limited next=$(iso $((reset_at + 3601)))")"
+reset
+echo "{\"cost\":1,\"remaining\":4000,\"limit\":5000,\"resetAt\":\"$(iso $((T + 3000)))\"}" >"$STUB/rate.json"
+nt "$T" check
+echo 'gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.' >"$STUB/summary.fail"
+nt $((T + 15)) check
+record yes "a secondary rate limit, which clears in a minute or so, takes the ordinary backoff" \
+	"$(logged "poll-prs error prs=1 failures=1 next=$(iso $((T + 45)))")"
+reset
+echo '{"cost":1,"remaining":1000,"limit":5000,"resetAt":""}' >"$STUB/rate.json"
+nt "$T" check
+record "paused|$((T + 3601))" "a reset it can't read counts as an hour away, so the reserve still holds" \
+	"$(jq -r '"\(.pr_poll.mode)|\(.pr_poll.next_at)"' "$PR_NOTIFIER_HOME/state.json")"
+reset
+settings '{"pr_poll_interval": 600}'
+echo 'gh: HTTP 502' >"$STUB/summary.fail"
+nt "$T" check
+record yes 'a failing poll never retries faster than a healthy one' "$(logged "poll-prs error prs=1 failures=1 next=$(iso $((T + 600)))")"
 
 # Held events are retried every check, so a session that goes idle gets them
 # within a check, and the same hold is logged once, not every check.
