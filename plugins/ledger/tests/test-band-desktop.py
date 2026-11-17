@@ -5,8 +5,9 @@ stands for the engine. This drives a real headless Claude Code over stdio, the
 transport a session the desktop app hosts on its own machine uses, as a client
 of the `desktop` surface would: it attaches, asks for the AbovePrompt band,
 presses Show, and runs /ledger-band, through the control requests the CLI
-documents as @internal (`ui_attach`, `ui_render`, `ui_press`; checked on
-2.1.325 and 2.1.326). No step starts a model turn, so it needs no login.
+documents as @internal (`ui_attach`, `ui_render`, `ui_press`; written against
+2.1.326, and ledger CI runs it on the CLI it pins). No step starts a model
+turn, so it needs no login.
 
 What it can't cover is a Remote Control session (one `claude remote-control`
 spawns, `--sdk-url`), whose transport is remote: AGENTS.md, *Mods in the
@@ -29,7 +30,11 @@ import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN = os.path.dirname(HERE)
-STEP_SECONDS = 90
+# How long one request, or a command's turn, may take before it counts as
+# unanswered; the engine answers each in well under a second once loaded.
+STEP_SECONDS = 60
+# How long the first ask may wait for session.start's first read of the ledger.
+FIRST_DRAW_SECONDS = 30
 
 passed = 0
 failed = 0
@@ -54,35 +59,67 @@ def texts(node):
 
 
 def buttons(node):
-    """Every Button under <node>, as (key, press)."""
+    """Every Button under <node>, as (key, press); a malformed one has None in either."""
     if not isinstance(node, dict):
         return []
-    own = [(node["props"]["key"], node["press"])] if node.get("type") == "Button" else []
+    own = [((node.get("props") or {}).get("key"), node.get("press"))] if node.get("type") == "Button" else []
     return own + [button for child in node.get("children", []) for button in buttons(child)]
+
+
+def button_keys(node):
+    return [key for key, _ in buttons(node)]
 
 
 class Session:
     """A headless session spoken to over stream-json, as an SDK host does."""
 
-    def __init__(self, argv, env, cwd):
-        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     env=env, cwd=cwd, text=True, bufsize=1)
+    def __init__(self, argv, env, cwd, stderr_path):
+        # stderr goes to a file, so a chatty CLI can never fill a pipe nobody
+        # reads and stall. stdout is read straight off its descriptor: a
+        # buffered reader would pull several lines in at once, which select()
+        # then never reports.
+        self.stderr = open(stderr_path, "w+")
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr,
+                                     env=env, cwd=cwd)
+        self.fd = self.proc.stdout.fileno()
+        self.pending = b""
+        self.ended = False
         self.count = 0
         self.seen = []
 
     def write(self, message):
-        self.proc.stdin.write(json.dumps(message) + "\n")
-        self.proc.stdin.flush()
+        # A CLI that already exited can't be written to: the read that follows
+        # then answers nothing, which the caller records.
+        try:
+            self.proc.stdin.write((json.dumps(message) + "\n").encode())
+            self.proc.stdin.flush()
+        except BrokenPipeError:
+            self.ended = True
 
-    def messages(self, until):
+    def next_line(self, deadline):
+        """The next line of stdout, or None at the deadline or once it ends."""
+        while b"\n" not in self.pending:
+            if self.ended:
+                return None
+            left = deadline - time.time()
+            if left <= 0:
+                return None
+            ready, _, _ = select.select([self.fd], [], [], min(left, 0.5))
+            if ready:
+                chunk = os.read(self.fd, 65536)
+                if chunk:
+                    self.pending += chunk
+                else:
+                    self.ended = True
+        line, self.pending = self.pending.split(b"\n", 1)
+        return line
+
+    def messages(self, until, seconds=STEP_SECONDS):
         """Read messages until <until>(message) holds; answer that one, or None."""
-        deadline = time.time() + STEP_SECONDS
-        while time.time() < deadline:
-            ready, _, _ = select.select([self.proc.stdout], [], [], 0.5)
-            if not ready:
-                continue
-            line = self.proc.stdout.readline()
-            if not line:
+        deadline = time.time() + seconds
+        while True:
+            line = self.next_line(deadline)
+            if line is None:
                 return None
             try:
                 message = json.loads(line)
@@ -91,24 +128,31 @@ class Session:
             self.seen.append(message)
             if until(message):
                 return message
-        return None
 
     def ask(self, request):
-        """Send a control request; answer its response's body, or None."""
+        """
+        Send a control request; answer its response's body, or {"error": why}
+        when the engine refused it or never answered.
+        """
         self.count += 1
         request_id = f"r{self.count}"
         self.write({"type": "control_request", "request_id": request_id, "request": request})
         answer = self.messages(lambda m: m.get("type") == "control_response"
                                and m.get("response", {}).get("request_id") == request_id)
-        response = (answer or {}).get("response", {})
-        return response.get("response") if response.get("subtype") == "success" else None
+        if answer is None:
+            return {"error": f"no answer to {request['subtype']}" + (" (the CLI exited)" if self.ended else "")}
+        response = answer.get("response", {})
+        if response.get("subtype") != "success":
+            return {"error": response.get("error", response)}
+        return response.get("response") or {}
 
     def type_command(self, text, instance_id):
         """
         Type <text> as the person would, then wait for the engine to tell the
         surface that <instance_id> changed: the command's `result` can arrive
         before its write to the band's state lands, and a surface redraws on
-        the `ui_invalidate` that follows. Answers the messages seen meanwhile.
+        the `ui_invalidate` that follows. Answers the messages seen meanwhile
+        and what never came, if anything.
         """
         start = len(self.seen)
         self.write({"type": "user", "message": {"role": "user", "content": text}})
@@ -117,19 +161,27 @@ class Session:
             return message.get("subtype") == "ui_invalidate" and any(
                 instance.get("instance_id") == instance_id for instance in message.get("instances", []))
 
-        self.messages(lambda m: m.get("type") == "result")
-        if not any(invalidates(message) for message in self.seen[start:]):
-            self.messages(invalidates)
-        return self.seen[start:]
+        missing = None
+        if self.messages(lambda m: m.get("type") == "result") is None:
+            missing = "result"
+        elif not any(invalidates(message) for message in self.seen[start:]) and self.messages(invalidates) is None:
+            missing = "ui_invalidate"
+        return self.seen[start:], missing
 
     def close(self):
-        self.proc.stdin.close()
+        try:
+            self.proc.stdin.close()
+        except BrokenPipeError:
+            pass
         try:
             self.proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait()
-        return self.proc.stderr.read()
+        self.stderr.seek(0)
+        said = self.stderr.read()
+        self.stderr.close()
+        return said
 
 
 def main():
@@ -161,57 +213,66 @@ def run(work):
         "--setting-sources", "project", "--strict-mcp-config", "--plugin-dir", PLUGIN,
         "--session-id", me, "--model", "haiku",
     ]
-    session = Session(argv, env, work)
+    session = Session(argv, env, work, os.path.join(work, "stderr.txt"))
     try:
-        steps(session, me, ledgers, env)
+        steps(session, me, env)
     finally:
         stderr = session.close()
     if failed and stderr.strip():
         print("stderr:", stderr.strip()[:2000])
 
 
-def steps(session, me, ledgers, env):
+def steps(session, me, env):
     init = session.ask({"subtype": "initialize"})
-    capabilities = (init or {}).get("capabilities", [])
+    capabilities = init.get("capabilities") or []
     record("a local transport offers remote surfaces (ui_surface_v1)", "ui_surface_v1" in capabilities,
-           [c for c in capabilities if c.startswith("ui_")])
-    # Let session.start's first read of the ledger land.
-    time.sleep(2)
+           init.get("error") or [c for c in capabilities if c.startswith("ui_")])
 
     attach = session.ask({"subtype": "ui_attach", "surface": "desktop", "client_id": "test"})
-    record("a desktop client attaches", (attach or {}).get("surfaces") == ["desktop"], attach)
+    record("a desktop client attaches", attach.get("surfaces") == ["desktop"], attach)
 
     props = {"hasSurvey": False, "isCollapsed": False, "isWorking": False, "maxRows": 12, "bodyColumns": 95,
              "scroll": {"offset": 0, "bodyRows": 11}, "view": {}}
 
     def band():
         return session.ask({"subtype": "ui_render", "surface": "desktop", "client_id": "test",
-                            "component": "AbovePrompt", "instance_id": "above-prompt", "props": props}) or {}
+                            "component": "AbovePrompt", "instance_id": "above-prompt", "props": props})
 
+    # session.start reads the ledger once it has loaded, so ask until the row
+    # is there (or the engine refuses), rather than guess how long that takes.
+    deadline = time.time() + FIRST_DRAW_SECONDS
     folded = band()
+    while "error" not in folded and folded.get("tree", {}).get("type") == "engine" and time.time() < deadline:
+        time.sleep(0.5)
+        folded = band()
     tree = folded.get("tree", {})
-    record("the band draws its row on desktop", folded.get("drawn_by") == ["ledger"], folded)
+    record("the band draws its row on desktop", folded.get("drawn_by") == ["ledger"] and tree.get("type") == "Box",
+           folded)
     record("the row shows the count and the newest need",
            [t.strip() for t in texts(tree)] == ["1 open need", "Review PR #9"], texts(tree))
     keys = dict(buttons(tree))
     record("the folded row has Show and Hide", list(keys) == ["show", "hide"], list(keys))
 
-    pressed = session.ask({"subtype": "ui_press", "surface": "desktop", "client_id": "test", "key": "show",
-                           **keys.get("show", {})}) if "show" in keys else None
-    record("Show is pressed on desktop", (pressed or {}).get("handled") is True, pressed)
+    show = keys.get("show") or {}
+    pressed = session.ask({"subtype": "ui_press", "surface": "desktop", "client_id": "test", "key": "show", **show})
+    record("Show is pressed on desktop", pressed.get("handled") is True, pressed)
 
     expanded = band().get("tree", {})
     resolve = f"resolve:{me}:n1"
-    record("Show expands the list, with Less and Resolve",
-           [key for key, _ in buttons(expanded)] == ["less", "hide", resolve], [key for key, _ in buttons(expanded)])
+    record("Show expands the list, with Less and Resolve", button_keys(expanded) == ["less", "hide", resolve],
+           button_keys(expanded))
     record("the list shows the need's ref, text and Why line",
            "Review PR #9" in texts(expanded) and "Why: the owner reviews before a merge" in texts(expanded)
            and any(t.startswith("n1 · o/r#9 · ") for t in texts(expanded)), texts(expanded))
 
-    session.type_command("/ledger-band", "above-prompt")
-    record("/ledger-band folds it", [key for key, _ in buttons(band().get("tree", {}))] == ["show", "hide"])
-    session.type_command("/ledger-band", "above-prompt")
-    record("/ledger-band expands it again", resolve in [key for key, _ in buttons(band().get("tree", {}))])
+    _, missing = session.type_command("/ledger-band", "above-prompt")
+    folded_again = button_keys(band().get("tree", {}))
+    record("/ledger-band folds it", missing is None and folded_again == ["show", "hide"],
+           {"never came": missing, "buttons": folded_again})
+    _, missing = session.type_command("/ledger-band", "above-prompt")
+    expanded_again = button_keys(band().get("tree", {}))
+    record("/ledger-band expands it again", missing is None and resolve in expanded_again,
+           {"never came": missing, "buttons": expanded_again})
 
     # Resolved as the session would resolve it, through the script: a Resolve
     # press also starts a turn (it tells the session), which needs a model.
@@ -219,9 +280,10 @@ def steps(session, me, ledgers, env):
     resolved = subprocess.run(["bash", os.path.join(PLUGIN, "scripts", "ledger.sh"), "resolve", "n1"],
                               env={**env, "CLAUDE_CODE_SESSION_ID": me}, capture_output=True, text=True)
     record("the need resolves", resolved.returncode == 0, resolved.stderr)
-    said = session.type_command("/ledger-band", "above-prompt")
+    said, missing = session.type_command("/ledger-band", "above-prompt")
     record("/ledger-band then says the session needs nothing",
-           "This session needs nothing from you." in json.dumps(said), [m.get("type") for m in said])
+           missing is None and "This session needs nothing from you." in json.dumps(said),
+           {"never came": missing, "messages": [m.get("type") for m in said]})
     # A band with nothing open hands on, so the answer is the engine's own node
     # (`drawn_by` still names every plugin hooked on the band).
     gone = band()
