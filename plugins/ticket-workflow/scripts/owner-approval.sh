@@ -118,9 +118,10 @@ here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 sep=$'\x1f' # the jq filters' \u001f: in no login, state, SHA, time or URL, and not whitespace, so read keeps empty fields
 nl=$'\n'
 
-owner_check() { # owner_check <login>: owner-check.sh's verdict on it, on this repo
-	bash "$here/owner-check.sh" -R "$host/$owner/$repo" "$1" </dev/null >/dev/null 2>&1
+owner_check() { # owner_check <login>: owner-check.sh's verdict on it, on this repo, its stderr in owner_err
+	owner_err=$(bash "$here/owner-check.sh" -R "$host/$owner/$repo" "$1" </dev/null 2>&1 >/dev/null)
 }
+owner_err=
 
 # The PR: open, and its head. A failed read prints its error body on stdout
 # too, so only the exit status says it worked.
@@ -156,6 +157,13 @@ while IFS="$sep" read -r key at id login type state commit node url; do
 		approval="$key$sep$at$sep$id$sep$login$sep$type$sep$state$sep$commit$sep$node$sep$url"
 		break
 	else
+		# owner-check.sh exits 1 for a failed read too. Only a read that worked
+		# may pass over this approval for an older one: else the newest
+		# approval, whose body may hold, goes unread.
+		case $owner_err in *"can't read"*)
+			no_grant "can't read whether $login, who approved the head, is the owner ($url): ${owner_err#owner-check.sh: }"
+			;;
+		esac
 		reasons+="$login approved the head but isn't the owner by owner-check.sh ($url)$nl"
 	fi
 	rejected+="$key "
