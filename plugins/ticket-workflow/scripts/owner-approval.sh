@@ -48,7 +48,11 @@
 # viewerCanUpdate true on the owner's approval of maguerrieri/config#108), so
 # an edit could strip a hold from it. A review's state changes after
 # submission only by dismissal (dismissPullRequestReview, to DISMISSED, which
-# anyone with write access can do), and nothing changes its commit. A
+# anyone with write access can do), nothing changes its commit, and nobody can
+# delete it: deletePullRequestReview on a submitted review answers "Can not
+# delete a non-pending pull request review" (checked on PR #343, 2026-11-16).
+# Its edit history lists newest first, the newest entry's editedAt equal to
+# lastEditedAt, and the original last (checked on that PR's probe review too). A
 # dismissal keeps the review's submission time, so a dismissed review newer
 # than the approval stops the grant whatever it was: dismissing a request for
 # changes made after the approval never clears the way for it. One made
