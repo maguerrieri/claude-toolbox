@@ -140,7 +140,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   waits for an unmerged parent, and runs your own FINISH, gate included, on
   the approved head only, then `merged: #<pr>`. Unlike a clearance, it lands
   a PR that has PRs stacked on it: FINISH Step 2 sees to them. It ends your
-  `SPAWN_CAP` hold for that head only, and a push of yours lapses it. When it
+  `SPAWN_CAP` hold for that head only, and a push of yours lapses it, unless
+  it is a restack that leaves the PR's diff the same (`--restacked-from`). When it
   doesn't merge, say why in one comment on the PR.
 
 ## You do NOT

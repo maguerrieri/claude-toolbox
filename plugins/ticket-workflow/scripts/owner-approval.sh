@@ -3,10 +3,20 @@
 # For the FINISH intro's third grant form, in skills/ticket-workflow/
 # phases/finish.md.
 #
-#   owner-approval.sh -R <host>/<owner>/<repo> <pr number>
+#   owner-approval.sh -R <host>/<owner>/<repo> [--restacked-from <old base>] <pr number>
 #
 # -R names the PR's repo, host included, so every read, owner-check.sh's
-# included, goes to that repo on that host. Reads the PR and every page of its
+# included, goes to that repo on that host. An approval covers the commit it
+# approved, which is normally the PR's head. After a restack, --restacked-from
+# names the base the PR had before it (the merged parent's last head, or the
+# base branch a moved base came from), and an approval of an earlier head then
+# covers the head too when the PR's diff is the same, as the owner decided on
+# PR #343: what the approved commit adds over its merge-base with the old base,
+# and what the head adds over its merge-base with origin/<the PR's base>,
+# compared by git patch-id --verbatim (line numbers ignored, whitespace kept).
+# Those reads are local git, in the caller's checkout, which has fetched both
+# commits and the base; a missing commit or ref, an empty diff, or a git
+# without --verbatim carries nothing. Reads the PR and every page of its
 # reviews by REST. A review is decisive when its state is APPROVED,
 # CHANGES_REQUESTED or DISMISSED (COMMENTED and PENDING never are), and
 # reviews are ordered by submission time, then id. An owner is a login
@@ -14,7 +24,7 @@
 # sessions' own login isn't one. Exits:
 #
 #   0  a grant: the PR is open and not a draft, and the approval is the newest APPROVED review
-#      of the PR's head commit by an owner, and:
+#      by an owner that covers the PR's head (above), and:
 #      - no CHANGES_REQUESTED or DISMISSED review, by anyone, is newer than it;
 #      - no login's latest decisive review is CHANGES_REQUESTED, from before
 #        it either: the owner's, a collaborator's, a bot's or a deleted
@@ -24,9 +34,11 @@
 #        of its edit history agreeing (notifier.md's rule for an edited item,
 #        which #301's owner-comment.sh puts in a script), read in one GraphQL
 #        read that also re-reads the review's state and commit, which must
-#        still be APPROVED and the head.
-#      It prints one JSON object on stdout: {"pr", "head", "reviewer", "url",
-#      "submitted_at", "body", "comments": [{"path", "url", "body"}]}, the
+#        still be APPROVED and the commit the REST read named.
+#      It prints one JSON object on stdout: {"pr", "head", "approved" (the
+#      commit approved: the head, or an earlier one --restacked-from carried),
+#      "reviewer", "url", "submitted_at", "body", "comments": [{"path", "url",
+#      "body"}]}, the
 #      comments being the review's own line comments. The caller reads the body
 #      and every comment before merging: one that asks to hold, or for a change
 #      first, is no grant (the FINISH intro).
@@ -69,7 +81,7 @@
 # /bin/bash 3.2 too, so no associative arrays.
 set -uo pipefail
 
-usage="usage: owner-approval.sh -R <host>/<owner>/<repo> <pr number>"
+usage="usage: owner-approval.sh -R <host>/<owner>/<repo> [--restacked-from <old base>] <pr number>"
 usage_error() {
 	echo "owner-approval.sh: $*" >&2
 	exit 2
@@ -86,12 +98,17 @@ say_reasons() { # say_reasons <newline-ended reasons>: one no-grant line each, t
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
-expected= pr= have_pr=
+expected= pr= have_pr= old_base= have_old_base=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-R)
 		[ $# -ge 2 ] || usage_error "$usage"
 		expected=$2
+		shift 2
+		;;
+	--restacked-from)
+		[ $# -ge 2 ] || usage_error "$usage"
+		old_base=$2 have_old_base=1
 		shift 2
 		;;
 	*)
@@ -112,6 +129,11 @@ host=${BASH_REMATCH[1]} owner=${BASH_REMATCH[3]} repo=${BASH_REMATCH[4]}
 [ "${#owner}" -le 39 ] || usage_error "'$owner' is not a GitHub owner"
 case $repo in . | ..) usage_error "'$repo' is not a repo name" ;; esac
 [[ $pr =~ ^[1-9][0-9]*$ ]] || usage_error "'$pr' is not a PR number"
+if [ -n "$have_old_base" ]; then
+	# A commit or a ref name, never an option or a range.
+	[[ $old_base =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]*$ ]] && [[ $old_base != *..* ]] ||
+		usage_error "--restacked-from '$old_base' is not a commit or a ref"
+fi
 
 gh_bin=${OWNER_CHECK_GH:-gh}
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -126,8 +148,8 @@ owner_err=
 # The PR: open, and its head. A failed read prints its error body on stdout
 # too, so only the exit status says it worked.
 pr_out=$("$gh_bin" api "repos/$owner/$repo/pulls/$pr" --hostname "$host" --jq \
-	'"\(.state // "")\n\(.head.sha // "")\n\(.draft)"' </dev/null 2>/dev/null) || no_grant "can't read PR #$pr"
-{ IFS= read -r pr_state; IFS= read -r head; IFS= read -r pr_draft; } <<<"$pr_out"
+	'"\(.state // "")\n\(.head.sha // "")\n\(.draft)\n\(.base.ref // "")"' </dev/null 2>/dev/null) || no_grant "can't read PR #$pr"
+{ IFS= read -r pr_state; IFS= read -r head; IFS= read -r pr_draft; IFS= read -r base_ref; } <<<"$pr_out"
 [ "$pr_state" = open ] || no_grant "PR #$pr is ${pr_state:-unreadable}, not open"
 [ "$pr_draft" = false ] || no_grant "PR #$pr is a draft (draft: ${pr_draft:-unreadable})"
 [[ $head =~ ^[0-9a-f]{40}$ ]] || no_grant "PR #$pr's head '${head}' is not a commit SHA"
@@ -147,10 +169,51 @@ newest_first=$(printf '%s\n' "$sorted" | awk 'NF { line[++n] = $0 } END { for (i
 latest=$(printf '%s\n' "$sorted" | awk -F "$sep" 'NF > 1 { last[$1] = $0; order[$1] = NR } END { for (k in last) print order[k] FS last[k] }' |
 	LC_ALL=C sort -t "$sep" -k1,1n | cut -d "$sep" -f 2-)
 
-# The newest approval of the head by an owner.
-approval= reasons= rejected=" "
+# With --restacked-from, an approval of an earlier head covers this one when
+# the PR's diff is the same: what each commit adds over its merge-base with its
+# base (the old base for the approved commit, origin/<base ref> for the head),
+# compared by patch id, line numbers ignored and whitespace kept. Read from
+# this repository, which the caller has fetched; a commit missing here carries
+# nothing.
+diff_id() { # diff_id <base> <tip>: that patch id, or fail (a commit missing, an empty diff)
+	local mb id
+	mb=$(git merge-base "$1" "$2" 2>/dev/null) || return 1
+	id=$(git diff --no-color --no-ext-diff --no-textconv --binary --full-index "$mb" "$2" 2>/dev/null |
+		git patch-id --verbatim 2>/dev/null) || return 1 # --verbatim keeps whitespace; git refuses it with --stable
+	id=${id%% *}
+	[ -n "$id" ] && printf '%s' "$id"
+}
+reasons= carry= old_sha= head_id= same=" " differs=" "
+if [ -n "$have_old_base" ]; then
+	if ! old_sha=$(git rev-parse --verify --quiet "$old_base^{commit}" 2>/dev/null); then
+		reasons+="--restacked-from $old_base names no commit in this repository, so no earlier approval carries$nl"
+	elif ! [[ $base_ref =~ ^[A-Za-z0-9._/-]+$ ]] ||
+		! new_base=$(git rev-parse --verify --quiet "refs/remotes/origin/$base_ref^{commit}" 2>/dev/null); then
+		reasons+="no origin/${base_ref:-<base>} in this repository to read the head's diff over, so no earlier approval carries$nl"
+	elif ! head_id=$(diff_id "$new_base" "$head"); then
+		reasons+="can't read the head's diff over origin/$base_ref here, so no earlier approval carries$nl"
+	else
+		carry=1
+	fi
+fi
+covers() { # covers <commit>: an approval of it covers the head
+	[ "$1" = "$head" ] && return 0
+	[ -n "$carry" ] && [[ $1 =~ ^[0-9a-f]{40}$ ]] || return 1
+	case $same in *" $1 "*) return 0 ;; esac
+	case $differs in *" $1 "*) return 1 ;; esac
+	local id
+	if id=$(diff_id "$old_sha" "$1") && [ "$id" = "$head_id" ]; then
+		same+="$1 "
+		return 0
+	fi
+	differs+="$1 "
+	return 1
+}
+
+# The newest approval covering the head by an owner.
+approval= rejected=" "
 while IFS="$sep" read -r key at id login type state commit node url; do
-	[ "$state" = APPROVED ] && [ "$commit" = "$head" ] || continue
+	[ "$state" = APPROVED ] && covers "$commit" || continue
 	case $rejected in *" $key "*) continue ;; esac
 	if [ "$type" != User ] || [ -z "$login" ] || [ "$(lower "$login")" = ghost ]; then
 		reasons+="the approval by ${login:-a deleted account} is not a user's ($url)$nl"
@@ -256,7 +319,7 @@ gql_out=$("$gh_bin" api graphql --hostname "$host" -f id="$node" -f query="query
 [ "$node_type" = PullRequestReview ] ||
 	no_grant "can't read who last edited $url (GraphQL refused or failed), so its body isn't read as the owner's"
 [ "$node_state" = APPROVED ] || no_grant "$url now reads ${node_state:-no state}, not APPROVED"
-[ "$node_commit" = "$head" ] || no_grant "$url now reads commit ${node_commit:-none}, not the head $head"
+[ "$node_commit" = "$commit" ] || no_grant "$url now reads commit ${node_commit:-none}, not the $commit it approved"
 edit_check "$url" "$editor_type" "$editor" "$edited_at" "$newest_at" "$newest_type" "$newest_editor"
 [ -n "$body_json" ] && [ -n "$comments_json" ] || no_grant "can't read $url's body and line comments"
 [[ $comments_total =~ ^[0-9]+$ ]] && [ "$comments_total" = "$comments_read" ] ||
@@ -266,6 +329,6 @@ while IFS="$sep" read -r c_url c_editor_type c_editor c_edited_at c_newest_at c_
 	edit_check "$c_url" "$c_editor_type" "$c_editor" "$c_edited_at" "$c_newest_at" "$c_newest_type" "$c_newest_editor"
 done <<<"$edited_comments"
 
-printf '{"pr":%s,"head":"%s","reviewer":"%s","url":"%s","submitted_at":"%s","body":%s,"comments":%s}\n' \
-	"$pr" "$head" "$login" "$url" "$at" "$body_json" "$comments_json"
+printf '{"pr":%s,"head":"%s","approved":"%s","reviewer":"%s","url":"%s","submitted_at":"%s","body":%s,"comments":%s}\n' \
+	"$pr" "$head" "$commit" "$login" "$url" "$at" "$body_json" "$comments_json"
 exit 0

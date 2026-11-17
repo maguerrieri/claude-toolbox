@@ -64,8 +64,8 @@ repos/*/pulls/*/reviews\?per_page=100)
 	;;
 repos/*/pulls/*)
 	[ -z "${STUB_PR_FAIL:-}" ] || { echo '{"message": "Not Found"}'; exit 1; }
-	answer "$(jq -n --arg s "${STUB_PR_STATE-open}" --arg h "${STUB_HEAD-}" --arg d "${STUB_DRAFT-false}" \
-		'{state: $s, head: {sha: $h}, draft: (if $d == "" then null else ($d == "true") end)}')"
+	answer "$(jq -n --arg s "${STUB_PR_STATE-open}" --arg h "${STUB_HEAD-}" --arg d "${STUB_DRAFT-false}" --arg b "${STUB_BASE-main}" \
+		'{state: $s, head: {sha: $h}, base: {ref: $b}, draft: (if $d == "" then null else ($d == "true") end)}')"
 	;;
 graphql)
 	[ -z "${STUB_GQL_FAIL:-}" ] || {
@@ -353,6 +353,76 @@ STUB_REVIEWS=$(reviews "$approve") REPO=ghe.example.com/acme/app run >/dev/null
 record 1 'an enterprise PR is read on its own host' "$(calls '^api repos/acme/app/pulls/7 --hostname ghe.example.com ')"
 record 1 'and its approver checked there' "$(calls '^api repos/acme/app/collaborators/maguerrieri/permission --hostname ghe.example.com ')"
 record 0 '-R compared as given' "$(REPO=GitHub.com/o/r STUB_REVIEWS=$(reviews "$approve") run)"
+
+# --restacked-from <old base>: after a restack, an approval of the commit the
+# PR had before it still stands when the PR's diff is the same, by patch id
+# (line numbers ignored, whitespace not). A real git repository holds the
+# commits: main B0; a parent branch P1 off it; the approved child A = P1 + C1;
+# main after the parent's rebase merge (P1 again as a new commit, then an
+# unrelated M); the restacked child H = main + C1 again; H2 the same with C1
+# changed; HW with only C1's whitespace changed; and, for an unstacked PR, A0
+# = B0 + C1 rebased onto the moved main as H0.
+repo=$tmp/repo
+mkdir -p "$repo"
+g() { git -C "$repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
+commit_file() { # commit_file <file> <content> <message>: a commit on the checked-out branch, its sha
+	printf '%s\n' "$2" >"$repo/$1" && g add "$1" && g commit -q -m "$3" && g rev-parse HEAD
+}
+g init -q -b main
+B0=$(commit_file a.txt base 'base')
+g checkout -q -b parent
+P1=$(commit_file p.txt 'parent change' '[#1] parent')
+g checkout -q -b child
+A=$(commit_file c.txt $'child\n  indented' '[#2] child')
+g checkout -q main
+GIT_COMMITTER_DATE='2026-01-02T00:00:00Z' g cherry-pick "$P1" >/dev/null # the parent, rebase-merged: a new commit
+M=$(commit_file m.txt 'unrelated' 'main moves')
+g checkout -q -b restacked
+H=$(commit_file c.txt $'child\n  indented' '[#2] child')
+g checkout -q main && g checkout -q -b changed
+H2=$(commit_file c.txt $'child, changed\n  indented' '[#2] child')
+g checkout -q main && g checkout -q -b whitespace
+HW=$(commit_file c.txt $'child\n\tindented' '[#2] child')
+g checkout -q "$B0" && g checkout -q -b unstacked
+A0=$(commit_file c.txt $'child\n  indented' '[#2] child')
+g checkout -q main
+g update-ref refs/remotes/origin/main "$M"
+in_repo() { # in_repo <args...>: run_raw from inside the repository
+	(cd "$repo" && run_raw "$@")
+}
+carried=$(reviews "$(review 11 maguerrieri APPROVED "$A" "$t1")")
+record 1 'an approval of the commit before a restack, with no --restacked-from' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r 7)"
+record 0 'and with it, the parent'"'"'s old head as the old base: the diff is the same' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record "$H $A" 'prints the head it covers and the commit approved' "$(out '"\(.head) \(.approved)"')"
+record 1 'a restack that changed the diff' \
+	"$(STUB_HEAD=$H2 STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record 1 'one that changed only whitespace' \
+	"$(STUB_HEAD=$HW STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record 1 'the wrong old base, whose diff takes in the parent'"'"'s commit too' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from origin/main 7)"
+record 1 'an approved commit this repository lacks' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED 3333333333333333333333333333333333333333 "$t1")") in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record 1 'a base branch with no origin ref here' \
+	"$(STUB_BASE=dev STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record 1 'an old base this repository lacks' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from 3333333333333333333333333333333333333333 7)"
+record 0 'an unstacked PR rebased onto its moved base, the base as the old base' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$A0" "$t1")") in_repo -R github.com/o/r --restacked-from origin/main 7)"
+record 0 'an approval of the head itself still needs no carrying' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$H" "$t1")") in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record "$H" 'and prints the head as the commit approved' "$(out .approved)"
+record 1 'a carried approval followed by a request for changes' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$A" "$t1")" "$(review 12 maguerrieri CHANGES_REQUESTED "$H" "$t2")") in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record 1 'a carried approval GraphQL names another commit for' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$carried STUB_NODES="{\"PRR_11\": {\"commit\": {\"oid\": \"$H\"}}}" in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record 1 'outside a git repository' \
+	"$(cd / && STUB_HEAD=$H STUB_REVIEWS=$carried run_raw -R github.com/o/r --restacked-from "$P1" 7)"
+for bad in '' -x 'a b' 'main;id' '..'; do
+	record '2 0' "the malformed --restacked-from '$bad'" "$(in_repo -R github.com/o/r --restacked-from "$bad" 7) $(gh_calls)"
+done
+record '2 0' '--restacked-from with no value' "$(in_repo -R github.com/o/r 7 --restacked-from) $(gh_calls)"
 
 # Usage errors never reach gh.
 record '2 0' 'no -R' "$(run_raw 7) $(gh_calls)"
