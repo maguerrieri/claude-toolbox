@@ -51,8 +51,10 @@ lines after it.
   merged. Resolve a need that no longer applies too (its PR closed, the plan
   changed). When a PR lands, `resolve --ref` resolves every open need of this
   session's under it. While this session has an open need, the plugin's
-  prompt hook adds them to each of the owner's prompts (`This session's ledger
-  has … open need…`); when one has been answered or no longer applies,
+  prompt hook adds them to each prompt it can't rule out as the owner's
+  (`This session's ledger has … open need…`), pr-notifier wakes included, so
+  the prompt it rides isn't proof the owner wrote it; when one has been
+  answered or no longer applies,
   resolve it then and name it in your reply, so the owner can object. Resolve
   only on a clear answer: when it's unclear whether the owner has answered a
   need, leave it open, since a wrong resolve hides something the owner still
