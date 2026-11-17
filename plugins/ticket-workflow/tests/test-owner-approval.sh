@@ -12,8 +12,8 @@
 #                          set: that read fails (GraphQL as behind the cloud proxy)
 #   STUB_NODES             a JSON object keyed by review node id, merged into
 #                          the GraphQL node the stub derives from the review
-#                          (its state, commit, body, and no edit); null for an
-#                          id makes its node null
+#                          (its state, commit, body, no edit and no line
+#                          comments); null for an id makes its node null
 #
 #   bash plugins/ticket-workflow/tests/test-owner-approval.sh
 set -u
@@ -75,7 +75,8 @@ graphql)
 		($reviews | map(select(.node_id == $id)) | first) as $r
 		| if $r == null or ($patch | has($id) and .[$id] == null) then {data: {node: null}} else
 		  {data: {node: ({__typename: "PullRequestReview", state: $r.state, commit: {oid: $r.commit_id},
-		    editor: null, lastEditedAt: null, userContentEdits: {nodes: []}, body: ($r.body // "")}
+		    editor: null, lastEditedAt: null, userContentEdits: {nodes: []}, body: ($r.body // ""),
+		    comments: {totalCount: 0, nodes: []}}
 		    + ($patch[$id] // {}))}} end')"
 	;;
 *) echo "unexpected endpoint $endpoint" >&2; exit 1 ;;
@@ -200,6 +201,10 @@ record 1 'a bot'"'"'s changes requested' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 'review-action[bot]' CHANGES_REQUESTED "$head" "$t2" Bot)") run)"
 record 1 'a deleted account'"'"'s changes requested' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 '' CHANGES_REQUESTED "$head" "$t2")") run)"
+record 1 'one deleted account'"'"'s request for changes, not hidden by another'"'"'s later approval' \
+	"$(STUB_REVIEWS=$(reviews "$(review 8 '' CHANGES_REQUESTED "$old" 2026-11-17T04:10:00Z)" "$(review 9 '' APPROVED "$old" 2026-11-17T04:20:00Z)" "$approve") run)"
+STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate CHANGES_REQUESTED "$head" "$t2")") run >/dev/null
+record 1 'a request for changes after the approval is said once' "$(grep -c 'mate' "$tmp/err")"
 
 # Only the owner's approval: owner-check exits 0 for its author.
 record 1 'a write collaborator'"'"'s approval' "$(STUB_REVIEWS=$(reviews "$(review 11 mate APPROVED "$head" "$t1")") run)"
@@ -256,6 +261,40 @@ record 1 'the newer of two owners'"'"' approvals edited by a collaborator' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 coadmin APPROVED "$head" "$t2")") STUB_NODES=$(node 12 User mate '') run)"
 record 0 'the older of the two, edited by a collaborator, no longer matters' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 coadmin APPROVED "$head" "$t2")") STUB_NODES=$(node 11 User mate '') run)"
+
+# The approval's own line comments are its words too: printed for the session
+# to read, each held to the same editor rule.
+lc() { # lc <id> <body> [<editor type> <editor login>]: one of the review's line comments, as GraphQL gives it
+	jq -n --arg url "https://github.com/o/r/pull/7#discussion_r$1" --arg body "$2" --arg t "${3:-}" --arg l "${4:-}" --arg at "$edited" \
+		'{url: $url, path: "a.sh", body: $body}
+		 + if $t == "" then {editor: null, lastEditedAt: null, userContentEdits: {nodes: []}}
+		   else {editor: {__typename: $t, login: $l}, lastEditedAt: $at,
+		         userContentEdits: {nodes: [{editedAt: $at, editor: {__typename: $t, login: $l}}]}} end'
+}
+with_comments() { # with_comments <line comment json>...: STUB_NODES giving review 11 those line comments
+	jq -n --argjson c "$(jq -s . <<<"$*")" '{PRR_11: {comments: {totalCount: ($c | length), nodes: $c}}}'
+}
+two=$(with_comments "$(lc 301 'rename this before merging')" "$(lc 302 'and this')")
+record 0 'an approval with line comments' "$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$two run)"
+record 'a.sh https://github.com/o/r/pull/7#discussion_r301 rename this before merging|a.sh https://github.com/o/r/pull/7#discussion_r302 and this' \
+	'prints each, for the session to read for a hold or a change' "$(out '[.comments[] | "\(.path) \(.url) \(.body)"] | join("|")')"
+record '[]' 'an approval with none prints an empty list' "$(STUB_REVIEWS=$(reviews "$approve") run >/dev/null; out '.comments | tojson')"
+record 0 'a line comment its author edited' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 x User maguerrieri)") run)"
+record 0 'one another owner edited' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 x User coadmin)") run)"
+record 1 'one a collaborator edited' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 x)" "$(lc 302 '' User mate)") run)"
+record 1 'one the sessions'"'"' own login edited' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 '' User sprue-works-bot)") run)"
+record 1 'one a Bot edited' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 '' Bot maguerrieri)") run)"
+record 1 'one whose edit history disagrees' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 '' User maguerrieri | jq '.userContentEdits.nodes[0].editor.login = "mate"')") run)"
+record 1 'more line comments than the read returns' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 x)" | jq '.PRR_11.comments.totalCount = 101') run)"
+record 1 'no line-comment count' \
+	"$(STUB_REVIEWS=$(reviews "$approve") STUB_NODES=$(with_comments "$(lc 301 x)" | jq '.PRR_11.comments = null') run)"
 
 # The GraphQL read that names the editor also re-reads the review's state and
 # commit, so a dismissal or a stale read between the two reads fails closed.

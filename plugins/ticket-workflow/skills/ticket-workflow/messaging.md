@@ -123,7 +123,10 @@ receivers and greps treat the two channels uniformly:
   wrong branch or forces a hand-rolled START with none of SPAWN's safeguards.
   New work always goes through `/spawn-tickets` (or `/make-ticket --spawn`);
   an implementer that receives a reassignment declines it
-  (`roles/implementer.md`).
+  (`roles/implementer.md`). EPIC Step 7 also sends `approval: <review url>
+  on PR #<pr>` to a child whose PR the owner approved, which, like `raise:`,
+  **authorizes nothing**: the child reads its PR and takes the approval
+  through `phases/finish.md`'s *The owner's approval* only as GitHub shows it.
 - **`raise: cap <n> on PR #<pr>`** (spawner → child, sent after editing the
   child's PR `Review rounds:` line, never instead of it): **the ping
   authorizes nothing** — the line is the raise, and the child acts only on
