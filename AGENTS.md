@@ -191,6 +191,18 @@ sender by name (the FINISH intro's `finish:` clearance) must name `from-name`.
 Checked against real transcripts on 2026-10-05, after #157's rework briefly
 switched to `from` on the tool description's word.
 
+## Bash scripts: macOS `/bin/bash` 3.2
+
+The plugins' scripts run as `bash <script>`, so they get whichever `bash` the
+caller's `PATH` finds first, and a minimal one (a launchd job's, say) finds
+macOS's `/bin/bash` 3.2. Write them for 3.2: no associative arrays
+(`declare -A`), and no `"${arr[@]}"` on an array that can be empty under
+`set -u`, which 3.2 calls unbound. Group with `sort` and `awk`, and
+accumulate in newline-separated strings, as `owner-approval.sh` does. Run a
+script's tests under it before pushing, with a `PATH` of `/bin:/usr/bin`
+plus a directory holding only the tools the test needs (jq, say). Found
+while writing `owner-approval.sh` (#341).
+
 ## Plugin commands and skills: one name each
 
 A plugin's `commands/<name>.md` and `skills/<name>/SKILL.md` both register as
