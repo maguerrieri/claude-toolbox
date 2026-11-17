@@ -1,7 +1,9 @@
 #!/bin/sh
 # pr-notifier's launchd job (#295). The install copies this file to
-# ~/.local/libexec/pr-notifier-job, and the job's plist runs it every 60
-# seconds, as the user whose sessions the notifier serves. Each run:
+# ~/.local/libexec/pr-notifier-job, and the job's plist runs it every 15
+# seconds (#349), as the user whose sessions the notifier serves. launchd
+# runs one copy at a time and skips a firing that comes while a run is still
+# going, so a slow run never overlaps the next. Each run:
 #
 #   1. rotates job.log and notifier.log once either passes 1 MiB (one old
 #      copy is kept, as <log>.1), then sends its own output to job.log, and

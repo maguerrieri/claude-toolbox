@@ -90,7 +90,7 @@ print_plist() {
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
-  <integer>60</integer>
+  <integer>15</integer>
   <key>AbandonProcessGroup</key>
   <true/>
 </dict>
@@ -190,4 +190,4 @@ else
 	echo "wrote $plist"
 fi
 "$launchctl" bootstrap system "$plist"
-echo "loaded system/$label (it runs now, then every 60 seconds); check it from a bot shell with: install.sh status"
+echo "loaded system/$label (it runs now, then every 15 seconds); check it from a bot shell with: install.sh status"

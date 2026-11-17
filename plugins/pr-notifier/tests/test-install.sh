@@ -216,7 +216,7 @@ record yes "daemon installed, not loaded: says so" "$(has "$out" "is installed b
 mkdir -p "$STUB/loaded" && touch "$STUB/loaded/system_$label"
 inst --path "$tool_path"
 record yes "daemon installed and loaded: ok" "$(has "$out" "ok: the LaunchDaemon $label is installed and loaded")"
-sed 's|<integer>60</integer>|<integer>120</integer>|' "$daemon" >"$daemon.new" && mv "$daemon.new" "$daemon"
+sed 's|<integer>15</integer>|<integer>120</integer>|' "$daemon" >"$daemon.new" && mv "$daemon.new" "$daemon"
 inst --path "$tool_path"
 record yes "daemon differs: says so" "$(has "$out" "differs from this version's")"
 
@@ -236,7 +236,7 @@ record yes "user, second run: ok" "$(has "$out" "is installed and loaded")"
 rm -f "$STUB/loaded/user_${uid}_$label"
 inst --domain user --path "$tool_path"
 record 2 "user, unloaded: bootstraps again" "$(bootstraps)"
-sed 's|<integer>60</integer>|<integer>120</integer>|' "$agent" >"$agent.new" && mv "$agent.new" "$agent"
+sed 's|<integer>15</integer>|<integer>120</integer>|' "$agent" >"$agent.new" && mv "$agent.new" "$agent"
 : >"$STUB/launchctl.log"
 inst --domain user --path "$tool_path"
 record yes "user, changed: boots out first" "$(head -n 1 "$STUB/launchctl.log" | grep -q "^bootout user/$uid/$label" && echo yes || echo no)"
@@ -305,6 +305,8 @@ record yes "plist: runs the job script" "$(has "$tmp/system.plist" "<string>$job
 record no "plist: launchd opens no log" "$(grep -qE 'Standard(Out|Error)Path' "$tmp/system.plist" && echo yes || echo no)"
 record no "plist: no CLAUDE_CONFIG_DIR" "$(has "$tmp/system.plist" CLAUDE_CONFIG_DIR)"
 record yes "plist: keeps a transient claude daemon alive" "$(has "$tmp/system.plist" "<key>AbandonProcessGroup</key>")"
+record "15|15" "plist: both domains run the job every 15 seconds (#349)" \
+	"$(for p in "$tmp/system.plist" "$tmp/user.plist"; do awk '/<key>StartInterval<\/key>/ { getline; gsub(/[^0-9]/, ""); print }' "$p"; done | paste -sd'|' -)"
 # The plist the root script writes is this render for bot (/Users/bot, user
 # bot, zsh), so install.sh's status agrees with what Mari installed.
 user=$(id -un)

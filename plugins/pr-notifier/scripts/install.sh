@@ -178,7 +178,7 @@ $who
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
-  <integer>60</integer>
+  <integer>15</integer>
   <key>AbandonProcessGroup</key>
   <true/>
 </dict>
@@ -396,7 +396,7 @@ cmd_install() {
 		echo "wrote $agent"
 	fi
 	"$launchctl" bootstrap "user/$uid" "$agent" || die "launchctl bootstrap user/$uid $agent failed"
-	echo "loaded the user-domain agent $label into user/$uid (it runs now, then every 60 seconds)"
+	echo "loaded the user-domain agent $label into user/$uid (it runs now, then every 15 seconds)"
 }
 
 cmd_status() {
@@ -515,7 +515,7 @@ cmd_status() {
 		*" check failed: "*) fail "the job's last check failed: $last" ;;
 		*)
 			if [ -z "$age" ] || [ "$age" -gt 300 ]; then
-				warn "the job's last run was ${age:-?}s ago ($last); it runs every 60 seconds"
+				warn "the job's last run was ${age:-?}s ago ($last); it runs every 15 seconds"
 			else
 				ok "the job's last run: $last"
 			fi
