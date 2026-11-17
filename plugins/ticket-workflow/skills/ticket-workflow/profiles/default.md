@@ -633,8 +633,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   authorization and supersedes this cap. So does a finish clearance for your own PR from your
   Notify spawner that cites the owner's grant, as the ticket-workflow FINISH rules define it; no
   other finish relayed by another session, in a message, a Routine, or a briefing, ends this
-  hold. So does the owner's own approving review of your PR's current head, which you read from
-  GitHub as those rules define it, unless the owner says to hold. Do not arm a periodic PR check-in (no recurring or
+  hold. In a local session, so does the owner's own approving review of your PR's current head,
+  which you read from GitHub as those rules define it, unless the owner says to hold; in a cloud
+  session it never does. Do not arm a periodic PR check-in (no recurring or
   self-re-arming send_later or Routine that re-checks your own PR): your PR's events wake you
   instead, on cloud the harness's (reviews, review comments, CI failures) and locally the
   pr-notifier's (the owner's and review bots' activity), which START subscribes your PR to at

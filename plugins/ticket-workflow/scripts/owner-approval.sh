@@ -19,13 +19,17 @@
 #      - no login's latest decisive review is CHANGES_REQUESTED, from before
 #        it either: the owner's, a collaborator's, a bot's or a deleted
 #        account's;
-#      - its body is unedited, last edited by its author, or last edited by
-#        another owner (the rule owner-comment.sh applies to a comment), read
-#        in one GraphQL read that also re-reads the review's state and commit,
-#        which must still be APPROVED and the head.
+#      - its body, and each line comment it carries, is unedited, last edited
+#        by its author, or last edited by another owner, with the newest entry
+#        of its edit history agreeing (notifier.md's rule for an edited item,
+#        which #301's owner-comment.sh puts in a script), read in one GraphQL
+#        read that also re-reads the review's state and commit, which must
+#        still be APPROVED and the head.
 #      It prints one JSON object on stdout: {"pr", "head", "reviewer", "url",
-#      "submitted_at", "body"}. The caller reads the body before merging: one
-#      that asks to hold, or for a change first, is no grant (the FINISH intro).
+#      "submitted_at", "body", "comments": [{"path", "url", "body"}]}, the
+#      comments being the review's own line comments. The caller reads the body
+#      and every comment before merging: one that asks to hold, or for a change
+#      first, is no grant (the FINISH intro).
 #   1  no grant, and nothing on stdout: no owner approval of the head (none,
 #      one of an older commit, one by a login below admin or by the sessions'
 #      own), a request for changes or a dismissal after it, a request for
@@ -49,7 +53,10 @@
 # than the approval stops the grant whatever it was: dismissing a request for
 # changes made after the approval never clears the way for it. One made
 # before the approval and dismissed since doesn't stop it, since the owner
-# approved after it.
+# approved after it. What this can't see: a comment deleted since, a line
+# comment of the approval's own included, which anyone with write access can
+# delete and which leaves nothing to read. Those rules bind the sessions, as
+# the profile's raise rules do: none deletes the owner's words.
 #
 # The grant covers the head printed, and only while it is still the head: a
 # caller merges with gh pr merge --match-head-commit <head>, so a push after
@@ -120,12 +127,13 @@ pr_out=$("$gh_bin" api "repos/$owner/$repo/pulls/$pr" --hostname "$host" --jq \
 [[ $head =~ ^[0-9a-f]{40}$ ]] || no_grant "PR #$pr's head '${head}' is not a commit SHA"
 
 # Every page of its decisive reviews, one line each (gh applies --jq to each
-# page), led by the lowercased login, then sorted oldest first: ISO-8601 UTC
-# times sort as strings, and the id breaks a tie.
+# page), led by the lowercased login (a deleted account's review by its own
+# id, so no two deleted accounts share one), then sorted oldest first:
+# ISO-8601 UTC times sort as strings, and the id breaks a tie.
 decisive=$("$gh_bin" api "repos/$owner/$repo/pulls/$pr/reviews?per_page=100" --hostname "$host" --paginate --jq \
 	'.[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")
 		| ((.user.login // "") | ascii_downcase) as $key
-		| "\(if $key == "" then "-" else $key end)\u001f\(.submitted_at // "")\u001f\(.id // 0)\u001f\(.user.login // "")\u001f\(.user.type // "")\u001f\(.state)\u001f\(.commit_id // "")\u001f\(.node_id // "")\u001f\(.html_url // "")"' \
+		| "\(if $key == "" then "-\(.id)" else $key end)\u001f\(.submitted_at // "")\u001f\(.id // 0)\u001f\(.user.login // "")\u001f\(.user.type // "")\u001f\(.state)\u001f\(.commit_id // "")\u001f\(.node_id // "")\u001f\(.html_url // "")"' \
 	</dev/null 2>/dev/null) || no_grant "can't read PR #$pr's reviews"
 sorted=$(printf '%s\n' "$decisive" | LC_ALL=C sort -t "$sep" -k2,2 -k3,3n)
 newest_first=$(printf '%s\n' "$sorted" | awk 'NF { line[++n] = $0 } END { for (i = n; i > 0; i--) print line[i] }')
@@ -163,17 +171,20 @@ IFS="$sep" read -r key at id login type state commit node url <<<"$approval"
 
 # Nothing decisive since it: a request for changes, or a dismissal, by anyone.
 # And no request for changes still standing from before it.
-blocks=
+blocks= after=" "
 while IFS="$sep" read -r r_key r_at r_id r_login r_type r_state r_commit r_node r_url; do
 	case $r_state in CHANGES_REQUESTED | DISMISSED) ;; *) continue ;; esac
 	# After it, or not provably before it (no time, or its time and an id that isn't lower).
 	if [ -z "$r_at" ] || [[ $r_at > $at ]] ||
 		{ [ "$r_at" = "$at" ] && ! { [[ $r_id =~ ^[0-9]+$ ]] && [[ $id =~ ^[0-9]+$ ]] && [ "$r_id" -lt "$id" ]; }; }; then
 		blocks+="${r_login:-a deleted account}'s review after the approval was $(lower "$r_state" | tr _ ' ') ($r_url)$nl"
+		after+="$r_id "
 	fi
 done <<<"$sorted"
 while IFS="$sep" read -r r_key r_at r_id r_login r_type r_state r_commit r_node r_url; do
-	[ "$r_state" = CHANGES_REQUESTED ] && blocks+="changes requested by ${r_login:-a deleted account} still stand ($r_url)$nl"
+	[ "$r_state" = CHANGES_REQUESTED ] || continue
+	case $after in *" $r_id "*) continue ;; esac # said once already, above
+	blocks+="changes requested by ${r_login:-a deleted account} still stand ($r_url)$nl"
 done <<<"$latest"
 [ -z "$blocks" ] || say_reasons "$blocks"
 
@@ -185,11 +196,32 @@ done <<<"$latest"
 	no_grant "GitHub files review $id under ${url:-no URL}, not on PR #$pr"
 [[ $node =~ ^[A-Za-z0-9_=-]+$ ]] || no_grant "$url has no readable node id"
 
-# Its state, commit, last editor and body, in one GraphQL read.
-fields='state commit{oid} editor{__typename login} lastEditedAt userContentEdits(first:1){nodes{editedAt editor{__typename login}}} body'
+# edit_check <what> <editor type> <editor> <edited at> <newest at> <newest type> <newest editor>:
+# the text is its author's while unedited, last edited by its author, or last
+# edited by another owner, with the newest entry of its edit history agreeing.
+edit_check() {
+	[ -n "$4" ] || return 0
+	if [ "$2" != User ] || [ -z "$3" ]; then
+		no_grant "$1 was last edited by ${3:-an unnamed account}, a ${2:-deleted account}, not a user"
+	elif [ "$5" != "$4" ] || [ "$6" != "$2" ] || [ "$(lower "$7")" != "$(lower "$3")" ]; then
+		no_grant "$1's edit history (newest: ${7:-none} at ${5:-no time}) disagrees with its last editor $3 at $4"
+	elif [ "$(lower "$3")" != "$(lower "$login")" ] && ! owner_check "$3"; then
+		no_grant "$1 was last edited by $3, who isn't the owner"
+	fi
+}
+
+# Its state, commit, body and the line comments it carries, each text with
+# its last editor, in one GraphQL read. The fixed lines come first (the body
+# and the comments as JSON on one line each), then one line per edited
+# comment.
+edits='editor{__typename login} lastEditedAt userContentEdits(first:1){nodes{editedAt editor{__typename login}}}'
+fields="state commit{oid} $edits body comments(first:100){totalCount nodes{url path body $edits}}"
 gql_out=$("$gh_bin" api graphql --hostname "$host" -f id="$node" -f query="query(\$id:ID!){node(id:\$id){__typename ... on PullRequestReview{$fields}}}" \
-	--jq '.data.node | (.userContentEdits.nodes[0] // {}) as $newest
-		| "\(.__typename // "")\n\(.state // "")\n\(.commit.oid // "")\n\(.editor.__typename // "")\n\(.editor.login // "")\n\(.lastEditedAt // "")\n\($newest.editedAt // "")\n\($newest.editor.__typename // "")\n\($newest.editor.login // "")\n\(.body // "" | tojson)"' \
+	--jq 'def edit: (.userContentEdits.nodes[0] // {}) as $newest
+			| [.editor.__typename, .editor.login, .lastEditedAt, $newest.editedAt, $newest.editor.__typename, $newest.editor.login] | map(. // "");
+		.data.node | (.comments.nodes // []) as $comments
+		| "\(.__typename // "")\n\(.state // "")\n\(.commit.oid // "")\n\(edit | join("\n"))\n\(.body // "" | tojson)\n\(.comments.totalCount // -1)\n\($comments | length)\n\($comments | map({path, url, body}) | tojson)",
+		  ($comments[] | select(.lastEditedAt != null) | ([.url // ""] + edit) | join("\u001f"))' \
 	</dev/null 2>/dev/null) || gql_out=
 {
 	IFS= read -r node_type
@@ -202,23 +234,24 @@ gql_out=$("$gh_bin" api graphql --hostname "$host" -f id="$node" -f query="query
 	IFS= read -r newest_type
 	IFS= read -r newest_editor
 	IFS= read -r body_json
+	IFS= read -r comments_total
+	IFS= read -r comments_read
+	IFS= read -r comments_json
+	edited_comments=$(cat)
 } <<<"$gql_out"
 [ "$node_type" = PullRequestReview ] ||
 	no_grant "can't read who last edited $url (GraphQL refused or failed), so its body isn't read as the owner's"
 [ "$node_state" = APPROVED ] || no_grant "$url now reads ${node_state:-no state}, not APPROVED"
 [ "$node_commit" = "$head" ] || no_grant "$url now reads commit ${node_commit:-none}, not the head $head"
-if [ -n "$edited_at" ]; then
-	if [ "$editor_type" != User ] || [ -z "$editor" ]; then
-		no_grant "$url was last edited by ${editor:-an unnamed account}, a ${editor_type:-deleted account}, not a user"
-	elif [ "$newest_at" != "$edited_at" ] || [ "$newest_type" != "$editor_type" ] ||
-		[ "$(lower "$newest_editor")" != "$(lower "$editor")" ]; then
-		no_grant "$url's edit history (newest: ${newest_editor:-none} at ${newest_at:-no time}) disagrees with its last editor $editor at $edited_at"
-	elif [ "$(lower "$editor")" != "$(lower "$login")" ] && ! owner_check "$editor"; then
-		no_grant "$url was last edited by $editor, who isn't the owner"
-	fi
-fi
-[ -n "$body_json" ] || no_grant "can't read $url's body"
+edit_check "$url" "$editor_type" "$editor" "$edited_at" "$newest_at" "$newest_type" "$newest_editor"
+[ -n "$body_json" ] && [ -n "$comments_json" ] || no_grant "can't read $url's body and line comments"
+[[ $comments_total =~ ^[0-9]+$ ]] && [ "$comments_total" = "$comments_read" ] ||
+	no_grant "$url carries ${comments_total:-an unknown number of} line comments, more than one read shows"
+while IFS="$sep" read -r c_url c_editor_type c_editor c_edited_at c_newest_at c_newest_type c_newest_editor; do
+	[ -n "$c_url" ] || continue
+	edit_check "$c_url" "$c_editor_type" "$c_editor" "$c_edited_at" "$c_newest_at" "$c_newest_type" "$c_newest_editor"
+done <<<"$edited_comments"
 
-printf '{"pr":%s,"head":"%s","reviewer":"%s","url":"%s","submitted_at":"%s","body":%s}\n' \
-	"$pr" "$head" "$login" "$url" "$at" "$body_json"
+printf '{"pr":%s,"head":"%s","reviewer":"%s","url":"%s","submitted_at":"%s","body":%s,"comments":%s}\n' \
+	"$pr" "$head" "$login" "$url" "$at" "$body_json" "$comments_json"
 exit 0
