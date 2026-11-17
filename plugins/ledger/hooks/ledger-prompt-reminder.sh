@@ -19,7 +19,10 @@
 # the prompt opens, `<cross-session-message ` and `<task-notification>`.
 # Those and a teammate's message get nothing, and so does an in-process
 # agent's prompt (its input carries an agent_id). So does the owner's own
-# `/ledger`, which shows or resolves the ledger itself. A pr-notifier wake
+# `/ledger`, which shows or resolves the ledger itself, and the turn the band
+# above the prompt starts when the owner resolves a need there (register.tsx;
+# model.ts's resolvedNotice has its text), which is framed as the plugin's
+# message, never the owner's words, and asks nothing more. A pr-notifier wake
 # (`pr-notifier wake v1:`) gets the reminder: it isn't the owner's words, but
 # it points at GitHub activity that may be theirs (a merge, an answer on the
 # PR), so the rule says it counts only for what the session checks there.
@@ -96,7 +99,7 @@ $show_def"'
 	input as $in
 	| select(($in.agent_id // "") == "")
 	| select(($in.prompt // "") | tostring
-		| test("\\A\\s*(?:<cross-session-message[\\s>]|<task-notification>|<teammate-message[\\s>]|/ledger(?::ledger)?(?:\\s|\\z))")
+		| test("\\A\\s*(?:<cross-session-message[\\s>]|<task-notification>|<teammate-message[\\s>]|/ledger(?::ledger)?(?:\\s|\\z)|The owner resolved ledger need n[0-9]+ from the band above the prompt:)")
 		| not)
 	| [$ledger | split("\n")[] | fromjson? // empty | select(is_entry) | select(.kind == "need" and .resolved_at == null)]
 	| newest_first
