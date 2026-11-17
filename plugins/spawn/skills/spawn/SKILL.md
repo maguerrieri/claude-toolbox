@@ -87,11 +87,14 @@ Print a table, then stop — **don't block on the sessions**:
 
 | Session | Scope |
 |---|---|
-| `misc investigate flaky CI` | <one-line summary> |
+| [`misc investigate flaky CI`](https://claude.ai/code/session_01ABC…) | <one-line summary> |
+| `misc check the docs` | <one-line summary> |
+
+**Link each Session cell to the session's page when a link can be had.** The user often reads this report in the Claude desktop app or on a phone, where a name is a dead end and a link opens the session in one tap. So write the cell as a markdown link whose text is the name in backticks, as the plain cell has it, and whose target is the session's claude.ai/code page, as in the first row. The backticks keep the name inert, since a code span binds tighter than the link's brackets, so a `]`, `*` or `_` in it changes nothing. When a unit has no link, its cell is the plain name in backticks, exactly as before, as in the second row. That covers Remote Control off, an older CLI, a field not written yet, and a read that fails. The backend file says where a link comes from (its *Session links*). Take it only from there, and never build a URL any other way. Where it has to be looked up (the local backend), that is one read after the launches, with no wait and no retry, and a failed read falls back to the plain name rather than holding up or failing the report. The link is the user's own, so it goes in this report and nowhere public: not in a PR, an issue, or a comment.
 
 For a unit launched with a `model`, name it in its row's Scope (`… (on sonnet)`), and say when a unit wasn't launched because the model asked for was invalid. A resumed unit keeps its launch model, so claim no new one for it.
 
-Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the cloud one adds an ID column).
+Then point at the inspect path **for your backend** — the local CLI commands and the cloud session listings are not interchangeable, and naming the wrong ones hands the user commands they can't run. The backend file spells out which to print (and the cloud one adds an ID column). A linked cell doesn't replace them: the local `claude attach` / `claude logs` hints are still how a user at a terminal gets in.
 
 ## Spawn does NOT
 
