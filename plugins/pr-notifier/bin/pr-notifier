@@ -14,8 +14,9 @@
 # state.json (cursors and held events), config.json (optional settings),
 # notifier.log (append-only), and lock/ (held by any command that writes).
 #
-# Test seams: PR_NOTIFIER_GH, PR_NOTIFIER_CLAUDE and PR_NOTIFIER_OWNER_CHECK
-# replace gh, claude and owner-check.sh; PR_NOTIFIER_NOW fixes the clock
+# Test seams: PR_NOTIFIER_GH, PR_NOTIFIER_CLAUDE, PR_NOTIFIER_PS and
+# PR_NOTIFIER_OWNER_CHECK replace gh, claude, ps and owner-check.sh;
+# PR_NOTIFIER_NOW fixes the clock
 # (epoch seconds); PR_NOTIFIER_SOCK_DIRS (colon-separated) replaces the
 # directories a live session's messaging socket is looked for in.
 set -uo pipefail
@@ -37,6 +38,7 @@ examine_jq=$root/lib/examine.jq
 
 gh_bin=${PR_NOTIFIER_GH:-gh}
 claude_bin=${PR_NOTIFIER_CLAUDE:-claude}
+ps_bin=${PR_NOTIFIER_PS:-ps}
 owner_check=${PR_NOTIFIER_OWNER_CHECK:-$root/scripts/owner-check.sh}
 
 now=${PR_NOTIFIER_NOW:-$(date -u +%s)}
@@ -92,6 +94,7 @@ load_settings() {
 	sweep_interval=$(number_setting sweep_interval 300)
 	hold_bound=$(number_setting hold_bound 1800)
 	idle_grace=$(number_setting idle_grace 600)
+	working_grace=$(number_setting working_grace 120)
 	retry_window=$(number_setting retry_window 1800)
 	owner_ttl=$(number_setting owner_ttl 3600)
 	relay_wait=$(number_setting relay_wait 30)
@@ -545,6 +548,14 @@ session_vars=(CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID CLAUDE_CODE_MESSAGING_SOC
 	CLAUDE_CODE_SESSION_ATTENDED CLAUDE_PID CLAUDECODE CLAUDE_JOB_DIR)
 claude_timeout=120 # no claude call holds the lock longer than this
 
+# Every claude call runs from /, which must stay untrusted. A --resume that
+# reaches a session Claude Code's daemon still counts as running (as one does
+# for about a second after claude stop returns) doesn't resume it: it starts a
+# copy, a fork of the conversation, in the caller's cwd. From / the trust check
+# refuses that copy (exit 1, "Workspace not trusted"), so the fork never
+# starts; from a trusted cwd, such as the session's own, it would (#338, on
+# 2.1.325). A resume the daemon takes as a wake runs in the session's own
+# recorded cwd, so / costs it nothing.
 claude_env() { # claude_env <config dir or ""> <PATH> <claude args...>: from /, stdin inherited
 	local cfg=$1 p=$2 cmd=(env) v
 	shift 2
@@ -603,6 +614,23 @@ job_state() { # job_state <config dir> <short id>: "<in flight: none|busy|unknow
 	          else "none" end),
 	         ((.updatedAt // "") | sub("\\.[0-9]+Z$"; "Z") | (try fromdateiso8601 catch -1) | tostring) ] | join(" ")' \
 		"$f" 2>/dev/null || echo 'unknown -1'
+}
+
+stale_working() { # stale_working <in flight> <updatedAt epoch>: an idle row's state working is left over, not a turn
+	# A live session whose row reads status idle but state working, with
+	# nothing in flight and no job state written for working_grace, is at its
+	# prompt: no turn is running (a turn shows status busy, and writes its
+	# job state as it goes). A session stopped while blocked and then woken
+	# with no prompt reads this way, its state never set back (reproduced by
+	# attaching to one on 2.1.325, #338), and so does one whose turn ended
+	# without its state being written, such as on a usage limit. Either can
+	# take a relay, as an idle one does. A job state that can't be read is
+	# never stale: work in flight can't be ruled out.
+	[ "$1" = none ] && [ "$2" -ge 0 ] && [ $((now - $2)) -ge "$working_grace" ]
+}
+
+pid_alive() { # pid_alive <pid>: a process with that pid exists, whoever owns it
+	[[ $1 =~ ^[0-9]+$ ]] && "$ps_bin" -p "$1" -o pid= >/dev/null 2>&1
 }
 
 hold() { # hold <session id> <reason>
@@ -718,16 +746,34 @@ back_off() { # back_off <session id> <failures field> <next-try field>: counts a
 }
 
 wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt, under its own PATH
-	local sid=$1 cfg=$2 out rc
+	local sid=$1 cfg=$2 out rc copy copy_re='started a copy as ([0-9a-f]{8})' stopped=no
 	out=$(claude_env "$cfg" "$(resume_path "$sid")" --bg --resume "$sid" "$(wake_prompt "$sid")" </dev/null 2>&1)
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
-		# A refused resume keeps its prompt for the next wake, which then
-		# delivers both; the template makes that harmless. Each retry would
-		# queue one more copy, so retries back off.
+		# A refused resume keeps its events for the next wake, and retries
+		# back off. One refused for the session's own cwd (untrusted, or
+		# gone) says its message is saved for the session's next start (the
+		# #292 spike), so a retry can deliver the prompt twice, which the
+		# template makes harmless. One refused because it would have started
+		# a copy (claude_env) says nothing of the kind, and its prompt never
+		# reached the session (2.1.325, #338).
 		back_off "$sid" wake_failures next_wake_at
 		hold "$sid" "wake-failed"
 		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
+		return 1
+	fi
+	if [[ $out =~ $copy_re ]]; then
+		# The daemon still counted the session as running, so the resume
+		# started a copy of it, with the wake prompt, instead: only possible
+		# where / is trusted (claude_env). A copy acting on the session's PR
+		# would duplicate its work, so it is stopped at once (its conversation
+		# is kept), and the wake counts as refused.
+		copy=${BASH_REMATCH[1]}
+		! run_claude "$cfg" stop "$copy" >/dev/null 2>&1 || stopped=yes
+		back_off "$sid" wake_failures next_wake_at
+		hold "$sid" "wake-forked"
+		log "wake-forked session=$(short "$sid") copy=$copy copy-stopped=$stopped"
+		echo "pr-notifier: resuming session $(short "$sid") started a copy, $copy, instead (copy stopped: $stopped); is / trusted? see $log_file" >&2
 		return 1
 	fi
 	finish_wake "$sid" "$3"
@@ -933,7 +979,7 @@ find_transcripts() { # find_transcripts <config dir> <session id>: sets found_tr
 }
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind next tries outstanding why ids late evs files=()
+	local sid=$1 cfg row id cwd pid status st kind next tries outstanding why ids late evs inflight updated files=()
 	! over_budget "$sid" || return
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	# Relays sent but not yet taken (relay_msgs, the last five) may have been
@@ -1010,12 +1056,19 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		resume_backoff "$sid" || wake "$sid" "$cfg" stopped
 		return
 	fi
+	if [ "$status:$st" = idle:working ] && [[ $id =~ ^[0-9a-f]{8}$ ]]; then
+		read -r inflight updated <<<"$(job_state "$cfg" "$id")"
+		if stale_working "$inflight" "$updated"; then
+			log "stale-state session=$(short "$sid") status=idle state=working in-flight=none quiet=$((now - updated))s"
+			st=stale
+		fi
+	fi
 	case $status:$st in
 	busy:* | waiting:* | *:working)
 		hold "$sid" "busy status=$status state=$st"
 		return
 		;;
-	idle:done | idle:blocked) ;;
+	idle:done | idle:blocked | idle:stale) ;;
 	*)
 		hold "$sid" "unplaced status=$status state=$st"
 		return
@@ -1057,7 +1110,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 }
 
 stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd> <kind> <why no relay>: the fallback
-	local sid=$1 cfg=$2 id=$3 cwd=$4 kind=$5 why=$6 pid status st inflight updated tries row
+	local sid=$1 cfg=$2 id=$3 cwd=$4 kind=$5 why=$6 pid status st inflight updated tries row worker
 	if [ "$kind" != background ]; then
 		# A live terminal session: someone is at it, and a stop would end it
 		# under them. Its events wait for a relay, or until it exits.
@@ -1097,16 +1150,37 @@ stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd>
 	read -r inflight updated <<<"$(job_state "$cfg" "$id")"
 	case $status:$st:$inflight in
 	idle:done:none | idle:blocked:none) ;;
+	idle:working:none) stale_working "$inflight" "$updated" || {
+		hold "$sid" "$why; changed status=$status state=$st in-flight=$inflight"
+		return
+	} ;;
 	*)
 		hold "$sid" "$why; changed status=$status state=$st in-flight=$inflight"
 		return
 		;;
 	esac
+	worker=$pid
 	if ! run_claude "$cfg" stop "$id" >/dev/null 2>&1; then
 		hold "$sid" "$why; stop-failed"
 		return
 	fi
-	# --resume on a live session forks a copy, so wait until it is stopped.
+	# --resume on a session the daemon still counts as running starts a copy,
+	# so wait until it is stopped. The row drops its pid as soon as the stop
+	# is asked for, but the worker process runs on for a moment (claude stop
+	# returned in about 0.4s, and the worker exited 0.4 to 0.7s after that,
+	# on 2.1.325), and the daemon settles the session only once it exits. So
+	# wait for the worker itself, then for a fresh row with no pid, whose
+	# listing gives the daemon a second more. Resuming any sooner started a
+	# copy, which / refused: every first wake failed so (#338).
+	tries=0
+	while pid_alive "$worker"; do
+		tries=$((tries + 1))
+		if [ "$tries" -ge 20 ]; then
+			hold "$sid" "$why; stop-pending worker=$worker"
+			return
+		fi
+		sleep 0.25
+	done
 	tries=0
 	while :; do
 		row=$(session_row "$cfg" "$sid" fresh) || row=
