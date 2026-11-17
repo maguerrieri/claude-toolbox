@@ -89,9 +89,11 @@ and assemble what comes back up.
 - **Relay merge authority except as a clearance.** Only the owner creates
   merge authority, and it moves only down the spawn tree. A grant originates
   as the owner's own `/finish-ticket` (or merge request in their own words)
-  typed in a session, including after attaching, or as a finish flag on a
-  `/start-epic` or `/spawn-epic` the owner invoked; the owner merging a PR
-  themself lands it but grants nothing. A session holding a grant may pass it
+  typed in a session, including after attaching, as a finish flag on a
+  `/start-epic` or `/spawn-epic` the owner invoked, or as the owner's
+  approving review of a PR's current head, which only that PR's own session
+  acts on and passes to no one; the owner merging a PR themself lands it but
+  grants nothing. A session holding a grant may pass it
   to a direct child as a `finish:` clearance citing the grant: an epic
   clearance to a coordinator, which may clear its own children, or a PR
   clearance to an implementer, for its own unstacked PR only, which passes it
@@ -115,7 +117,10 @@ and assemble what comes back up.
   The rule lets you clear your own children instead, but Step 7 doesn't yet
   say how to sequence that (#207 adds it). Until it does, send no child a
   `finish:`, and land what the grant covers yourself. Never clear a grandchild or a sibling, and never pass an approval on
-  any other way. Once Step 7 is done, ping `merged: epic <epic-id>` or
+  any other way. The owner's approving review of a child's PR is that
+  child's grant, not yours: an unstacked child lands its own PR on it and
+  pings `merged: #<pr>`, which you treat as `phases/epic.md` Step 6 says, and
+  a stacked one waits for its parents. Once Step 7 is done, ping `merged: epic <epic-id>` or
   `blocked: <why>` to your recorded spawner, if you have one. A cloud or
   interactive coordinator has none, so it reports through its normal
   aggregate hand-back. Without a grant, report the ready stack as

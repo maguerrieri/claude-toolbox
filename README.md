@@ -41,7 +41,11 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   installed, a local background session subscribes its PR when it hands back,
   so the owner's and review bots' activity on it, and its merge, wake that
   session again (the owner's only from an account other than the sessions'
-  own); FINISH unsubscribes it.
+  own); FINISH unsubscribes it. Where the sessions post as an account other
+  than the owner's, the owner's approving review of such a PR's head is an
+  instruction to merge it: its session lands it through FINISH's gate, unless
+  the review or the owner says to hold, and a PR stacked on another waits for
+  its parent (not in cloud sessions).
   Inside a Claude Project it switches to a Projects mode that leaves branch creation,
   PR watching and fan-out to the Projects harness: the spawning commands start
   project threads instead of background sessions, each thread keeps to one issue
