@@ -425,7 +425,7 @@ retarget='[{"__typename": "BaseRefChangedEvent", "previousRefName": "parent", "c
 force_push='{"__typename": "BaseRefForcePushedEvent", "createdAt": "2026-11-17T05:40:00Z"}'
 landed() { # landed [<base> [<merged at>]]: STUB_MERGED_PRS with the parent merged
 	jq -n --arg o "$P1" --arg b "${1:-main}" --arg at "${2:-2026-11-17T05:30:00Z}" \
-		'[{headRefName: "parent", headRefOid: $o, baseRefName: $b, mergedAt: $at}]'
+		'[{headRefName: "parent", headRefOid: $o, baseRefName: $b, mergedAt: $at, isCrossRepository: false}]'
 }
 export STUB_BASE_TIP=$M STUB_BASE_CHANGES=$retarget STUB_MERGED_PRS=$(landed)
 carried=$(reviews "$(review 11 maguerrieri APPROVED "$A" "$t1")")
@@ -458,6 +458,14 @@ record 1 'no merged PR had the old base as its head' "$(STUB_MERGED_PRS='[]' STU
 record 1 'one merged into another base' "$(STUB_MERGED_PRS=$(landed dev) STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record 1 'one merged after the change' \
 	"$(STUB_MERGED_PRS=$(landed main 2026-11-17T05:45:00Z) STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'one merged before the approval' \
+	"$(STUB_MERGED_PRS=$(landed main 2026-11-17T04:30:00Z) STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'one from a fork with the same branch name' \
+	"$(STUB_MERGED_PRS=$(landed | jq '.[0].isCrossRepository = true') STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'one whose fork flag reads nothing' \
+	"$(STUB_MERGED_PRS=$(landed | jq '.[0].isCrossRepository = null') STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'a force-push of the base in the approval'"'"'s own second counts as after it' \
+	"$(STUB_BASE_CHANGES=$(jq --argjson f "$force_push" '. + [$f | .createdAt = "2026-11-17T05:00:00Z"]' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record 1 'two that could be the parent' \
 	"$(STUB_MERGED_PRS=$(landed | jq '. + .') STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record 1 'an approved commit this checkout lacks' \

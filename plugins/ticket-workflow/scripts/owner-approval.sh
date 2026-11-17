@@ -14,11 +14,13 @@
 # the head, the base branch's tip (git/ref), and the approved commit's base.
 #   - No base change since the approval: its merge-base with the base's tip,
 #     so a base that moved on is followed.
-#   - One base change since it, away from a branch a merged PR had as its head
-#     and into the base it merged to: that PR's last head, which must be an
-#     ancestor of the approved commit (a parent landed).
+#   - One base change since it, away from a branch that one merged PR of this
+#     repository (never a fork's) had as its head, merged into the new base
+#     between the approval and the change: that PR's last head, which must
+#     be an ancestor of the approved commit (a parent landed).
 #   - Anything else, or a force-push of the base since the approval (which
-#     GitHub records on the PR): nothing carries.
+#     GitHub records on the PR): nothing carries. An event in the approval's
+#     own second counts as after it.
 # What the approved commit changed since that base, merged onto the head's
 # own base (git merge-tree --write-tree --merge-base), must give exactly the
 # head's tree: the same changes, in the same places, with nothing added. A
@@ -185,15 +187,16 @@ replays() { # replays <old base> <approved>: what <approved> changed since <old 
 	[[ $tree =~ $sha_re ]] && [ "$tree" = "$(git rev-parse --verify --quiet "$head^{tree}" 2>/dev/null)" ]
 }
 old_base() { # old_base <approval time> <approved>: the approved commit's base, as GitHub records it, or fail
-	local events changes count prev cur at merged
-	# The PR's base changes and base force-pushes since the approval.
+	local events changes count prev cur changed_at merged
+	# The PR's base changes and base force-pushes since the approval, one in
+	# the approval's own second included (timestamps have one-second steps).
 	events=$("$gh_bin" api graphql --hostname "$host" -f owner="$owner" -f repo="$repo" -F pr="$pr" -f query='
 		query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){
 		timelineItems(itemTypes:[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT],last:50){nodes{__typename
 		... on BaseRefChangedEvent{previousRefName currentRefName createdAt} ... on BaseRefForcePushedEvent{createdAt}}}}}}' \
 		--jq '.data.repository.pullRequest.timelineItems.nodes[] | "\(.__typename // "")\u001f\(.createdAt // "")\u001f\(.previousRefName // "")\u001f\(.currentRefName // "")"' \
 		</dev/null 2>/dev/null) || return 1
-	events=$(printf '%s\n' "$events" | awk -F "$sep" -v at="$1" 'NF == 4 && $2 > at')
+	events=$(printf '%s\n' "$events" | awk -F "$sep" -v at="$1" 'NF == 4 && $2 >= at')
 	# A base rewritten since the approval moves what its merge-base finds.
 	printf '%s\n' "$events" | grep -q "^BaseRefForcePushedEvent$sep" && return 1
 	changes=$(printf '%s\n' "$events" | grep "^BaseRefChangedEvent$sep" | cut -d "$sep" -f 2-)
@@ -203,15 +206,17 @@ old_base() { # old_base <approval time> <approved>: the approved commit's base, 
 		return
 	fi
 	[ "$count" = 1 ] || return 1
-	IFS="$sep" read -r at prev cur <<<"$changes"
+	IFS="$sep" read -r changed_at prev cur <<<"$changes"
 	[ "$cur" = "$base_ref" ] && [[ $prev =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
-	# The PR that had the old base as its head and merged into the new one before the change.
+	# The PR of this repository's own (never a fork's) that had the old base as
+	# its head and merged into the new one between the approval and the change.
 	merged=$("$gh_bin" api graphql --hostname "$host" -f owner="$owner" -f repo="$repo" -f head="$prev" -f query='
 		query($owner:String!,$repo:String!,$head:String!){repository(owner:$owner,name:$repo){
-		pullRequests(headRefName:$head,states:[MERGED],last:20){nodes{headRefOid baseRefName mergedAt}}}}' \
-		--jq '.data.repository.pullRequests.nodes[] | "\(.headRefOid // "")\u001f\(.baseRefName // "")\u001f\(.mergedAt // "")"' \
+		pullRequests(headRefName:$head,states:[MERGED],last:20){nodes{headRefOid baseRefName mergedAt isCrossRepository}}}}' \
+		--jq '.data.repository.pullRequests.nodes[] | "\(.headRefOid // "")\u001f\(.baseRefName // "")\u001f\(.mergedAt // "")\u001f\(.isCrossRepository)"' \
 		</dev/null 2>/dev/null) || return 1
-	merged=$(printf '%s\n' "$merged" | awk -F "$sep" -v base="$cur" -v at="$at" 'NF == 3 && $2 == base && $3 != "" && $3 <= at { print $1 }')
+	merged=$(printf '%s\n' "$merged" | awk -F "$sep" -v base="$cur" -v approved="$1" -v changed="$changed_at" \
+		'NF == 4 && $2 == base && $4 == "false" && $3 != "" && $3 >= approved && $3 <= changed { print $1 }')
 	[ "$(printf '%s' "$merged" | grep -c . || true)" = 1 ] && [[ $merged =~ $sha_re ]] || return 1
 	printf '%s' "$merged"
 }
