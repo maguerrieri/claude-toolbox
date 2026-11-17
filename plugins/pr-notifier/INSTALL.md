@@ -41,6 +41,14 @@ nothing. It never runs as root: the one root step is its own small script,
    subscription records its own, and setting `~/.claude` explicitly breaks the default
    root (Trap 3). On start after downtime, `check` catches up from its cursor.
 
+**Keep `/` untrusted.** Never accept Claude Code's trust prompt in `/` as bot, even if
+`notifier.log` shows `wake-failed … Workspace not trusted. Run claude in / once and accept
+the trust prompt`. That refusal is a resume that would have started a copy of the session,
+and `/` being untrusted is what stops the copy. Trusting `/` makes it run beside the
+session instead (the [README](README.md#resumes-and-copies)'s *Resumes and copies*, #338).
+The job's `WorkingDirectory` stays `/`, and the CLI runs every `claude` call from `/`
+whatever the job's cwd, so the fix needed no change to the plist.
+
 `job.last` holds the last run's outcome (`ran check`, `check failed: exit <n>`, or
 `skipped: <why>`), which `install.sh status` reads.
 

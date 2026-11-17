@@ -34,7 +34,7 @@ unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CLAUDE_CONFIG_DIR PR_NOTIFIER_ROO
 
 STUB=$tmp/stub
 export STUB HOME=$tmp/home PR_NOTIFIER_HOME=$tmp/state
-export PR_NOTIFIER_GH=$tmp/bin/gh PR_NOTIFIER_CLAUDE=$tmp/bin/claude
+export PR_NOTIFIER_GH=$tmp/bin/gh PR_NOTIFIER_CLAUDE=$tmp/bin/claude PR_NOTIFIER_PS=$tmp/bin/ps
 mkdir -p "$tmp/bin" "$tmp/socks"
 # Live sessions' messaging sockets: one for pid 41, the live rows' pid, and
 # none for 42.
@@ -117,8 +117,25 @@ esac
 if [ -n "$filter" ]; then printf '%s\n' "$out" | jq -r "$filter"; else printf '%s\n' "$out"; fi
 GH_EOF
 
+# ps: -p <pid> answers from $STUB/dying-<pid>, which the claude stub's stop
+# writes: the stopped worker lingers for that many more calls, then is gone.
+# Any other pid has no process.
+cat >"$tmp/bin/ps" <<'PS_EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$STUB/ps.log"
+[ "$1" = -p ] && [ -f "$STUB/dying-$2" ] || exit 1
+n=$(cat "$STUB/dying-$2")
+[ "$n" -gt 0 ] || exit 1
+echo $((n - 1)) >"$STUB/dying-$2"
+echo "$2"
+PS_EOF
+
 # claude: agents lists $STUB/agents[-<root basename>].json; stop drops the
-# row's pid; a resume saves its prompt and exits $STUB/resume.rc. A relay
+# row's pid, and its worker lingers for $STUB/linger ps calls (none by
+# default). A resume saves its prompt and exits $STUB/resume.rc; while a
+# stopped worker lingers, the daemon still counts its session as running, so
+# the resume starts a copy, which the trust check on / refuses (#338); with
+# $STUB/resume.fork it starts that copy instead, as from a trusted cwd. A relay
 # (-p) reads its prompt from stdin, saves it and the text it relays, prints
 # stream-json as claude -p does, and, as $STUB/relay.mode says, has the
 # session whose socket it was given take the message as a turn in its
@@ -139,6 +156,8 @@ agents)
 	[ ! -f "$STUB/agents.next" ] || mv "$STUB/agents.next" "$listing"
 	;;
 stop)
+	pid=$(jq -r --arg id "$2" '[.[] | select(.id == $id) | .pid // empty] | first // empty' "$listing")
+	[ -z "$pid" ] || cat "$STUB/linger" 2>/dev/null >"$STUB/dying-$pid" || echo 0 >"$STUB/dying-$pid"
 	jq --arg id "$2" 'map(if .id == $id then del(.pid, .status) else . end)' "$listing" >"$listing.new" &&
 		mv "$listing.new" "$listing"
 	;;
@@ -146,6 +165,16 @@ stop)
 	n=$(($(cat "$STUB/wakes" 2>/dev/null || echo 0) + 1))
 	echo "$n" >"$STUB/wakes"
 	printf '%s' "$4" >"$STUB/prompt.$n"
+	for f in "$STUB"/dying-*; do
+		[ -f "$f" ] && [ "$(cat "$f")" -gt 0 ] || continue
+		echo 'Workspace not trusted. Run `claude` in / once and accept the trust prompt, then retry.' >&2
+		exit 1
+	done
+	if [ -f "$STUB/resume.fork" ]; then
+		echo "note: session ${3:0:8} is already running in the background, so this started a copy as cccccccc. \`claude attach ${3:0:8}\` opens the original."
+		echo 'backgrounded · cccccccc'
+		exit 0
+	fi
 	rc=$(cat "$STUB/resume.rc" 2>/dev/null || echo 0)
 	[ "$rc" = 0 ] && echo "backgrounded · $3" || echo "Workspace not trusted." >&2
 	exit "$rc"
@@ -195,7 +224,7 @@ stop)
 	;;
 esac
 CLAUDE_EOF
-chmod +x "$tmp/bin/gh" "$tmp/bin/claude"
+chmod +x "$tmp/bin/gh" "$tmp/bin/claude" "$tmp/bin/ps"
 
 SID=aaaaaaaa-1111-2222-3333-444444444444
 SID2=bbbbbbbb-1111-2222-3333-444444444444
@@ -634,6 +663,34 @@ record 1 'once it stops, the held event is delivered' "$(wakes)"
 deliver_case working
 record '0|0|1' 'live and mid-turn (state working): held' "$(relays)|$(wakes)|$(held)"
 
+# Idle with state working left over: a session stopped while blocked and woken
+# with no prompt reads so, and so does a turn that ended unrecorded (#338).
+deliver_case working $((T - 3600))
+record '1|0|0' 'idle, state working, nothing in flight, its job state quiet an hour: relayed, as an idle session is' \
+	"$(relays)|$(wakes)|$(held)"
+record yes 'logged as a stale state' "$(logged 'stale-state session=aaaaaaaa status=idle state=working in-flight=none quiet=3600s')"
+deliver_case working $((T - 60))
+record '0|0|1' 'its job state written a minute ago: held, as busy' "$(relays)|$(wakes)|$(held)"
+record yes 'logged' "$(logged 'hold session=aaaaaaaa reason=busy status=idle state=working')"
+deliver_case working $((T - 3600)) '{"tasks":1,"queued":0,"kinds":["local_bash"]}'
+record '0|1' 'work in flight: held' "$(relays)|$(held)"
+deliver_case working $((T - 3600)) none
+record '0|1' 'no job state to read: held' "$(relays)|$(held)"
+reset
+agents "$(agent working)"
+job "$SID" $((T - 60))
+settings '{"relay_wait": 0, "working_grace": 30}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '1|0' 'working_grace sets how long its job state must be quiet' "$(relays)|$(held)"
+reset
+agents "$(agent working)"
+job "$SID" $((T - 3600))
+settings '{"relay": false}'
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '0|1|0' 'with the relay off, the fallback stops and resumes it' "$(relays)|$(wakes)|$(held)"
+
 # Live and idle: the relay delivers in place.
 deliver_case idle-done $((T - 3600))
 record '1|0|0' 'live and idle (done): relayed in place, never resumed, nothing held' "$(relays)|$(wakes)|$(held)"
@@ -693,6 +750,33 @@ record '1|1|0' 'then it falls back to stop-then-resume' "$(relays)|$(wakes)|$(he
 record 'agents,relay,agents,agents,stop,agents,resume' 'by stop, a check that it stopped, then resume' "$(stopped_after_start)"
 record yes 'and the stop names the short id' "$(has "$STUB/claude.log" 'stop aaaaaaaa|')"
 record yes 'the resume is logged as the fallback' "$(logged 'wake session=aaaaaaaa how=live-idle')"
+
+# The stop returns while its worker still runs, and until the worker exits the
+# daemon counts the session as running: a resume then starts a copy, which /
+# refuses. Resuming once the row lost its pid failed every first wake so (#338).
+reset
+agents "$(agent idle-done)"
+job "$SID" $((T - 3600))
+settings '{"relay": false}'
+echo 3 >"$STUB/linger"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '1|0' 'a worker that outlives its stop is waited for, and the first resume lands' "$(wakes)|$(held)"
+record no 'nothing refused' "$(logged 'wake-failed')"
+record 4 'its pid read until it was gone' "$(grep -c -- '^-p 41 -o pid=$' "$STUB/ps.log")"
+record 'agents,agents,stop,agents,resume' 'then a fresh row, then the resume' "$(stopped_after_start)"
+reset
+agents "$(agent idle-done)"
+job "$SID" $((T - 3600))
+settings '{"relay": false}'
+echo 999 >"$STUB/linger"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record '0|1' 'a worker still running five seconds after its stop: held, never resumed' "$(wakes)|$(held)"
+record yes 'logged' "$(logged 'reason=relay off; stop-pending worker=41')"
+echo 0 >"$STUB/dying-41"
+nt $((T + 60)) check
+record '1|0' 'once it has exited, the stopped session is resumed' "$(wakes)|$(held)"
 
 # A relay the session takes a check late was the wake for what it carried.
 take() { # take <message id>: the session takes that relayed message as a turn
@@ -1034,6 +1118,21 @@ record 2 'and the next one ten minutes after that' "$(wakes)"
 echo 0 >"$STUB/resume.rc"
 nt $((T + 900)) check
 record '3|0' 'which delivers it' "$(wakes)|$(held)"
+
+# A resume that started a copy (only where / is trusted) is no wake.
+reset
+: >"$STUB/resume.fork"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check 2>"$tmp/err"
+record '1|1' 'a resume that started a copy instead is no wake: the event stays held' "$(wakes)|$(held)"
+record yes 'the copy is stopped at once' "$(has "$STUB/claude.log" 'stop cccccccc|')"
+record yes 'logged' "$(logged 'wake-forked session=aaaaaaaa copy=cccccccc copy-stopped=yes')"
+record yes 'and said on stderr' "$(has "$tmp/err" 'started a copy, cccccccc, instead (copy stopped: yes); is / trusted?')"
+rm "$STUB/resume.fork"
+nt $((T + 60)) check
+record 1 'retries back off, as for a refused resume' "$(wakes)"
+nt $((T + 300)) check
+record '2|0' 'and the retry delivers it' "$(wakes)|$(held)"
 
 reset
 echo '{"broken": ' >"$STUB/agents.json"

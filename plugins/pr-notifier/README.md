@@ -162,7 +162,7 @@ for at most 15 seconds within a check, since a relay can take a minute and a ses
 has started since must not be resumed (that forks it). Every `claude` call runs from `/`, without the variables a session sets for what it starts
 (`CLAUDE_CODE_SESSION_ID`, its messaging socket and token, and the like), and is killed
 after two minutes. It runs under `wake_path`, except a resume, which passes the session's
-own `PATH` (below). First match wins:
+own `PATH` (below). **`/` must stay untrusted** ([*Resumes and copies*](#resumes-and-copies), below). First match wins:
 
 | State | Action |
 |---|---|
@@ -170,6 +170,7 @@ own `PATH` (below). First match wins:
 | No row for the session | hold, since a row can come back. Once it has had none for `hold_bound` (30 minutes), unsubscribe it, drop its events, and comment on each of its PRs that it's no longer listening, naming it only by its short id (the PR may be public; the log has its full id and the command that resubscribes it): a session deleted from agent view (Ctrl-X) or by `claude rm` leaves no row, and can't be woken. A row seen in between starts the bound over. Unless the listing looks broken: when it shows no session at all, or every other session subscribed in the same root has gone missing too, a changed or broken listing (a Claude Code update, say) is likelier than deletions, so they stay held |
 | Stopped (no `pid`), and its `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
 | Stopped | read its row afresh, since the listing can be seconds old: still stopped, `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy); started since, hold for the next check, since resuming a live session forks it |
+| `status` `idle` and `state` `working`, nothing in `inFlight`, and no job state written for `working_grace` (two minutes) | treat it as idle (the last row), and log `stale-state`: no turn is running |
 | `status` `busy` or `waiting`, or `state` `working` | hold |
 | Any other live state but idle with `state` `done` or `blocked` | hold |
 | Idle with `state` `done` or `blocked` | relay the wake in place (below); if it doesn't land, the fallback |
@@ -184,10 +185,19 @@ First match wins:
 | Its `cwd` is gone | hold: once stopped, it couldn't be resumed |
 | `inFlight` has tasks, queued input or any kind (monitors included), or can't be read | hold |
 | Active within `idle_grace` (ten minutes) | hold |
-| Otherwise | re-read the row and job state, `claude stop <short id>`, wait until the row shows no `pid`, then resume as above |
+| Otherwise | re-read the row and job state (still idle, as above), `claude stop <short id>`, wait until the worker process the row named has exited (up to five seconds), then until a fresh row shows no `pid`, then resume as above |
 
 - `state` `blocked` with `status` `idle` is a session that handed back waiting on the
   user: the main thing to wake, never a reason to hold.
+- `state` `working` with `status` `idle` is usually left over. A turn shows `status`
+  `busy` and writes its job state as it goes. A session stopped while `blocked` and then
+  woken with no prompt (attached to from agent view, say) comes back reading `working`,
+  idle, with nothing in flight, and stays so (reproduced on 2.1.325, #338). So might one
+  whose turn ended without its state being written, such as on a usage limit. Either is
+  at its prompt and takes a relay as an idle one does, so once its job state has been
+  quiet for `working_grace` it isn't held. Before #338 it was held as busy until the
+  hold bound. A job state that can't be read still holds, since work in flight can't be
+  ruled out.
 - **Attached viewers.** The fallback's stop disconnects anyone attached, and attachment
   isn't visible outside Claude Code's daemon. The policy is the idle grace: a live
   session is stopped only after ten minutes without activity, betting that someone
@@ -196,10 +206,30 @@ First match wins:
   attach` reconnects.
 - Checking and stopping aren't atomic: a turn can start between the re-read and the
   stop. The re-read narrows that window; it can't close it.
-- A refused resume keeps the events, and Claude Code keeps the refused prompt to
-  deliver with the next wake. The wake prompt is written so getting it twice is
-  harmless, but each retry would queue one more copy, so retries back off: 5, 10, 20
-  and 40 minutes, then hourly, until one is accepted.
+- A refused resume keeps the events, and retries back off: 5, 10, 20 and 40 minutes,
+  then hourly, until one is accepted. One refused for the session's own cwd (untrusted,
+  or gone) says its message is saved for the session's next start (the #292 spike), so
+  a retry can deliver the prompt twice: the wake prompt is written so that's harmless,
+  and the backoff keeps copies from piling up. One refused because it would have started
+  a copy (next) keeps nothing.
+- <a id="resumes-and-copies"></a>**Resumes and copies.** `claude --bg --resume <id>` wakes a
+  session only once Claude Code's daemon counts it as stopped: the daemon then runs it in
+  its own recorded cwd and says `woke session <id> with its saved options`. To a session
+  the daemon still counts as running, the same command starts a copy (`session <id> is
+  already running in the background, so this started a copy as <new id>`), a fork of the
+  conversation, in the caller's cwd. The daemon counts a stopped session as running until
+  its worker process exits: `claude stop` returned in about 0.4 seconds with the worker
+  still running, and the row lost its `pid` at once, but the worker exited 0.4 to 0.7
+  seconds later, and the daemon settled the session as it did (2.1.325, #338). Before
+  #338 the fallback resumed as soon as the row lost its `pid`. So every first wake
+  started a copy, the trust check refused it from `/` (`Workspace not trusted. Run
+  claude in / once and accept the trust prompt`), and the retry five minutes later, by
+  then a wake, landed. The fallback now waits for the worker itself. **Don't accept that
+  trust prompt in `/`, whatever the log says**: from a trusted cwd (`/`, or the
+  session's own) the copy runs, with the wake prompt, beside the session it copied. A
+  resume whose output says it started a copy anyway is no wake: the copy is stopped at
+  once (its conversation is kept), the events stay held, and `check` logs `wake-forked`
+  and says so on stderr.
 - **Bounded holds.** Holds rest on Claude Code's internal job state, which can change
   between versions. A session held past `hold_bound` (30 minutes) gets one `stale` log
   line and one stderr line from `check`, and stays held; `status` marks it `STALE`.
@@ -323,6 +353,7 @@ inside a cross-session message.
 | `retry_window` | `1800` | Seconds an item a failed owner check dropped is checked again |
 | `owner_ttl` | `3600` | Seconds an owner check's yes is cached |
 | `idle_grace` | `600` | Seconds a live session must be quiet before the fallback stops it |
+| `working_grace` | `120` | Seconds an idle session still reading `state` `working`, with nothing in flight, must go without a job state write before it's treated as idle |
 | `relay` | `true` | `false` sends every live, idle session straight to the fallback |
 | `relay_model` | `haiku` | The model the relay runs |
 | `relay_wait` | `30` | Seconds a relay waits for its message to show as a turn |
