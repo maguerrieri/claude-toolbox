@@ -203,6 +203,8 @@ record 1 'a deleted account'"'"'s changes requested' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 '' CHANGES_REQUESTED "$head" "$t2")") run)"
 record 1 'one deleted account'"'"'s request for changes, not hidden by another'"'"'s later approval' \
 	"$(STUB_REVIEWS=$(reviews "$(review 8 '' CHANGES_REQUESTED "$old" 2026-11-17T04:10:00Z)" "$(review 9 '' APPROVED "$old" 2026-11-17T04:20:00Z)" "$approve") run)"
+record 1 'nor by another'"'"'s, both shown as GitHub'"'"'s ghost user' \
+	"$(STUB_REVIEWS=$(reviews "$(review 8 ghost CHANGES_REQUESTED "$old" 2026-11-17T04:10:00Z)" "$(review 9 Ghost APPROVED "$old" 2026-11-17T04:20:00Z)" "$approve") run)"
 STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate CHANGES_REQUESTED "$head" "$t2")") run >/dev/null
 record 1 'a request for changes after the approval is said once' "$(grep -c 'mate' "$tmp/err")"
 

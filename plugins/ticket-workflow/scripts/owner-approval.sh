@@ -131,13 +131,14 @@ pr_out=$("$gh_bin" api "repos/$owner/$repo/pulls/$pr" --hostname "$host" --jq \
 [[ $head =~ ^[0-9a-f]{40}$ ]] || no_grant "PR #$pr's head '${head}' is not a commit SHA"
 
 # Every page of its decisive reviews, one line each (gh applies --jq to each
-# page), led by the lowercased login (a deleted account's review by its own
-# id, so no two deleted accounts share one), then sorted oldest first:
+# page), led by the lowercased login (a deleted account's review, which REST
+# gives no user or GitHub's shared ghost user, by its own id, so no two
+# deleted accounts share one), then sorted oldest first:
 # ISO-8601 UTC times sort as strings, and the id breaks a tie.
 decisive=$("$gh_bin" api "repos/$owner/$repo/pulls/$pr/reviews?per_page=100" --hostname "$host" --paginate --jq \
 	'.[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")
 		| ((.user.login // "") | ascii_downcase) as $key
-		| "\(if $key == "" then "-\(.id)" else $key end)\u001f\(.submitted_at // "")\u001f\(.id // 0)\u001f\(.user.login // "")\u001f\(.user.type // "")\u001f\(.state)\u001f\(.commit_id // "")\u001f\(.node_id // "")\u001f\(.html_url // "")"' \
+		| "\(if $key == "" or $key == "ghost" then "-\(.id)" else $key end)\u001f\(.submitted_at // "")\u001f\(.id // 0)\u001f\(.user.login // "")\u001f\(.user.type // "")\u001f\(.state)\u001f\(.commit_id // "")\u001f\(.node_id // "")\u001f\(.html_url // "")"' \
 	</dev/null 2>/dev/null) || no_grant "can't read PR #$pr's reviews"
 sorted=$(printf '%s\n' "$decisive" | LC_ALL=C sort -t "$sep" -k2,2 -k3,3n)
 newest_first=$(printf '%s\n' "$sorted" | awk 'NF { line[++n] = $0 } END { for (i = n; i > 0; i--) print line[i] }')

@@ -168,7 +168,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   act on — see `messaging.md`. So is a `raise:` hint about your review-round
   cap, but only as far as your own PR's `Review rounds:` line shows a raise:
   the line is the grant, and the message is not (the profile's `REVIEW_BOT`,
-  *Raising the cap*). What the owner asks for on your PR is yours to land
+  *Raising the cap*). The same goes for an `approval: <review url> on PR
+  #<pr>` hint from your coordinator (EPIC Step 7): it is not a relayed
+  approval to decline, but a pointer, so read your PR and take what GitHub
+  shows through *The owner's approval* (*Merge your own PR*, above). What the owner asks for on your PR is yours to land
   too, without waiting to hand back: from the owner in this session, in
   their comment on your PR (or your issue, where the login settles it), or
   in a `request:` from your recorded spawner. A comment is theirs by its author's login, which
