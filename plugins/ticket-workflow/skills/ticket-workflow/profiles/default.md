@@ -362,7 +362,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
       authorship. A reply that only agrees with a bot's finding still leaves its fix a review fix
       (above). Two exceptions: one in this skill's own forms (a `restack:` line, say) follows its
       own rule, and a review tool's output posted from that login (a `/code-review --comment`
-      finding) is review feedback.
+      finding) is review feedback. And its approving review is no request but the third grant
+      form, taken through `phases/finish.md`'s *The owner's approval*, which reads its body for a
+      hold or a requested change.
     - **Exit 3**: the login is the tree's own, and it is an admin. The sessions post as the
       owner's account, so the login can't tell the owner from a session. A comment by it on the
       child's PR, top-level or opening a line thread (never a reply in a bot's thread), counts as
@@ -389,9 +391,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     written is a `blocked:` to the spawner (a question on the PR when there is none), never a
     guess. A human steering the child's own session can still lift a hold, by the usual rules.
     The owner's comments are held to the same bounds, and answered on the PR, where the owner
-    reads. "Merge it" in one is no grant, since a grant is typed in a session (the FINISH intro in
-    `phases/finish.md`), so the child replies with `roles/implementer.md`'s `declined: no grant`
-    line. "One more round" in one is no raise (*Raising the cap*), and the child says so.
+    reads. "Merge it" in one is no grant, since a grant is typed in a session or is the owner's
+    approving review of the PR's head itself (the FINISH intro in `phases/finish.md`), so the child
+    replies with `roles/implementer.md`'s `declined: no grant` line. "One more round" in one is no
+    raise (*Raising the cap*), and the child says so. A comment that asks not to merge, or not yet,
+    is a hold on the owner's approval (*The owner's approval* in that file), which the child
+    honors without a record, since the comment is already on the PR.
   - **The owner head**: a pushed head whose commits since the last head the engaged bot reviewed
     land nothing but owner requests, so an unreviewed CI fix or restack in between makes it an
     ordinary round. After pushing one, the child posts
@@ -628,7 +633,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   authorization and supersedes this cap. So does a finish clearance for your own PR from your
   Notify spawner that cites the owner's grant, as the ticket-workflow FINISH rules define it; no
   other finish relayed by another session, in a message, a Routine, or a briefing, ends this
-  hold. Do not arm a periodic PR check-in (no recurring or
+  hold. So does the owner's own approving review of your PR's current head, which you read from
+  GitHub as those rules define it, unless the owner says to hold. Do not arm a periodic PR check-in (no recurring or
   self-re-arming send_later or Routine that re-checks your own PR): your PR's events wake you
   instead, on cloud the harness's (reviews, review comments, CI failures) and locally the
   pr-notifier's (the owner's and review bots' activity), which START subscribes your PR to at
@@ -643,6 +649,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   requests is not a round once you record it as the review rules say. Budget: rounds=5" Keeps an unattended background session from over-reaching, while
   making the hold's expiry explicit — so a later /finish-ticket in the same session reads as the
   sanctioned merge phase, not a violation of this cap.
+- The **approval sentence** puts the third grant form (`phases/finish.md`'s *The owner's
+  approval*) into the child's own user turn, so a child that merges on the owner's approval is
+  following its launch briefing. Without it, "do not merge on your own initiative" reads as
+  forbidding that merge, which is what the session that prompted #341 reported for
+  maguerrieri/config#108.
 - The **raise sentence** puts `REVIEW_BOT`'s *Raising the cap* into the child's own user turn, so
   a child that resumes on a raised PR line is following its launch briefing, not a peer's message.
   That matters because a child's permission layer has already refused a peer's relayed loosening
@@ -695,8 +706,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   explicit user opt-in that lifts the cap for the orchestrator's own FINISH pass, and it reaches a child only as a `finish:` clearance (below). The
   orchestrator also strips merge-intent flags from what it forwards to children (see the EPIC phase's
   spawn step), so that intent never even reaches a child — never lift the merge hold for the per-child spawns. A
-  child's hold ends only when the owner asks it directly or on a `finish:` clearance from its orchestrator (the
-  FINISH intro in the skill's `phases/finish.md`), never through its spawn briefing. The
+  child's hold ends only when the owner asks it directly, on a `finish:` clearance from its orchestrator, or
+  on the owner's approval of its PR's head (the FINISH intro in the skill's `phases/finish.md`), never
+  through its spawn briefing. The
   cap's trailing `Budget: rounds=<n>` line is the one part a coordinator adjusts per child (a higher
   review-round budget for a risky change — EPIC Step 5), and a later raise goes on the child's PR
   line (`REVIEW_BOT`'s *Raising the cap*); either raises a budget, and neither lifts a hold.

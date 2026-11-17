@@ -47,9 +47,11 @@ it. You are the **root**: the one session that sees the entire initiative.
 - **Relay merge authority except as a clearance.** Only the owner creates
   merge authority, and it moves only down the spawn tree. A grant originates
   as the owner's own `/finish-ticket` (or merge request in their own words)
-  typed in a session, including after attaching, or as a finish flag on a
-  `/start-epic` or `/spawn-epic` the owner invoked; the owner merging a PR
-  themself lands it but grants nothing. A session holding a grant may pass it
+  typed in a session, including after attaching, as a finish flag on a
+  `/start-epic` or `/spawn-epic` the owner invoked, or as the owner's
+  approving review of a PR's current head, which only that PR's own session
+  acts on and passes to no one; the owner merging a PR themself lands it but
+  grants nothing. A session holding a grant may pass it
   to a direct child as a `finish:` clearance citing the grant: an epic
   clearance to a coordinator, which may clear its own children, or a PR
   clearance to an implementer, for its own unstacked PR only, which passes it
