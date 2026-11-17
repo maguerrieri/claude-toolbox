@@ -181,6 +181,12 @@ record 1 "the rule says only the owner's words count, and a wake only for what G
 	"$(printf '%s\n' "$out" | grep -c -F "$who_counts")"
 record 1 "the ledger:record skill says it in the same words" \
 	"$(tr '\n' ' ' <"$plugin/skills/record/SKILL.md" | tr -s ' ' | grep -c -F "$who_counts")"
+# Run by a relative path, the hook still names the script absolutely, since
+# the session runs the command from its own directory.
+record 1 "a hook run by a relative path names the script absolutely" \
+	"$(cd "$plugin/hooks" && printf '%s' '{"session_id": "s1", "prompt": "hi"}' |
+		env -i PATH="$PATH" CLAUDE_SESSION_LEDGER_DIR="$rdir" "$BASH" ledger-prompt-reminder.sh |
+		grep -c -F "resolve it with bash $plugin/scripts/ledger.sh resolve <id>")"
 # A path with a space or a quote reaches the shell as one word.
 odd="$tmp/odd dir's"
 mkdir -p "$odd/hooks" "$odd/scripts"
@@ -293,6 +299,9 @@ record 8 "header, five needs, the count and the rule" "$(printf '%s\n' "$out" | 
 # break in a ref or id doesn't break the line.
 jq -cn '{kind: "need", id: "n1", text: "a\u202eb\u0007c", ref: "x\ny", at: "2026-11-15T10:00:00Z"}' >"$rdir/s10.jsonl"
 record "- n1 · x y · a?b?c" "control and invisible characters cleaned" "$(remind s10 'hello' | sed -n 2p)"
+# A hand edit's empty ref and blank text leave no empty fields on the line.
+printf '%s\n' '{"kind":"need","id":"n1","text":"  \n ","ref":"","at":"2026-11-15T10:00:00Z"}' >"$rdir/s11.jsonl"
+record "- n1" "an empty ref and blank text leave just the id" "$(remind s11 'hello' | sed -n 2p)"
 
 # The hook is registered, for every prompt, by the command that runs it.
 record "1|bash \"\${CLAUDE_PLUGIN_ROOT}/hooks/ledger-prompt-reminder.sh\"" "hooks.json registers the reminder on UserPromptSubmit" \

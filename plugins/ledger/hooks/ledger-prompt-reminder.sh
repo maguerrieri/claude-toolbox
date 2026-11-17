@@ -81,10 +81,16 @@ show_def=$(cat "$hook_dir/../scripts/show.jq" 2>/dev/null) || exit 0
 # The script, by the path this hook runs from, which is the plugin's current
 # version: CLAUDE_LEDGER_ROOT is exported at SessionStart, so after a
 # mid-session update or install it can name an old version's directory, or
-# nothing. Quoted for the shell (%q leaves a plain path as it is).
+# nothing. Made absolute, since the session runs it from its own directory
+# (Claude Code runs the hook by an absolute path, so that costs nothing
+# there), and quoted for the shell (%q leaves a plain path as it is).
 case "$hook_dir" in
 */*) root=${hook_dir%/*} ;;
 *) root=$hook_dir/.. ;;
+esac
+case "$root" in
+/*) ;;
+*) root=$(cd "$root" 2>/dev/null && pwd) || exit 0 ;;
 esac
 printf -v ledger_cmd 'bash %q' "$root/scripts/ledger.sh"
 
@@ -106,7 +112,7 @@ $show_def"'
 	| if length == 0 then empty else
 		"This session'"'"'s ledger has \(length) open need\(if length == 1 then "" else "s" end):",
 		(.[0:$max][]
-			| "- " + ([.id, (.ref // empty), first_text_line] | map(one_line) | join(" · "))
+			| "- " + ([.id, (.ref // empty), first_text_line] | map(one_line | select(test("\\S"))) | join(" · "))
 			| cap($width)),
 		(if length > $max
 			then "- … and \(length - $max) more: \($cmd) list shows them all"
