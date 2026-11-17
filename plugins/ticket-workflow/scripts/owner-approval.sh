@@ -13,7 +13,7 @@
 # owner-check.sh (beside it) exits 0 for: an admin on the repo, while the
 # sessions' own login isn't one. Exits:
 #
-#   0  a grant: the PR is open, and the approval is the newest APPROVED review
+#   0  a grant: the PR is open and not a draft, and the approval is the newest APPROVED review
 #      of the PR's head commit by an owner, and:
 #      - no CHANGES_REQUESTED or DISMISSED review, by anyone, is newer than it;
 #      - no login's latest decisive review is CHANGES_REQUESTED, from before
@@ -126,9 +126,10 @@ owner_err=
 # The PR: open, and its head. A failed read prints its error body on stdout
 # too, so only the exit status says it worked.
 pr_out=$("$gh_bin" api "repos/$owner/$repo/pulls/$pr" --hostname "$host" --jq \
-	'"\(.state // "")\n\(.head.sha // "")"' </dev/null 2>/dev/null) || no_grant "can't read PR #$pr"
-{ IFS= read -r pr_state; IFS= read -r head; } <<<"$pr_out"
+	'"\(.state // "")\n\(.head.sha // "")\n\(.draft)"' </dev/null 2>/dev/null) || no_grant "can't read PR #$pr"
+{ IFS= read -r pr_state; IFS= read -r head; IFS= read -r pr_draft; } <<<"$pr_out"
 [ "$pr_state" = open ] || no_grant "PR #$pr is ${pr_state:-unreadable}, not open"
+[ "$pr_draft" = false ] || no_grant "PR #$pr is a draft (draft: ${pr_draft:-unreadable})"
 [[ $head =~ ^[0-9a-f]{40}$ ]] || no_grant "PR #$pr's head '${head}' is not a commit SHA"
 
 # Every page of its decisive reviews, one line each (gh applies --jq to each
@@ -151,7 +152,7 @@ approval= reasons= rejected=" "
 while IFS="$sep" read -r key at id login type state commit node url; do
 	[ "$state" = APPROVED ] && [ "$commit" = "$head" ] || continue
 	case $rejected in *" $key "*) continue ;; esac
-	if [ "$type" != User ] || [ -z "$login" ]; then
+	if [ "$type" != User ] || [ -z "$login" ] || [ "$(lower "$login")" = ghost ]; then
 		reasons+="the approval by ${login:-a deleted account} is not a user's ($url)$nl"
 	elif owner_check "$login"; then
 		approval="$key$sep$at$sep$id$sep$login$sep$type$sep$state$sep$commit$sep$node$sep$url"

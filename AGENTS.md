@@ -203,6 +203,12 @@ script's tests under it before pushing, with a `PATH` of `/bin:/usr/bin`
 plus a directory holding only the tools the test needs (jq, say). Found
 while writing `owner-approval.sh` (#341).
 
+The scripts' jq filters default missing fields with `// ""`, but `//` treats
+`false` as missing too, so `.draft // ""` prints an empty string for a PR
+that isn't a draft. Print a boolean field bare (`\(.draft)`, which prints
+`false`, `true` or `null`) and compare against the string. Found in the same
+place, by the tests.
+
 ## Plugin commands and skills: one name each
 
 A plugin's `commands/<name>.md` and `skills/<name>/SKILL.md` both register as
