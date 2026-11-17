@@ -170,8 +170,9 @@ for a web user:
 
 **Session links.** Link each Session cell to the session's page, as SKILL.md
 step 5 says: `https://claude.ai/code/<id>`, with `<id>` the id `create_session`
-returned, and only when that id is a plain `session_…` id (it matches
-`^session_[A-Za-z0-9]+$`). That is the page's documented address: the cloud
+returned, and only when that whole id is a plain `session_…` id: `session_`
+and then letters and digits to its end, with no newline or anything else
+after them (`^session_[A-Za-z0-9]+$`, matched against the id as one string). That is the page's documented address: the cloud
 docs give a session's URL as `claude.ai/code/<id>` and show it as
 `https://claude.ai/code/session_…`. An id of any other shape, or a launch that
 returned none, keeps the plain name. Unlike the local backend's, this link

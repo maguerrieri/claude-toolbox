@@ -1,12 +1,14 @@
 # Backend: local (`claude --bg`)
 
 The spawner is running on a machine the user has a shell on. Sessions are
-background jobs of the local CLI, recorded under `~/.claude/jobs/`, and the user
-inspects them with `claude agents`, `claude attach`, and `claude logs`.
+background jobs of the local CLI, recorded under the Claude config directory's
+`jobs/` (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/`; each config root has its
+own), and the user inspects them with `claude agents`, `claude attach`, and
+`claude logs`.
 
 ## Resolve a durable launch directory
 
-The bg job records its launch cwd (in `~/.claude/jobs/<id>/state.json`), and later
+The bg job records its launch cwd (in `jobs/<id>/state.json`, above), and later
 attach/resume re-enters that directory. **Never spawn a background session from
 inside a disposable worktree** — once the worktree is cleaned up (e.g. when the
 spawning ticket session finishes), the recorded cwd dangles and attaching to the
@@ -242,15 +244,21 @@ What was checked, on Claude Code 2.1.326 (the toolbox's #346):
   held the id it had before, for the 30 seconds it was watched. So a resumed
   unit links the page it already had. What that page shows while its session
   is stopped hasn't been checked.
+- **Not seen:** a job with `bridgeOutboundOnly: true`. Every job seen had
+  `false`. The read links such a job anyway, and whether its page opens the
+  session hasn't been checked.
 
 So the read is best-effort and fails soft: any change to the file in a later
-release, or a missing field, leaves the plain name, never a guessed link. Read
-the field, never build it. Run this **once**, in a Bash call of its own after
-every launch and resume of the fan-out has returned (in practice more than a
-second later), with each unit's short id: the hex id on the
-`backgrounded · <id> · …` line its launch or resume printed, else its listing
-row's `id`. Don't wait and re-read for a unit that has no link yet; it keeps
-the plain name.
+release, or a missing field, leaves the plain name, never a guessed link. That
+also means a release that moves the field makes the links stop appearing with
+no other sign, so when a documented way to get the address arrives (a URL in
+`claude --bg`'s output or a `claude agents --json` field), switch to it and
+drop this read. Read the field, never build it. Run this **once**, in a Bash
+call of its own after every launch and resume of the fan-out has returned
+(that next tool call comes more than a second later in practice), with each
+unit's short id: the hex id on the `backgrounded · <id> · …` line its launch
+or resume printed, else its listing row's `id`. Don't wait and re-read for a
+unit that has no link yet; it keeps the plain name.
 
 ```bash
 for id in <short id> <short id>; do
@@ -262,9 +270,8 @@ done
 ```
 
 Each line is a short id and its link, or `-` when there is none (no file, no
-field, a value that isn't a plain `cse_…` id, or a read that failed). The
-link opens the session for the user's own account. It goes in the report you
-print for them and nowhere else: never in a PR, an issue, or a comment.
+field, a value that isn't a plain `cse_…` id, or a read that failed). Where
+the link may go (the report, and nowhere public) is SKILL.md step 5's rule.
 
 ## Report
 
