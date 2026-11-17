@@ -37,3 +37,10 @@ jobs:
         run: npx -y @anthropic-ai/claude-code@2.1.325 plugin validate plugins/ledger
       - name: Band tests
         run: npx -y @anthropic-ai/claude-code@2.1.325 plugin test plugins/ledger
+      # The band on the desktop surface through the engine itself, over the
+      # stdio transport a session the desktop app hosts uses (#345). It starts
+      # no model turn, so it needs no login either.
+      - name: Band on the desktop surface, through the engine
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.325
+          python3 -I plugins/ledger/tests/test-band-desktop.py
