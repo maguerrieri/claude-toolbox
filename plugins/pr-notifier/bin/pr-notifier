@@ -605,7 +605,7 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	edit "$work_state" --arg r "$ref" --slurpfile res "$result" --slurpfile reg "$work_registry" \
 		--argjson now "$now" --arg pr_url "$(jq -r '.html_url // ""' "$run_tmp/pr.json")" '
 		$res[0] as $x
-		| .prs[$r] = ($x.ps + {last_swept: $now, dirty: false} | del(.failing_since, .failing_reported))
+		| .prs[$r] = ($x.ps + {last_swept: $now, dirty: false} | del(.failing_since, .failing_reported, .failed_at))
 		| reduce ($reg[0].subscriptions[] | select(.pr == $r)) as $s (.;
 			reduce ($x.events[] | select(.at >= $s.subscribed_at)) as $e (.;
 				.pending[$s.session_id] //= {first_at: $now, events: []}
@@ -629,7 +629,8 @@ examine_due() { # every subscribed PR that is dirty or due a sweep
 	local ref
 	jq -r --slurpfile st "$work_state" --argjson now "$now" --argjson every "$sweep_interval" '
 		.subscriptions | map(.pr) | unique | .[]
-		| select(($st[0].prs[.] // {}) as $p | ($p.dirty == true) or ($now - ($p.last_swept // 0) >= $every))' \
+		| select(($st[0].prs[.] // {}) as $p | (($p.dirty == true) or ($now - ($p.last_swept // 0) >= $every))
+			and $now - ($p.failed_at // 0) >= 60)' \
 		"$work_registry" >"$run_tmp/due"
 	while IFS= read -r ref; do
 		[ -n "$ref" ] || continue
@@ -638,13 +639,15 @@ examine_due() { # every subscribed PR that is dirty or due a sweep
 }
 
 pr_unreadable() { # pr_unreadable <ref>: after a failed read
-	# A failed read leaves the PR marked, so the next check tries again, until
-	# it has failed for hold_bound: then it is reported once and falls back to
-	# the sweep, so a PR that is gone (or was never a PR) costs one read per
-	# sweep, not one a minute.
+	# A failed read leaves the PR marked, so a check a minute or more later
+	# tries again (not every check: one every 15 seconds, for every PR, would
+	# hammer GitHub through an outage), until it has failed for hold_bound:
+	# then it is reported once and falls back to the sweep, so a PR that is
+	# gone (or was never a PR) costs one read per sweep, not one a minute.
 	local mins
 	edit "$work_state" --arg r "$1" --argjson now "$now" --argjson bound "$hold_bound" '
 		.prs[$r].failing_since //= $now
+		| .prs[$r].failed_at = $now
 		| if $now - .prs[$r].failing_since < $bound then .prs[$r].dirty = true
 		  else .prs[$r] += {dirty: false, last_swept: $now} end'
 	mins=$(jq -r --arg r "$1" --argjson now "$now" --argjson bound "$hold_bound" '.prs[$r]
