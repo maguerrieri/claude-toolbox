@@ -170,7 +170,7 @@ own `PATH` (below). **`/` must stay untrusted** ([*Resumes and copies*](#resumes
 | No row for the session | hold, since a row can come back. Once it has had none for `hold_bound` (30 minutes), unsubscribe it, drop its events, and comment on each of its PRs that it's no longer listening, naming it only by its short id (the PR may be public; the log has its full id and the command that resubscribes it): a session deleted from agent view (Ctrl-X) or by `claude rm` leaves no row, and can't be woken. A row seen in between starts the bound over. Unless the listing looks broken: when it shows no session at all, or every other session subscribed in the same root has gone missing too, a changed or broken listing (a Claude Code update, say) is likelier than deletions, so they stay held |
 | Stopped (no `pid`), and its `cwd` is gone (FINISH removed the worktree) | unsubscribe it, drop its events: its resume would be refused |
 | Stopped | read its row afresh, since the listing can be seconds old: still stopped, `claude --bg --resume <session id> "<wake prompt>"`, with no flag but `--bg` (any other flag starts a copy); started since, hold for the next check, since resuming a live session forks it |
-| `status` `idle` and `state` `working`, nothing in `inFlight`, and no job state written for `working_grace` (two minutes) | treat it as idle (the last row), and log `stale-state`: no turn is running |
+| `status` `idle` and `state` `working`, nothing in `inFlight`, the job's `tempo` `idle`, and no job state written for `working_grace` (two minutes) | treat it as idle (the last row), and log `stale-state` once a hold: no turn is running |
 | `status` `busy` or `waiting`, or `state` `working` | hold |
 | Any other live state but idle with `state` `done` or `blocked` | hold |
 | Idle with `state` `done` or `blocked` | relay the wake in place (below); if it doesn't land, the fallback |
@@ -185,19 +185,19 @@ First match wins:
 | Its `cwd` is gone | hold: once stopped, it couldn't be resumed |
 | `inFlight` has tasks, queued input or any kind (monitors included), or can't be read | hold |
 | Active within `idle_grace` (ten minutes) | hold |
-| Otherwise | re-read the row and job state (still idle, as above), `claude stop <short id>`, wait until the worker process the row named has exited (up to five seconds), then until a fresh row shows no `pid`, then resume as above |
+| Otherwise | re-read the row and job state (still idle, as above), `claude stop <short id>`, wait until the worker process the row named has exited (up to five seconds), then until a fresh row shows no `pid`, then resume as above. A worker still running after five seconds is recorded, and the stopped path holds the session while that pid exists (for up to ten minutes, so a pid another process takes later can't hold it for good) |
 
 - `state` `blocked` with `status` `idle` is a session that handed back waiting on the
   user: the main thing to wake, never a reason to hold.
-- `state` `working` with `status` `idle` is usually left over. A turn shows `status`
-  `busy` and writes its job state as it goes. A session stopped while `blocked` and then
-  woken with no prompt (attached to from agent view, say) comes back reading `working`,
-  idle, with nothing in flight, and stays so (reproduced on 2.1.325, #338). So might one
-  whose turn ended without its state being written, such as on a usage limit. Either is
-  at its prompt and takes a relay as an idle one does, so once its job state has been
-  quiet for `working_grace` it isn't held. Before #338 it was held as busy until the
-  hold bound. A job state that can't be read still holds, since work in flight can't be
-  ruled out.
+- `state` `working` with `status` `idle` can be left over. A session stopped while
+  `blocked` and then woken with no prompt (attached to from agent view, say) comes back
+  reading `working`, idle, with nothing in flight and its job's `tempo` `idle`, and stays
+  so (reproduced on 2.1.325, #338). It is at its prompt and takes a relay as an idle one
+  does, so once its job state has been quiet for `working_grace` it isn't held. Before
+  #338 it was held as busy until the hold bound. A running turn read `status` `busy` and
+  `tempo` `active`, and writes its job state as it goes. Anything else (a `tempo` other
+  than `idle`, or a job state that can't be read) still holds, since a turn can't be
+  ruled out. The relay and the fallback's re-read decide this the same way.
 - **Attached viewers.** The fallback's stop disconnects anyone attached, and attachment
   isn't visible outside Claude Code's daemon. The policy is the idle grace: a live
   session is stopped only after ten minutes without activity, betting that someone
@@ -227,9 +227,11 @@ First match wins:
   then a wake, landed. The fallback now waits for the worker itself. **Don't accept that
   trust prompt in `/`, whatever the log says**: from a trusted cwd (`/`, or the
   session's own) the copy runs, with the wake prompt, beside the session it copied. A
-  resume whose output says it started a copy anyway is no wake: the copy is stopped at
-  once (its conversation is kept), the events stay held, and `check` logs `wake-forked`
-  and says so on stderr.
+  resume whose output shows it started a copy anyway (that note, or a `backgrounded ·`
+  line naming an id other than the session's) is no wake: the copy is stopped at once,
+  with one retry a second on (its conversation is kept), the events stay held, and
+  `check` logs `wake-forked` and says so on stderr. Both signs are 2.1.325's wording, so
+  this is a backstop; `/` staying untrusted is the guard.
 - **Bounded holds.** Holds rest on Claude Code's internal job state, which can change
   between versions. A session held past `hold_bound` (30 minutes) gets one `stale` log
   line and one stderr line from `check`, and stays held; `status` marks it `STALE`.

@@ -606,27 +606,33 @@ session_row() { # session_row <config dir> <session id> [fresh]: "<short> <cwd> 
 		| [.id // "", .cwd // "", (.pid // "" | tostring), .status // "", .state // "", .kind // ""] | join("\u001f")' <<<"$listing"
 }
 
-job_state() { # job_state <config dir> <short id>: "<in flight: none|busy|unknown> <updatedAt epoch or -1>"
+job_state() { # job_state <config dir> <short id>: "<in flight: none|busy|unknown> <updatedAt epoch or -1> <tempo or unknown>"
 	local f=${1:-$HOME/.claude}/jobs/$2/state.json
 	jq -r '[ (if (.inFlight | type) != "object" then "unknown"
 	          elif ((.inFlight.tasks // 0) > 0) or ((.inFlight.queued // 0) > 0)
 	               or ((.inFlight.kinds // []) | length) > 0 then "busy"
 	          else "none" end),
-	         ((.updatedAt // "") | sub("\\.[0-9]+Z$"; "Z") | (try fromdateiso8601 catch -1) | tostring) ] | join(" ")' \
-		"$f" 2>/dev/null || echo 'unknown -1'
+	         ((.updatedAt // "") | sub("\\.[0-9]+Z$"; "Z") | (try fromdateiso8601 catch -1) | tostring),
+	         (.tempo | if type == "string" and test("^[a-z]+$") then . else "unknown" end) ] | join(" ")' \
+		"$f" 2>/dev/null || echo 'unknown -1 unknown'
 }
 
-stale_working() { # stale_working <in flight> <updatedAt epoch>: an idle row's state working is left over, not a turn
-	# A live session whose row reads status idle but state working, with
-	# nothing in flight and no job state written for working_grace, is at its
-	# prompt: no turn is running (a turn shows status busy, and writes its
-	# job state as it goes). A session stopped while blocked and then woken
-	# with no prompt reads this way, its state never set back (reproduced by
-	# attaching to one on 2.1.325, #338), and so does one whose turn ended
-	# without its state being written, such as on a usage limit. Either can
-	# take a relay, as an idle one does. A job state that can't be read is
-	# never stale: work in flight can't be ruled out.
-	[ "$1" = none ] && [ "$2" -ge 0 ] && [ $((now - $2)) -ge "$working_grace" ]
+settled_state() { # settled_state <status> <state> <in flight> <updatedAt epoch> <tempo>: the row's state, or "stale"
+	# "stale" is a row whose state working is left over: status idle, nothing
+	# in flight, the job's tempo idle, and no job state written for
+	# working_grace. Such a session is at its prompt, and takes a relay as an
+	# idle one does. A session stopped while blocked and then woken with no
+	# prompt reads so, its state never set back (reproduced by attaching to
+	# one on 2.1.325, #338). A turn shows status busy and tempo active (the
+	# same session mid-turn), and writes its job state as it goes. Anything
+	# unread or unknown keeps the state working, so the session is held: work
+	# in flight can't be ruled out. Both delivery and the fallback's re-read
+	# decide by this, so they can't disagree about a row.
+	if [ "$1:$2:$3:$5" = idle:working:none:idle ] && [ "$4" -ge 0 ] && [ $((now - $4)) -ge "$working_grace" ]; then
+		echo stale
+	else
+		echo "$2"
+	fi
 }
 
 pid_alive() { # pid_alive <pid>: a process with that pid exists, whoever owns it
@@ -732,7 +738,7 @@ finish_wake() { # finish_wake <session id> <how> [log detail] [event ids, a JSON
 		.pending[$s].events = [.pending[$s].events[] | select("\(.pr)|\(.key)" as $i | $ids | index($i) | not)]
 		| if (.pending[$s].events | length) == 0 then .pending |= del(.[$s])
 		  else .pending[$s] |= (del(.relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at,
-		                            .stale_reported, .last_hold) | .first_at = $now)
+		                            .stale_reported, .last_hold, .stale_logged, .stop_worker) | .first_at = $now)
 		  end'
 	while IFS= read -r ref; do
 		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "pr-final-wake"
@@ -746,7 +752,8 @@ back_off() { # back_off <session id> <failures field> <next-try field>: counts a
 }
 
 wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt, under its own PATH
-	local sid=$1 cfg=$2 out rc copy copy_re='started a copy as ([0-9a-f]{8})' stopped=no
+	local sid=$1 cfg=$2 out rc copy= stopped=no
+	local copy_re='started a copy as ([0-9a-f]{8})' bg_re='backgrounded [^ ]+ ([0-9a-f]{8})'
 	out=$(claude_env "$cfg" "$(resume_path "$sid")" --bg --resume "$sid" "$(wake_prompt "$sid")" </dev/null 2>&1)
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
@@ -762,14 +769,23 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
 		return 1
 	fi
+	# 2.1.325 says a copy outright, and its backgrounded line names the
+	# copy's id, not the session's. Either one marks it, so a reworded note
+	# alone doesn't hide a copy.
 	if [[ $out =~ $copy_re ]]; then
+		copy=${BASH_REMATCH[1]}
+	elif [[ $out =~ $bg_re ]] && [ "${BASH_REMATCH[1]}" != "$(short "$sid")" ]; then
+		copy=${BASH_REMATCH[1]}
+	fi
+	if [ -n "$copy" ]; then
 		# The daemon still counted the session as running, so the resume
 		# started a copy of it, with the wake prompt, instead: only possible
 		# where / is trusted (claude_env). A copy acting on the session's PR
 		# would duplicate its work, so it is stopped at once (its conversation
-		# is kept), and the wake counts as refused.
-		copy=${BASH_REMATCH[1]}
-		! run_claude "$cfg" stop "$copy" >/dev/null 2>&1 || stopped=yes
+		# is kept), with one retry a second on, and the wake counts as refused.
+		if run_claude "$cfg" stop "$copy" >/dev/null 2>&1 || { sleep 1 && run_claude "$cfg" stop "$copy" >/dev/null 2>&1; }; then
+			stopped=yes
+		fi
 		back_off "$sid" wake_failures next_wake_at
 		hold "$sid" "wake-forked"
 		log "wake-forked session=$(short "$sid") copy=$copy copy-stopped=$stopped"
@@ -979,7 +995,7 @@ find_transcripts() { # find_transcripts <config dir> <session id>: sets found_tr
 }
 
 deliver() { # deliver <session id>: the spike's state table, first match wins
-	local sid=$1 cfg row id cwd pid status st kind next tries outstanding why ids late evs inflight updated files=()
+	local sid=$1 cfg row id cwd pid status st kind next tries outstanding why ids late evs inflight updated tempo worker at files=()
 	! over_budget "$sid" || return
 	cfg=$(jq -r --arg s "$sid" '[.subscriptions[] | select(.session_id == $s)] | last | .config_dir // empty' "$work_registry")
 	# Relays sent but not yet taken (relay_msgs, the last five) may have been
@@ -1053,14 +1069,28 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 			drop_session "$sid" cwd-gone
 			return
 		fi
+		# A worker the fallback stopped but didn't see exit (stop-pending)
+		# may still run, and until it exits a resume starts a copy. Its pid is
+		# trusted for ten minutes, long past any exit, so a reused pid can't
+		# hold the session for good.
+		read -r worker at <<<"$(jq -r --arg s "$sid" '.pending[$s].stop_worker // empty | "\(.pid) \(.at | floor)"' "$work_state")"
+		if [[ $worker =~ ^[0-9]+$ ]] && [[ $at =~ ^[0-9]+$ ]]; then
+			if [ $((now - at)) -lt 600 ] && pid_alive "$worker"; then
+				hold "$sid" "stop-pending worker=$worker"
+				return
+			fi
+			edit "$work_state" --arg s "$sid" '.pending[$s] |= del(.stop_worker)'
+		fi
 		resume_backoff "$sid" || wake "$sid" "$cfg" stopped
 		return
 	fi
 	if [ "$status:$st" = idle:working ] && [[ $id =~ ^[0-9a-f]{8}$ ]]; then
-		read -r inflight updated <<<"$(job_state "$cfg" "$id")"
-		if stale_working "$inflight" "$updated"; then
-			log "stale-state session=$(short "$sid") status=idle state=working in-flight=none quiet=$((now - updated))s"
-			st=stale
+		read -r inflight updated tempo <<<"$(job_state "$cfg" "$id")"
+		st=$(settled_state "$status" "$st" "$inflight" "$updated" "$tempo")
+		# Logged once a hold, not every check it stays so.
+		if [ "$st" = stale ] && jq -e --arg s "$sid" '.pending[$s].stale_logged != true' "$work_state" >/dev/null; then
+			log "stale-state session=$(short "$sid") status=idle state=working in-flight=none tempo=idle quiet=$((now - updated))s"
+			edit "$work_state" --arg s "$sid" '.pending[$s].stale_logged = true'
 		fi
 	fi
 	case $status:$st in
@@ -1110,7 +1140,7 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 }
 
 stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd> <kind> <why no relay>: the fallback
-	local sid=$1 cfg=$2 id=$3 cwd=$4 kind=$5 why=$6 pid status st inflight updated tries row worker
+	local sid=$1 cfg=$2 id=$3 cwd=$4 kind=$5 why=$6 pid status st inflight updated tempo tries row worker
 	if [ "$kind" != background ]; then
 		# A live terminal session: someone is at it, and a stop would end it
 		# under them. Its events wait for a relay, or until it exits.
@@ -1128,7 +1158,7 @@ stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd>
 		return
 	}
 	! resume_backoff "$sid" || return
-	read -r inflight updated <<<"$(job_state "$cfg" "$id")"
+	read -r inflight updated tempo <<<"$(job_state "$cfg" "$id")"
 	if [ "$inflight" != none ]; then
 		# A stop would kill that work; an unreadable inFlight counts as work.
 		hold "$sid" "$why; in-flight=$inflight"
@@ -1147,13 +1177,10 @@ stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd>
 		return
 	}
 	IFS=$us read -r id cwd pid status st kind <<<"$row"
-	read -r inflight updated <<<"$(job_state "$cfg" "$id")"
+	read -r inflight updated tempo <<<"$(job_state "$cfg" "$id")"
+	st=$(settled_state "$status" "$st" "$inflight" "$updated" "$tempo")
 	case $status:$st:$inflight in
-	idle:done:none | idle:blocked:none) ;;
-	idle:working:none) stale_working "$inflight" "$updated" || {
-		hold "$sid" "$why; changed status=$status state=$st in-flight=$inflight"
-		return
-	} ;;
+	idle:done:none | idle:blocked:none | idle:stale:none) ;;
 	*)
 		hold "$sid" "$why; changed status=$status state=$st in-flight=$inflight"
 		return
@@ -1176,6 +1203,10 @@ stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd>
 	while pid_alive "$worker"; do
 		tries=$((tries + 1))
 		if [ "$tries" -ge 20 ]; then
+			# The session is left stopped, so the next check takes the
+			# stopped path, which waits for this pid too.
+			edit "$work_state" --arg s "$sid" --argjson w "$worker" --argjson now "$now" \
+				'.pending[$s].stop_worker = {pid: $w, at: $now}'
 			hold "$sid" "$why; stop-pending worker=$worker"
 			return
 		fi
