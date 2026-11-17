@@ -738,7 +738,7 @@ finish_wake() { # finish_wake <session id> <how> [log detail] [event ids, a JSON
 		.pending[$s].events = [.pending[$s].events[] | select("\(.pr)|\(.key)" as $i | $ids | index($i) | not)]
 		| if (.pending[$s].events | length) == 0 then .pending |= del(.[$s])
 		  else .pending[$s] |= (del(.relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at,
-		                            .stale_reported, .last_hold, .stale_logged, .stop_worker) | .first_at = $now)
+		                            .stale_reported, .last_hold, .stale_logged) | .first_at = $now)
 		  end'
 	while IFS= read -r ref; do
 		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "pr-final-wake"
@@ -752,8 +752,7 @@ back_off() { # back_off <session id> <failures field> <next-try field>: counts a
 }
 
 wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt, under its own PATH
-	local sid=$1 cfg=$2 out rc copy= stopped=no
-	local copy_re='started a copy as ([0-9a-f]{8})' bg_re='backgrounded [^ ]+ ([0-9a-f]{8})'
+	local sid=$1 cfg=$2 out rc copy stopped=no copy_re='started a copy as ([0-9a-f]{8})'
 	out=$(claude_env "$cfg" "$(resume_path "$sid")" --bg --resume "$sid" "$(wake_prompt "$sid")" </dev/null 2>&1)
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
@@ -769,20 +768,16 @@ wake() { # wake <session id> <config dir> <how>: resumes it with the wake prompt
 		log "wake-failed session=$(short "$sid") rc=$rc detail=$(printf '%s' "$out" | head -n 1 | head -c 200 | jq -Rrs '@json')"
 		return 1
 	fi
-	# 2.1.325 says a copy outright, and its backgrounded line names the
-	# copy's id, not the session's. Either one marks it, so a reworded note
-	# alone doesn't hide a copy.
+	# A backstop for a guard that failed: the daemon still counted the
+	# session as running, so the resume started a copy of it, with the wake
+	# prompt, instead, which only a trusted / lets run (claude_env). Only the
+	# note that says so marks a copy (2.1.325's wording), since a real wake
+	# never prints it: guessing from anything less could stop the session a
+	# real wake just started. A copy acting on the session's PR would
+	# duplicate its work, so it is stopped at once (its conversation is
+	# kept), with one retry a second on, and the wake counts as refused.
 	if [[ $out =~ $copy_re ]]; then
 		copy=${BASH_REMATCH[1]}
-	elif [[ $out =~ $bg_re ]] && [ "${BASH_REMATCH[1]}" != "$(short "$sid")" ]; then
-		copy=${BASH_REMATCH[1]}
-	fi
-	if [ -n "$copy" ]; then
-		# The daemon still counted the session as running, so the resume
-		# started a copy of it, with the wake prompt, instead: only possible
-		# where / is trusted (claude_env). A copy acting on the session's PR
-		# would duplicate its work, so it is stopped at once (its conversation
-		# is kept), with one retry a second on, and the wake counts as refused.
 		if run_claude "$cfg" stop "$copy" >/dev/null 2>&1 || { sleep 1 && run_claude "$cfg" stop "$copy" >/dev/null 2>&1; }; then
 			stopped=yes
 		fi
@@ -1084,6 +1079,10 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		resume_backoff "$sid" || wake "$sid" "$cfg" stopped
 		return
 	fi
+	# Running again, so a worker recorded at an earlier stop no longer
+	# matters, and its pid mustn't hold the session's next stop.
+	jq -e --arg s "$sid" '.pending[$s].stop_worker == null' "$work_state" >/dev/null ||
+		edit "$work_state" --arg s "$sid" '.pending[$s] |= del(.stop_worker)'
 	if [ "$status:$st" = idle:working ] && [[ $id =~ ^[0-9a-f]{8}$ ]]; then
 		read -r inflight updated tempo <<<"$(job_state "$cfg" "$id")"
 		st=$(settled_state "$status" "$st" "$inflight" "$updated" "$tempo")

@@ -46,6 +46,7 @@ nothing. It never runs as root: the one root step is its own small script,
 the trust prompt`. That refusal is a resume that would have started a copy of the session,
 and `/` being untrusted is what stops the copy. Trusting `/` makes it run beside the
 session instead (the [README](README.md#resumes-and-copies)'s *Resumes and copies*, #338).
+`pni status` warns (`warn: / is trusted in …`) when any of bot's config roots trusts `/`.
 The job's `WorkingDirectory` stays `/`, and the CLI runs every `claude` call from `/`
 whatever the job's cwd, so the fix needed no change to the plist.
 

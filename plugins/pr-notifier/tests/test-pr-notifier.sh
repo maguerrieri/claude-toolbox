@@ -135,7 +135,7 @@ PS_EOF
 
 # claude: agents lists $STUB/agents[-<root basename>].json; stop drops the
 # row's pid, and its worker lingers for $STUB/linger ps calls (none by
-# default). A resume saves its prompt and exits $STUB/resume.rc; while a
+# default), unless $STUB/stop.fail makes every stop fail. A resume saves its prompt and exits $STUB/resume.rc; while a
 # stopped worker lingers, the daemon still counts its session as running, so
 # the resume starts a copy, which the trust check on / refuses (#338); with
 # $STUB/resume.fork it starts that copy instead, as from a trusted cwd (and
@@ -160,6 +160,7 @@ agents)
 	[ ! -f "$STUB/agents.next" ] || mv "$STUB/agents.next" "$listing"
 	;;
 stop)
+	[ ! -f "$STUB/stop.fail" ] || exit 1
 	pid=$(jq -r --arg id "$2" '[.[] | select(.id == $id) | .pid // empty] | first // empty' "$listing")
 	[ -z "$pid" ] || cat "$STUB/linger" 2>/dev/null >"$STUB/dying-$pid" || echo 0 >"$STUB/dying-$pid"
 	jq --arg id "$2" 'map(if .id == $id then del(.pid, .status) else . end)' "$listing" >"$listing.new" &&
@@ -181,7 +182,9 @@ stop)
 		exit 0
 	fi
 	rc=$(cat "$STUB/resume.rc" 2>/dev/null || echo 0)
-	[ "$rc" = 0 ] && echo "backgrounded · ${3:0:8} · r #7: x" || echo "Workspace not trusted." >&2
+	# It names the session by its job's short id, its row's id.
+	jid=$(jq -r --arg s "$3" '[.[] | select(.sessionId == $s) | .id] | first // empty' "$listing" 2>/dev/null)
+	[ "$rc" = 0 ] && echo "backgrounded · ${jid:-${3:0:8}} · r #7: x" || echo "Workspace not trusted." >&2
 	exit "$rc"
 	;;
 -p)
@@ -810,6 +813,28 @@ nt $((T + 60)) check
 record '0|1' 'another process with the worker'"'"'s pid holds the session too' "$(wakes)|$(held)"
 nt $((T + 601)) check
 record '1|0' 'but a recorded worker is trusted only ten minutes, so a reused pid holds nothing for good' "$(wakes)|$(held)"
+reset
+agents "$(agent idle-done)"
+job "$SID" $((T - 3600))
+settings '{"relay": false}'
+echo 999 >"$STUB/linger"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+record 41 'a stop-pending worker is recorded' "$(jq -r --arg s "$SID" '.pending[$s].stop_worker.pid' "$PR_NOTIFIER_HOME/state.json")"
+agents "$(agent busy)"
+nt $((T + 60)) check
+record null 'and forgotten once the session runs again' "$(jq -r --arg s "$SID" '.pending[$s].stop_worker' "$PR_NOTIFIER_HOME/state.json")"
+# A late relay landing for some of the events doesn't forget the worker.
+deliver_case idle-done $((T - 3600)) '' held
+echo 999 >"$STUB/linger"
+jq --arg s "$SID" '.pending[$s].events += [.pending[$s].events[0] | .key = "comment:102"]' \
+	"$PR_NOTIFIER_HOME/state.json" >"$tmp/st" && mv "$tmp/st" "$PR_NOTIFIER_HOME/state.json"
+nt $((T + 60)) check
+jq -cn '{type: "user", origin: {kind: "peer", msg_id: "m-1"}, message: {content: "wake"}}' >>"$HOME/.claude/projects/p/$SID.jsonl"
+nt $((T + 120)) check
+record '0|1|yes' 'a late relay landing leaves the recorded worker, so the rest wait for it to exit' \
+	"$(wakes)|$(held)|$(logged 'how=relay-late')"
+record yes 'logged' "$(logged 'hold session=aaaaaaaa reason=stop-pending worker=41')"
 
 # A relay the session takes a check late was the wake for what it carried.
 take() { # take <message id>: the session takes that relayed message as a turn
@@ -1170,8 +1195,22 @@ reset
 echo quiet >"$STUB/resume.fork"
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check 2>/dev/null
-record '1|yes' 'a copy whose note is reworded still shows by its backgrounded line naming another id' \
-	"$(held)|$(logged 'wake-forked session=aaaaaaaa copy=cccccccc copy-stopped=yes')"
+record '0|no|no' 'only the note marks a copy: a backgrounded line naming another id is a wake, and nothing is stopped' \
+	"$(held)|$(logged 'wake-forked')|$(has "$STUB/claude.log" 'stop cccccccc|')"
+reset
+agents "$(agent stopped | jq '.id = "dddddddd"')"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check 2>/dev/null
+record '1|0|no' "a session whose row's short id isn't its session id's prefix is woken, not taken for a copy" \
+	"$(wakes)|$(held)|$(logged 'wake-forked')"
+reset
+: >"$STUB/resume.fork"
+: >"$STUB/stop.fail"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check 2>"$tmp/err"
+record '2|1|yes' "a copy that can't be stopped: the stop is tried twice, the event stays held, and it's said" \
+	"$(grep -c '^stop cccccccc|' "$STUB/claude.log")|$(held)|$(has "$tmp/err" '(copy stopped: no)')"
+record yes 'logged' "$(logged 'wake-forked session=aaaaaaaa copy=cccccccc copy-stopped=no')"
 
 reset
 echo '{"broken": ' >"$STUB/agents.json"
