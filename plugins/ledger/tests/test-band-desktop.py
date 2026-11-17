@@ -5,9 +5,9 @@ stands for the engine. This drives a real headless Claude Code over stdio, the
 transport a session the desktop app hosts on its own machine uses, as a client
 of the `desktop` surface would: it attaches, asks for the AbovePrompt band,
 presses Show, and runs /ledger-band, through the control requests the CLI
-documents as @internal (`ui_attach`, `ui_render`, `ui_press`; written against
-2.1.326, and ledger CI runs it on the CLI it pins). No step starts a model
-turn, so it needs no login.
+documents as @internal (`ui_attach`, `ui_render`, `ui_press`). It passes on
+2.1.326 and on 2.1.325, the CLI ledger CI pins. No step starts a model turn,
+so it needs no login.
 
 What it can't cover is a Remote Control session (one `claude remote-control`
 spawns, `--sdk-url`), whose transport is remote: AGENTS.md, *Mods in the
@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +36,9 @@ PLUGIN = os.path.dirname(HERE)
 STEP_SECONDS = 60
 # How long the first ask may wait for session.start's first read of the ledger.
 FIRST_DRAW_SECONDS = 30
+# How long the band may take to show a change: a command's `result` can
+# arrive before its write to the band's state lands.
+SETTLE_SECONDS = 10
 
 passed = 0
 failed = 0
@@ -70,6 +74,11 @@ def button_keys(node):
     return [key for key, _ in buttons(node)]
 
 
+def tree_of(answer):
+    """The tree a ui_render answered, or {} for none (an error, or a null tree)."""
+    return answer.get("tree") or {}
+
+
 class Session:
     """A headless session spoken to over stream-json, as an SDK host does."""
 
@@ -100,7 +109,9 @@ class Session:
         """The next line of stdout, or None at the deadline or once it ends."""
         while b"\n" not in self.pending:
             if self.ended:
-                return None
+                # A last line the CLI didn't end with a newline still counts.
+                line, self.pending = self.pending, b""
+                return line or None
             left = deadline - time.time()
             if left <= 0:
                 return None
@@ -146,27 +157,15 @@ class Session:
             return {"error": response.get("error", response)}
         return response.get("response") or {}
 
-    def type_command(self, text, instance_id):
+    def type_command(self, text):
         """
-        Type <text> as the person would, then wait for the engine to tell the
-        surface that <instance_id> changed: the command's `result` can arrive
-        before its write to the band's state lands, and a surface redraws on
-        the `ui_invalidate` that follows. Answers the messages seen meanwhile
-        and what never came, if anything.
+        Type <text> as the person would and wait for its turn's `result`.
+        Answers the messages seen meanwhile, and whether the result came.
         """
         start = len(self.seen)
         self.write({"type": "user", "message": {"role": "user", "content": text}})
-
-        def invalidates(message):
-            return message.get("subtype") == "ui_invalidate" and any(
-                instance.get("instance_id") == instance_id for instance in message.get("instances", []))
-
-        missing = None
-        if self.messages(lambda m: m.get("type") == "result") is None:
-            missing = "result"
-        elif not any(invalidates(message) for message in self.seen[start:]) and self.messages(invalidates) is None:
-            missing = "ui_invalidate"
-        return self.seen[start:], missing
+        ended = self.messages(lambda m: m.get("type") == "result") is not None
+        return self.seen[start:], ended
 
     def close(self):
         try:
@@ -205,8 +204,9 @@ def run(work):
     with open(os.path.join(ledgers, f"{me}.jsonl"), "w") as ledger:
         ledger.write(json.dumps(need) + "\n")
 
-    # Nothing of the person running it: no settings but the project's (none
+    # None of the person's own setup: no settings but the project's (none
     # here), no MCP servers, a home of its own, and the band's directory.
+    # Settings a machine's administrator manages still apply.
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "CLAUDE_SESSION_LEDGER_DIR": ledgers}
     argv = shlex.split(os.environ.get("CLAUDE_BIN", "claude")) + [
         "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
@@ -216,6 +216,10 @@ def run(work):
     session = Session(argv, env, work, os.path.join(work, "stderr.txt"))
     try:
         steps(session, me, env)
+    except Exception:
+        # A crash is a failure like any other, so the tally and the CLI's
+        # stderr still print.
+        record("the steps run to their end", False, traceback.format_exc()[-1500:])
     finally:
         stderr = session.close()
     if failed and stderr.strip():
@@ -238,14 +242,23 @@ def steps(session, me, env):
         return session.ask({"subtype": "ui_render", "surface": "desktop", "client_id": "test",
                             "component": "AbovePrompt", "instance_id": "above-prompt", "props": props})
 
-    # session.start reads the ledger once it has loaded, so ask until the row
-    # is there (or the engine refuses), rather than guess how long that takes.
-    deadline = time.time() + FIRST_DRAW_SECONDS
-    folded = band()
-    while "error" not in folded and folded.get("tree", {}).get("type") == "engine" and time.time() < deadline:
-        time.sleep(0.5)
-        folded = band()
-    tree = folded.get("tree", {})
+    def band_until(holds, seconds=SETTLE_SECONDS):
+        """
+        Ask for the band until <holds>(answer), the engine refuses, or the time
+        is up; answer the last answer. A state write can land after the step
+        that made it answered, and a surface redraws when the engine says so.
+        """
+        deadline = time.time() + seconds
+        answer = band()
+        while "error" not in answer and not holds(answer) and time.time() < deadline:
+            time.sleep(0.25)
+            answer = band()
+        return answer
+
+    # session.start reads the ledger once it has loaded, so the first draw
+    # waits for the row rather than guessing how long that takes.
+    folded = band_until(lambda a: tree_of(a).get("type") != "engine", FIRST_DRAW_SECONDS)
+    tree = tree_of(folded)
     record("the band draws its row on desktop", folded.get("drawn_by") == ["ledger"] and tree.get("type") == "Box",
            folded)
     record("the row shows the count and the newest need",
@@ -257,37 +270,41 @@ def steps(session, me, env):
     pressed = session.ask({"subtype": "ui_press", "surface": "desktop", "client_id": "test", "key": "show", **show})
     record("Show is pressed on desktop", pressed.get("handled") is True, pressed)
 
-    expanded = band().get("tree", {})
     resolve = f"resolve:{me}:n1"
+    expanded = tree_of(band_until(lambda a: button_keys(tree_of(a)) == ["less", "hide", resolve]))
     record("Show expands the list, with Less and Resolve", button_keys(expanded) == ["less", "hide", resolve],
            button_keys(expanded))
     record("the list shows the need's ref, text and Why line",
            "Review PR #9" in texts(expanded) and "Why: the owner reviews before a merge" in texts(expanded)
            and any(t.startswith("n1 · o/r#9 · ") for t in texts(expanded)), texts(expanded))
 
-    _, missing = session.type_command("/ledger-band", "above-prompt")
-    folded_again = button_keys(band().get("tree", {}))
-    record("/ledger-band folds it", missing is None and folded_again == ["show", "hide"],
-           {"never came": missing, "buttons": folded_again})
-    _, missing = session.type_command("/ledger-band", "above-prompt")
-    expanded_again = button_keys(band().get("tree", {}))
-    record("/ledger-band expands it again", missing is None and resolve in expanded_again,
-           {"never came": missing, "buttons": expanded_again})
+    _, ended = session.type_command("/ledger-band")
+    folded_again = button_keys(tree_of(band_until(lambda a: button_keys(tree_of(a)) == ["show", "hide"])))
+    record("/ledger-band folds it", ended and folded_again == ["show", "hide"],
+           {"result came": ended, "buttons": folded_again})
+    _, ended = session.type_command("/ledger-band")
+    expanded_again = button_keys(tree_of(band_until(lambda a: resolve in button_keys(tree_of(a)))))
+    record("/ledger-band expands it again", ended and resolve in expanded_again,
+           {"result came": ended, "buttons": expanded_again})
 
     # Resolved as the session would resolve it, through the script: a Resolve
     # press also starts a turn (it tells the session), which needs a model.
     # band.test.tsx presses Resolve on the desktop tree.
-    resolved = subprocess.run(["bash", os.path.join(PLUGIN, "scripts", "ledger.sh"), "resolve", "n1"],
-                              env={**env, "CLAUDE_CODE_SESSION_ID": me}, capture_output=True, text=True)
-    record("the need resolves", resolved.returncode == 0, resolved.stderr)
-    said, missing = session.type_command("/ledger-band", "above-prompt")
+    try:
+        resolved = subprocess.run(["bash", os.path.join(PLUGIN, "scripts", "ledger.sh"), "resolve", "n1"],
+                                  env={**env, "CLAUDE_CODE_SESSION_ID": me}, capture_output=True, text=True,
+                                  timeout=STEP_SECONDS)
+        record("the need resolves", resolved.returncode == 0, resolved.stderr)
+    except subprocess.TimeoutExpired:
+        record("the need resolves", False, f"ledger.sh resolve took over {STEP_SECONDS}s")
+    said, ended = session.type_command("/ledger-band")
     record("/ledger-band then says the session needs nothing",
-           missing is None and "This session needs nothing from you." in json.dumps(said),
-           {"never came": missing, "messages": [m.get("type") for m in said]})
+           ended and "This session needs nothing from you." in json.dumps(said),
+           {"result came": ended, "messages": [m.get("type") for m in said]})
     # A band with nothing open hands on, so the answer is the engine's own node
     # (`drawn_by` still names every plugin hooked on the band).
-    gone = band()
-    record("the row is gone once nothing is open", gone.get("tree", {}).get("type") == "engine", gone)
+    gone = band_until(lambda a: tree_of(a).get("type") == "engine")
+    record("the row is gone once nothing is open", tree_of(gone).get("type") == "engine", gone)
 
 
 if __name__ == "__main__":

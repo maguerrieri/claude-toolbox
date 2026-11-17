@@ -35,15 +35,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      # Installed once for every step below. The desktop test runs the CLI
+      # under a home of its own, where npx's cache would be empty.
+      - name: Install the pinned CLI
+        run: npm install -g "$CLAUDE_CODE_PACKAGE"
       - name: Validate the plugin, its hooks and its hooks module
-        run: npx -y "$CLAUDE_CODE_PACKAGE" plugin validate plugins/ledger
+        run: claude plugin validate plugins/ledger
       - name: Band tests
-        run: npx -y "$CLAUDE_CODE_PACKAGE" plugin test plugins/ledger
+        run: claude plugin test plugins/ledger
       # The band on the desktop surface through the engine itself, over the
-      # stdio transport a session the desktop app hosts uses (#345). The test
-      # runs the CLI under a home of its own, where npx's cache would be empty,
-      # so it gets an installed copy instead.
+      # stdio transport a session the desktop app hosts uses (#345).
       - name: Band on the desktop surface, through the engine
-        run: |
-          npm install -g "$CLAUDE_CODE_PACKAGE"
-          python3 -I plugins/ledger/tests/test-band-desktop.py
+        run: python3 -I plugins/ledger/tests/test-band-desktop.py
