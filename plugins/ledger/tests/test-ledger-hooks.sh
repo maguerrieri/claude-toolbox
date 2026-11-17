@@ -204,6 +204,12 @@ record "" "a teammate's message" "$(remind s1 '<teammate-message teammate_id="t1
 record "" "the owner's /ledger" "$(remind s1 '/ledger')"
 record "" "the owner's /ledger resolve" "$(remind s1 '/ledger resolve n1')"
 record "" "the owner's /ledger:ledger" "$(remind s1 '/ledger:ledger resolve n1')"
+# The turn the band starts on a Resolve, in model.ts's resolvedNotice words,
+# which the hook's pattern must keep matching.
+record "" "the band's resolve notice" \
+	"$(remind s1 "The owner resolved ledger need n2 from the band above the prompt: what it waited on is answered or no longer needed.")"
+record 1 "model.ts still opens its notice that way" \
+	"$(grep -c -F 'The owner resolved ledger need ${need.id} from the band above the prompt: ' "$plugin/hooks/model.ts")"
 record "yes" "a pr-notifier wake gets it, since it may point at the owner's answer" \
 	"$(remind s1 'pr-notifier wake v1: GitHub activity on PRs this session subscribed to.' | grep -q '^- n1 ' && echo yes)"
 record "yes" "another slash command gets it" "$(remind s1 '/ledgers' | grep -q '^- n1 ' && echo yes)"

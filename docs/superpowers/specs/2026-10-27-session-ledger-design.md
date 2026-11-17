@@ -191,7 +191,10 @@ open needs came later, in #330 (*The band*, below).
   notification each fire the hook as a prompt of its own, told apart only by
   how it opens (`<cross-session-message `, `<task-notification>`). Those, a
   teammate's message, an in-process agent's prompt (its input carries an
-  `agent_id`) and the owner's own `/ledger` get nothing. A pr-notifier wake
+  `agent_id`), the owner's own `/ledger` and the turn the band starts on a
+  Resolve (*The band*: the plugin's message, never the owner's words) get
+  nothing. The band shows the open needs to the owner; this hook puts them in
+  front of the session. A pr-notifier wake
   gets the reminder, since it points at GitHub activity that may be the
   owner's (a merge, an answer on the PR), and the rule says it counts only
   for what the session checks there. For whatever else the hook can't tell
