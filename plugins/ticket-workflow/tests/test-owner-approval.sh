@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests for scripts/owner-approval.sh, which says whether the owner's
 # approving review of a PR is a merge grant: exit 0 (it is, with the PR's head
-# and each owner approval of it printed as JSON), 1 (anything else), 2 (a
-# usage error). owner-check.sh runs for real, and gh is a stub that answers
+# and the newest owner approval of it, body and line comments, printed as one
+# JSON object), 1 (anything else), 2 (a usage error). owner-check.sh runs for real, and gh is a stub that answers
 # each read with JSON and applies the caller's --jq filter with jq:
 #   STUB_ME, STUB_PERMS    the sessions' login, and "login=permission ..." pairs
 #   STUB_PR_STATE          the PR's REST state (default open)
@@ -64,7 +64,8 @@ repos/*/pulls/*/reviews\?per_page=100)
 	;;
 repos/*/pulls/*)
 	[ -z "${STUB_PR_FAIL:-}" ] || { echo '{"message": "Not Found"}'; exit 1; }
-	answer "$(jq -n --arg s "${STUB_PR_STATE-open}" --arg h "${STUB_HEAD-}" '{state: $s, head: {sha: $h}}')"
+	answer "$(jq -n --arg s "${STUB_PR_STATE-open}" --arg h "${STUB_HEAD-}" --arg d "${STUB_DRAFT-false}" \
+		'{state: $s, head: {sha: $h}, draft: (if $d == "" then null else ($d == "true") end)}')"
 	;;
 graphql)
 	[ -z "${STUB_GQL_FAIL:-}" ] || {
@@ -205,6 +206,9 @@ record 1 'a deleted account'"'"'s changes requested' \
 	"$(STUB_REVIEWS=$(reviews "$approve" "$(review 12 '' CHANGES_REQUESTED "$head" "$t2")") run)"
 record 1 'one deleted account'"'"'s request for changes, not hidden by another'"'"'s later approval' \
 	"$(STUB_REVIEWS=$(reviews "$(review 8 '' CHANGES_REQUESTED "$old" 2026-11-17T04:10:00Z)" "$(review 9 '' APPROVED "$old" 2026-11-17T04:20:00Z)" "$approve") run)"
+record 0 'a deleted account'"'"'s newer approval of the head, as the ghost user, is passed over unchecked' \
+	"$(STUB_PERM_FAIL=ghost STUB_REVIEWS=$(reviews "$approve" "$(review 12 ghost APPROVED "$head" "$t2")") run)"
+record 0 'with no owner check of ghost' "$(calls 'collaborators/ghost/')"
 record 1 'nor by another'"'"'s, both shown as GitHub'"'"'s ghost user' \
 	"$(STUB_REVIEWS=$(reviews "$(review 8 ghost CHANGES_REQUESTED "$old" 2026-11-17T04:10:00Z)" "$(review 9 Ghost APPROVED "$old" 2026-11-17T04:20:00Z)" "$approve") run)"
 STUB_REVIEWS=$(reviews "$approve" "$(review 12 mate CHANGES_REQUESTED "$head" "$t2")") run >/dev/null
@@ -330,6 +334,8 @@ record 1 'a review with no node id' \
 
 # The PR itself.
 record 1 'a closed PR' "$(STUB_PR_STATE=closed STUB_REVIEWS=$(reviews "$approve") run)"
+record 1 'a draft PR' "$(STUB_DRAFT=true STUB_REVIEWS=$(reviews "$approve") run)"
+record 1 'a PR whose draft flag reads nothing' "$(STUB_DRAFT= STUB_REVIEWS=$(reviews "$approve") run)"
 record 1 'a failed PR read' "$(STUB_PR_FAIL=1 STUB_REVIEWS=$(reviews "$approve") run)"
 record 1 'a failed reviews read' "$(STUB_REVIEWS_FAIL=1 STUB_REVIEWS=$(reviews "$approve") run)"
 record 1 'a head that is not a SHA' "$(STUB_HEAD='1111;id' STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED '1111;id' "$t1")") run)"
