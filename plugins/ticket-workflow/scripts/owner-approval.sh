@@ -3,20 +3,29 @@
 # For the FINISH intro's third grant form, in skills/ticket-workflow/
 # phases/finish.md.
 #
-#   owner-approval.sh -R <host>/<owner>/<repo> [--restacked-from <old base>] <pr number>
+#   owner-approval.sh -R <host>/<owner>/<repo> <pr number>
 #
 # -R names the PR's repo, host included, so every read, owner-check.sh's
 # included, goes to that repo on that host. An approval covers the commit it
-# approved, which is normally the PR's head. After a restack, --restacked-from
-# names the base the PR had before it (the merged parent's last head, or the
-# base branch a moved base came from), and an approval of an earlier head then
-# covers the head too when the PR's diff is the same, as the owner decided on
-# PR #343: what the approved commit adds over its merge-base with the old base,
-# and what the head adds over its merge-base with origin/<the PR's base>,
-# compared by git patch-id --verbatim (line numbers ignored, whitespace kept).
-# Those reads are local git, in the caller's checkout, which has fetched both
-# commits and the base; a missing commit or ref, an empty diff, or a git
-# without --verbatim carries nothing. Reads the PR and every page of its
+# approved, the PR's head, or an earlier head whose changes the head still
+# makes and nothing more, as the owner decided on PR #343 ("If the diff is the
+# same I think the approval should stand"): a restack, say, or a reworded
+# commit. GitHub names every commit involved, never the caller or a local ref:
+# the head, the base branch's tip (git/ref), and the approved commit's base.
+#   - No base change since the approval: its merge-base with the base's tip,
+#     so a base that moved on is followed.
+#   - One base change since it, away from a branch a merged PR had as its head
+#     and into the base it merged to: that PR's last head, which must be an
+#     ancestor of the approved commit (a parent landed).
+#   - Anything else, or a force-push of the base since the approval (which
+#     GitHub records on the PR): nothing carries.
+# What the approved commit changed since that base, merged onto the head's
+# own base (git merge-tree --write-tree --merge-base), must give exactly the
+# head's tree: the same changes, in the same places, with nothing added. A
+# merge that conflicts, or a git too old for merge-tree's --merge-base
+# (before 2.40), carries nothing. Those reads are in the caller's checkout,
+# which must hold the commits (fetch them first); a commit missing there
+# carries nothing. Reads the PR and every page of its
 # reviews by REST. A review is decisive when its state is APPROVED,
 # CHANGES_REQUESTED or DISMISSED (COMMENTED and PENDING never are), and
 # reviews are ordered by submission time, then id. An owner is a login
@@ -36,7 +45,7 @@
 #        read that also re-reads the review's state and commit, which must
 #        still be APPROVED and the commit the REST read named.
 #      It prints one JSON object on stdout: {"pr", "head", "approved" (the
-#      commit approved: the head, or an earlier one --restacked-from carried),
+#      commit approved: the head, or an earlier one whose diff is the same),
 #      "reviewer", "url", "submitted_at", "body", "comments": [{"path", "url",
 #      "body"}]}, the
 #      comments being the review's own line comments. The caller reads the body
@@ -81,7 +90,7 @@
 # /bin/bash 3.2 too, so no associative arrays.
 set -uo pipefail
 
-usage="usage: owner-approval.sh -R <host>/<owner>/<repo> [--restacked-from <old base>] <pr number>"
+usage="usage: owner-approval.sh -R <host>/<owner>/<repo> <pr number>"
 usage_error() {
 	echo "owner-approval.sh: $*" >&2
 	exit 2
@@ -98,17 +107,12 @@ say_reasons() { # say_reasons <newline-ended reasons>: one no-grant line each, t
 }
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
-expected= pr= have_pr= old_base= have_old_base=
+expected= pr= have_pr=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-R)
 		[ $# -ge 2 ] || usage_error "$usage"
 		expected=$2
-		shift 2
-		;;
-	--restacked-from)
-		[ $# -ge 2 ] || usage_error "$usage"
-		old_base=$2 have_old_base=1
 		shift 2
 		;;
 	*)
@@ -129,11 +133,6 @@ host=${BASH_REMATCH[1]} owner=${BASH_REMATCH[3]} repo=${BASH_REMATCH[4]}
 [ "${#owner}" -le 39 ] || usage_error "'$owner' is not a GitHub owner"
 case $repo in . | ..) usage_error "'$repo' is not a repo name" ;; esac
 [[ $pr =~ ^[1-9][0-9]*$ ]] || usage_error "'$pr' is not a PR number"
-if [ -n "$have_old_base" ]; then
-	# A commit or a ref name, never an option or a range.
-	[[ $old_base =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]*$ ]] && [[ $old_base != *..* ]] ||
-		usage_error "--restacked-from '$old_base' is not a commit or a ref"
-fi
 
 gh_bin=${OWNER_CHECK_GH:-gh}
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -169,51 +168,81 @@ newest_first=$(printf '%s\n' "$sorted" | awk 'NF { line[++n] = $0 } END { for (i
 latest=$(printf '%s\n' "$sorted" | awk -F "$sep" 'NF > 1 { last[$1] = $0; order[$1] = NR } END { for (k in last) print order[k] FS last[k] }' |
 	LC_ALL=C sort -t "$sep" -k1,1n | cut -d "$sep" -f 2-)
 
-# With --restacked-from, an approval of an earlier head covers this one when
-# the PR's diff is the same: what each commit adds over its merge-base with its
-# base (the old base for the approved commit, origin/<base ref> for the head),
-# compared by patch id, line numbers ignored and whitespace kept. Read from
-# this repository, which the caller has fetched; a commit missing here carries
-# nothing.
-diff_id() { # diff_id <base> <tip>: that patch id, or fail (a commit missing, an empty diff)
-	local mb id
-	mb=$(git merge-base "$1" "$2" 2>/dev/null) || return 1
-	id=$(git diff --no-color --no-ext-diff --no-textconv --binary --full-index "$mb" "$2" 2>/dev/null |
-		git patch-id --verbatim 2>/dev/null) || return 1 # --verbatim keeps whitespace; git refuses it with --stable
-	id=${id%% *}
-	[ -n "$id" ] && printf '%s' "$id"
+# Whether an approval of an earlier head covers this one: the head makes the
+# same changes and nothing more (the header says how). Only commits GitHub
+# names are used; this checkout supplies their objects.
+sha_re='^[0-9a-f]{40}$'
+reasons= base_tip= checked=" " same=" "
+have() { # have <sha>: the commit is in this checkout
+	git cat-file -e "$1^{commit}" 2>/dev/null
 }
-reasons= carry= old_sha= head_id= same=" " differs=" "
-if [ -n "$have_old_base" ]; then
-	if ! old_sha=$(git rev-parse --verify --quiet "$old_base^{commit}" 2>/dev/null); then
-		reasons+="--restacked-from $old_base names no commit in this repository, so no earlier approval carries$nl"
-	elif ! [[ $base_ref =~ ^[A-Za-z0-9._/-]+$ ]] ||
-		! new_base=$(git rev-parse --verify --quiet "refs/remotes/origin/$base_ref^{commit}" 2>/dev/null); then
-		reasons+="no origin/${base_ref:-<base>} in this repository to read the head's diff over, so no earlier approval carries$nl"
-	elif ! head_id=$(diff_id "$new_base" "$head"); then
-		reasons+="can't read the head's diff over origin/$base_ref here, so no earlier approval carries$nl"
-	else
-		carry=1
+replays() { # replays <old base> <approved>: what <approved> changed since <old base>, merged onto the head's own base, is the head's tree
+	local nb tree
+	[ "$1" != "$2" ] && git merge-base --is-ancestor "$1" "$2" 2>/dev/null || return 1
+	nb=$(git merge-base "$base_tip" "$head" 2>/dev/null) || return 1
+	tree=$(git merge-tree --write-tree --no-messages --merge-base="$1" "$nb" "$2" 2>/dev/null) || return 1
+	tree=$(printf '%s\n' "$tree" | head -n 1)
+	[[ $tree =~ $sha_re ]] && [ "$tree" = "$(git rev-parse --verify --quiet "$head^{tree}" 2>/dev/null)" ]
+}
+old_base() { # old_base <approval time> <approved>: the approved commit's base, as GitHub records it, or fail
+	local events changes count prev cur at merged
+	# The PR's base changes and base force-pushes since the approval.
+	events=$("$gh_bin" api graphql --hostname "$host" -f owner="$owner" -f repo="$repo" -F pr="$pr" -f query='
+		query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+		timelineItems(itemTypes:[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT],last:50){nodes{__typename
+		... on BaseRefChangedEvent{previousRefName currentRefName createdAt} ... on BaseRefForcePushedEvent{createdAt}}}}}}' \
+		--jq '.data.repository.pullRequest.timelineItems.nodes[] | "\(.__typename // "")\u001f\(.createdAt // "")\u001f\(.previousRefName // "")\u001f\(.currentRefName // "")"' \
+		</dev/null 2>/dev/null) || return 1
+	events=$(printf '%s\n' "$events" | awk -F "$sep" -v at="$1" 'NF == 4 && $2 > at')
+	# A base rewritten since the approval moves what its merge-base finds.
+	printf '%s\n' "$events" | grep -q "^BaseRefForcePushedEvent$sep" && return 1
+	changes=$(printf '%s\n' "$events" | grep "^BaseRefChangedEvent$sep" | cut -d "$sep" -f 2-)
+	count=$(printf '%s' "$changes" | grep -c . || true)
+	if [ "$count" = 0 ]; then
+		git merge-base "$base_tip" "$2" 2>/dev/null
+		return
 	fi
-fi
-covers() { # covers <commit>: an approval of it covers the head
+	[ "$count" = 1 ] || return 1
+	IFS="$sep" read -r at prev cur <<<"$changes"
+	[ "$cur" = "$base_ref" ] && [[ $prev =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+	# The PR that had the old base as its head and merged into the new one before the change.
+	merged=$("$gh_bin" api graphql --hostname "$host" -f owner="$owner" -f repo="$repo" -f head="$prev" -f query='
+		query($owner:String!,$repo:String!,$head:String!){repository(owner:$owner,name:$repo){
+		pullRequests(headRefName:$head,states:[MERGED],last:20){nodes{headRefOid baseRefName mergedAt}}}}' \
+		--jq '.data.repository.pullRequests.nodes[] | "\(.headRefOid // "")\u001f\(.baseRefName // "")\u001f\(.mergedAt // "")"' \
+		</dev/null 2>/dev/null) || return 1
+	merged=$(printf '%s\n' "$merged" | awk -F "$sep" -v base="$cur" -v at="$at" 'NF == 3 && $2 == base && $3 != "" && $3 <= at { print $1 }')
+	[ "$(printf '%s' "$merged" | grep -c . || true)" = 1 ] && [[ $merged =~ $sha_re ]] || return 1
+	printf '%s' "$merged"
+}
+covers() { # covers <commit> <approval time>: an approval of it covers the head
 	[ "$1" = "$head" ] && return 0
-	[ -n "$carry" ] && [[ $1 =~ ^[0-9a-f]{40}$ ]] || return 1
-	case $same in *" $1 "*) return 0 ;; esac
-	case $differs in *" $1 "*) return 1 ;; esac
-	local id
-	if id=$(diff_id "$old_sha" "$1") && [ "$id" = "$head_id" ]; then
-		same+="$1 "
-		return 0
+	[[ $1 =~ $sha_re ]] || return 1
+	case $same in *" $1@$2 "*) return 0 ;; esac
+	case $checked in *" $1@$2 "*) return 1 ;; esac
+	checked+="$1@$2 "
+	if [ -z "$base_tip" ]; then
+		# The base branch's tip, read once.
+		if [[ $base_ref =~ ^[A-Za-z0-9._/-]+$ ]] &&
+			base_tip=$("$gh_bin" api "repos/$owner/$repo/git/ref/heads/$base_ref" --hostname "$host" \
+				--jq '.object.sha // ""' </dev/null 2>/dev/null) && [[ $base_tip =~ $sha_re ]] &&
+			have "$base_tip" && have "$head"; then
+			:
+		else
+			base_tip=none
+			reasons+="this checkout lacks the head or ${base_ref:-its base}'s tip (fetch both), so no earlier approval carries$nl"
+		fi
 	fi
-	differs+="$1 "
-	return 1
+	[ "$base_tip" != none ] || return 1
+	local base
+	have "$1" && base=$(old_base "$2" "$1") && [[ $base =~ $sha_re ]] && replays "$base" "$1" || return 1
+	same+="$1@$2 "
 }
 
 # The newest approval covering the head by an owner.
 approval= rejected=" "
 while IFS="$sep" read -r key at id login type state commit node url; do
-	[ "$state" = APPROVED ] && covers "$commit" || continue
+	[ "$state" = APPROVED ] && covers "$commit" "$at" || continue
 	case $rejected in *" $key "*) continue ;; esac
 	if [ "$type" != User ] || [ -z "$login" ] || [ "$(lower "$login")" = ghost ]; then
 		reasons+="the approval by ${login:-a deleted account} is not a user's ($url)$nl"

@@ -11,6 +11,11 @@
 #   STUB_PR_FAIL, STUB_REVIEWS_FAIL, STUB_GQL_FAIL
 #                          set: that read fails (GraphQL as behind the cloud proxy)
 #   STUB_PERM_FAIL         logins whose permission read fails
+#   STUB_BASE, STUB_BASE_TIP
+#                          the PR's base ref, and its tip by git/ref (unset: the read fails)
+#   STUB_BASE_CHANGES      the PR's BaseRefChangedEvents, a JSON array
+#   STUB_MERGED_PRS        merged PRs, a JSON array of {headRefName, headRefOid,
+#                          baseRefName, mergedAt}, answered by headRefName
 #   STUB_NODES             a JSON object keyed by review node id, merged into
 #                          the GraphQL node the stub derives from the review
 #                          (its state, commit, body, no edit and no line
@@ -37,12 +42,15 @@ printf '%s\n' "$*" >>"$STUB_ARGS"
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 endpoint=$2
 filter=.
-node=
+node= query= head_ref=
 shift 2
 while [ $# -gt 0 ]; do
 	case $1 in
 	--jq) filter=$2; shift 2 ;;
-	-f) case $2 in id=*) node=${2#id=} ;; esac; shift 2 ;;
+	-f | -F)
+		case $2 in id=*) node=${2#id=} ;; query=*) query=${2#query=} ;; head=*) head_ref=${2#head=} ;; esac
+		shift 2
+		;;
 	*) shift ;;
 	esac
 done
@@ -58,6 +66,10 @@ repos/*/collaborators/*/permission)
 	done
 	answer '{"permission": "none"}'
 	;;
+repos/*/git/ref/heads/*)
+	[ -n "${STUB_BASE_TIP:-}" ] || { echo '{"message": "Not Found"}'; exit 1; }
+	answer "$(jq -n --arg s "$STUB_BASE_TIP" '{object: {sha: $s}}')"
+	;;
 repos/*/pulls/*/reviews\?per_page=100)
 	[ -z "${STUB_REVIEWS_FAIL:-}" ] || { echo '{"message": "Not Found"}'; exit 1; }
 	answer "${STUB_REVIEWS:-[]}"
@@ -72,6 +84,17 @@ graphql)
 		echo 'HTTP 403: GitHub GraphQL is not available from Claude Code sessions' >&2
 		exit 1
 	}
+	case $query in
+	*BASE_REF_CHANGED_EVENT*)
+		answer "$(jq -n --argjson c "${STUB_BASE_CHANGES:-[]}" '{data: {repository: {pullRequest: {timelineItems: {nodes: $c}}}}}')"
+		exit 0
+		;;
+	*"pullRequests(headRefName"*)
+		answer "$(jq -n --arg h "$head_ref" --argjson m "${STUB_MERGED_PRS:-[]}" \
+			'{data: {repository: {pullRequests: {nodes: [$m[] | select(.headRefName == $h)]}}}}')"
+		exit 0
+		;;
+	esac
 	patch=${STUB_NODES:-}
 	[ -n "$patch" ] || patch='{}'
 	answer "$(jq -n --arg id "$node" --argjson reviews "${STUB_REVIEWS:-[]}" --argjson patch "$patch" '
@@ -354,14 +377,16 @@ record 1 'an enterprise PR is read on its own host' "$(calls '^api repos/acme/ap
 record 1 'and its approver checked there' "$(calls '^api repos/acme/app/collaborators/maguerrieri/permission --hostname ghe.example.com ')"
 record 0 '-R compared as given' "$(REPO=GitHub.com/o/r STUB_REVIEWS=$(reviews "$approve") run)"
 
-# --restacked-from <old base>: after a restack, an approval of the commit the
-# PR had before it still stands when the PR's diff is the same, by patch id
-# (line numbers ignored, whitespace not). A real git repository holds the
-# commits: main B0; a parent branch P1 off it; the approved child A = P1 + C1;
-# main after the parent's rebase merge (P1 again as a new commit, then an
+# An approval of an earlier head still covers the head when the PR's diff is
+# the same: after a restack, say. GitHub names every commit compared (the
+# head, the base's tip, and the approved commit's base: the merged parent's
+# last head after one base change, else the base's tip), and the whole diff
+# must match but for blob ids and hunk positions. A real git repository holds
+# the commits: main B0; a parent branch P1 off it; the approved child A = P1 +
+# C1; main after the parent's rebase merge (P1 again as a new commit, then an
 # unrelated M); the restacked child H = main + C1 again; H2 the same with C1
-# changed; HW with only C1's whitespace changed; and, for an unstacked PR, A0
-# = B0 + C1 rebased onto the moved main as H0.
+# changed; HW with only C1's whitespace changed; HX with c.txt executable; and,
+# for an unstacked PR, A0 = B0 + C1, which H also restacks onto the moved main.
 repo=$tmp/repo
 mkdir -p "$repo"
 g() { git -C "$repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false "$@"; }
@@ -383,46 +408,77 @@ g checkout -q main && g checkout -q -b changed
 H2=$(commit_file c.txt $'child, changed\n  indented' '[#2] child')
 g checkout -q main && g checkout -q -b whitespace
 HW=$(commit_file c.txt $'child\n\tindented' '[#2] child')
+g checkout -q restacked && g checkout -q -b extra
+HE=$(commit_file e.txt 'unreviewed' '[#2] more')
+g checkout -q main && g checkout -q -b mode
+printf '%s\n' $'child\n  indented' >"$repo/c.txt" && chmod +x "$repo/c.txt" && g add c.txt && g commit -q -m '[#2] child'
+HX=$(g rev-parse HEAD)
 g checkout -q "$B0" && g checkout -q -b unstacked
 A0=$(commit_file c.txt $'child\n  indented' '[#2] child')
 g checkout -q main
-g update-ref refs/remotes/origin/main "$M"
-in_repo() { # in_repo <args...>: run_raw from inside the repository
-	(cd "$repo" && run_raw "$@")
+in_repo() { # in_repo <args...>: run_raw on PR 7 from inside the repository
+	(cd "$repo" && run_raw -R github.com/o/r 7 "$@")
 }
+# The parent landed at 05:30 and GitHub retargeted the PR at 05:31, after the
+# owner approved A at 05:00.
+retarget='[{"__typename": "BaseRefChangedEvent", "previousRefName": "parent", "currentRefName": "main", "createdAt": "2026-11-17T05:31:00Z"}]'
+force_push='{"__typename": "BaseRefForcePushedEvent", "createdAt": "2026-11-17T05:40:00Z"}'
+landed() { # landed [<base> [<merged at>]]: STUB_MERGED_PRS with the parent merged
+	jq -n --arg o "$P1" --arg b "${1:-main}" --arg at "${2:-2026-11-17T05:30:00Z}" \
+		'[{headRefName: "parent", headRefOid: $o, baseRefName: $b, mergedAt: $at}]'
+}
+export STUB_BASE_TIP=$M STUB_BASE_CHANGES=$retarget STUB_MERGED_PRS=$(landed)
 carried=$(reviews "$(review 11 maguerrieri APPROVED "$A" "$t1")")
-record 1 'an approval of the commit before a restack, with no --restacked-from' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r 7)"
-record 0 'and with it, the parent'"'"'s old head as the old base: the diff is the same' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+record 0 'an approval of the head before a restack, after the parent landed: the same diff' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
 record "$H $A" 'prints the head it covers and the commit approved' "$(out '"\(.head) \(.approved)"')"
-record 1 'a restack that changed the diff' \
-	"$(STUB_HEAD=$H2 STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
-record 1 'one that changed only whitespace' \
-	"$(STUB_HEAD=$HW STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
-record 1 'the wrong old base, whose diff takes in the parent'"'"'s commit too' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from origin/main 7)"
-record 1 'an approved commit this repository lacks' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED 3333333333333333333333333333333333333333 "$t1")") in_repo -R github.com/o/r --restacked-from "$P1" 7)"
-record 1 'a base branch with no origin ref here' \
-	"$(STUB_BASE=dev STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from "$P1" 7)"
-record 1 'an old base this repository lacks' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$carried in_repo -R github.com/o/r --restacked-from 3333333333333333333333333333333333333333 7)"
-record 0 'an unstacked PR rebased onto its moved base, the base as the old base' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$A0" "$t1")") in_repo -R github.com/o/r --restacked-from origin/main 7)"
-record 0 'an approval of the head itself still needs no carrying' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$H" "$t1")") in_repo -R github.com/o/r --restacked-from "$P1" 7)"
-record "$H" 'and prints the head as the commit approved' "$(out .approved)"
+record 1 'it reads the base'"'"'s tip from GitHub' "$(calls '^api repos/o/r/git/ref/heads/main --hostname github.com ')"
+record 1 'a restack that changed the diff' "$(STUB_HEAD=$H2 STUB_REVIEWS=$carried in_repo)"
+record 1 'one that changed only whitespace' "$(STUB_HEAD=$HW STUB_REVIEWS=$carried in_repo)"
+record 1 'one that changed only a file mode' "$(STUB_HEAD=$HX STUB_REVIEWS=$carried in_repo)"
+record 0 'no base change since the approval (already based on main): its whole diff, the parent'"'"'s change included, replays onto main as the head' \
+	"$(STUB_BASE_CHANGES='[]' STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'a force-push of the base since the approval' \
+	"$(STUB_BASE_CHANGES=$(jq --argjson f "$force_push" '. + [$f]' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 0 'one before it changes nothing' \
+	"$(STUB_BASE_CHANGES=$(jq --argjson f "$force_push" '. + [$f | .createdAt = "2026-11-17T04:00:00Z"]' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'a parent whose last head isn'"'"'t under the approved commit (it moved on after)' \
+	"$(STUB_MERGED_PRS=$(landed | jq --arg m "$M" '.[0].headRefOid = $m') STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'a head that adds something the approved commit didn'"'"'t' \
+	"$(STUB_HEAD=$HE STUB_REVIEWS=$carried in_repo)"
+record 1 'a head that drops something it did' \
+	"$(STUB_BASE_CHANGES='[]' STUB_HEAD=$M STUB_REVIEWS=$carried in_repo)"
+record 0 'a base change before the approval, which then showed the parent'"'"'s change too' \
+	"$(STUB_BASE_CHANGES=$(jq '.[0].createdAt = "2026-11-17T04:00:00Z"' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'two base changes since it' \
+	"$(STUB_BASE_CHANGES=$(jq '. + [.[0] | .createdAt = "2026-11-17T05:40:00Z"]' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'a change into another base than the PR'"'"'s' \
+	"$(STUB_BASE_CHANGES=$(jq '.[0].currentRefName = "dev"' <<<"$retarget") STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'no merged PR had the old base as its head' "$(STUB_MERGED_PRS='[]' STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'one merged into another base' "$(STUB_MERGED_PRS=$(landed dev) STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'one merged after the change' \
+	"$(STUB_MERGED_PRS=$(landed main 2026-11-17T05:45:00Z) STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'two that could be the parent' \
+	"$(STUB_MERGED_PRS=$(landed | jq '. + .') STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'an approved commit this checkout lacks' \
+	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED 3333333333333333333333333333333333333333 "$t1")") in_repo)"
+record 1 'a base tip GitHub won'"'"'t give' "$(STUB_BASE_TIP= STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'a base tip this checkout lacks' \
+	"$(STUB_BASE_TIP=3333333333333333333333333333333333333333 STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 1 'the base change unreadable (GraphQL refused)' "$(STUB_GQL_FAIL=1 STUB_HEAD=$H STUB_REVIEWS=$carried in_repo)"
+record 0 'an unstacked PR rebased onto its moved base: no base change, so the base'"'"'s tip' \
+	"$(STUB_BASE_CHANGES='[]' STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$A0" "$t1")") in_repo)"
 record 1 'a carried approval followed by a request for changes' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$A" "$t1")" "$(review 12 maguerrieri CHANGES_REQUESTED "$H" "$t2")") in_repo -R github.com/o/r --restacked-from "$P1" 7)"
+	"$(STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$A" "$t1")" "$(review 12 maguerrieri CHANGES_REQUESTED "$H" "$t2")") in_repo)"
 record 1 'a carried approval GraphQL names another commit for' \
-	"$(STUB_HEAD=$H STUB_REVIEWS=$carried STUB_NODES="{\"PRR_11\": {\"commit\": {\"oid\": \"$H\"}}}" in_repo -R github.com/o/r --restacked-from "$P1" 7)"
-record 1 'outside a git repository' \
-	"$(cd / && STUB_HEAD=$H STUB_REVIEWS=$carried run_raw -R github.com/o/r --restacked-from "$P1" 7)"
-for bad in '' -x 'a b' 'main;id' '..'; do
-	record '2 0' "the malformed --restacked-from '$bad'" "$(in_repo -R github.com/o/r --restacked-from "$bad" 7) $(gh_calls)"
-done
-record '2 0' '--restacked-from with no value' "$(in_repo -R github.com/o/r 7 --restacked-from) $(gh_calls)"
+	"$(STUB_HEAD=$H STUB_REVIEWS=$carried STUB_NODES="{\"PRR_11\": {\"commit\": {\"oid\": \"$H\"}}}" in_repo)"
+record 1 'outside a git repository' "$(cd / && STUB_HEAD=$H STUB_REVIEWS=$carried run_raw -R github.com/o/r 7)"
+record 0 'an approval of the head itself needs no repository' \
+	"$(cd / && STUB_HEAD=$H STUB_REVIEWS=$(reviews "$(review 11 maguerrieri APPROVED "$H" "$t1")") run_raw -R github.com/o/r 7)"
+record "$H" 'and prints the head as the commit approved' "$(out .approved)"
+record 0 'nor any base-change read' "$(calls 'BASE_REF_CHANGED_EVENT')"
+unset STUB_BASE_TIP STUB_BASE_CHANGES STUB_MERGED_PRS
+record '2 0' '--restacked-from is no option' "$(run_raw -R github.com/o/r --restacked-from "$P1" 7) $(gh_calls)"
 
 # Usage errors never reach gh.
 record '2 0' 'no -R' "$(run_raw 7) $(gh_calls)"
