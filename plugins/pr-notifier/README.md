@@ -92,11 +92,13 @@ skipped=locked` and exits 0), then:
    thread's `updated_at` can trail its event), so the URL usually repeats and a 304
    stays possible, and a restart catches up from the last 200. A thread on a subscribed
    PR marks that PR to be read when its `updated_at` has moved past the one last seen,
-   since the same thread comes back on every 200 while `since` holds. The feed noticed an
-   event 50 to 100 seconds after GitHub recorded it (#349's measurements), so it is now
-   the catch-up path behind the next step.
+   since the same thread comes back on every 200 while `since` holds, unless the PR was
+   read ten seconds or more after that `updated_at` (`read-already=` in the log): that
+   read saw what moved the thread. The feed noticed an event 50 to 100 seconds after
+   GitHub recorded it (#349's measurements), so it is now the catch-up path behind the
+   next step.
 2. **Poll the subscribed PRs directly** (#349, below), unless `pr_poll_interval` (15
-   seconds), less five seconds of slack, hasn't passed since the last time: one GraphQL
+   seconds), less three seconds of slack, hasn't passed since the last time: one GraphQL
    query reads a summary of every subscribed PR, and a PR whose summary moved since the
    last one is marked to be read, as the feed marks it.
 3. **Read every PR that is marked, or due a sweep** (`sweep_interval`, five minutes):
@@ -105,7 +107,7 @@ skipped=locked` and exits 0), then:
    move the notification thread (its Q4 owner rows wait on Mari's actions on #296), so
    the feed is only the fast path, and every subscribed PR is read on the sweep whether
    or not a notification came. A failed read leaves the PR marked, retried by the first
-   check a minute or more later (not every check, which would hammer GitHub through an
+   check about a minute later (not every check, which would hammer GitHub through an
    outage), until it has failed for `hold_bound`: then it's reported once (log and stderr) and
    read only on the sweep, so a PR that's gone, or a ref that was never a PR, costs one
    read per sweep. A good read clears it.
@@ -133,7 +135,12 @@ the one it read last:
   reply in a review thread, is a review of its own (checked on #343: three thread replies
   were three one-comment reviews), so the count moves for those too.
 
-Any change, or a PR with no summary recorded yet, marks the PR, and step 3 reads it. The
+Any change, or a PR with no summary recorded yet, marks the PR, and step 3 reads it. A PR
+marked so is marked once more on the next poll, about 15 seconds on: the summary can show
+an item a moment before the REST timeline that step 3 reads does, and once its summary is
+recorded, an unchanged summary would mark it no more. The second read is long past that
+lag, and since it usually comes ten seconds or more after the notification thread moved,
+the feed then skips the PR (step 1). The
 summary only says which PRs to read now: reading the PR still decides what woke whom,
 with the same filter, keys and coalescing as before, so whatever the feed would have
 caught is caught the same way, only sooner. What else moves a summary (a push, the
@@ -153,7 +160,7 @@ away. Each PR it marks costs a REST read, a budget of its own, so when it has ma
 something it also reads `GET /rate_limit`, which costs nothing: with `rest_reserve`
 requests (1,000) or fewer left, it marks nothing and records none of the summaries that
 moved, so the next poll marks them once the budget is back (`poll-prs rest-low`, then
-`rest-ok`). A failed poll backs off (30 seconds, then a minute, two and four, then every
+`rest-ok`); a budget it can't read keeps the state it had. A failed poll backs off (30 seconds, then a minute, two and four, then every
 five minutes, or every `pr_poll_interval` past that) and, when GitHub's hourly limit failed
 it, waits past the reset it last read. A secondary limit, which clears in about a minute,
 takes the ordinary backoff. Past a hundred PRs, a query that fails leaves the others' at
@@ -187,10 +194,10 @@ token:
 
 The query's cost was measured with `rateLimit(dryRun: true)`: 1 point for 20 PRs and 2 for
 100. A marked PR costs the same as before; the direct poll marks a PR for any change, the
-sessions' own comments and pushes included, so a busy PR is read once per check it moves
-in, and again when the feed names it. A PR in a review loop moves perhaps 20 to 60 times
-an hour (pushes, reviews, one review per thread reply, comments), about 60 to 180 REST
-requests; `rest_reserve` bounds the worst case. A relay wake is a short Haiku session on the user's
+sessions' own comments and pushes included, and reads it on the check it moves in and on
+the next: twice for each move, where the feed read it once for each moved thread. A PR in
+a review loop moves perhaps 20 to 60 times an hour (pushes, reviews, one review per thread
+reply, comments), about 80 to 360 REST requests; `rest_reserve` bounds the worst case. A relay wake is a short Haiku session on the user's
 Claude login, $0.0003 to $0.0009 each.
 
 ## The filter
@@ -439,7 +446,7 @@ inside a cross-session message.
 |---|---|---|
 | `review_bots` | Copilot (both logins), Codex | Logins that wake when GitHub types them `Bot` |
 | `pr_poll` | `true` | `false` turns the direct poll off, leaving the feed and the sweep |
-| `pr_poll_interval` | `15` | Seconds between direct polls (at least 5), less five seconds of slack for launchd's firings. Above the job's 15 it slows the poll without a new plist |
+| `pr_poll_interval` | `15` | Seconds between direct polls (at least 5), less three seconds of slack for launchd's firings. The job fires every 15 seconds, so the pace rounds to its firings: up to 18 polls every 15 seconds, 19 to 33 every 30, and so on. Above 18 it slows the poll without a new plist |
 | `graphql_reserve` | `1000` | GraphQL points of the hourly budget the direct poll leaves to the sessions: it slows down to stay above them, and waits for the reset at them |
 | `rest_reserve` | `1000` | REST requests of the hourly budget the direct poll leaves: at or below it, the poll marks no PR to be read, and the feed and the sweep carry on |
 | `sweep_interval` | `300` | Seconds between reads of each subscribed PR when no notification marks it |
