@@ -87,6 +87,8 @@ graphql)
 		# $STUB/summary.sizes has each one's PR count.
 		echo $(($(cat "$STUB/summary.count" 2>/dev/null || echo 0) + 1)) >"$STUB/summary.count"
 		if [ -f "$STUB/summary.fail" ]; then cat "$STUB/summary.fail" >&2; exit 1; fi
+		# $STUB/summary.body is a response with no data (errors only), as for a rate limit.
+		if [ -f "$STUB/summary.body" ]; then cat "$STUB/summary.body"; echo 'gh: GraphQL: rate limited' >&2; exit 1; fi
 		rate=$(cat "$STUB/rate.json" 2>/dev/null || echo '{"cost":1,"remaining":4990,"limit":5000,"resetAt":"2026-11-01T00:00:00Z"}')
 		data=$(jq -n --argjson r "$rate" '{rateLimit: $r}')
 		k=$(jq '[.variables | keys[] | select(startswith("n"))] | length' "$input")
@@ -1311,7 +1313,9 @@ record 'cfg=<unset>' "the default root's session is woken with CLAUDE_CONFIG_DIR
 
 # --- the feed -----------------------------------------------------------------
 
+# The feed alone: the direct poll (below) would read the same PRs sooner.
 reset
+settings '{"pr_poll": false}'
 echo 200 >"$STUB/feed.status"
 echo 'Sat, 31 Oct 2026 21:40:00 GMT' >"$STUB/feed.lm"
 nt "$T" check
@@ -1388,17 +1392,25 @@ record no 'and no feed poll' "$(has "$STUB/gh.log" notifications)"
 record yes 'the PR it marked is logged' "$(logged 'poll-prs prs=1 moved=o/r#7 cost=1 remaining=4990')"
 record yes 'the event is logged as found by that check' "$(logged "$(iso $((T + 15))) event pr=o/r#7 key=comment:101 actor=mari verdict=keep")"
 : >"$STUB/gh.log"
-n=$(lines)
 nt $((T + 30)) check
+record 'yes|1' 'the PR is read once more on the next check, in case its REST timeline lagged the summary, and nothing is delivered twice' \
+	"$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+: >"$STUB/gh.log"
+n=$(lines)
 nt $((T + 45)) check
-record 'no|no' 'an unchanged summary reads no PR, and a quiet check logs nothing' "$(has "$STUB/gh.log" 'pulls/7')|$([ "$(lines)" = "$n" ] && echo no || echo yes)"
+record 'no|no' 'then an unchanged summary reads no PR, and a quiet check logs nothing' "$(has "$STUB/gh.log" 'pulls/7')|$([ "$(lines)" = "$n" ] && echo no || echo yes)"
 
-# The feed then names the same PR: read again, and nothing is delivered twice.
+# The feed then names the same PR: read since its thread moved, so not again.
 echo 200 >"$STUB/feed.status"
-jq -n '[{reason: "author", updated_at: "2026-10-31T21:40:00Z", subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/7"}}]' >"$STUB/feed.json"
+jq -n --arg at "$(iso $((T + 5)))" '[{reason: "author", updated_at: $at, subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/7"}}]' >"$STUB/feed.json"
 : >"$STUB/gh.log"
 nt $((T + 75)) check
-record 'yes|1' 'an event both paths see is delivered once' "$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+record 'no|1' "the feed naming a PR the direct poll read after its thread moved doesn't read it again" "$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+record yes 'and says so' "$(logged 'poll status=200 threads=1 matched=0 read-already=1')"
+jq -n --arg at "$(iso $((T + 130)))" '[{reason: "author", updated_at: $at, subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/7"}}]' >"$STUB/feed.json"
+nt $((T + 135)) check
+record 'yes|1' 'a thread that moved after the last read still has it read, and an event both paths see is delivered once' \
+	"$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
 
 # A review, a line comment, an edit, a merge: each moves the summary.
 reset
@@ -1474,21 +1486,25 @@ record 'no|0' 'with the REST budget at its reserve, a PR that moved is not read'
 record yes 'and that is logged' "$(logged "poll-prs rest-low remaining=500 reserve=1000 reset=$(iso $((T + 900))) held=o/r#7")"
 nt $((T + 30)) check
 record 1 'once' "$(grep -c 'poll-prs rest-low' "$PR_NOTIFIER_HOME/notifier.log")"
-echo "{\"resources\":{\"core\":{\"remaining\":4000,\"reset\":$((T + 900))}}}" >"$STUB/rest.json"
+echo 'not json' >"$STUB/rest.json"
 nt $((T + 45)) check
+record '0|no' "a budget it can't read keeps it low: nothing read, and no rest-ok" "$(wakes)|$(logged 'poll-prs rest-ok')"
+echo "{\"resources\":{\"core\":{\"remaining\":4000,\"reset\":$((T + 900))}}}" >"$STUB/rest.json"
+nt $((T + 60)) check
 record '1|yes' "once it's back, the PR is read and wakes" "$(wakes)|$(logged 'poll-prs rest-ok remaining=4000')"
 
-# The interval: pr_poll_interval, less five seconds of slack for launchd's firings.
+# The interval: pr_poll_interval, less three seconds of slack for launchd's firings.
 reset
 nt "$T" check
 nt $((T + 5)) check
-record 1 'a check five seconds after a poll reads no summary' "$(summaries)"
 nt $((T + 10)) check
-record 2 'one ten seconds after does' "$(summaries)"
+record 1 'a check five or ten seconds after a poll reads no summary' "$(summaries)"
+nt $((T + 12)) check
+record 2 'one twelve seconds after does' "$(summaries)"
 settings '{"pr_poll_interval": 30}'
 nt $((T + 25)) check
 nt $((T + 40)) check
-record 3 'pr_poll_interval 30: every 25 seconds or more' "$(summaries)"
+record 3 'pr_poll_interval 30: every 27 seconds or more' "$(summaries)"
 settings '{"pr_poll": false}'
 nt $((T + 100)) check
 record 3 'pr_poll false: no summaries, the feed and sweep only' "$(summaries)"
@@ -1520,7 +1536,7 @@ nt "$T" check
 record yes 'with ten points above the reserve and 3,000 seconds to the reset, it polls every 300 seconds' \
 	"$(logged "poll-prs mode=stretched was=normal every=300s remaining=1010 reserve=1000 reset=$(iso "$reset_at")")"
 nt $((T + 15)) check
-nt $((T + 299)) check
+nt $((T + 290)) check
 record 1 'and reads nothing sooner' "$(summaries)"
 echo "{\"cost\":1,\"remaining\":1000,\"limit\":5000,\"resetAt\":\"$(iso "$reset_at")\"}" >"$STUB/rate.json"
 nt $((T + 300)) check
@@ -1545,6 +1561,13 @@ echo 'gh: You have exceeded a secondary rate limit. Please wait a few minutes be
 nt $((T + 15)) check
 record yes "a secondary rate limit, which clears in a minute or so, takes the ordinary backoff" \
 	"$(logged "poll-prs error prs=1 failures=1 next=$(iso $((T + 45)))")"
+rm "$STUB/summary.fail"
+echo '{"errors":[{"type":"RATE_LIMITED","message":"You have exceeded a secondary rate limit."}]}' >"$STUB/summary.body"
+nt $((T + 45)) check
+record yes 'so does one typed RATE_LIMITED' "$(logged "poll-prs error prs=1 failures=2 next=$(iso $((T + 105)))")"
+echo '{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded for user ID 1."}]}' >"$STUB/summary.body"
+nt $((T + 105)) check
+record yes 'while the hourly one waits for the reset' "$(logged "poll-prs error prs=1 failures=3 rate-limited next=$(iso $((T + 3001)))")"
 reset
 echo '{"cost":1,"remaining":1000,"limit":5000,"resetAt":""}' >"$STUB/rate.json"
 nt "$T" check
