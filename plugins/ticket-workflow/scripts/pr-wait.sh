@@ -11,8 +11,10 @@
 # Options, in any order:
 #   -R [<host>/]<owner>/<repo>  the PR's repo (default: the current
 #                               directory's origin, which gh fills in)
-#   --timeout <dur>   give up after this long (default 30m)
-#   --interval <dur>  time between reads (default 30s; 10s for mergeable)
+#   --timeout <dur>   give up after this long (default 30m), retries included;
+#                     under the Monitor tool, whose limit is 30 minutes, pass 25m
+#   --interval <dur>  time between reads (default 30s; 10s for mergeable;
+#                     at least 5s, since each read is several API calls)
 #   --settle <dur>    how long GitHub may take, after a push, to show <sha>
 #                     as the PR's head and to register its checks (default 5m)
 #   --idle <dur>      review: how long the bot may show no sign of reviewing
@@ -26,7 +28,9 @@
 # Exit codes, so a caller never mistakes "still running" for "broken":
 #   0  done and green: ci, every check passed; review, the bot's review of
 #      <sha> lists no findings; mergeable, MERGEABLE
-#   1  done and failed: ci, a check failed (it stops at the first); review,
+#   1  done and failed: ci, a check failed (it stops at the first; the last
+#      line names each with its conclusion, and action_required is a run
+#      waiting for a maintainer's approval, not a fault in the code); review,
 #      the review lists findings; mergeable, CONFLICTING
 #   2  error: a usage error, or a read that still fails after its retries
 #      (gh's error is on stderr); never "not yet"
@@ -41,10 +45,11 @@
 # ci reads the head's check runs and commit statuses as github-rest.md's CI
 # read classifies them, and counts a GitHub Actions check suite that hasn't
 # completed as pending too, so a job that waits on another (needs:) isn't
-# missed before GitHub creates it. Other apps' suites are left out (a
-# Vercel, Cloudflare or Claude app's sit queued with no runs for good), and
-# so is the review bot's own run (copilot-pull-request-reviewer), which is
-# `review`'s to wait for.
+# missed before GitHub creates it; an Actions suite with no runs counts only
+# within --settle of the push. Other apps' suites are left out (a Vercel,
+# Cloudflare or Claude app's sit queued with no runs for good), and so is the
+# review bot's own run (copilot-pull-request-reviewer), which is `review`'s
+# to wait for.
 #
 # Output: one stdout line per state change, "<subcommand> #<pr> <sha12>:
 # <state>[ <detail>]", ending with the final state, so the same call works as
@@ -89,8 +94,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 gh_bin=${PR_WAIT_GH:-gh}
 usage="usage: pr-wait.sh ci|review|mergeable <pr> [--head <sha>] [-R [<host>/]<owner>/<repo>] [--timeout <dur>] [--interval <dur>] [--settle <dur>] [--idle <dur>] [--bot <bot>]"
 
-# The review bots' own check runs, which ci leaves to `review` (JSON).
-bot_runs='["copilot-pull-request-reviewer"]'
+# Each review bot's own check run, named once: bot_<name> reads it as the
+# bot's running signal, and ci leaves every one in bot_runs to `review`.
+copilot_run=copilot-pull-request-reviewer
+bot_runs="[\"$copilot_run\"]" # JSON
 # Splits the fields one jq call prints: the unit separator, not a tab, since
 # read collapses empty fields between whitespace separators.
 sep=$'\x1f'
@@ -156,6 +163,10 @@ done
 if [ "$sub" != mergeable ] && [ -z "$sha" ]; then
 	die "$sub needs --head <sha>, the commit to wait on"
 fi
+# Each read is several API calls, so a shorter interval only spends the rate
+# limit. PR_WAIT_FAST lifts the floor for the tests, which script sequences
+# by call rather than by time.
+[ "$interval" -ge 5 ] || [ -n "${PR_WAIT_FAST:-}" ] || die "--interval must be at least 5s"
 [ -z "$sha" ] || [[ $sha =~ ^[0-9a-f]{40}$ ]] || die "--head '$sha' is not a full 40-character commit sha"
 
 if [ "$repo" != '{owner}/{repo}' ]; then
@@ -225,6 +236,12 @@ age=0
 state=
 detail=
 
+# Has GitHub had --settle since the push to show the head and register its
+# checks? The push came before this wait began, and at least $age seconds
+# ago (the PR hasn't changed since). $age is GitHub's time against the local
+# clock, so trust it only past 15 more minutes, for a clock that runs fast.
+settled() { [ $((SECONDS - start)) -ge "$settle" ] || [ "$age" -ge $((settle + 900)) ]; }
+
 read_pr() { # sets pr_json and age, and state/detail when the PR or its head ends this read
 	local fields head pr_state rel
 	pr_json=$(api "repos/$repo/pulls/$pr") || return 1
@@ -255,11 +272,15 @@ read_pr() { # sets pr_json and age, and state/detail when the PR or its head end
 	fi
 	# Not seen yet: right after a push GitHub can show the old head for a
 	# moment, but a head that is already past <sha> won't come back to it.
-	rel=$(api "repos/$repo/compare/$sha...$head") || return 1
-	rel=$(printf '%s' "$rel" | j -r '.status // ""') || return 1
+	# A compare GitHub can't answer (a sha it doesn't have yet, or at all)
+	# settles nothing, so the wait goes on to --settle, as for any other.
+	rel=$(api "repos/$repo/compare/$sha...$head" 2>/dev/null) &&
+		rel=$(printf '%s' "$rel" | jq -r '.status // ""' 2>/dev/null) || rel=
 	if [ "$rel" = ahead ]; then
 		state=moved detail="the head is now $head, a later commit"
 	elif [ $((SECONDS - start)) -ge "$settle" ]; then
+		# Timed from this wait's start only: right after a push the PR's own
+		# update time is the old head's.
 		state=moved detail="the head is $head, not this one, after $(fmt "$settle")"
 	else
 		state=syncing detail="the PR still shows $head"
@@ -270,7 +291,7 @@ read_pr() { # sets pr_json and age, and state/detail when the PR or its head end
 # --- ci --------------------------------------------------------------------
 
 poll_ci() {
-	local runs suites statuses summary
+	local runs suites statuses summary fresh
 	# Only the fields used: a check run's output can be large, and Linux caps
 	# one argument (the --argjson below) at 128 KB.
 	runs=$(rest_list "repos/$repo/commits/$sha/check-runs" --key check_runs) || return 1
@@ -283,7 +304,12 @@ poll_ci() {
 	statuses=$(printf '%s' "$statuses" | j -c 'map({context, state})') || return 1
 	# Classified as github-rest.md's CI read and gh pr checks do: a stale
 	# conclusion is pending, these conclusions fail, the rest pass.
-	summary=$(j -rn --argjson runs "$runs" --argjson suites "$suites" --argjson st "$statuses" --argjson bots "$bot_runs" '
+	# An unfinished Actions suite with runs is a workflow with jobs still to
+	# start (needs:). One with no runs yet counts only until the push has
+	# settled, since GitHub can leave such a suite queued for good.
+	fresh=true
+	! settled || fresh=false
+	summary=$(j -rn --argjson runs "$runs" --argjson suites "$suites" --argjson st "$statuses" --argjson bots "$bot_runs" --argjson fresh "$fresh" '
 		def failed: test("^(failure|cancelled|timed_out|action_required|startup_failure)$");
 		def isbot: . as $n | any($bots[]; . == $n);
 		[$runs[] | select(.name | isbot | not)] as $mine
@@ -295,7 +321,8 @@ poll_ci() {
 		| ($c | map(select(.s == "pending"))) as $p
 		| ($c | map(select(.s != "pending" and .s != "pass")) | map("\(.name) (\(.s))")) as $f
 		| [$suites[] | select(.status != "completed") | .id as $i
-		   | select((any($botsuites[]; . == $i) or any($p[]; .suite == $i)) | not)] as $waiting
+		   | select((any($botsuites[]; . == $i) or any($p[]; .suite == $i)) | not)
+		   | select($fresh or any($mine[]; .suite == $i))] as $waiting
 		| if ($f | length) > 0 then "failed \($f | join(", "))"
 		  elif ($p | length) > 0 or ($waiting | length) > 0 then
 		    "pending " + ([if ($p | length) > 0 then "\($p | length) of \($c | length) running: \($p | map(.name) | join(", "))" else empty end,
@@ -307,10 +334,8 @@ poll_ci() {
 	detail=${summary#"$state"}
 	detail=${detail# }
 	if [ "$state" = none ]; then
-		# Checks register within --settle of the push. The push was at least
-		# $age seconds ago (the PR hasn't changed since), and before this wait
-		# began.
-		if [ $((SECONDS - start)) -ge "$settle" ] || [ "$age" -ge "$settle" ]; then
+		# Checks register within --settle of the push.
+		if [ "$fresh" = false ]; then
 			detail="no check registered within $(fmt "$settle") of the push"
 		else
 			state=registering detail="no checks reported yet"
@@ -333,7 +358,7 @@ bot_copilot() {
 		return 1
 	if [ "$pending" = false ]; then
 		runs=$(rest_list "repos/$repo/commits/$sha/check-runs" --key check_runs) || return 1
-		pending=$(printf '%s' "$runs" | j -r 'any(.[]; .name == "copilot-pull-request-reviewer" and .status != "completed")') || return 1
+		pending=$(printf '%s' "$runs" | j -r --arg run "$copilot_run" 'any(.[]; .name == $run and .status != "completed")') || return 1
 	fi
 	if [ "$pending" = true ]; then
 		echo "pending requested or running"
@@ -372,11 +397,19 @@ bot_copilot() {
 	fi
 	if [ -n "$newest" ]; then
 		# An unable body is not a review, and REVIEW_BOT retries it once: report
-		# it, unless a request for Copilot came after it.
-		retried=$(rest_list "repos/$repo/issues/$pr/timeline") || return 1
-		retried=$(printf '%s' "$retried" | j -r --arg at "$at" '
-			any(.[]; .event == "review_requested" and (.requested_reviewer.login // "") == "Copilot"
-			         and (.created_at // "") > $at)') || return 1
+		# it, unless a request for Copilot came after it (under either of its
+		# logins, as the pending check reads them). A retry found once stays
+		# found, so the timeline isn't read again on every pass.
+		if [ -f "$tmp/retried-$id" ]; then
+			retried=true
+		else
+			retried=$(rest_list "repos/$repo/issues/$pr/timeline") || return 1
+			retried=$(printf '%s' "$retried" | j -r --arg at "$at" '
+				any(.[]; .event == "review_requested"
+				         and ((.requested_reviewer.login // "") | test("^(Copilot|copilot-pull-request-reviewer(\\[bot\\])?)$"))
+				         and (.created_at // "") > $at)') || return 1
+			[ "$retried" = false ] || : >"$tmp/retried-$id"
+		fi
 		if [ "$retried" = false ]; then
 			echo "unable review $id: Copilot was unable to review this head"
 		else
@@ -445,6 +478,17 @@ poll() { # one read of everything the subcommand needs
 
 emit() { printf '%s #%s %s: %s%s\n' "$sub" "$pr" "${sha:0:12}" "$state" "${detail:+ $detail}"; }
 
+remaining() { echo $((timeout - (SECONDS - start))); }
+
+timed_out() { # timed_out <what was last seen>: exit 4
+	state=timeout detail="after $(fmt "$timeout"); last: $1"
+	emit
+	emit >&2
+	exit 4
+}
+
+# The wait keeps to its own deadline, retries included, so a caller's outer
+# limit set a little past --timeout (Monitor's, say) always sees its last line.
 last=
 while :; do
 	attempt=1
@@ -459,6 +503,7 @@ while :; do
 			emit >&2
 			exit 2
 		fi
+		[ "$(remaining)" -gt "$delay" ] || timed_out "a read failing: $(head -n 1 "$tmp/last-err" 2>/dev/null)"
 		echo "pr-wait.sh: read failed (try $attempt of $budget); retrying in ${delay}s" >&2
 		sleep "$delay"
 		attempt=$((attempt + 1))
@@ -475,11 +520,7 @@ while :; do
 	none | idle | unable) exit 5 ;;
 	merged | closed) exit 6 ;;
 	esac
-	if [ $((SECONDS - start)) -ge "$timeout" ]; then
-		state=timeout detail="after $(fmt "$timeout"); last: ${last#*: }"
-		emit
-		emit >&2
-		exit 4
-	fi
-	sleep "$interval"
+	left=$(remaining)
+	[ "$left" -gt 0 ] || timed_out "${last#*: }"
+	if [ "$left" -lt "$interval" ]; then sleep "$left"; else sleep "$interval"; fi
 done

@@ -108,7 +108,7 @@ run() { # run <args...>: "<last stdout line>|exit <n>"; every stdout line is kep
 	local code
 	: >"$stub/calls"
 	rm -f "$stub"/n-* # each run starts its fixture sequences at call 1
-	PR_WAIT_GH="$tmp/gh" STUB_DIR="$stub" PR_WAIT_RETRY_DELAY=${PR_WAIT_RETRY_DELAY:-0} \
+	PR_WAIT_GH="$tmp/gh" STUB_DIR="$stub" PR_WAIT_RETRY_DELAY=${PR_WAIT_RETRY_DELAY:-0} PR_WAIT_FAST=${PR_WAIT_FAST-1} \
 		bash "$script" "$@" -R o/r >"$tmp/out" 2>"$tmp/err"
 	code=$?
 	printf '%s|exit %s' "$(tail -n 1 "$tmp/out")" "$code"
@@ -185,6 +185,13 @@ fx "commits_${A}_check-runs.1" "$(runs)"
 fx "commits_${A}_check-suites.1" "$(suites github-actions:2:queued)"
 record "ci #7 aaaaaaaaaaaa: pending 1 GitHub Actions workflow run(s) with jobs still to start" \
 	'ci: a queued suite with no runs is pending, not registering' "$(run ci 7 --head "$A" --interval 0 >/dev/null; head -n 1 "$tmp/out")"
+# ...but only within --settle of the push: GitHub can leave one queued for good.
+rm "$stub/commits_${A}_check-runs.1" "$stub/commits_${A}_check-suites.1"
+fx "commits_${A}_check-suites" "$(suites github-actions:1:completed github-actions:2:queued)"
+fx pulls_7 "$(pr "$A" '' null unknown open null "$long_ago")"
+record "ci #7 aaaaaaaaaaaa: green 2 passed|exit 0" 'ci: a stray queued Actions suite with no runs, long after the push' "$(run ci 7 --head "$A" --interval 0)"
+fx pulls_7 "$(pr "$A")"
+record "ci #7 aaaaaaaaaaaa: green 2 passed|exit 0" 'ci: or once this wait has run past --settle' "$(run ci 7 --head "$A" --interval 1s --settle 1s)"
 
 # The review bot's run is review's to wait for, not ci's.
 reset
@@ -225,8 +232,8 @@ fx "compare_${A}...${B}" '{"status":"diverged"}'
 record "ci #7 aaaaaaaaaaaa: moved the head is $B, not this one, after 1s|exit 3" 'ci: a head the PR never shows' \
 	"$(run ci 7 --head "$A" --interval 1s --settle 1s)"
 rm "$stub/compare_${A}...${B}"
-record "ci #7 aaaaaaaaaaaa: error a read failed 3 times in a row: gh: Not Found (HTTP 404) repos/o/r/compare/$A...$B|exit 2" \
-	'ci: a sha GitHub has never seen is an error' "$(run ci 7 --head "$A" --interval 0)"
+record "ci #7 aaaaaaaaaaaa: moved the head is $B, not this one, after 1s|exit 3" \
+	"ci: a compare GitHub can't answer waits out --settle like any other" "$(run ci 7 --head "$A" --interval 1s --settle 1s)"
 
 reset
 fx pulls_7 "$(pr "$A" '' null unknown closed '"2026-11-19T00:00:00Z"')"
@@ -242,6 +249,10 @@ fx "commits_${A}_status" "$(statuses)"
 record "ci #7 aaaaaaaaaaaa: timeout after 2s; last: pending 1 of 1 running: hooks|exit 4" 'ci: a timeout names the last state' \
 	"$(run ci 7 --head "$A" --interval 1s --timeout 2s)"
 record 1 'ci: and goes to stderr too' "$(grep -c 'timeout after 2s' "$tmp/err")"
+before=$SECONDS
+record "ci #7 aaaaaaaaaaaa: timeout after 2s; last: pending 1 of 1 running: hooks|exit 4" 'ci: an interval past the deadline is cut short' \
+	"$(run ci 7 --head "$A" --interval 30s --timeout 2s)"
+record yes 'ci: so the wait keeps to its deadline' "$([ $((SECONDS - before)) -le 4 ] && echo yes || echo no)"
 
 # --- reads that fail ---------------------------------------------------------
 
@@ -272,6 +283,11 @@ for msg in 'HTTP 429: Too Many Requests' 'You have exceeded a secondary rate lim
 	record 3 "errors: transient: $msg" "$(PR_WAIT_TRANSIENT_ATTEMPTS=3 PR_WAIT_ATTEMPTS=1 STUB_FAIL="$msg" run ci 7 --head "$A" --interval 0 >/dev/null; calls)"
 done
 record 1 'errors: a 404 is not transient' "$(PR_WAIT_ATTEMPTS=1 STUB_FAIL='gh: Not Found (HTTP 404)' run ci 7 --head "$A" --interval 0 >/dev/null; calls)"
+before=$SECONDS
+record "ci #7 aaaaaaaaaaaa: timeout after 2s; last: a read failing: HTTP 502: Bad Gateway|exit 4" \
+	"errors: a retry that would run past --timeout ends the wait there" \
+	"$(PR_WAIT_RETRY_DELAY=5 STUB_FAIL='HTTP 502: Bad Gateway' run ci 7 --head "$A" --interval 0 --timeout 2s)"
+record yes 'errors: at once, not after the retry delay' "$([ $((SECONDS - before)) -le 3 ] && echo yes || echo no)"
 
 fx "commits_${A}_check-runs" "$(runs hooks:completed:success)"
 fx "commits_${A}_status" "$(statuses)"
@@ -372,8 +388,12 @@ fx pulls_7_reviews "[$(review 12 "$A" 2026-11-19T02:00:00Z "<!-- ccr-overview-v2
 $unable")]"
 record "review #7 aaaaaaaaaaaa: unable review 12: Copilot was unable to review this head|exit 5" 'review: an unable v2 body' "$(run review 7 --head "$A" --interval 0)"
 fx issues_7_timeline '[{"event":"review_requested","requested_reviewer":{"login":"Copilot"},"created_at":"2026-11-19T02:01:00Z"}]'
+record "review #7 aaaaaaaaaaaa: idle a retry was requested after unable review 12, and nothing is pending, for 2s|exit 5" \
+	'review: a retry that never starts is idle, not unable' "$(run review 7 --head "$A" --interval 1s --idle 2s)"
+record 1 'review: the timeline is read once, not on every pass' "$(calls issues/7/timeline)"
+fx issues_7_timeline '[{"event":"review_requested","requested_reviewer":{"login":"copilot-pull-request-reviewer[bot]"},"created_at":"2026-11-19T02:01:00Z"}]'
 record "review #7 aaaaaaaaaaaa: idle a retry was requested after unable review 12, and nothing is pending, for 1s|exit 5" \
-	'review: a retry that never starts is idle, not unable' "$(run review 7 --head "$A" --interval 1s --idle 1s)"
+	"review: a retry under Copilot's bot login counts too" "$(run review 7 --head "$A" --interval 1s --idle 1s)"
 fx pulls_7.1 "$(pr "$A" Copilot)"
 fx pulls_7_reviews "[$(review 12 "$A" 2026-11-19T02:00:00Z "$unable"),$(review 13 "$A" 2026-11-19T02:05:00Z "$green")]"
 fx pulls_7_reviews_13_comments '[]'
@@ -422,14 +442,15 @@ record 'exit 2+msg' 'usage: a short sha' "$(usage ci 7 --head aaaaaaa)"
 record 'exit 2+msg' 'usage: a bad duration' "$(usage ci 7 --head "$A" --timeout soon)"
 record 'exit 2+msg' 'usage: --idle is for review' "$(usage ci 7 --head "$A" --idle 1m)"
 record 'exit 2+msg' 'usage: an option with no value' "$(usage ci 7 --head)"
+record 'exit 2+msg' 'usage: an interval under 5s' "$(PR_WAIT_FAST= usage ci 7 --head "$A" --interval 1s)"
 record 'exit 2+msg' 'usage: an unknown bot' "$(usage review 7 --head "$A" --bot nobot)"
 record 1 'usage: an unknown bot names the known ones' "$(grep -c 'known: copilot' "$tmp/err")"
 record 0 'usage: and reads nothing' "$(calls)"
 
 : >"$stub/calls"
-PR_WAIT_GH="$tmp/gh" STUB_DIR="$stub" bash "$script" mergeable 7 -R ghe.example.com/o/r --interval 0 >/dev/null 2>&1
+PR_WAIT_GH="$tmp/gh" STUB_DIR="$stub" PR_WAIT_FAST=1 bash "$script" mergeable 7 -R ghe.example.com/o/r --interval 0 >/dev/null 2>&1
 record 'api repos/o/r/pulls/7 --hostname ghe.example.com' '-R: a host goes to gh as --hostname' "$(head -n 1 "$stub/calls")"
-PR_WAIT_GH="$tmp/gh" STUB_DIR="$stub" bash "$script" mergeable 7 -R 'o/r;x' --interval 0 >/dev/null 2>&1
+PR_WAIT_GH="$tmp/gh" STUB_DIR="$stub" PR_WAIT_FAST=1 bash "$script" mergeable 7 -R 'o/r;x' --interval 0 >/dev/null 2>&1
 record 2 '-R: a repo with shell characters is refused' "$?"
 
 finish
