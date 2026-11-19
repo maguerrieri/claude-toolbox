@@ -270,7 +270,12 @@ Copilot's in-flight review shows here as a `copilot-pull-request-reviewer` check
 There is no `--watch`, and no loop to write: to wait for CI, run START Step 8's
 `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-wait.sh" ci <pr> --head <sha>`, which makes
 these two reads on every pass and classifies them as above, REST only, so it runs here unchanged.
-Its exit 5 is the "no check runs and no statuses at all" case after five minutes.
+Its exit 5 is the "no check runs and no statuses at all" case after five minutes. It reads the
+head's check suites as well (`commits/<sha>/check-suites`), and counts a GitHub Actions suite
+that hasn't completed as pending, so a job still waiting on another (`needs:`) isn't missed
+before GitHub creates its run. It ignores other apps' suites, which can sit `queued` with no runs
+for good (seen for Vercel, Cloudflare and Claude apps), and it leaves out Copilot's own
+`copilot-pull-request-reviewer` run, which is the review wait's.
 
 ## Review threads (`REVIEW_BOT`)
 

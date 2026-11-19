@@ -128,12 +128,13 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   code says what comes next. **0**: a review of the head with a 🟢 verdict, no comment of its own
   and no counted body section; still run the gate below, since older threads can stay open.
   **1**: a review of the head with something to answer: read its threads and body (below).
-  **5**, last line `unable`: an *unable to review* body on the head with no request since it (the
-  *Unable to review* bullet's one retry). **5**, last line `idle`: the bot neither requested nor
+  **5**, last line `unable review <id>`: an *unable to review* body on the head with no request
+  for Copilot since it (the *Unable to review* bullet says what follows, by whether `<id>` is the
+  review it already retried). **5**, last line `idle`: the bot neither requested nor
   running for five minutes (`--idle`), so no review is coming without a request (the stale-review
   rule below, or, after a recorded retry, the fallback). **3**: the head moved; wait on the new
-  one. **4**: a timeout after 30 minutes, the last state named. **2**: an error to fix, gh's
-  message on stderr. Copilot is the default `--bot` and the only one it has a check for so far;
+  one. **4**: a timeout after 30 minutes, the last state named. **6**: the PR merged or closed
+  meanwhile. **2**: an error to fix, gh's message on stderr. Copilot is the default `--bot` and the only one it has a check for so far;
   another bot is one function in the script (Codex's is #260). Until a bot has one, wait on CI
   (`pr-wait.sh ci`) and then read its threads.
 
@@ -617,9 +618,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   the retry is in flight, and the wait reads past it once a request follows it). Fall back — treat
   the PR as "no bot" and **say so in one PR comment**
   (`No Copilot review for this PR — <request failed | unable to review twice | retry never
-  answered>; handing back on CI + the user's review`) — when the wait ends `unable` again (the
-  newer review is also unable), when the re-request fails (Copilot disabled), or when the wait
-  ends `idle` (the retry never answered: nothing pending for five minutes, and no newer review).
+  answered>; handing back on CI + the user's review`) — when the wait ends `unable` on a newer
+  review id (the newer review is also unable), when the re-request fails (Copilot disabled, or
+  the wait ends `unable` on the same id: no request for Copilot shows on the PR since that
+  review, so the retry never registered), or when the wait ends `idle` (the retry never answered:
+  nothing pending for five minutes, and no newer review).
   A later pass that finds the retry comment and no answer to it (a resumed session, say) waits
   again; one that finds the comment **older than 15 minutes** (its `created_at`; Copilot's runs
   finish in about five), nothing pending (either signal), and no newer review falls back without

@@ -4,7 +4,9 @@
 # stub that serves fixtures by endpoint. A fixture named <key>.<n> answers
 # the n-th call to that endpoint and <key> every other call, so a test can
 # script a sequence (pending, then green). The key is the endpoint after
-# repos/o/r/, with / turned into _ (pulls_7, commits_<sha>_check-runs).
+# repos/o/r/, with / turned into _ (pulls_7, commits_<sha>_check-runs). A
+# check-suites read with no fixture gets an empty list, and any other
+# endpoint without one a 404.
 #
 #   bash plugins/ticket-workflow/tests/test-pr-wait.sh
 #
@@ -48,6 +50,7 @@ for f in "$STUB_DIR/$key.$n" "$STUB_DIR/$key"; do
 		exit 0
 	fi
 done
+case $key in *_check-suites) echo '{"total_count":0,"check_suites":[]}'; exit 0 ;; esac
 echo "gh: Not Found (HTTP 404) $endpoint" >&2
 exit 1
 STUB_EOF
@@ -56,22 +59,34 @@ chmod +x "$tmp/gh"
 A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 stub=$tmp/stub
+long_ago=2020-01-01T00:00:00Z
 
 reset() { rm -rf "$stub" && mkdir -p "$stub"; }
 fx() { printf '%s\n' "$2" >"$stub/$1"; } # fx <key> <json>
 
-pr() { # pr <head> [requested login] [mergeable] [mergeable_state] [state] [merged_at]: a PR as REST returns it
-	local requested=
+pr() { # pr <head> [requested login] [mergeable] [mergeable_state] [state] [merged_at] [updated_at]: a PR as REST returns it
+	local requested= updated=
 	[ -z "${2:-}" ] || requested="{\"login\":\"$2\"}"
-	printf '{"number":7,"state":"%s","merged_at":%s,"head":{"sha":"%s"},"requested_reviewers":[%s],"mergeable":%s,"mergeable_state":"%s"}' \
-		"${5:-open}" "${6:-null}" "$1" "$requested" "${3:-null}" "${4:-unknown}"
+	[ -z "${7:-}" ] || updated=",\"updated_at\":\"$7\""
+	printf '{"number":7,"state":"%s","merged_at":%s,"head":{"sha":"%s"},"requested_reviewers":[%s],"mergeable":%s,"mergeable_state":"%s"%s}' \
+		"${5:-open}" "${6:-null}" "$1" "$requested" "${3:-null}" "${4:-unknown}" "$updated"
 }
-runs() { # runs <name:status:conclusion>...: a check-runs reply
-	local out= r
+runs() { # runs <name:status:conclusion[:suite]>...: a check-runs reply (suite 1 by default)
+	local out= r name status conclusion suite
 	for r in "$@"; do
-		out="$out${out:+,}{\"name\":\"${r%%:*}\",\"status\":\"$(printf '%s' "$r" | cut -d: -f2)\",\"conclusion\":$(c=$(printf '%s' "$r" | cut -d: -f3); [ -n "$c" ] && printf '"%s"' "$c" || printf null),\"output\":{\"text\":\"long\"}}"
+		IFS=: read -r name status conclusion suite <<<"$r"
+		[ -n "$conclusion" ] && conclusion="\"$conclusion\"" || conclusion=null
+		out="$out${out:+,}{\"name\":\"$name\",\"status\":\"$status\",\"conclusion\":$conclusion,\"check_suite\":{\"id\":${suite:-1}},\"output\":{\"text\":\"long\"}}"
 	done
 	printf '{"total_count":%s,"check_runs":[%s]}' "$#" "$out"
+}
+suites() { # suites <app:id:status>...: a check-suites reply
+	local out= s app id status
+	for s in "$@"; do
+		IFS=: read -r app id status <<<"$s"
+		out="$out${out:+,}{\"id\":$id,\"app\":{\"slug\":\"$app\"},\"status\":\"$status\",\"latest_check_runs_count\":0}"
+	done
+	printf '{"total_count":%s,"check_suites":[%s]}' "$#" "$out"
 }
 statuses() { # statuses <context:state>...: a combined-status reply (its .state reads pending with none)
 	local out= s
@@ -130,14 +145,48 @@ reset
 fx pulls_7 "$(pr "$A")"
 fx "commits_${A}_check-runs" "$(runs)"
 fx "commits_${A}_status" "$(statuses)"
-record "ci #7 aaaaaaaaaaaa: none no check registered after 1s|exit 5" 'ci: no check ever registers (an empty combined status reads pending)' \
+fx "commits_${A}_check-suites" "$(suites vercel:5:queued claude:6:queued)"
+record "ci #7 aaaaaaaaaaaa: none no check registered within 1s of the push|exit 5" \
+	"ci: no check ever registers (an empty combined status reads pending, and other apps' suites sit queued)" \
 	"$(run ci 7 --head "$A" --interval 1s --settle 1s)"
+fx pulls_7 "$(pr "$A" '' null unknown open null "$long_ago")"
+record "ci #7 aaaaaaaaaaaa: none no check registered within 5m of the push|exit 5" \
+	"ci: a PR that hasn't changed in --settle has nothing left to register" "$(run ci 7 --head "$A" --interval 1s)"
+record 1 'ci: so it answers at once' "$(lines)"
+
+# Check suites: a GitHub Actions workflow run whose jobs aren't all created
+# yet (needs:) is pending, however its created runs read.
+reset
+fx pulls_7 "$(pr "$A")"
+fx "commits_${A}_check-runs.1" "$(runs build:completed:success:1)"
+fx "commits_${A}_check-runs" "$(runs build:completed:success:1 deploy:completed:success:1)"
+fx "commits_${A}_check-suites.1" "$(suites github-actions:1:in_progress vercel:5:queued)"
+fx "commits_${A}_check-suites" "$(suites github-actions:1:completed vercel:5:queued)"
+fx "commits_${A}_status" "$(statuses)"
+record "ci #7 aaaaaaaaaaaa: green 2 passed|exit 0" 'ci: a workflow with jobs still to start, then done' "$(run ci 7 --head "$A" --interval 0)"
+record "ci #7 aaaaaaaaaaaa: pending 1 GitHub Actions workflow run(s) with jobs still to start" \
+	'ci: its unfinished suite is pending, though every run so far passed' "$(head -n 1 "$tmp/out")"
+fx "commits_${A}_check-runs.1" "$(runs)"
+fx "commits_${A}_check-suites.1" "$(suites github-actions:2:queued)"
+record "ci #7 aaaaaaaaaaaa: pending 1 GitHub Actions workflow run(s) with jobs still to start" \
+	'ci: a queued suite with no runs is pending, not registering' "$(run ci 7 --head "$A" --interval 0 >/dev/null; head -n 1 "$tmp/out")"
+
+# The review bot's run is review's to wait for, not ci's.
+reset
+fx pulls_7 "$(pr "$A")"
+fx "commits_${A}_check-runs" "$(runs hooks:completed:success:1 copilot-pull-request-reviewer:in_progress::9)"
+fx "commits_${A}_check-suites" "$(suites github-actions:1:completed github-actions:9:in_progress)"
+fx "commits_${A}_status" "$(statuses)"
+record "ci #7 aaaaaaaaaaaa: green 1 passed|exit 0" "ci: leaves out Copilot's run and its suite" "$(run ci 7 --head "$A" --interval 0)"
+fx "commits_${A}_check-runs" "$(runs hooks:completed:success:1 copilot-pull-request-reviewer:completed:failure:9)"
+record "ci #7 aaaaaaaaaaaa: green 1 passed|exit 0" "ci: and Copilot's run failing isn't a CI failure" "$(run ci 7 --head "$A" --interval 0)"
 
 # The head: GitHub can show the old one for a moment after a push, and a
 # head that moves after it was seen ends the wait.
 reset
 fx pulls_7.1 "$(pr "$B")"
 fx pulls_7 "$(pr "$A")"
+fx "compare_${A}...${B}" '{"status":"behind"}'
 fx "commits_${A}_check-runs" "$(runs hooks:completed:success)"
 fx "commits_${A}_status" "$(statuses)"
 record "ci #7 aaaaaaaaaaaa: green 1 passed|exit 0" 'ci: the PR catches up to the pushed head' "$(run ci 7 --head "$A" --interval 0)"
@@ -154,12 +203,21 @@ record "ci #7 aaaaaaaaaaaa: moved the head is now $B|exit 3" 'ci: a head that mo
 
 reset
 fx pulls_7 "$(pr "$B")"
+fx "compare_${A}...${B}" '{"status":"ahead"}'
+record "ci #7 aaaaaaaaaaaa: moved the head is now $B, a later commit|exit 3" 'ci: a head already past the sha ends it at once' \
+	"$(run ci 7 --head "$A" --interval 1s)"
+fx "compare_${A}...${B}" '{"status":"diverged"}'
 record "ci #7 aaaaaaaaaaaa: moved the head is $B, not this one, after 1s|exit 3" 'ci: a head the PR never shows' \
 	"$(run ci 7 --head "$A" --interval 1s --settle 1s)"
+rm "$stub/compare_${A}...${B}"
+record "ci #7 aaaaaaaaaaaa: error a read failed 3 times in a row: gh: Not Found (HTTP 404) repos/o/r/compare/$A...$B|exit 2" \
+	'ci: a sha GitHub has never seen is an error' "$(run ci 7 --head "$A" --interval 0)"
 
 reset
 fx pulls_7 "$(pr "$A" '' null unknown closed '"2026-11-19T00:00:00Z"')"
-record "ci #7 aaaaaaaaaaaa: closed PR #7 is merged; nothing to wait for|exit 2" 'ci: a merged PR is an error, not a wait' "$(run ci 7 --head "$A" --interval 0)"
+record "ci #7 aaaaaaaaaaaa: merged|exit 6" 'ci: a PR merged meanwhile' "$(run ci 7 --head "$A" --interval 0)"
+fx pulls_7 "$(pr "$A" '' null unknown closed)"
+record "ci #7 aaaaaaaaaaaa: closed|exit 6" 'ci: or closed' "$(run ci 7 --head "$A" --interval 0)"
 
 # Timeout: still pending when time runs out.
 reset
@@ -177,23 +235,34 @@ record 1 'ci: and goes to stderr too' "$(grep -c 'timeout after 2s' "$tmp/err")"
 reset
 fx pulls_7 "$(pr "$A")"
 before=$SECONDS
-got=$(STUB_FAIL='accepts at most 1 arg(s), received 4' run ci 7 --head "$A" --interval 0)
-record "ci #7 aaaaaaaaaaaa: error a read failed 3 times in a row: accepts at most 1 arg(s), received 4|exit 2" \
+got=$(STUB_FAIL='accepts 1 arg(s), received 4' run ci 7 --head "$A" --interval 0)
+record "ci #7 aaaaaaaaaaaa: error a read failed 3 times in a row: accepts 1 arg(s), received 4|exit 2" \
 	'errors: a read that keeps failing ends the wait' "$got"
 record 3 'errors: after three tries (PR_WAIT_ATTEMPTS)' "$(calls)"
-record yes "errors: gh's error is shown on each try" "$([ "$(grep -c 'accepts at most 1 arg' "$tmp/err")" -ge 3 ] && echo yes || echo no)"
+record yes "errors: gh's error is shown on each try" "$([ "$(grep -c 'accepts 1 arg' "$tmp/err")" -ge 3 ] && echo yes || echo no)"
 record yes 'errors: in seconds' "$([ $((SECONDS - before)) -le 5 ] && echo yes || echo no)"
-record "ci #7 aaaaaaaaaaaa: error a read failed 2 times in a row: accepts at most 1 arg(s), received 4|exit 2" \
-	'errors: PR_WAIT_ATTEMPTS sets the tries' "$(PR_WAIT_ATTEMPTS=2 STUB_FAIL='accepts at most 1 arg(s), received 4' run ci 7 --head "$A" --interval 0)"
+record "ci #7 aaaaaaaaaaaa: error a read failed 2 times in a row: accepts 1 arg(s), received 4|exit 2" \
+	'errors: PR_WAIT_ATTEMPTS sets the tries' "$(PR_WAIT_ATTEMPTS=2 STUB_FAIL='accepts 1 arg(s), received 4' run ci 7 --head "$A" --interval 0)"
 before=$SECONDS
 PR_WAIT_RETRY_DELAY=1 STUB_FAIL=boom run ci 7 --head "$A" --interval 0 >/dev/null
 record yes 'errors: the retry delay doubles (1s, then 2s)' "$([ $((SECONDS - before)) -ge 3 ] && echo yes || echo no)"
+
+# GitHub briefly unavailable gets a longer budget, still bounded.
+record "ci #7 aaaaaaaaaaaa: error a read failed 8 times in a row: HTTP 502: Bad Gateway|exit 2" \
+	'errors: a 5xx is retried longer (PR_WAIT_TRANSIENT_ATTEMPTS)' "$(STUB_FAIL='HTTP 502: Bad Gateway' run ci 7 --head "$A" --interval 0)"
+record 8 'errors: eight tries' "$(calls)"
+record 1 'errors: and says so' "$(grep -c 'read failed (try 1 of 8)' "$tmp/err")"
+for msg in 'HTTP 429: Too Many Requests' 'You have exceeded a secondary rate limit (HTTP 403)' \
+	'Post "https://api.github.com/graphql": dial tcp: lookup api.github.com: no such host' 'read: connection reset by peer'; do
+	record 3 "errors: transient: $msg" "$(PR_WAIT_TRANSIENT_ATTEMPTS=3 PR_WAIT_ATTEMPTS=1 STUB_FAIL="$msg" run ci 7 --head "$A" --interval 0 >/dev/null; calls)"
+done
+record 1 'errors: a 404 is not transient' "$(PR_WAIT_ATTEMPTS=1 STUB_FAIL='gh: Not Found (HTTP 404)' run ci 7 --head "$A" --interval 0 >/dev/null; calls)"
 
 fx "commits_${A}_check-runs" "$(runs hooks:completed:success)"
 fx "commits_${A}_status" "$(statuses)"
 record "ci #7 aaaaaaaaaaaa: green 1 passed|exit 0" 'errors: one failed read is retried, then the wait goes on' \
 	"$(STUB_FAIL_ONCE="commits_${A}_check-runs" run ci 7 --head "$A" --interval 0)"
-record 1 'errors: and the retry says so on stderr' "$(grep -c 'read failed (try 1 of 3)' "$tmp/err")"
+record 1 'errors: and the retry says so on stderr' "$(grep -c 'read failed (try 1 of 8)' "$tmp/err")"
 
 fx pulls_7 'not json'
 got=$(run ci 7 --head "$A" --interval 0)
@@ -228,6 +297,10 @@ fx pulls_7_reviews "[$(review 11 "$A" 2026-11-19T01:00:00Z "<!-- ccr-overview-v2
 <details><summary><strong>Previously missed (2)</strong></summary>")]"
 record "review #7 aaaaaaaaaaaa: findings review 11: Approval recommended, 0 comments, body sections counting 2|exit 1" \
 	'review: a green v2 verdict with body entries has findings' "$(run review 7 --head "$A" --interval 0)"
+
+fx pulls_7_reviews "[$(review 11 "$A" 2026-11-19T01:00:00Z '### Suppressed comments (2)')]"
+record "review #7 aaaaaaaaaaaa: findings review 11: 0 comments, body sections counting 2|exit 1" \
+	'review: a body with no verdict keeps its fields in order' "$(run review 7 --head "$A" --interval 0)"
 
 fx pulls_7_reviews "[$(review 10 "$B" 2026-11-19T00:00:00Z "$green"),$(review 11 "$A" 2026-11-19T01:00:00Z '### 🟡 Changes recommended
 
