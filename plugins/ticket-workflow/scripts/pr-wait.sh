@@ -28,13 +28,23 @@
 #      <sha> lists no findings; mergeable, MERGEABLE
 #   1  done and failed: ci, a check failed (it stops at the first); review,
 #      the review lists findings; mergeable, CONFLICTING
-#   2  error: a usage error, a PR that isn't open, or a read that still fails
-#      after its retries (gh's error is on stderr); never "not yet"
-#   3  head moved: the PR's head is not <sha>, or stopped being <sha>
+#   2  error: a usage error, or a read that still fails after its retries
+#      (gh's error is on stderr); never "not yet"
+#   3  head moved: the PR's head moved off <sha>, has moved past it (a later
+#      commit), or never showed it within --settle
 #   4  timed out, with the last state seen
-#   5  nothing to wait for: ci, no check registered on <sha> within --settle;
-#      review, the bot couldn't review <sha> ("unable"), or showed no sign of
-#      reviewing it for --idle ("idle")
+#   5  nothing to wait for: ci, no check registered on <sha> within --settle
+#      of its push; review, the bot couldn't review <sha> ("unable"), or
+#      showed no sign of reviewing it for --idle ("idle")
+#   6  the PR merged or closed while it waited (the last line says which)
+#
+# ci reads the head's check runs and commit statuses as github-rest.md's CI
+# read classifies them, and counts a GitHub Actions check suite that hasn't
+# completed as pending too, so a job that waits on another (needs:) isn't
+# missed before GitHub creates it. Other apps' suites are left out (a
+# Vercel, Cloudflare or Claude app's sit queued with no runs for good), and
+# so is the review bot's own run (copilot-pull-request-reviewer), which is
+# `review`'s to wait for.
 #
 # Output: one stdout line per state change, "<subcommand> #<pr> <sha12>:
 # <state>[ <detail>]", ending with the final state, so the same call works as
@@ -50,7 +60,9 @@
 # pass, and the session waited 5.5 hours on a green, reviewed PR (#351).
 # Here a read that fails is retried (PR_WAIT_ATTEMPTS tries in all, default
 # 3, PR_WAIT_RETRY_DELAY seconds apart, default 5, doubling), then ends the
-# wait with exit 2.
+# wait with exit 2. A failure that reads as GitHub being briefly unavailable
+# (HTTP 5xx or 429, a rate limit, a network error) gets PR_WAIT_TRANSIENT_ATTEMPTS
+# tries instead (default 8, the delay capped at a minute: about four minutes).
 #
 # Every read is REST (gh api, and scripts/gh-rest-list.sh for lists), never
 # GraphQL, and every comparison is standalone jq with --arg, never
@@ -58,8 +70,9 @@
 # (github-rest.md). It needs gh and jq.
 #
 # BOTS: `review` reads the engaged bot through one function per bot,
-# bot_<name> (bot_copilot below). It runs once per read with $pr, $sha,
-# $repo and $pr_json (the PR as REST returns it) set, prints one line,
+# bot_<name> (bot_copilot below), and ci leaves out the run each one names in
+# bot_runs. The function runs once per read with $pr, $sha, $repo and
+# $pr_json (the PR as REST returns it) set, prints one line,
 # "<state> <detail>", and returns non-zero when a read fails. <state> is:
 #   pending   the bot is requested or running on <sha>
 #   idle      no sign of it doing either (the wait ends after --idle)
@@ -75,6 +88,12 @@ set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 gh_bin=${PR_WAIT_GH:-gh}
 usage="usage: pr-wait.sh ci|review|mergeable <pr> [--head <sha>] [-R [<host>/]<owner>/<repo>] [--timeout <dur>] [--interval <dur>] [--settle <dur>] [--idle <dur>] [--bot <bot>]"
+
+# The review bots' own check runs, which ci leaves to `review` (JSON).
+bot_runs='["copilot-pull-request-reviewer"]'
+# Splits the fields one jq call prints: the unit separator, not a tab, since
+# read collapses empty fields between whitespace separators.
+sep=$'\x1f'
 
 die() { # die <message>: exit 2, the message on stderr
 	echo "pr-wait.sh: $*" >&2
@@ -146,8 +165,10 @@ if [ "$repo" != '{owner}/{repo}' ]; then
 fi
 
 attempts=${PR_WAIT_ATTEMPTS:-3}
+transient_attempts=${PR_WAIT_TRANSIENT_ATTEMPTS:-8}
 retry_delay=${PR_WAIT_RETRY_DELAY:-5}
 [[ $attempts =~ ^[1-9][0-9]*$ ]] || die "PR_WAIT_ATTEMPTS '$attempts' is not a positive number"
+[[ $transient_attempts =~ ^[1-9][0-9]*$ ]] || die "PR_WAIT_TRANSIENT_ATTEMPTS '$transient_attempts' is not a positive number"
 [[ $retry_delay =~ ^[0-9]+$ ]] || die "PR_WAIT_RETRY_DELAY '$retry_delay' is not a whole number of seconds"
 
 command -v jq >/dev/null 2>&1 || die "needs jq on PATH"
@@ -158,12 +179,12 @@ trap 'rm -rf "$tmp"' EXIT
 
 # --- reads -----------------------------------------------------------------
 
-# Every read runs inside $(...), a subshell, so a failed one keeps its first
-# error line in a file for the final report, and shows the whole error on
+# Every read runs inside $(...), a subshell, so a failed one keeps its error
+# in a file for the retry decision and the final report, and shows it on
 # stderr as it happens.
 failed_read() { # failed_read <stderr file>
 	cat "$1" >&2
-	head -n 1 "$1" >"$tmp/last-err"
+	cp "$1" "$tmp/last-err"
 	return 1
 }
 
@@ -190,36 +211,57 @@ fail() { # fail <message>: a reply that parsed but can't be used
 	failed_read "$tmp/err-own"
 }
 
+transient() { # did the last failed read look like GitHub being briefly unavailable?
+	grep -qiE 'HTTP (5[0-9][0-9]|429)|rate limit|timed? ?out|connection (reset|refused)|unexpected EOF|no such host|TLS handshake|dial tcp|network is unreachable' \
+		"$tmp/last-err" 2>/dev/null
+}
+
 # --- the PR and its head ---------------------------------------------------
 
 start=$SECONDS
 head_seen=
 pr_json=
+age=0
 state=
 detail=
 
-read_pr() { # sets pr_json, and state/detail when the PR or its head ends this read
-	local head pr_state
+read_pr() { # sets pr_json and age, and state/detail when the PR or its head ends this read
+	local fields head pr_state rel
 	pr_json=$(api "repos/$repo/pulls/$pr") || return 1
-	head=$(printf '%s' "$pr_json" | j -r '.head.sha | strings') || return 1
-	pr_state=$(printf '%s' "$pr_json" | j -r 'if .merged_at then "merged" else (.state | strings) end') || return 1
+	# age: seconds since the PR last changed (a push changes it), 0 when
+	# GitHub doesn't say, which only ever makes the wait longer.
+	fields=$(printf '%s' "$pr_json" | j -r '[(.head.sha // ""),
+		(if .merged_at then "merged" else (.state // "") end),
+		(if .updated_at then ([now - (.updated_at | fromdateiso8601), 0] | max | floor) else 0 end)]
+		| map(tostring) | join("\u001f")') || return 1
+	IFS=$sep read -r head pr_state age <<<"$fields"
 	if [ -z "$head" ] || [ -z "$pr_state" ]; then
 		fail "GitHub's reply for PR #$pr has no head sha or state"
 		return 1
 	fi
 	if [ "$pr_state" != open ]; then
-		state=closed detail="PR #$pr is $pr_state; nothing to wait for"
+		state=closed
+		[ "$pr_state" != merged ] || state=merged
 		return 0
 	fi
 	[ -n "$sha" ] || sha=$head
 	if [ "$head" = "$sha" ]; then
 		head_seen=1
-	elif [ -n "$head_seen" ]; then
+		return 0
+	fi
+	if [ -n "$head_seen" ]; then
 		state=moved detail="the head is now $head"
+		return 0
+	fi
+	# Not seen yet: right after a push GitHub can show the old head for a
+	# moment, but a head that is already past <sha> won't come back to it.
+	rel=$(api "repos/$repo/compare/$sha...$head") || return 1
+	rel=$(printf '%s' "$rel" | j -r '.status // ""') || return 1
+	if [ "$rel" = ahead ]; then
+		state=moved detail="the head is now $head, a later commit"
 	elif [ $((SECONDS - start)) -ge "$settle" ]; then
 		state=moved detail="the head is $head, not this one, after $(fmt "$settle")"
 	else
-		# Right after a push, GitHub can show the old head for a moment.
 		state=syncing detail="the PR still shows $head"
 	fi
 	return 0
@@ -228,33 +270,46 @@ read_pr() { # sets pr_json, and state/detail when the PR or its head ends this r
 # --- ci --------------------------------------------------------------------
 
 poll_ci() {
-	local runs statuses summary
+	local runs suites statuses summary
 	# Only the fields used: a check run's output can be large, and Linux caps
 	# one argument (the --argjson below) at 128 KB.
 	runs=$(rest_list "repos/$repo/commits/$sha/check-runs" --key check_runs) || return 1
-	runs=$(printf '%s' "$runs" | j -c 'map({name, status, conclusion})') || return 1
+	runs=$(printf '%s' "$runs" | j -c 'map({name, status, conclusion, suite: .check_suite.id})') || return 1
+	suites=$(rest_list "repos/$repo/commits/$sha/check-suites" --key check_suites) || return 1
+	suites=$(printf '%s' "$suites" | j -c 'map(select(.app.slug == "github-actions") | {id, status})') || return 1
 	statuses=$(api "repos/$repo/commits/$sha/status" -X GET -f per_page=100) || return 1
 	statuses=$(printf '%s' "$statuses" | j -c '[(.statuses // [])[] | {context, state}]') || return 1
 	# Classified as github-rest.md's CI read and gh pr checks do: a stale
 	# conclusion is pending, these conclusions fail, the rest pass.
-	summary=$(j -rn --argjson runs "$runs" --argjson st "$statuses" '
+	summary=$(j -rn --argjson runs "$runs" --argjson suites "$suites" --argjson st "$statuses" --argjson bots "$bot_runs" '
 		def failed: test("^(failure|cancelled|timed_out|action_required|startup_failure)$");
-		([$runs[] | {name, s: (if .status != "completed" or .conclusion == "stale" then "pending"
+		def isbot: . as $n | any($bots[]; . == $n);
+		[$runs[] | select(.name | isbot | not)] as $mine
+		| ([$runs[] | select(.name | isbot) | .suite] - [$mine[] | .suite]) as $botsuites
+		| ([$mine[] | {name, suite, s: (if .status != "completed" or .conclusion == "stale" then "pending"
 		                       elif ((.conclusion // "") | failed) then .conclusion else "pass" end)}]
-		 + [$st[] | {name: .context, s: (if .state == "pending" then "pending"
+		 + [$st[] | {name: .context, suite: null, s: (if .state == "pending" then "pending"
 		                       elif ((.state // "") | test("^(failure|error)$")) then .state else "pass" end)}]) as $c
-		| ($c | map(select(.s == "pending")) | map(.name)) as $p
+		| ($c | map(select(.s == "pending"))) as $p
 		| ($c | map(select(.s != "pending" and .s != "pass")) | map("\(.name) (\(.s))")) as $f
-		| if ($c | length) == 0 then "none"
-		  elif ($f | length) > 0 then "failed \($f | join(", "))"
-		  elif ($p | length) > 0 then "pending \($p | length) of \($c | length) running: \($p | join(", "))"
+		| [$suites[] | select(.status != "completed") | .id as $i
+		   | select((any($botsuites[]; . == $i) or any($p[]; .suite == $i)) | not)] as $waiting
+		| if ($f | length) > 0 then "failed \($f | join(", "))"
+		  elif ($p | length) > 0 or ($waiting | length) > 0 then
+		    "pending " + ([if ($p | length) > 0 then "\($p | length) of \($c | length) running: \($p | map(.name) | join(", "))" else empty end,
+		                   if ($waiting | length) > 0 then "\($waiting | length) GitHub Actions workflow run(s) with jobs still to start" else empty end]
+		                  | join("; "))
+		  elif ($c | length) == 0 then "none"
 		  else "green \($c | length) passed" end') || return 1
 	state=${summary%% *}
 	detail=${summary#"$state"}
 	detail=${detail# }
 	if [ "$state" = none ]; then
-		if [ $((SECONDS - start)) -ge "$settle" ]; then
-			detail="no check registered after $(fmt "$settle")"
+		# Checks register within --settle of the push. The push was at least
+		# $age seconds ago (the PR hasn't changed since), and before this wait
+		# began.
+		if [ $((SECONDS - start)) -ge "$settle" ] || [ "$age" -ge "$settle" ]; then
+			detail="no check registered within $(fmt "$settle") of the push"
 		else
 			state=registering detail="no checks reported yet"
 		fi
@@ -269,24 +324,24 @@ poll_ci() {
 # copilot-pull-request-reviewer check run on the head (REVIEW_BOT's detect
 # step). Its review body's shapes are REVIEW_BOT's.
 bot_copilot() {
-	local reviews newest id at comments verdict sections pending runs retried
+	local reviews newest id at unable verdict sections comments pending runs retried
 	reviews=$(rest_list "repos/$repo/pulls/$pr/reviews") || return 1
-	newest=$(printf '%s' "$reviews" | j -c --arg sha "$sha" '
+	# The newest review of this head, as id, time, unable, verdict, and the
+	# sum of its body sections' counts (Suppressed comments, Previously
+	# missed, Open), split by $sep.
+	newest=$(printf '%s' "$reviews" | j -r --arg sha "$sha" '
 		[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]" and .commit_id == $sha)]
 		| sort_by(.submitted_at) | last // empty
-		| {id, submitted_at, body: (.body // "")}
-		| . + {unable: (.body | test("^\\s*(<!--[^>]*-->\\s*)?(## Copilot review overview\\s*)?Copilot was unable to review"))}') ||
-		return 1
-	if [ -n "$newest" ]; then
-		id=$(printf '%s' "$newest" | j -r .id) || return 1
-		at=$(printf '%s' "$newest" | j -r .submitted_at) || return 1
-	fi
-	if [ -n "$newest" ] && [ "$(printf '%s' "$newest" | j -r .unable)" = false ]; then
+		| (.body // "") as $b
+		| [.id, .submitted_at,
+		   ($b | test("^\\s*(<!--[^>]*-->\\s*)?(## Copilot review overview\\s*)?Copilot was unable to review")),
+		   ((first($b | capture("###[ \\t]+(?<v>(🟢|🟡|🔵)[^\\n]*)")) // {v: ""}).v),
+		   ([$b | scan("(Suppressed comments|Previously missed|Open) \\(([0-9]+)\\)") | .[1] | tonumber] | add // 0)]
+		| map(tostring) | join("\u001f")') || return 1
+	[ -z "$newest" ] || IFS=$sep read -r id at unable verdict sections <<<"$newest"
+	if [ -n "$newest" ] && [ "$unable" = false ]; then
 		comments=$(rest_list "repos/$repo/pulls/$pr/reviews/$id/comments") || return 1
 		comments=$(printf '%s' "$comments" | j length) || return 1
-		verdict=$(printf '%s' "$newest" | j -r '(first(.body | capture("###[ \\t]+(?<v>(🟢|🟡|🔵)[^\\n]*)")) // {v: ""}).v') || return 1
-		sections=$(printf '%s' "$newest" | j -r '[.body | scan("(Suppressed comments|Previously missed|Open) \\(([0-9]+)\\)") | .[1] | tonumber] | add // 0') ||
-			return 1
 		# Clean only when nothing could need an answer: a green verdict, no
 		# comment of its own, and no counted body section. Anything else goes
 		# back to the caller, to read as REVIEW_BOT says.
@@ -380,7 +435,7 @@ poll_mergeable() {
 poll() { # one read of everything the subcommand needs
 	state= detail=
 	read_pr || return 1
-	[ -z "$state" ] || return 0 # closed, moved, or still syncing
+	[ -z "$state" ] || return 0 # merged, closed, moved, or still syncing
 	"poll_$sub"
 }
 
@@ -390,17 +445,21 @@ last=
 while :; do
 	attempt=1
 	delay=$retry_delay
+	rm -f "$tmp/last-err"
 	until poll; do
-		if [ "$attempt" -ge "$attempts" ]; then
-			state=error detail="a read failed $attempts times in a row: $(cat "$tmp/last-err" 2>/dev/null)"
+		budget=$attempts
+		transient && budget=$transient_attempts
+		if [ "$attempt" -ge "$budget" ]; then
+			state=error detail="a read failed $attempt times in a row: $(head -n 1 "$tmp/last-err" 2>/dev/null)"
 			emit
 			emit >&2
 			exit 2
 		fi
-		echo "pr-wait.sh: read failed (try $attempt of $attempts); retrying in ${delay}s" >&2
+		echo "pr-wait.sh: read failed (try $attempt of $budget); retrying in ${delay}s" >&2
 		sleep "$delay"
 		attempt=$((attempt + 1))
 		delay=$((delay * 2))
+		[ "$delay" -le 60 ] || delay=60
 	done
 	line=$(emit)
 	[ "$line" = "$last" ] || printf '%s\n' "$line"
@@ -408,12 +467,9 @@ while :; do
 	case $state in
 	green | clean | mergeable) exit 0 ;;
 	failed | findings | conflicting) exit 1 ;;
-	closed)
-		printf '%s\n' "$line" >&2
-		exit 2
-		;;
 	moved) exit 3 ;;
 	none | idle | unable) exit 5 ;;
+	merged | closed) exit 6 ;;
 	esac
 	if [ $((SECONDS - start)) -ge "$timeout" ]; then
 		state=timeout detail="after $(fmt "$timeout"); last: ${last#*: }"
