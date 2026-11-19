@@ -277,8 +277,10 @@ poll_ci() {
 	runs=$(printf '%s' "$runs" | j -c 'map({name, status, conclusion, suite: .check_suite.id})') || return 1
 	suites=$(rest_list "repos/$repo/commits/$sha/check-suites" --key check_suites) || return 1
 	suites=$(printf '%s' "$suites" | j -c 'map(select(.app.slug == "github-actions") | {id, status})') || return 1
-	statuses=$(api "repos/$repo/commits/$sha/status" -X GET -f per_page=100) || return 1
-	statuses=$(printf '%s' "$statuses" | j -c '[(.statuses // [])[] | {context, state}]') || return 1
+	# Every page: a failing context past the first 100 would otherwise read
+	# as green.
+	statuses=$(rest_list "repos/$repo/commits/$sha/status" --key statuses) || return 1
+	statuses=$(printf '%s' "$statuses" | j -c 'map({context, state})') || return 1
 	# Classified as github-rest.md's CI read and gh pr checks do: a stale
 	# conclusion is pending, these conclusions fail, the rest pass.
 	summary=$(j -rn --argjson runs "$runs" --argjson suites "$suites" --argjson st "$statuses" --argjson bots "$bot_runs" '
@@ -325,6 +327,18 @@ poll_ci() {
 # step). Its review body's shapes are REVIEW_BOT's.
 bot_copilot() {
 	local reviews newest id at unable verdict sections comments pending runs retried
+	# Pending first: a re-request on a head Copilot already reviewed is a
+	# newer review on its way, which an earlier verdict must not stand in for.
+	pending=$(printf '%s' "$pr_json" | j -r '[.requested_reviewers[]?.login] | any(test("^(Copilot|copilot-pull-request-reviewer(\\[bot\\])?)$"))') ||
+		return 1
+	if [ "$pending" = false ]; then
+		runs=$(rest_list "repos/$repo/commits/$sha/check-runs" --key check_runs) || return 1
+		pending=$(printf '%s' "$runs" | j -r 'any(.[]; .name == "copilot-pull-request-reviewer" and .status != "completed")') || return 1
+	fi
+	if [ "$pending" = true ]; then
+		echo "pending requested or running"
+		return 0
+	fi
 	reviews=$(rest_list "repos/$repo/pulls/$pr/reviews") || return 1
 	# The newest review of this head, as id, time, unable, verdict, and the
 	# sum of its body sections' counts (Suppressed comments, Previously
@@ -354,16 +368,6 @@ bot_copilot() {
 			;;
 		esac
 		echo "findings review $id: ${verdict:+${verdict#* }, }$comments comments, body sections counting $sections"
-		return 0
-	fi
-	pending=$(printf '%s' "$pr_json" | j -r '[.requested_reviewers[]?.login] | any(test("^(Copilot|copilot-pull-request-reviewer(\\[bot\\])?)$"))') ||
-		return 1
-	if [ "$pending" = false ]; then
-		runs=$(rest_list "repos/$repo/commits/$sha/check-runs" --key check_runs) || return 1
-		pending=$(printf '%s' "$runs" | j -r 'any(.[]; .name == "copilot-pull-request-reviewer" and .status != "completed")') || return 1
-	fi
-	if [ "$pending" = true ]; then
-		echo "pending requested or running"
 		return 0
 	fi
 	if [ -n "$newest" ]; then

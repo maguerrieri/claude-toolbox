@@ -31,13 +31,19 @@ fi
 [ "${1:-}" = api ] || { echo "stub gh: only api is stubbed: $*" >&2; exit 1; }
 shift
 endpoint=
+page=1
 while [ $# -gt 0 ]; do
 	case $1 in
-	-X | -f | -F | --hostname | --jq) shift 2 ;;
+	-f)
+		case ${2:-} in page=*) page=${2#page=} ;; esac
+		shift 2
+		;;
+	-X | -F | --hostname | --jq) shift 2 ;;
 	*) [ -n "$endpoint" ] || endpoint=$1; shift ;;
 	esac
 done
 key=$(printf '%s' "${endpoint#repos/o/r/}" | tr / _)
+[ "$page" = 1 ] || key=$key.p$page # page 2 of a list is the fixture <key>.p2
 n=$(($(cat "$STUB_DIR/n-$key" 2>/dev/null || echo 0) + 1))
 echo "$n" >"$STUB_DIR/n-$key"
 if [ "${STUB_FAIL_ONCE:-}" = "$key" ] && [ "$n" = 1 ]; then
@@ -125,6 +131,15 @@ record "ci #7 aaaaaaaaaaaa: failed lint (failure)|exit 1" 'ci: a failed check en
 fx "commits_${A}_check-runs" "$(runs hooks:completed:success)"
 fx "commits_${A}_status" "$(statuses deploy:error)"
 record "ci #7 aaaaaaaaaaaa: failed deploy (error)|exit 1" 'ci: a failed commit status fails it too' "$(run ci 7 --head "$A" --interval 0)"
+
+# Statuses past the first 100 count too.
+hundred=
+for i in $(seq 1 100); do hundred="$hundred ctx$i:success"; done
+# shellcheck disable=SC2086 # one argument per status
+fx "commits_${A}_status" "$(statuses $hundred)"
+fx "commits_${A}_status.p2" "$(statuses late:failure)"
+record "ci #7 aaaaaaaaaaaa: failed late (failure)|exit 1" 'ci: a failed status on the second page of statuses' "$(run ci 7 --head "$A" --interval 0)"
+rm "$stub/commits_${A}_status.p2"
 
 reset
 fx pulls_7 "$(pr "$A")"
@@ -281,6 +296,7 @@ green='### 🟢 Approval recommended
 Nothing to change.'
 reset
 fx pulls_7 "$(pr "$A")"
+fx "commits_${A}_check-runs" "$(runs hooks:completed:success copilot-pull-request-reviewer:completed:success)"
 fx pulls_7_reviews "[$(review 11 "$A" 2026-11-19T01:00:00Z "$green")]"
 fx pulls_7_reviews_11_comments '[]'
 record "review #7 aaaaaaaaaaaa: clean review 11: Approval recommended|exit 0" 'review: a green review with nothing in it' "$(run review 7 --head "$A" --interval 0)"
@@ -312,14 +328,25 @@ record "review #7 aaaaaaaaaaaa: findings review 11: Changes recommended, 0 comme
 reset
 fx pulls_7.1 "$(pr "$A" Copilot)"
 fx pulls_7 "$(pr "$A")"
-fx pulls_7_reviews.1 '[]'
-fx pulls_7_reviews.2 '[]'
 fx pulls_7_reviews "[$(review 11 "$A" 2026-11-19T01:00:00Z "$green")]"
-fx "commits_${A}_check-runs" "$(runs copilot-pull-request-reviewer:in_progress:)"
+fx "commits_${A}_check-runs.1" "$(runs copilot-pull-request-reviewer:in_progress:)"
+fx "commits_${A}_check-runs" "$(runs copilot-pull-request-reviewer:completed:success)"
 fx pulls_7_reviews_11_comments '[]'
 record "review #7 aaaaaaaaaaaa: clean review 11: Approval recommended|exit 0" 'review: pending, then the review lands' "$(run review 7 --head "$A" --interval 0)"
 record "review #7 aaaaaaaaaaaa: pending requested or running" 'review: one line while pending, by request or by run' "$(head -n 1 "$tmp/out")"
 record 2 'review: and one for the review' "$(lines)"
+
+# A re-request on a head Copilot already reviewed waits for the newer review:
+# while Copilot is requested, no review of the head ends the wait.
+reset
+fx pulls_7.1 "$(pr "$A" Copilot)"
+fx pulls_7 "$(pr "$A")"
+fx pulls_7_reviews "[$(review 11 "$A" 2026-11-19T01:00:00Z "$green"),$(review 12 "$A" 2026-11-19T02:00:00Z '### 🔵 Needs a closer look')]"
+fx "commits_${A}_check-runs" "$(runs copilot-pull-request-reviewer:completed:success)"
+fx pulls_7_reviews_12_comments '[]'
+record "review #7 aaaaaaaaaaaa: findings review 12: Needs a closer look, 0 comments, body sections counting 0|exit 1" \
+	'review: a re-request on a reviewed head waits for the newer review' "$(run review 7 --head "$A" --interval 0)"
+record "review #7 aaaaaaaaaaaa: pending requested or running" "review: and doesn't take the earlier one's verdict" "$(head -n 1 "$tmp/out")"
 
 # Idle: a review of an older head only, and nothing pending.
 reset
@@ -348,7 +375,6 @@ fx issues_7_timeline '[{"event":"review_requested","requested_reviewer":{"login"
 record "review #7 aaaaaaaaaaaa: idle a retry was requested after unable review 12, and nothing is pending, for 1s|exit 5" \
 	'review: a retry that never starts is idle, not unable' "$(run review 7 --head "$A" --interval 1s --idle 1s)"
 fx pulls_7.1 "$(pr "$A" Copilot)"
-fx pulls_7_reviews.2 "[$(review 12 "$A" 2026-11-19T02:00:00Z "$unable")]"
 fx pulls_7_reviews "[$(review 12 "$A" 2026-11-19T02:00:00Z "$unable"),$(review 13 "$A" 2026-11-19T02:05:00Z "$green")]"
 fx pulls_7_reviews_13_comments '[]'
 record "review #7 aaaaaaaaaaaa: clean review 13: Approval recommended|exit 0" 'review: a pending retry, then a real review' "$(run review 7 --head "$A" --interval 0)"
