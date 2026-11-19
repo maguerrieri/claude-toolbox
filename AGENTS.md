@@ -209,6 +209,18 @@ that isn't a draft. Print a boolean field bare (`\(.draft)`, which prints
 `false`, `true` or `null`) and compare against the string. Found in the same
 place, by the tests.
 
+## In-turn waits: `scripts/pr-wait.sh`
+
+A skill step that waits on a PR (its CI, a review bot's review, GitHub's
+mergeability) names ticket-workflow's `scripts/pr-wait.sh`. It never
+describes a loop for the session to write, since a loop whose check errors
+spins silently: one built on `gh --jq … --arg`, which `gh` rejects
+(`accepts at most 1 arg(s)`), waited 5.5 hours on a green, reviewed PR
+(sprue-works/cbeams#104, #351). The script pins the head, ends a read that
+keeps failing with exit 2, and times out. A new review bot's wait is one
+`bot_<name>` function in it (Codex's is #260). Its tests:
+`bash plugins/ticket-workflow/tests/test-pr-wait.sh`.
+
 ## Plugin commands and skills: one name each
 
 A plugin's `commands/<name>.md` and `skills/<name>/SKILL.md` both register as

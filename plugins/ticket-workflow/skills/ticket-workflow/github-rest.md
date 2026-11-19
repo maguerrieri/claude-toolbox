@@ -152,7 +152,9 @@ gh api 'repos/{owner}/{repo}/pulls/<pr>' --jq '{number, title, body, url: .html_
   mergeStateStatus: ((.mergeable_state // "unknown") | ascii_upcase)}'
 ```
 GitHub computes `mergeable` in the background, so the first read after a push can say
-`UNKNOWN`; read it again a few seconds later before acting on it, as you would locally.
+`UNKNOWN`. Wait it out with `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-wait.sh" mergeable <pr>`,
+as you would locally: it reads this same REST endpoint, normalized the same way, and ends on both
+fields (`MERGEABLE CLEAN`, say).
 
 **Commits, comments and reviews** (the list fields of FINISH Step 1's
 `--json commits,title,body,isDraft,comments,reviews`). Read all three, along with the single-PR
@@ -204,8 +206,9 @@ bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/gh-rest-list.sh" 'repos/{owner}/{
 **Request Copilot** (`gh pr edit <pr> --add-reviewer "@copilot"`). Use the GitHub MCP tool
 `request_copilot_review` when it's loaded, else the call below. A success response doesn't mean
 the request registered: on #222 (2026-10-09) both returned success and left no `review_requested`
-event on the PR. So a minute after requesting, run `REVIEW_BOT`'s timeline count. If it is still
-zero, the request failed: take `REVIEW_BOT`'s no-bot fallback as for any failed request.
+event on the PR. So wait for the review (`REVIEW_BOT`'s *Waiting for the review*, whose
+`pr-wait.sh` is REST only), and if that wait ends `idle`, run `REVIEW_BOT`'s timeline count. If it
+is still zero, the request failed: take `REVIEW_BOT`'s no-bot fallback as for any failed request.
 ```bash
 gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
@@ -262,8 +265,12 @@ Classify the result:
   conclusions (`success`, `neutral`, `skipped`) pass.
 
 Copilot's in-flight review shows here as a `copilot-pull-request-reviewer` check run that isn't
-`completed`, which is `REVIEW_BOT`'s "pending" signal. There is no `--watch`: re-run the read until
-nothing is pending, from a background command or the Monitor tool, never a foreground `sleep`.
+`completed`, which is `REVIEW_BOT`'s "pending" signal.
+
+There is no `--watch`, and no loop to write: to wait for CI, run START Step 8's
+`bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-wait.sh" ci <pr> --head <sha>`, which makes
+these two reads on every pass and classifies them as above, REST only, so it runs here unchanged.
+Its exit 5 is the "no check runs and no statuses at all" case after five minutes.
 
 ## Review threads (`REVIEW_BOT`)
 

@@ -105,7 +105,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     "pending" below means *either* signal.
   - `gh pr view <pr> --json reviews --jq '[.reviews[].author.login]|unique'` — already submitted (the bot shows as `copilot-pull-request-reviewer`)
   - **Copilot pending or already reviewed** → a review is in flight or done (some repos auto-request
-    it). Don't re-request — just wait, then read its threads **and its review body** (below). A
+    it). Don't re-request: wait for it (*Waiting for the review*, below), then read its threads
+    **and its review body** (below). A
     submitted review whose body is the *unable to review* sentence is not a review: take the
     *Unable to review* bullet's one-retry / fallback path instead of waiting on it.
   - **Neither** → no *automatic* review, not "no review." Request one (next bullet); only fall back to
@@ -115,6 +116,26 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   Best-effort — if it errors (Copilot review not enabled for the repo/account), post the no-bot
   fallback comment (the *Unable to review* bullet; the gates read that marker) and rely on CI + the user's own review. (CodeRabbit and most CI review bots auto-trigger on push, so
   they need no explicit request.)
+
+- **Waiting for the review: `scripts/pr-wait.sh review`, never a loop you write.** Every wait in
+  this op (for a pending review, after a re-request, after the *Unable to review* retry) is one
+  call, run as START Step 8 runs its `ci` wait (`run_in_background` or the Monitor tool):
+  ```bash
+  bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/pr-wait.sh" review <pr> --head <head sha>
+  ```
+  It reads, fresh on every read, the signals this op names: the bot's reviews of that head,
+  Copilot in `requested_reviewers`, and its `copilot-pull-request-reviewer` check run. Its exit
+  code says what comes next. **0**: a review of the head with a 🟢 verdict, no comment of its own
+  and no counted body section; still run the gate below, since older threads can stay open.
+  **1**: a review of the head with something to answer: read its threads and body (below).
+  **5**, last line `unable`: an *unable to review* body on the head with no request since it (the
+  *Unable to review* bullet's one retry). **5**, last line `idle`: the bot neither requested nor
+  running for five minutes (`--idle`), so no review is coming without a request (the stale-review
+  rule below, or, after a recorded retry, the fallback). **3**: the head moved; wait on the new
+  one. **4**: a timeout after 30 minutes, the last state named. **2**: an error to fix, gh's
+  message on stderr. Copilot is the default `--bot` and the only one it has a check for so far;
+  another bot is one function in the script (Codex's is #260). Until a bot has one, wait on CI
+  (`pr-wait.sh ci`) and then read its threads.
 
 - **Read the unresolved threads** (authoritative — works on any repo, no extra tooling). Each thread
   carries the node `id` you need to reply/resolve, plus its file and first comment. Use `--paginate`
@@ -157,24 +178,25 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
               body: ((.body // "")
                      | gsub("<picture>(?:.|\n)*?alt=\"(?<a>[^\"]*)\"(?:.|\n)*?</picture>"; "[\(.a)]"))}'
   ```
-  No output (`// empty` keeps an empty array from printing a null record) → read the detect step's
-  two pending signals **fresh** (a snapshot taken before a request you just made is stale): Copilot
-  requested, or its check run in progress → the review is pending, wait. Neither → still pending if
-  Copilot was **ever** requested on this PR (by you, or auto-requested — GitHub can show neither
-  signal for a moment while it schedules the run). That fact is durable on the PR itself, so read
-  it there, never from memory — a later turn or a fresh coordinator sees the same answer:
+  No output (`// empty` keeps an empty array from printing a null record) → no Copilot review yet.
+  One may still be coming if Copilot was **ever** requested on this PR (by you, or
+  auto-requested). That fact is durable on the PR itself, so read it there, never from memory — a
+  later turn or a fresh coordinator sees the same answer:
   ```bash
   gh api "repos/OWNER/REPO/issues/<pr>/timeline?per_page=100" --paginate --slurp \
     | jq '[.[][] | select(.event=="review_requested" and .requested_reviewer.login=="Copilot")] | length'
   ```
-  Non-zero → keep waiting until a review, an explicit request failure, or the fallback comment
-  exists. Zero → Copilot was never requested (the other-bot / no-bot case) and has no review; only
+  Non-zero → wait for the head's review (*Waiting for the review*, above), which reads the two
+  pending signals fresh and allows for the moment GitHub can show neither while it schedules a
+  run; an `idle` ending means none is coming, so take the stale case's re-request below. Zero →
+  Copilot was never requested (the other-bot / no-bot case) and has no review; only
   for such a PR is gate (2) below vacuous. Otherwise its `commit_id` must be the PR head. A review on an **older** commit is a
-  previous round's — never gate on it — and only for that stale case: Copilot pending (either
-  signal) → wait; neither (the push didn't auto-request) → re-request now and record it with a
+  previous round's — never gate on it — so wait for the head's (*Waiting for the review*). Only
+  when that wait ends `idle` (the push didn't auto-request) re-request now and record it with a
   one-line PR comment (`Copilot re-requested on <head sha>`), so a later pass that finds the same
-  stale review with the signals transiently absent doesn't request again — with that comment on
-  the PR for the current head, wait; if the request fails, take the no-bot fallback (the *Unable to review* bullet).
+  stale review doesn't request again — with that comment on the PR for the current head, wait
+  again; if the request fails, or that wait ends `idle` too, take the no-bot fallback (the
+  *Unable to review* bullet).
   A current-head review never triggers a re-request here, with one exception: an *unable to
   review* body on the head takes the *Unable to review* bullet's one retry.
   Body shape (verified on real reviews; REST `state` is `COMMENTED` for every verdict, so ignore it).
@@ -554,7 +576,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   onto a new base; START Step 8's *Restack on request*), and a merge of the base that clears a
   **conflict** always push, since a red, mis-based, or unmergeable PR isn't a reviewed PR:
   count the review it triggers, answer it by disposition, and rewrite the line. If that push doesn't
-  auto-request a review (neither pending signal after it), request once for the new head and record
+  auto-request a review (the wait for its review ends `idle`), request once for the new head and record
   it, per the stale-review rule above; the round the push costs still needs its review. An *unable
   to review* body on that head takes the *Unable to review* bullet's single retry as written: the retry is on the
   **same** head, so it adds no round, and its fallback applies unchanged. An **owner head**
@@ -574,15 +596,15 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
      body). **A reached round cap meets it the same way** — the newest
      round's disposition lines *are* that PR comment, and the `Review rounds:` line in the PR
      body says why no fix push followed;
-  3. CI is green (`gh pr checks <pr> --watch`).
+  3. CI is green: START Step 8's `pr-wait.sh ci` on the head exits 0 (or 5, no CI runs on it).
 
   For (2), list comments newer than the review (ISO-8601 `Z` timestamps compare as strings):
   ```bash
   gh api "repos/OWNER/REPO/issues/<pr>/comments?per_page=100" --paginate --slurp \
     | jq '[.[][] | select(.created_at > "<submitted_at>")] | map(.body)'
   ```
-  Push fixes, let the bot re-review (a push re-triggers Copilot/CodeRabbit), re-read threads and the
-  newest body, repeat — while the round count is below the cap (the bullet above); at the cap the
+  Push fixes, let the bot re-review (a push re-triggers Copilot/CodeRabbit) and wait for it
+  (*Waiting for the review*), re-read threads and the newest body, repeat — while the round count is below the cap (the bullet above); at the cap the
   round's dispositions and the `Review rounds:` line close the loop instead of a push.
 - Other bots (CodeRabbit, a CI review action): same loop — read their threads, address, resolve.
 - **"Unable to review" is not a review.** A newest review whose body, after any v2 marker and
@@ -591,21 +613,23 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   (`gh pr edit <pr> --add-reviewer "@copilot"`) and record the retry in the same step with a
   one-line PR comment (`Copilot could not review <review id>; re-requested once`) — a later turn
   that finds the same unable review newest then knows the retry was issued and doesn't request
-  again. Wait for a **newer** review (a later `submitted_at`; the same body stays newest while the
-  retry is in flight). Fall back — treat the PR as "no bot" and **say so in one PR comment**
+  again. Wait for a **newer** review (*Waiting for the review*; the same body stays newest while
+  the retry is in flight, and the wait reads past it once a request follows it). Fall back — treat
+  the PR as "no bot" and **say so in one PR comment**
   (`No Copilot review for this PR — <request failed | unable to review twice | retry never
-  answered>; handing back on CI + the user's review`) — when the
-  newer review is also unable, when the re-request fails (Copilot disabled), or when a later
-  pass finds the retry comment on the PR **older than 15 minutes** (its `created_at`; Copilot's
-  runs finish in about five, and GitHub can show neither signal for a moment while it schedules
-  one — hence a bounded wait, not a single look), nothing pending (either signal), and no newer
-  review. That fallback
+  answered>; handing back on CI + the user's review`) — when the wait ends `unable` again (the
+  newer review is also unable), when the re-request fails (Copilot disabled), or when the wait
+  ends `idle` (the retry never answered: nothing pending for five minutes, and no newer review).
+  A later pass that finds the retry comment and no answer to it (a resumed session, say) waits
+  again; one that finds the comment **older than 15 minutes** (its `created_at`; Copilot's runs
+  finish in about five), nothing pending (either signal), and no newer review falls back without
+  waiting. That fallback
   comment is the durable marker the gates read: if the PR already carries it, don't re-request.
   A real review Copilot posts after it anyway (its quota reset, or a run finished late, which a
   local session hears of through the pr-notifier: the skill's `notifier.md`) supersedes it once
   it is on the head: answer it like any other review, and gate (2) reads it as the newest.
 - **Genuinely no bot available** (the review request failed — Copilot disabled for the repo — or the
-  fallback above): rely on `gh pr checks <pr> --watch` + the user's review.
+  fallback above): rely on CI (START Step 8's `pr-wait.sh ci`) + the user's review.
 
 ## SMOKE_DEPLOY
 - If the project has a way to run or deploy, smoke test before merging (start it / deploy
@@ -676,7 +700,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   message or a human. The harness applies those rules unless the user says otherwise, and a spawned
   child's briefing is its user turn, so the cap is where the override has to live. It forbids
   only a *periodic* re-check of the child's own PR: waiting in-turn for CI or for a pending
-  Copilot review (`REVIEW_BOT`) is not a check-in, and one-shot notification Routines a briefing
+  Copilot review (`scripts/pr-wait.sh`, START Step 8 and `REVIEW_BOT`) is not a check-in, and one-shot notification Routines a briefing
   asks for (a spawner's own wake-up channel) are not either. A repo-level
   `.claude/skills/steward/SKILL.md` cannot carry the same override: the harness ranks that file as
   repository content, below its own never-rules, and the check-in rule says to never cancel the
