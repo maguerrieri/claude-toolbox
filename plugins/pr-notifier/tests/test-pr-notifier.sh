@@ -2,7 +2,8 @@
 # Tests for bin/pr-notifier against stubbed gh and claude: subscribe and
 # unsubscribe, the filter (owner, configured bot, stranger, own login, a user
 # posing as a bot), coalescing, each delivery state, the feed's 304 and poll
-# interval, a missed notification and catch-up after downtime, merges, Codex's
+# interval, the direct poll (its pace, batching, failures and rate limit, and
+# dedup with the feed), a missed notification and catch-up after downtime, merges, Codex's
 # edited summary, the wake environment, bounded holds, the lock, and the
 # stable-path shim. The vendored owner-check.sh runs for real, on the gh stub.
 #
@@ -48,10 +49,11 @@ cat >"$tmp/bin/gh" <<'GH_EOF'
 printf '%s\n' "$*" >>"$STUB/gh.log"
 [ "$1" = api ] || exit 1
 shift
-inc= hdr= ep= filter= slurp= ids=() method=GET body=
+inc= hdr= ep= filter= slurp= ids=() method=GET body= input=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-i) inc=1; shift ;;
+	--input) input=$2; shift 2 ;;
 	-H) hdr=$2; shift 2 ;;
 	--paginate) shift ;;
 	--slurp) slurp=1; shift ;;
@@ -76,6 +78,47 @@ notifications*)
 	out=$(cat "$STUB/feed.json")
 	;;
 graphql)
+	if [ -n "$input" ]; then
+		# The direct poll's summaries (--input): each PR's from its pr-<n>.json
+		# and timeline-<n>.json fixtures, null (and exit 1, as gh does) for a
+		# PR with no fixture or with $STUB/summary-<n>.null, and the rate limit
+		# from $STUB/rate.json. $STUB/summary.fail fails the whole request, with
+		# its contents as gh's error. $STUB/summary.count counts requests, and
+		# $STUB/summary.sizes has each one's PR count.
+		echo $(($(cat "$STUB/summary.count" 2>/dev/null || echo 0) + 1)) >"$STUB/summary.count"
+		if [ -f "$STUB/summary.fail" ]; then cat "$STUB/summary.fail" >&2; exit 1; fi
+		# $STUB/summary.body is a response with no data (errors only), as for a rate limit.
+		if [ -f "$STUB/summary.body" ]; then cat "$STUB/summary.body"; echo 'gh: GraphQL: rate limited' >&2; exit 1; fi
+		rate=$(cat "$STUB/rate.json" 2>/dev/null || echo '{"cost":1,"remaining":4990,"limit":5000,"resetAt":"2026-11-01T00:00:00Z"}')
+		data=$(jq -n --argjson r "$rate" '{rateLimit: $r}')
+		k=$(jq '[.variables | keys[] | select(startswith("n"))] | length' "$input")
+		echo "$k" >>"$STUB/summary.sizes"
+		i=0 missing=
+		while [ "$i" -lt "$k" ]; do
+			n=$(jq -r --arg v "n$i" '.variables[$v]' "$input")
+			# $STUB/summary.fail-<n> fails any request that asks for PR n.
+			if [ -f "$STUB/summary.fail-$n" ]; then cat "$STUB/summary.fail-$n" >&2; exit 1; fi
+			if [ -f "$STUB/pr-$n.json" ] && [ ! -f "$STUB/summary-$n.null" ]; then
+				s=$(jq -n --slurpfile p "$STUB/pr-$n.json" --slurpfile t "$STUB/timeline-$n.json" '$p[0] as $pr | ($t[0] // []) as $tl
+					| [$tl[] | select(.event == "commented")] as $cs
+					| ([$tl[] | select(.event == "reviewed") | {id: "PRR_\(.id)", at: .submitted_at}]
+					   + [$tl[] | select(.event == "line-commented") | .comments[]? | {id: "PRRC_\(.id)", at: .created_at}]) as $rs
+					| {state: (if $pr.merged then "MERGED" elif $pr.state == "closed" then "CLOSED" else "OPEN" end),
+					   updatedAt: ([$cs[].updated_at, $rs[].at, $pr.merged_at, $pr.closed_at, "2026-10-01T00:00:00Z"] | map(select(. != null)) | max),
+					   mergedAt: $pr.merged_at, closedAt: $pr.closed_at,
+					   comments: {totalCount: ($cs | length), nodes: [$cs | max_by(.updated_at) | select(. != null) | {updatedAt: .updated_at}]},
+					   reviews: {totalCount: ($rs | length), nodes: [$rs | last | select(. != null) | {id, updatedAt: .at}]}}')
+			else
+				s=null missing=1
+			fi
+			data=$(jq --arg a "p$i" --argjson s "$s" '.[$a] = {pullRequest: $s}' <<<"$data")
+			i=$((i + 1))
+		done
+		jq -n --argjson d "$data" --argjson m "${missing:-0}" '{data: $d}
+			+ if $m == 1 then {errors: [{type: "NOT_FOUND", message: "Could not resolve to a PullRequest"}]} else {} end'
+		[ -z "$missing" ] || { echo 'gh: Could not resolve to a PullRequest' >&2; exit 1; }
+		exit 0
+	fi
 	# Each comment's editor from $STUB/editor-<node id> ("<login> <User|Bot>"), else none.
 	[ ! -f "$STUB/graphql.fail" ] || { echo 'gh: HTTP 502' >&2; exit 1; }
 	out=$(for id in "${ids[@]}"; do
@@ -86,6 +129,10 @@ graphql)
 			jq -n --arg id "$id" '{id: $id, editor: null}'
 		fi
 	done | jq -s '{data: {nodes: .}}')
+	;;
+rate_limit)
+	# The REST budget, from $STUB/rest.json.
+	out=$(cat "$STUB/rest.json" 2>/dev/null || echo '{"resources":{"core":{"remaining":4999,"reset":1793491200}}}')
 	;;
 user)
 	[ ! -f "$STUB/user.fail" ] || { echo 'gh: HTTP 401' >&2; exit 1; }
@@ -764,10 +811,13 @@ deliver_case idle-done $((T - 3600)) '' held
 record '1|0|1' 'a relay sent but not taken is held a pass, since it may still be taken' "$(relays)|$(wakes)|$(held)"
 record yes 'the relay is logged with the mode and why' \
 	"$(logged 'relay-failed session=aaaaaaaa mode=auto reason="sent as m-1, but no turn took it within 0s (held, refused or stopped)"')"
-record yes 'and the hold' "$(logged 'reason=relay unconfirmed; the fallback waits a pass')"
+record yes 'and the hold' "$(logged 'reason=relay unconfirmed; the fallback waits a minute')"
+nt $((T + 15)) check
+record '1|0|1' 'a check 15 seconds on still holds it: the fallback waits a minute, as it waited a check before' "$(relays)|$(wakes)|$(held)"
+record yes 'saying until when' "$(logged "a relay may still land, so the fallback waits until $(iso $((T + 60)))")"
 nt $((T + 60)) check
 record '1|1|0' 'then it falls back to stop-then-resume' "$(relays)|$(wakes)|$(held)"
-record 'agents,relay,agents,agents,stop,agents,resume' 'by stop, a check that it stopped, then resume' "$(stopped_after_start)"
+record 'agents,relay,agents,agents,agents,stop,agents,resume' 'by stop (after the held check'"'"'s listing), a check that it stopped, then resume' "$(stopped_after_start)"
 record yes 'and the stop names the short id' "$(has "$STUB/claude.log" 'stop aaaaaaaa|')"
 record yes 'the resume is logged as the fallback' "$(logged 'wake session=aaaaaaaa how=live-idle')"
 
@@ -1064,7 +1114,8 @@ CLAUDE_CODE_SESSION_ID=$SID2 nt "$T0" subscribe o/r#7 --name other >/dev/null
 agents "$(agent busy)" "$(agent busy "$SID2")"
 timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
-nt $((T + 60)) check
+# Five minutes on, so the same hold is logged again (hold).
+nt $((T + 300)) check
 record 'aaaaaaaa,bbbbbbbb|bbbbbbbb,aaaaaaaa' 'the first session held on one check comes second on the next' \
 	"$(grep 'hold session=' "$PR_NOTIFIER_HOME/notifier.log" | sed -n 's/.*hold session=\([a-f0-9]*\).*/\1/p' | paste -sd, - | sed 's/,/|/2')"
 
@@ -1262,7 +1313,9 @@ record 'cfg=<unset>' "the default root's session is woken with CLAUDE_CONFIG_DIR
 
 # --- the feed -----------------------------------------------------------------
 
+# The feed alone: the direct poll (below) would read the same PRs sooner.
 reset
+settings '{"pr_poll": false}'
 echo 200 >"$STUB/feed.status"
 echo 'Sat, 31 Oct 2026 21:40:00 GMT' >"$STUB/feed.lm"
 nt "$T" check
@@ -1294,8 +1347,10 @@ jq '.[0].updated_at = "2026-10-31T23:00:00Z"' "$STUB/feed.json" >"$STUB/feed.jso
 nt $((T + 270)) check
 record yes 'a moved one does' "$(has "$STUB/gh.log" 'pulls/7')"
 
-# A notification that never comes: the sweep still finds the owner's event.
+# A notification that never comes, and a direct poll that fails: the sweep
+# still finds the owner's event.
 reset
+echo 'gh: HTTP 502' >"$STUB/summary.fail"
 nt "$T" check
 timeline 7 "$(comment 7 101 mari User "$(iso $((T + 30)))")"
 nt $((T + 120)) check
@@ -1320,6 +1375,238 @@ timeline 7 "$(comment 7 101 mari User "$T1")"
 nt "$T" check
 record 1 'a failed poll still lets the sweep run' "$(wakes)"
 record yes 'and is logged' "$(logged 'poll error status=none')"
+
+# --- the direct poll (#349) ----------------------------------------------------------
+
+summaries() { cat "$STUB/summary.count" 2>/dev/null || echo 0; } # GraphQL summary requests so far
+lines() { wc -l <"$PR_NOTIFIER_HOME/notifier.log" | tr -d ' '; }
+
+reset
+nt "$T" check
+record 1 'every check reads the subscribed PRs'"'"' summaries' "$(summaries)"
+timeline 7 "$(comment 7 101 mari User "$(iso $((T + 5)))")"
+: >"$STUB/gh.log"
+nt $((T + 15)) check
+record 1 "the owner's comment wakes on the next check, 15 seconds on, with no notification and no sweep due" "$(wakes)"
+record no 'and no feed poll' "$(has "$STUB/gh.log" notifications)"
+record yes 'the PR it marked is logged' "$(logged 'poll-prs prs=1 moved=o/r#7 cost=1 remaining=4990')"
+record yes 'the event is logged as found by that check' "$(logged "$(iso $((T + 15))) event pr=o/r#7 key=comment:101 actor=mari verdict=keep")"
+: >"$STUB/gh.log"
+nt $((T + 30)) check
+record 'yes|1' 'the PR is read once more on the next check, in case its REST timeline lagged the summary, and nothing is delivered twice' \
+	"$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+: >"$STUB/gh.log"
+n=$(lines)
+nt $((T + 45)) check
+record 'no|no' 'then an unchanged summary reads no PR, and a quiet check logs nothing' "$(has "$STUB/gh.log" 'pulls/7')|$([ "$(lines)" = "$n" ] && echo no || echo yes)"
+
+# The feed then names the same PR: read since its thread moved, so not again.
+echo 200 >"$STUB/feed.status"
+jq -n --arg at "$(iso $((T + 5)))" '[{reason: "author", updated_at: $at, subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/7"}}]' >"$STUB/feed.json"
+: >"$STUB/gh.log"
+nt $((T + 75)) check
+record 'no|1' "the feed naming a PR the direct poll read after its thread moved doesn't read it again" "$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+record yes 'and says so' "$(logged 'poll status=200 threads=1 matched=0 read-already=1')"
+jq -n --arg at "$(iso $((T + 130)))" '[{reason: "author", updated_at: $at, subject: {type: "PullRequest", url: "https://api.github.com/repos/o/r/pulls/7"}}]' >"$STUB/feed.json"
+nt $((T + 135)) check
+record 'yes|1' 'a thread that moved after the last read still has it read, and an event both paths see is delivered once' \
+	"$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+
+# A review, a line comment, an edit, a merge: each moves the summary.
+reset
+nt "$T" check
+timeline 7 "$(review 7 501 Copilot Bot "$(iso $((T + 5)))")"
+nt $((T + 15)) check
+record 1 "a bot's review wakes on the next check" "$(wakes)"
+timeline 7 "$(review 7 501 Copilot Bot "$(iso $((T + 5)))")" "$(jq -n --arg c "$(iso $((T + 20)))" '{event: "line-commented",
+	comments: [{id: 601, pull_request_review_id: 777, user: {login: "mari", type: "User"}, created_at: $c,
+	html_url: "https://github.com/o/r/pull/7#discussion_r601"}]}')"
+nt $((T + 30)) check
+record 2 'so does a reply in a review thread' "$(wakes)"
+reset
+timeline 7 "$(comment 7 101 sprue-works-bot User "$(iso $((T0 + 60)))")"
+nt "$T" check
+timeline 7 "$(comment 7 101 sprue-works-bot User "$(iso $((T0 + 60)))" "$(iso $((T + 5)))")"
+editor 101 mari
+nt $((T + 15)) check
+record 1 "an owner's edit of an older comment moves the newest comment update" "$(wakes)"
+record yes 'and wakes as an edit' "$(has "$STUB/prompt.1" '- edited https://github.com/o/r/pull/7#issuecomment-101')"
+reset
+nt "$T" check
+pr 7 merged "$(iso $((T + 5)))"
+nt $((T + 15)) check
+record 1 'a merge wakes on the next check' "$(wakes)"
+
+# Every subscribed PR in one request, a hundred to a request.
+reset
+pr 8 open
+timeline 8
+CLAUDE_CODE_SESSION_ID=$SID nt "$T0" subscribe o/r#8 >/dev/null
+nt "$T" check
+record '1|2' 'one request covers every subscribed PR' "$(summaries)|$(paste -sd, - <"$STUB/summary.sizes")"
+jq --arg at "$(iso $((T0 - 120)))" --arg sid "$SID" '.subscriptions += [range(10; 110) | {pr: "o/r#\(.)", session_id: $sid, name: "n",
+	config_dir: null, path: null, subscribed_at: $at}]' "$PR_NOTIFIER_HOME/registry.json" >"$tmp/reg" && mv "$tmp/reg" "$PR_NOTIFIER_HOME/registry.json"
+jq --argjson now $((T + 15)) '.prs += ([range(10; 110) | {key: "o/r#\(.)", value: {last_swept: $now}}] | from_entries)' \
+	"$PR_NOTIFIER_HOME/state.json" >"$tmp/st" && mv "$tmp/st" "$PR_NOTIFIER_HOME/state.json"
+nt $((T + 15)) check 2>/dev/null
+record '3|2,100,2' 'a hundred and two PRs take two requests' "$(summaries)|$(paste -sd, - <"$STUB/summary.sizes")"
+record yes "PRs that don't resolve (here, no fixture) are counted, not failed" \
+	"$(nt $((T + 15)) status | grep -q 'pr-poll last=.* status=ok mode=normal prs=102 unread=100' && echo yes || echo no)"
+last=$(jq -r '.subscriptions | map(.pr) | unique | .[-1] | split("#")[1]' "$PR_NOTIFIER_HOME/registry.json")
+echo 'gh: HTTP 502' >"$STUB/summary.fail-$last"
+nt $((T + 30)) check 2>/dev/null
+record '0|normal' "a failed request for some of them leaves the others at pace" \
+	"$(jq -r '"\(.pr_poll.failures)|\(.pr_poll.mode)"' "$PR_NOTIFIER_HOME/state.json")"
+record yes 'and is logged' "$(logged 'poll-prs error prs=2 of=102 detail="gh: HTTP 502"')"
+nt $((T + 45)) check 2>/dev/null
+record 1 'at most every five minutes' "$(grep -c 'poll-prs error prs=2 of=102' "$PR_NOTIFIER_HOME/notifier.log")"
+
+# A PR number past GraphQL's 32-bit Int, or a ref of no shape, would fail the
+# whole query: it is left out, and the rest still line up.
+reset
+jq --arg at "$(iso $((T0 - 120)))" --arg sid "$SID" '.subscriptions += [{pr: "o/r#99999999999", session_id: $sid, name: "n",
+	config_dir: null, path: null, subscribed_at: $at}, {pr: "a/b#x", session_id: $sid, name: "n", config_dir: null, path: null,
+	subscribed_at: $at}]' "$PR_NOTIFIER_HOME/registry.json" >"$tmp/reg" && mv "$tmp/reg" "$PR_NOTIFIER_HOME/registry.json"
+nt "$T" check 2>/dev/null
+record '1|0' 'a PR number past 32 bits, or a ref of no shape, is left out of the query' \
+	"$(paste -sd, - <"$STUB/summary.sizes")|$(jq -r '.pr_poll.failures' "$PR_NOTIFIER_HOME/state.json")"
+timeline 7 "$(comment 7 101 mari User "$(iso $((T + 5)))")"
+nt $((T + 15)) check 2>/dev/null
+record '1|yes' 'and the PRs that are left still match their summaries' "$(wakes)|$(logged 'poll-prs prs=1 moved=o/r#7')"
+
+# The REST budget: each PR the poll marks costs a REST read, so at
+# rest_reserve nothing is marked until it's back.
+reset
+nt "$T" check
+echo "{\"resources\":{\"core\":{\"remaining\":500,\"reset\":$((T + 900))}}}" >"$STUB/rest.json"
+timeline 7 "$(comment 7 101 mari User "$(iso $((T + 5)))")"
+: >"$STUB/gh.log"
+nt $((T + 15)) check
+record 'no|0' 'with the REST budget at its reserve, a PR that moved is not read' "$(has "$STUB/gh.log" 'pulls/7')|$(wakes)"
+record yes 'and that is logged' "$(logged "poll-prs rest-low remaining=500 reserve=1000 reset=$(iso $((T + 900))) held=o/r#7")"
+nt $((T + 30)) check
+record 1 'once' "$(grep -c 'poll-prs rest-low' "$PR_NOTIFIER_HOME/notifier.log")"
+echo 'not json' >"$STUB/rest.json"
+nt $((T + 45)) check
+record '0|no' "a budget it can't read keeps it low: nothing read, and no rest-ok" "$(wakes)|$(logged 'poll-prs rest-ok')"
+echo "{\"resources\":{\"core\":{\"remaining\":4000,\"reset\":$((T + 900))}}}" >"$STUB/rest.json"
+nt $((T + 60)) check
+record '1|yes' "once it's back, the PR is read and wakes" "$(wakes)|$(logged 'poll-prs rest-ok remaining=4000')"
+
+# The interval: pr_poll_interval, less three seconds of slack for launchd's firings.
+reset
+nt "$T" check
+nt $((T + 5)) check
+nt $((T + 10)) check
+record 1 'a check five or ten seconds after a poll reads no summary' "$(summaries)"
+nt $((T + 12)) check
+record 2 'one twelve seconds after does' "$(summaries)"
+settings '{"pr_poll_interval": 30}'
+nt $((T + 25)) check
+nt $((T + 40)) check
+record 3 'pr_poll_interval 30: every 27 seconds or more' "$(summaries)"
+settings '{"pr_poll": false}'
+nt $((T + 100)) check
+record 3 'pr_poll false: no summaries, the feed and sweep only' "$(summaries)"
+record yes 'and status says so' "$(nt $((T + 100)) status | grep -qx 'pr-poll off' && echo yes || echo no)"
+
+# A failed poll backs off, and the feed and the sweep carry on.
+reset
+nt "$T" check
+echo 'gh: HTTP 502' >"$STUB/summary.fail"
+timeline 7 "$(comment 7 101 mari User "$(iso $((T + 5)))")"
+nt $((T + 15)) check
+record yes 'a failed poll is logged, with when it tries again' "$(logged "poll-prs error prs=1 failures=1 next=$(iso $((T + 45))) detail=\"gh: HTTP 502\"")"
+nt $((T + 30)) check
+record 2 'and backs off: no request before then' "$(summaries)"
+nt $((T + 45)) check
+record yes 'then doubles' "$(logged "poll-prs error prs=1 failures=2 next=$(iso $((T + 105)))")"
+rm "$STUB/summary.fail"
+nt $((T + 105)) check
+record 1 'once it reads again, the event wakes' "$(wakes)"
+record yes 'and the recovery is logged' "$(logged 'poll-prs mode=normal was=failing every=15s')"
+record 0 'with the failures cleared' "$(jq -r '.pr_poll.failures' "$PR_NOTIFIER_HOME/state.json")"
+
+# The rate limit: a low budget slows the poll, none left above the reserve
+# stops it until the reset, and a rate-limited failure waits for the reset too.
+reset
+reset_at=$((T + 3000))
+echo "{\"cost\":1,\"remaining\":1010,\"limit\":5000,\"resetAt\":\"$(iso "$reset_at")\"}" >"$STUB/rate.json"
+nt "$T" check
+record yes 'with ten points above the reserve and 3,000 seconds to the reset, it polls every 300 seconds' \
+	"$(logged "poll-prs mode=stretched was=normal every=300s remaining=1010 reserve=1000 reset=$(iso "$reset_at")")"
+nt $((T + 15)) check
+nt $((T + 290)) check
+record 1 'and reads nothing sooner' "$(summaries)"
+echo "{\"cost\":1,\"remaining\":1000,\"limit\":5000,\"resetAt\":\"$(iso "$reset_at")\"}" >"$STUB/rate.json"
+nt $((T + 300)) check
+record yes 'at the reserve, it waits for the reset' "$(logged "poll-prs mode=paused was=stretched every=$((reset_at + 1 - T - 300))s remaining=1000")"
+nt $((T + 2999)) check
+record 2 'reading nothing until then' "$(summaries)"
+echo "{\"cost\":1,\"remaining\":4999,\"limit\":5000,\"resetAt\":\"$(iso $((reset_at + 3600)))\"}" >"$STUB/rate.json"
+nt $((reset_at + 1)) check
+record '3|yes' 'after the reset it polls at its pace again' "$(summaries)|$(logged 'poll-prs mode=normal was=paused every=15s remaining=4999')"
+settings '{"graphql_reserve": 0}'
+echo "{\"cost\":1,\"remaining\":1000,\"limit\":5000,\"resetAt\":\"$(iso $((reset_at + 3600)))\"}" >"$STUB/rate.json"
+nt $((reset_at + 20)) check
+record normal 'graphql_reserve sets the reserve' "$(jq -r '.pr_poll.mode' "$PR_NOTIFIER_HOME/state.json")"
+echo 'gh: API rate limit exceeded for user ID 1.' >"$STUB/summary.fail"
+nt $((reset_at + 40)) check
+record yes 'a rate-limited failure waits past the reset it last read' \
+	"$(logged "poll-prs error prs=1 failures=1 rate-limited next=$(iso $((reset_at + 3601)))")"
+reset
+echo "{\"cost\":1,\"remaining\":4000,\"limit\":5000,\"resetAt\":\"$(iso $((T + 3000)))\"}" >"$STUB/rate.json"
+nt "$T" check
+echo 'gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.' >"$STUB/summary.fail"
+nt $((T + 15)) check
+record yes "a secondary rate limit, which clears in a minute or so, takes the ordinary backoff" \
+	"$(logged "poll-prs error prs=1 failures=1 next=$(iso $((T + 45)))")"
+rm "$STUB/summary.fail"
+echo '{"errors":[{"type":"RATE_LIMITED","message":"You have exceeded a secondary rate limit."}]}' >"$STUB/summary.body"
+nt $((T + 45)) check
+record yes 'so does one typed RATE_LIMITED' "$(logged "poll-prs error prs=1 failures=2 next=$(iso $((T + 105)))")"
+echo '{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded for user ID 1."}]}' >"$STUB/summary.body"
+nt $((T + 105)) check
+record yes 'while the hourly one waits for the reset' "$(logged "poll-prs error prs=1 failures=3 rate-limited next=$(iso $((T + 3001)))")"
+reset
+echo '{"cost":1,"remaining":1000,"limit":5000,"resetAt":""}' >"$STUB/rate.json"
+nt "$T" check
+record "paused|$((T + 3601))" "a reset it can't read counts as an hour away, so the reserve still holds" \
+	"$(jq -r '"\(.pr_poll.mode)|\(.pr_poll.next_at)"' "$PR_NOTIFIER_HOME/state.json")"
+reset
+settings '{"pr_poll_interval": 600}'
+echo 'gh: HTTP 502' >"$STUB/summary.fail"
+nt "$T" check
+record yes 'a failing poll never retries faster than a healthy one' "$(logged "poll-prs error prs=1 failures=1 next=$(iso $((T + 600)))")"
+
+# Held events are retried every check, so a session that goes idle gets them
+# within a check, and the same hold is logged once, not every check.
+reset
+agents "$(agent busy)"
+timeline 7 "$(comment 7 101 mari User "$T1")"
+nt "$T" check
+nt $((T + 15)) check
+nt $((T + 30)) check
+record 1 'a session held three checks running is logged once' "$(grep -c 'hold session=aaaaaaaa reason=busy' "$PR_NOTIFIER_HOME/notifier.log")"
+nt $((T + 300)) check
+record 2 'and again five minutes on' "$(grep -c 'hold session=aaaaaaaa reason=busy' "$PR_NOTIFIER_HOME/notifier.log")"
+agents "$(agent working)"
+job "$SID" $((T + 310)) '' active
+nt $((T + 315)) check
+record yes 'a changed reason is logged at once' "$(logged 'hold session=aaaaaaaa reason=busy status=idle state=working')"
+agents "$(agent stopped)"
+nt $((T + 330)) check
+record '1|0' 'idle 15 seconds later, it is woken on that check' "$(wakes)|$(held)"
+
+# With nothing subscribed, the skip is logged once an hour.
+reset
+nt "$T0" unsubscribe o/r#7 --session "$SID" >/dev/null
+nt "$T" check
+nt $((T + 15)) check
+nt $((T + 3599)) check
+record 1 'no subscriptions: logged once' "$(grep -c 'check skipped=no-subscriptions' "$PR_NOTIFIER_HOME/notifier.log")"
+nt $((T + 3600)) check
+record 2 'and again an hour on' "$(grep -c 'check skipped=no-subscriptions' "$PR_NOTIFIER_HOME/notifier.log")"
 
 # --- bounded holds, status, the lock --------------------------------------------------
 
@@ -1366,8 +1653,10 @@ reset
 rm "$STUB/pr-7.json"
 nt "$T" check 2>/dev/null
 : >"$STUB/gh.log"
+nt $((T + 15)) check 2>/dev/null
+record no 'an unreadable PR is not retried 15 seconds on, so an outage is not hammered' "$(has "$STUB/gh.log" 'pulls/7')"
 nt $((T + 60)) check 2>/dev/null
-record yes 'an unreadable PR is retried on the next check' "$(has "$STUB/gh.log" 'pulls/7')"
+record yes 'it is retried a minute on' "$(has "$STUB/gh.log" 'pulls/7')"
 nt $((T + 1801)) check 2>"$tmp/err"
 record yes 'once it has failed past the bound, it is reported' "$(has "$tmp/err" 'o/r#7 has been unreadable for 30m')"
 record yes 'and logged' "$(logged 'stale pr=o/r#7 unreadable=30m')"

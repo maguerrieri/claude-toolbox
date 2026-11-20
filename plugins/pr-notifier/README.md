@@ -13,7 +13,7 @@ a short Haiku session. It runs as the macOS user whose
 sessions it serves, polls that user's GitHub account through `gh`, and wakes
 sessions through `claude`: a live one by a relay's message, a stopped one by a resume.
 
-**Installing it** (#295): a launchd job runs it every minute, as the `bot` user, from a
+**Installing it** (#295): a launchd job runs it every 15 seconds, as the `bot` user, from a
 LaunchDaemon. [INSTALL.md](INSTALL.md) has the checklist Mari runs, what
 `scripts/install.sh` writes, and why the job is a LaunchDaemon.
 
@@ -55,14 +55,18 @@ macOS user and shared by all of that user's config roots:
   before the subscribe so clock skew can't hide a reply that came right after it, and
   the caller's `PATH`, which a resume passes back (*The session's PATH*). No launch dir
   (the spike's *Subscribe: what to record*).
-- `state.json`: the feed's cursor (`Last-Modified`, `since`, the next poll time), each
-  PR's cursor (timeline items seen, owner checks being retried, tracked comments, last
-  sweep, its notification thread's last `updated_at`, and how long its reads have
-  failed), cached owner checks, and the events held per session (with any resume or
-  relay backoff).
+- `state.json`: the feed's cursor (`Last-Modified`, `since`, the next poll time), the
+  direct poll's pace (`pr_poll`: its next time, mode, failures, and the GraphQL budget it
+  last read), each PR's cursor (timeline items seen, owner checks being retried, tracked
+  comments, last sweep, its notification thread's last `updated_at`, the summary the
+  direct poll last read, and how long its reads have failed), cached owner checks, and the
+  events held per session (with any resume or relay backoff).
 - `config.json`: optional settings (below).
-- `notifier.log`: append-only, one line per poll, filtered event (kept or dropped, and
-  why), hold, wake, unsubscribe and stale hold. The launchd job rotates it past 1 MiB,
+- `notifier.log`: append-only. One line per feed poll (once a minute), and only when
+  something happens otherwise: the direct poll marking a PR, failing or changing pace, a
+  filtered event (kept or dropped, and why), a hold (once when its reason changes, then
+  every five minutes it doesn't), a wake, an unsubscribe and a stale hold. A check with
+  nothing subscribed logs its skip once an hour. The launchd job rotates it past 1 MiB,
   keeping one old copy as `notifier.log.1`.
 - `job.log`, `job.last` and `jq-path`: the launchd job's own output (including
   `check`'s stderr, rotated the same way), its last run's outcome, and the `jq` the
@@ -78,7 +82,8 @@ Files are replaced atomically (written beside, then moved).
 
 ## One check
 
-`check` takes the lock (or logs `check skipped=locked` and exits 0), then:
+The launchd job runs `check` every 15 seconds. `check` takes the lock (or logs `check
+skipped=locked` and exits 0), then:
 
 1. **Poll the feed**, unless `X-Poll-Interval` (60 seconds) hasn't passed since the
    last poll: `GET /notifications?all=true&since=…` with `If-Modified-Since`, so a quiet
@@ -87,27 +92,113 @@ Files are replaced atomically (written beside, then moved).
    thread's `updated_at` can trail its event), so the URL usually repeats and a 304
    stays possible, and a restart catches up from the last 200. A thread on a subscribed
    PR marks that PR to be read when its `updated_at` has moved past the one last seen,
-   since the same thread comes back on every 200 while `since` holds.
-2. **Read every PR that is marked, or due a sweep** (`sweep_interval`, five minutes):
+   since the same thread comes back on every 200 while `since` holds, unless the PR was
+   read ten seconds or more after that `updated_at` (`read-already=` in the log): that
+   read saw what moved the thread. The feed noticed an event 50 to 100 seconds after
+   GitHub recorded it (#349's measurements), so it is now the catch-up path behind the
+   next step.
+2. **Poll the subscribed PRs directly** (#349, below), unless `pr_poll_interval` (15
+   seconds), less three seconds of slack, hasn't passed since the last time: one GraphQL
+   query reads a summary of every subscribed PR, and a PR whose summary moved since the
+   last one is marked to be read, as the feed marks it.
+3. **Read every PR that is marked, or due a sweep** (`sweep_interval`, five minutes):
    the PR itself and its issue timeline. The sweep is what makes a missed notification
    harmless. The spike couldn't yet say whether the owner's reviews and line comments
    move the notification thread (its Q4 owner rows wait on Mari's actions on #296), so
    the feed is only the fast path, and every subscribed PR is read on the sweep whether
-   or not a notification came. A failed read leaves the PR marked for the next check,
-   until it has failed for `hold_bound`: then it's reported once (log and stderr) and
+   or not a notification came. A failed read leaves the PR marked, retried by the first
+   check about a minute later (not every check, which would hammer GitHub through an
+   outage), until it has failed for `hold_bound`: then it's reported once (log and stderr) and
    read only on the sweep, so a PR that's gone, or a ref that was never a PR, costs one
    read per sweep. A good read clears it.
-3. **Filter** each new timeline item (below), and queue each kept event for every
-   subscription that existed when it happened.
-4. **Deliver** what each session has queued (below), one wake per session however many
-   events and PRs it covers.
-5. **Report** holds older than `hold_bound`.
+4. **Filter** each new timeline item (below), and queue each kept event for every
+   subscription that existed when it happened. An event both polls lead to is queued
+   once: the PR's cursor records each timeline item it has seen, and a session's held
+   events are keyed by PR and item.
+5. **Deliver** what each session has queued (below), one wake per session however many
+   events and PRs it covers. Every check retries what is held, so a session that goes
+   idle gets its events within about 15 seconds.
+6. **Report** holds older than `hold_bound`.
 
-Rate cost: one feed request a minute, plus two or three requests per subscribed PR per
-sweep (the PR, its timeline pages, and owner checks for new logins), and one GraphQL
-query for a PR whose comments were edited, all on the token the user's other sessions
-share. A relay wake is a short Haiku session on the user's Claude login, $0.0003 to
-$0.0009 each.
+### The direct poll
+
+The notifications feed can't be polled more often than once a minute, but a PR can be
+read at any time. So every check also reads each subscribed PR's summary, all in one
+GraphQL query (one per hundred PRs, batched further only past that), and compares it with
+the one it read last:
+
+- the PR's `state`, `updatedAt`, `mergedAt` and `closedAt`;
+- its comments' count, and the newest `updatedAt` among them (`comments(first: 1, orderBy:
+  {field: UPDATED_AT, direction: DESC})`), which a new comment and an edit of an old one
+  both move;
+- its reviews' count, and the newest review's id and `updatedAt`. A line comment, and a
+  reply in a review thread, is a review of its own (checked on #343: three thread replies
+  were three one-comment reviews), so the count moves for those too.
+
+Any change, or a PR with no summary recorded yet, marks the PR, and step 3 reads it. A PR
+marked so is marked once more on the next poll, about 15 seconds on: the summary can show
+an item a moment before the REST timeline that step 3 reads does, and once its summary is
+recorded, an unchanged summary would mark it no more. The second read is long past that
+lag, and since it usually comes ten seconds or more after the notification thread moved,
+the feed then skips the PR (step 1). The
+summary only says which PRs to read now: reading the PR still decides what woke whom,
+with the same filter, keys and coalescing as before, so whatever the feed would have
+caught is caught the same way, only sooner. What else moves a summary (a push, the
+sessions' own comments) costs a read and wakes no one. A PR that doesn't resolve (deleted,
+or out of the token's reach) reads null: the query still answers for the others, and
+reading the PR is where its failure is reported. The feed and the sweep stay as they
+were: they cover a direct poll that failed or was skipped, and anything a summary can't
+show.
+
+**Its budget.** Every request on the token counts against one hourly budget, which the
+user's sessions share (`gh pr` commands are GraphQL too), so the poll reads `rateLimit`
+in the same query and leaves `graphql_reserve` points (1,000) to them. Below about
+`graphql_reserve` plus what the rest of the hour would take at full pace, it stretches its
+interval to spread what's left above the reserve over the time to the reset; with nothing
+left above the reserve, it waits for the reset. A reset it can't read counts as an hour
+away. Each PR it marks costs a REST read, a budget of its own, so when it has marked
+something it also reads `GET /rate_limit`, which costs nothing: with `rest_reserve`
+requests (1,000) or fewer left, it marks nothing and records none of the summaries that
+moved, so the next poll marks them once the budget is back (`poll-prs rest-low`, then
+`rest-ok`); a budget it can't read keeps the state it had. A failed poll backs off (30 seconds, then a minute, two and four, then every
+five minutes, or every `pr_poll_interval` past that) and, when GitHub's hourly limit failed
+it, waits past the reset it last read. A secondary limit, which clears in about a minute,
+takes the ordinary backoff. Past a hundred PRs, a query that fails leaves the others' at
+pace, and is logged at most every five minutes. A subscription whose PR number is past
+GraphQL's 32-bit `Int` (a typo `subscribe` accepted) would fail the whole query, so it is
+left out, and reading the PR reports it. Each change of pace is one `poll-prs mode=…` line in
+the log, and `status` shows the last one.
+
+**Why every 15 seconds, from launchd.** The job's `StartInterval` went from 60 to 15
+rather than one run looping inside itself. launchd already keeps what a loop would have
+to rebuild: it runs one copy at a time, skips a firing that comes while a run is still
+going (so a slow pass delays the next by under 15 seconds and never overlaps it), and
+stops the job between runs on a `bootout`, with every state write atomic. A loop would
+need its own signal handling, and would have to line its exits up with launchd's firings
+or lose one after a slow pass. The cost is the plist change, which Mari installs once with
+`install-daemon.sh` ([INSTALL.md](INSTALL.md), *After a plugin update*). Until then the
+new code runs every minute, as before, with the direct poll in each run.
+
+**Rate cost.** REST and GraphQL are counted separately, at 5,000 an hour each for a user
+token:
+
+| | GraphQL points an hour | REST requests an hour |
+|---|---|---|
+| The direct poll, 20 PRs | 240 (1 a query, 240 queries) | `GET /rate_limit` when it marks a PR, which costs none |
+| The direct poll, 100 PRs | 480 (2 a query) | the same |
+| The feed | none | up to 60 (a 304 doesn't count, the spike found) |
+| The sweep, 20 PRs | none | about 480 (the PR and its timeline, every five minutes) |
+| The sweep, 100 PRs | none | about 2,400 |
+| A marked PR | none | 2 or 3 a read (the PR, its timeline pages, owner checks for new logins) |
+| An edited comment | 1 a PR read | none |
+
+The query's cost was measured with `rateLimit(dryRun: true)`: 1 point for 20 PRs and 2 for
+100. A marked PR costs the same as before; the direct poll marks a PR for any change, the
+sessions' own comments and pushes included, and reads it on the check it moves in and on
+the next: twice for each move, where the feed read it once for each moved thread. A PR in
+a review loop moves perhaps 20 to 60 times an hour (pushes, reviews, one review per thread
+reply, comments), about 80 to 360 REST requests; `rest_reserve` bounds the worst case. A relay wake is a short Haiku session on the user's
+Claude login, $0.0003 to $0.0009 each.
 
 ## The filter
 
@@ -284,8 +375,8 @@ it cost $0.0003 to $0.0009 and about three seconds a wake.
   a mode mismatch shows there. A relay that sent nothing to the session (no tool call,
   another tool or address, a send that failed) falls back at once. One whose message may
   have reached it (sent but not yet a turn, sent with the text changed, or killed before
-  its result) may still be taken, so the session is held for that check and the fallback
-  waits for the next. Each message sent but not yet taken is remembered with the events
+  its result) may still be taken, so the session is held, and the fallback waits a
+  minute, what was one check before checks ran every 15 seconds. Each message sent but not yet taken is remembered with the events
   it carried, since a retry doesn't stop the session taking an earlier one, and every
   later check looks for each in the transcript first: once the session has taken one,
   those of its events still held count as delivered (`wake … how=relay-late`), and the
@@ -336,8 +427,9 @@ whole environment, since it restarts nothing.
   comment or a `/code-review --comment` finding: every session posts as the one login,
   so the notifier can't tell which one did. Those reach a session by SendMessage, as
   ticket-workflow's messaging does, or when it next reads the PR.
-- **A close by the sessions' own login** never reaches the feed either, so the sweep
-  finds it, within `sweep_interval`.
+- **A close by the sessions' own login** never reaches the feed either. The direct poll
+  sees the PR's state change on the next check, and the sweep finds it within
+  `sweep_interval` should that poll fail.
 
 ## The wake prompt
 
@@ -353,6 +445,10 @@ inside a cross-session message.
 | Key | Default | What |
 |---|---|---|
 | `review_bots` | Copilot (both logins), Codex | Logins that wake when GitHub types them `Bot` |
+| `pr_poll` | `true` | `false` turns the direct poll off, leaving the feed and the sweep |
+| `pr_poll_interval` | `15` | Seconds between direct polls (at least 5), less three seconds of slack for launchd's firings. The job fires every 15 seconds, so the pace rounds to its firings: up to 18 polls every 15 seconds, 19 to 33 every 30, and so on. Above 18 it slows the poll without a new plist |
+| `graphql_reserve` | `1000` | GraphQL points of the hourly budget the direct poll leaves to the sessions: it slows down to stay above them, and waits for the reset at them |
+| `rest_reserve` | `1000` | REST requests of the hourly budget the direct poll leaves: at or below it, the poll marks no PR to be read, and the feed and the sweep carry on |
 | `sweep_interval` | `300` | Seconds between reads of each subscribed PR when no notification marks it |
 | `retry_window` | `1800` | Seconds an item a failed owner check dropped is checked again |
 | `owner_ttl` | `3600` | Seconds an owner check's yes is cached |

@@ -73,6 +73,12 @@ log() { # log <word> [k=v ...]: one line in notifier.log
 
 default_bots='["copilot-pull-request-reviewer[bot]","Copilot","chatgpt-codex-connector[bot]"]'
 
+# What one check was before checks ran every 15 seconds (#349), for the two
+# waits that were one check long: a PR whose read failed is retried no sooner,
+# and an unconfirmed relay's fallback waits this long. Both take five seconds
+# of slack, so a check that launchd starts a moment early still counts.
+slow_retry=60
+
 setting() { # setting <key> <default>: config.json's value, else the default
 	local v=
 	[ -f "$config_file" ] &&
@@ -103,6 +109,11 @@ load_settings() {
 	[[ $relay_model =~ $model_re ]] || relay_model=haiku
 	case $(lc "$(setting relay true)") in false | 0 | no | off) relay_on=false ;; *) relay_on=true ;; esac
 	case $(lc "$(setting drop_comment true)") in false | 0 | no | off) drop_comment=false ;; *) drop_comment=true ;; esac
+	case $(lc "$(setting pr_poll true)") in false | 0 | no | off) pr_poll_on=false ;; *) pr_poll_on=true ;; esac
+	pr_poll_interval=$(number_setting pr_poll_interval 15)
+	[ "$pr_poll_interval" -ge 5 ] || pr_poll_interval=5
+	graphql_reserve=$(number_setting graphql_reserve 1000)
+	rest_reserve=$(number_setting rest_reserve 1000)
 	# The PATH every claude the notifier runs gets. A resumed session keeps
 	# its waker's PATH as its tool PATH (the spike's Trap 2), so a resume
 	# passes the session's own recorded PATH in front of this one
@@ -309,16 +320,18 @@ cmd_status() {
 	load_settings
 	if [ -n "$json" ]; then
 		jq -n --argjson reg "$reg" --argjson st "$st" \
-			'{subscriptions: $reg.subscriptions, pending: ($st.pending // {}), feed: ($st.feed // {})}'
+			'{subscriptions: $reg.subscriptions, pending: ($st.pending // {}), feed: ($st.feed // {}), pr_poll: ($st.pr_poll // {})}'
 		return
 	fi
-	jq -nr --argjson reg "$reg" --argjson st "$st" --argjson now "$now" --argjson bound "$hold_bound" '
+	jq -nr --argjson reg "$reg" --argjson st "$st" --argjson now "$now" --argjson bound "$hold_bound" --arg on "$pr_poll_on" '
 		def ago($t): "\((($now - $t) / 60) | floor)m";
 		($st.pending // {}) as $p
 		| "pr-notifier: \($reg.subscriptions | length) subscription(s), \($p | length) session(s) with held events",
 		  ($reg.subscriptions[] | "subscription \(.pr) session=\(.session_id[0:8]) name=\(.name | @json) root=\(.config_dir // "default") since=\(.subscribed_at) path=\(if (.path | type) == "string" then "recorded" else "none" end)"),
 		  ($p | to_entries[] | "held session=\(.key[0:8]) events=\(.value.events | length) for=\(ago(.value.first_at)) last=\(.value.last_hold // "none")\(if $now - .value.first_at >= $bound then " STALE" else "" end)"),
-		  (($st.feed // {}) | "feed last=\(.last_poll_iso // "never") status=\(.last_status // "none")")'
+		  (($st.feed // {}) | "feed last=\(.last_poll_iso // "never") status=\(.last_status // "none")"),
+		  (($st.pr_poll // {}) | if $on != "true" then "pr-poll off"
+		    else "pr-poll last=\(.last_iso // "never") status=\(.last_status // "none") mode=\(.mode // "normal") prs=\(.prs // 0) unread=\(.unread // 0) cost=\(.cost // "?") remaining=\(.remaining // "?")/\(.limit // "?") next=\(if (.next_at // 0) > 0 then (.next_at | todate) else "now" end)" end)'
 }
 
 # --- check: the feed --------------------------------------------------------
@@ -326,10 +339,8 @@ cmd_status() {
 poll_feed() { # marks subscribed PRs whose notification thread moved as dirty
 	local next lm since raw status interval body_start body
 	next=$(jq -r '.feed.next_poll_at // 0' "$work_state")
-	if [ "$now" -lt "$next" ]; then
-		log "poll skipped=interval next=$(iso "$next")"
-		return 0
-	fi
+	# Not logged: a check runs every 15 seconds, and this skip is most of them.
+	[ "$now" -ge "$next" ] || return 0
 	lm=$(jq -r '.feed.last_modified // empty' "$work_state")
 	since=$(jq -r '.feed.since // empty' "$work_state")
 	# The URL stays the same between 200s, so If-Modified-Since can answer 304.
@@ -389,13 +400,196 @@ poll_feed() { # marks subscribed PRs whose notification thread moved as dirty
 	local since_epoch matched
 	since_epoch=$(jq -nr --arg s "$since" '$s | try fromdateiso8601 catch 0')
 	[ $((now - since_epoch)) -lt 3600 ] || since=$(iso $((now - 300)))
-	matched=$(jq -r --slurpfile st "$work_state" \
-		'[.[] | select(.at == "" or .at > ($st[0].prs[.pr].thread_at // ""))] | length' "$run_tmp/threads.json")
+	# A thread that moved doesn't mark a PR that was read ten seconds or more
+	# after the thread's updated_at (by the direct poll, usually): that read
+	# already saw what moved it, so another would find nothing.
+	local skipped
+	read -r matched skipped <<<"$(jq -r --slurpfile st "$work_state" '
+		[.[] | select(.at == "" or .at > ($st[0].prs[.pr].thread_at // ""))
+		 | . + {skip: ((.at | try fromdateiso8601 catch null) as $e
+		               | $e != null and (($st[0].prs[.pr].last_swept // 0) >= $e + 10))}]
+		| "\(map(select(.skip | not)) | length) \(map(select(.skip)) | length)"' "$run_tmp/threads.json")"
 	edit "$work_state" --arg lm "$lm_new" --arg since "$since" --slurpfile th "$run_tmp/threads.json" '
 		.feed += {last_modified: (if $lm == "" then null else $lm end), since: $since}
 		| reduce $th[0][] as $t (.;
-			if $t.at == "" or $t.at > (.prs[$t.pr].thread_at // "") then .prs[$t.pr] += {dirty: true, thread_at: $t.at} else . end)'
-	log "poll status=200 threads=$(jq length "$body") matched=$matched"
+			if $t.at == "" or $t.at > (.prs[$t.pr].thread_at // "") then
+				($t.at | try fromdateiso8601 catch null) as $e
+				| if $e != null and ((.prs[$t.pr].last_swept // 0) >= $e + 10) then .prs[$t.pr].thread_at = $t.at
+				  else .prs[$t.pr] += {dirty: true, thread_at: $t.at} end
+			else . end)'
+	log "poll status=200 threads=$(jq length "$body") matched=$matched$([ "${skipped:-0}" = 0 ] || echo " read-already=$skipped")"
+}
+
+# --- check: the subscribed PRs, read directly ---------------------------------
+
+# The notifications feed can't be read more often than once a minute
+# (X-Poll-Interval), but a PR can. So every pass also reads a summary of each
+# subscribed PR, all of them in one GraphQL query (one per hundred PRs), and
+# marks a PR whose summary moved, as the feed does. The summary is the PR's
+# state, its updatedAt, its comment count and newest comment update (which an
+# edit moves too), and its review count and newest review: a reply in a review
+# thread is a review of its own, so the count moves for line comments and
+# replies as well. Reading the PR still decides what woke whom (examine): the
+# summary only says which PRs to read now rather than at the feed's or the
+# sweep's pace.
+pr_poll_chunk=100
+
+# The one grammar the direct poll reads a ref by, in pr_poll_refs and in the
+# query it builds, so the query's aliases and the result's indexes line up.
+# GraphQL's Int is 32 bits, so a PR number past 2147483647 (a typo subscribe
+# accepted) would fail its whole query; pr_poll_refs leaves it out, to examine,
+# whose REST read reports it.
+summary_ref_re='^(?<o>[^/#\n]+)/(?<r>[^/#\n]+)#(?<n>[0-9]{1,10})$'
+
+pr_poll_refs() { # the subscribed PRs the direct poll can ask for, one a line
+	jq -r --arg re "$summary_ref_re" '.subscriptions | map(.pr) | unique | .[]
+		| select(type == "string" and test($re)) | select((capture($re).n | tonumber) <= 2147483647)' "$work_registry"
+}
+
+pr_summary_query() { # pr_summary_query <refs file>: the GraphQL request body for those PRs
+	jq -Rn --arg re "$summary_ref_re" '[inputs | select(length > 0) | capture($re)] as $refs
+		| ($refs | length) as $k
+		| {query: ("query(" + ([range(0; $k) | "$o\(.):String!,$r\(.):String!,$n\(.):Int!"] | join(","))
+		     + "){rateLimit{cost remaining limit resetAt} "
+		     + ([range(0; $k) | "p\(.):repository(owner:$o\(.),name:$r\(.)){pullRequest(number:$n\(.)){...s}}"] | join(" "))
+		     + "} fragment s on PullRequest{state updatedAt mergedAt closedAt"
+		     + " comments(first:1,orderBy:{field:UPDATED_AT,direction:DESC}){totalCount nodes{updatedAt}}"
+		     + " reviews(last:1){totalCount nodes{id updatedAt}}}"),
+		   variables: (reduce range(0; $k) as $i ({};
+		     . + {"o\($i)": $refs[$i].o, "r\($i)": $refs[$i].r, "n\($i)": ($refs[$i].n | tonumber)}))}' "$1"
+}
+
+poll_prs() { # marks subscribed PRs whose summary moved as dirty, at most every pr_poll_interval
+	[ "$pr_poll_on" = true ] || return 0
+	local next f n=0 ok=0 bad=0 limited= detail= moved rechecks prev mode pace failures delay cost remaining limit reset unread
+	local rest rest_reset rest_low=false was_low prev_reset part_at
+	read -r next was_low prev failures prev_reset part_at <<<"$(jq -r '.pr_poll // {}
+		| "\(.next_at // 0 | floor) \(.rest_low // false) \(.mode // "normal") \(.failures // 0 | floor) \(.reset_at // 0 | floor) \(.part_logged_at // 0 | floor)"' "$work_state")"
+	[ "$now" -ge "$next" ] || return 0
+	pr_poll_refs | awk -v n="$pr_poll_chunk" -v d="$run_tmp" '{ print > (d "/poll-chunk." int((NR - 1) / n)) }'
+	: >"$run_tmp/poll-fps"
+	: >"$run_tmp/poll-rates"
+	for f in "$run_tmp"/poll-chunk.*; do
+		[ -f "$f" ] || continue
+		n=$((n + $(wc -l <"$f")))
+		pr_summary_query "$f" >"$f.body"
+		"$gh_bin" api graphql --input "$f.body" </dev/null >"$f.out" 2>"$f.err"
+		# gh exits 1 when a PR can't be resolved (deleted, or out of reach) and
+		# still prints the rest, so the data decides, not the exit code. A PR
+		# that reads null is left to examine, which reports one that stays
+		# unreadable.
+		if jq -e '(.data | type) == "object" and (.data.rateLimit | type) == "object"' "$f.out" >/dev/null 2>&1; then
+			ok=$((ok + 1))
+			jq -c --arg refs "$(cat "$f")" '($refs | split("\n") | map(select(length > 0))) as $r | .data as $d
+				| range(0; $r | length) as $i | ($d["p\($i)"].pullRequest? // null) as $p
+				| {pr: $r[$i], fp: (if $p == null then null
+				    else [$p.state, $p.updatedAt, $p.mergedAt, $p.closedAt,
+				          $p.comments.totalCount, $p.comments.nodes[0].updatedAt?,
+				          $p.reviews.totalCount, $p.reviews.nodes[0].id?, $p.reviews.nodes[0].updatedAt?] | tojson end)}' \
+				"$f.out" >>"$run_tmp/poll-fps"
+			jq -c '.data.rateLimit | {cost: (.cost // 1), remaining: (.remaining // 0), limit: (.limit // 0),
+				reset: ((.resetAt // "") | try fromdateiso8601 catch 0)}' "$f.out" >>"$run_tmp/poll-rates"
+		else
+			bad=$((bad + $(wc -l <"$f")))
+			detail=$(head -n 1 "$f.err")
+			[ -n "$detail" ] || detail=$(jq -r '[.errors[]?.message] | first // empty' "$f.out" 2>/dev/null)
+			# The hourly limit only. A secondary limit ("You have exceeded a
+			# secondary rate limit") clears in about a minute, so it takes the
+			# ordinary backoff, whatever error type it comes with.
+			if { grep -i 'API rate limit exceeded' "$f.err" 2>/dev/null | grep -qvi secondary; } ||
+				jq -e 'any(.errors[]?; .type == "RATE_LIMITED" and ((.message // "") | test("secondary"; "i") | not))' \
+					"$f.out" >/dev/null 2>&1; then
+				limited=1
+			fi
+		fi
+	done
+	[ "$n" -gt 0 ] || return 0
+	# A summary that moved, or that wasn't recorded yet, marks the PR. A PR
+	# marked so is marked once more on the next poll (rechecks): the summary
+	# can show an item a moment before the REST timeline examine reads does,
+	# and once recorded, an unchanged summary would mark it no more. A second
+	# read 15 seconds on is long past that lag, and the feed then skips the
+	# PR (poll_feed), so an event still costs two reads.
+	read -r moved rechecks <<<"$(jq -r --slurpfile fps "$run_tmp/poll-fps" '. as $st
+		| [$fps[] | select(.fp != null)] as $f
+		| "\([$f[] | select($st.prs[.pr].fp != .fp) | .pr] | join(",")) \([$f[] | select($st.prs[.pr].fp == .fp and $st.prs[.pr].recheck == true) | .pr] | join(","))"' \
+		"$work_state")"
+	# Each PR it marks costs a REST read (the PR, its timeline, owner checks),
+	# a budget of its own. The rate_limit endpoint costs none, so with
+	# rest_reserve requests or fewer left, nothing is marked and nothing
+	# recorded: the next poll marks them once the budget is back, and the feed
+	# and the sweep carry on meanwhile. A budget it can't read keeps the state
+	# it had.
+	rest_low=$was_low
+	if [ -n "$moved$rechecks" ] || [ "$was_low" = true ]; then
+		read -r rest rest_reset <<<"$("$gh_bin" api rate_limit --jq '.resources.core | "\(.remaining) \(.reset)"' </dev/null 2>/dev/null)"
+		if [[ $rest =~ ^[0-9]+$ ]]; then
+			if [ "$rest" -le "$rest_reserve" ]; then
+				rest_low=true
+				[ "$was_low" = true ] ||
+					log "poll-prs rest-low remaining=$rest reserve=$rest_reserve reset=$(if [[ $rest_reset =~ ^[0-9]+$ ]]; then iso "$rest_reset"; else echo unknown; fi) held=$moved"
+			else
+				rest_low=false
+				[ "$was_low" != true ] || log "poll-prs rest-ok remaining=$rest"
+			fi
+		fi
+	fi
+	unread=$(jq -s '[.[] | select(.fp == null)] | length' "$run_tmp/poll-fps")
+	[ "$rest_low" = true ] || edit "$work_state" --slurpfile fps "$run_tmp/poll-fps" '
+		reduce ($fps[] | select(.fp != null)) as $x (.;
+			if .prs[$x.pr].fp != $x.fp then .prs[$x.pr] += {fp: $x.fp, dirty: true, recheck: true}
+			elif .prs[$x.pr].recheck == true then .prs[$x.pr] |= (.dirty = true | del(.recheck))
+			else . end)'
+	if [ "$ok" -eq 0 ]; then
+		# The feed and the sweep still run, so a failed poll backs off: 30
+		# seconds, then a minute, two and four, then every five (or every
+		# pr_poll_interval, past five minutes, so a failing poll never runs
+		# faster than a healthy one), and past the hour's reset when the
+		# hourly rate limit is what failed it.
+		failures=$((failures + 1))
+		delay=$(jq -n --argjson e "$pr_poll_interval" --argjson k "$failures" '[$e * pow(2; $k), ([300, $e] | max)] | min | floor')
+		next=$((now + delay))
+		[ -z "$limited" ] || [ "$prev_reset" -le "$next" ] || next=$((prev_reset + 1))
+		edit "$work_state" --argjson k "$failures" --argjson next "$next" --arg iso "$now_iso" --argjson low "$rest_low" \
+			'.pr_poll += {mode: "failing", failures: $k, next_at: $next, last_iso: $iso, last_status: "error", rest_low: $low}'
+		log "poll-prs error prs=$n failures=$failures${limited:+ rate-limited} next=$(iso "$next") detail=$(printf '%s' "$detail" | head -c 200 | jq -Rrs '@json')"
+		return 1
+	fi
+	# Some of the queries read (past a hundred PRs): those set the pace, and a
+	# failed one is logged at most every five minutes.
+	if [ "$bad" -gt 0 ] && [ $((now - part_at)) -ge 300 ]; then
+		log "poll-prs error prs=$bad of=$n detail=$(printf '%s' "$detail" | head -c 200 | jq -Rrs '@json')"
+		part_at=$now
+	fi
+	read -r cost remaining limit reset <<<"$(jq -rs '"\(map(.cost) | add) \(map(.remaining) | min) \(map(.limit) | max) \(map(.reset) | max)"' "$run_tmp/poll-rates")"
+	# Every request on the token, the sessions' own included, counts against
+	# the one hourly budget, so the poll leaves graphql_reserve points to them:
+	# it slows down to spread what's left above the reserve over the time to
+	# the reset, and stops until the reset once nothing is left above it. A
+	# reset it can't read, or one already past, counts as an hour away, the
+	# window's length. The job fires every 15 seconds, so the pace rounds to
+	# its firings: three seconds of slack keep a pace of 15 from skipping every
+	# other one, so a pace up to 18 polls every 15 seconds, and one from 19 to
+	# 33 every 30.
+	[ "$reset" -gt "$now" ] || reset=$((now + 3600))
+	read -r next mode pace <<<"$(jq -rn --argjson now "$now" --argjson every "$pr_poll_interval" --argjson reserve "$graphql_reserve" \
+		--argjson cost "$cost" --argjson rem "$remaining" --argjson reset "$reset" '
+		def slack($p): [3, ($p / 3 | floor)] | min;
+		([$cost, 1] | max) as $c | ($rem - $reserve) as $spare
+		| if $spare < $c then ([$reset + 1, $now + $every] | max) as $at | "\($at) paused \($at - $now)"
+		  else ((($reset - $now) / (($spare / $c) | floor)) | ceil) as $need
+		    | if $need > $every then "\($now + $need - slack($need)) stretched \($need)"
+		      else "\($now + $every - slack($every)) normal \($every)" end
+		  end')"
+	edit "$work_state" --argjson next "$next" --arg mode "$mode" --arg iso "$now_iso" --argjson n "$n" \
+		--argjson unread "$unread" --argjson cost "$cost" --argjson rem "$remaining" --argjson limit "$limit" --argjson reset "$reset" \
+		--argjson low "$rest_low" --argjson part "$part_at" '.pr_poll = {mode: $mode, failures: 0, next_at: $next,
+			last_iso: $iso, last_status: "ok", prs: $n, unread: $unread, cost: $cost, remaining: $rem, limit: $limit,
+			reset_at: $reset, rest_low: $low, part_logged_at: $part}'
+	# Logged only when it marks a PR or changes pace: a line every pass would
+	# be 5,760 a day. A recheck isn't logged.
+	[ -z "$moved" ] || [ "$rest_low" = true ] || log "poll-prs prs=$n moved=$moved cost=$cost remaining=$remaining"
+	[ "$mode" = "$prev" ] || log "poll-prs mode=$mode was=$prev every=${pace}s remaining=$remaining reserve=$graphql_reserve reset=$(iso "$reset")"
 }
 
 # --- check: examining a PR ------------------------------------------------
@@ -487,7 +681,7 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	edit "$work_state" --arg r "$ref" --slurpfile res "$result" --slurpfile reg "$work_registry" \
 		--argjson now "$now" --arg pr_url "$(jq -r '.html_url // ""' "$run_tmp/pr.json")" '
 		$res[0] as $x
-		| .prs[$r] = ($x.ps + {last_swept: $now, dirty: false} | del(.failing_since, .failing_reported))
+		| .prs[$r] = ($x.ps + {last_swept: $now, dirty: false} | del(.failing_since, .failing_reported, .failed_at))
 		| reduce ($reg[0].subscriptions[] | select(.pr == $r)) as $s (.;
 			reduce ($x.events[] | select(.at >= $s.subscribed_at)) as $e (.;
 				.pending[$s.session_id] //= {first_at: $now, events: []}
@@ -509,9 +703,10 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 
 examine_due() { # every subscribed PR that is dirty or due a sweep
 	local ref
-	jq -r --slurpfile st "$work_state" --argjson now "$now" --argjson every "$sweep_interval" '
+	jq -r --slurpfile st "$work_state" --argjson now "$now" --argjson every "$sweep_interval" --argjson retry "$slow_retry" '
 		.subscriptions | map(.pr) | unique | .[]
-		| select(($st[0].prs[.] // {}) as $p | ($p.dirty == true) or ($now - ($p.last_swept // 0) >= $every))' \
+		| select(($st[0].prs[.] // {}) as $p | (($p.dirty == true) or ($now - ($p.last_swept // 0) >= $every))
+			and $now - ($p.failed_at // 0) >= $retry - 5)' \
 		"$work_registry" >"$run_tmp/due"
 	while IFS= read -r ref; do
 		[ -n "$ref" ] || continue
@@ -520,13 +715,15 @@ examine_due() { # every subscribed PR that is dirty or due a sweep
 }
 
 pr_unreadable() { # pr_unreadable <ref>: after a failed read
-	# A failed read leaves the PR marked, so the next check tries again, until
-	# it has failed for hold_bound: then it is reported once and falls back to
-	# the sweep, so a PR that is gone (or was never a PR) costs one read per
-	# sweep, not one a minute.
+	# A failed read leaves the PR marked, so a check a minute or more later
+	# tries again (not every check: one every 15 seconds, for every PR, would
+	# hammer GitHub through an outage), until it has failed for hold_bound:
+	# then it is reported once and falls back to the sweep, so a PR that is
+	# gone (or was never a PR) costs one read per sweep, not one a minute.
 	local mins
 	edit "$work_state" --arg r "$1" --argjson now "$now" --argjson bound "$hold_bound" '
 		.prs[$r].failing_since //= $now
+		| .prs[$r].failed_at = $now
 		| if $now - .prs[$r].failing_since < $bound then .prs[$r].dirty = true
 		  else .prs[$r] += {dirty: false, last_swept: $now} end'
 	mins=$(jq -r --arg r "$1" --argjson now "$now" --argjson bound "$hold_bound" '.prs[$r]
@@ -639,8 +836,14 @@ pid_alive() { # pid_alive <pid>: a process with that pid exists, whoever owns it
 	[[ $1 =~ ^[0-9]+$ ]] && "$ps_bin" -p "$1" -o pid= >/dev/null 2>&1
 }
 
-hold() { # hold <session id> <reason>
-	edit "$work_state" --arg s "$1" --arg r "$2" '.pending[$s].last_hold = $r'
+hold() { # hold <session id> <reason>: logged when the reason changes, and every five minutes it doesn't
+	# A check runs every 15 seconds, so a session busy for an hour would
+	# otherwise log 240 lines saying so.
+	if jq -e --arg s "$1" --arg r "$2" --argjson now "$now" \
+		'.pending[$s] | .last_hold == $r and $now - (.hold_logged_at // 0) < 300' "$work_state" >/dev/null; then
+		return 0
+	fi
+	edit "$work_state" --arg s "$1" --arg r "$2" --argjson now "$now" '.pending[$s] += {last_hold: $r, hold_logged_at: $now}'
 	log "hold session=$(short "$1") reason=$2"
 }
 
@@ -738,7 +941,7 @@ finish_wake() { # finish_wake <session id> <how> [log detail] [event ids, a JSON
 		.pending[$s].events = [.pending[$s].events[] | select("\(.pr)|\(.key)" as $i | $ids | index($i) | not)]
 		| if (.pending[$s].events | length) == 0 then .pending |= del(.[$s])
 		  else .pending[$s] |= (del(.relay_failures, .relay_unconfirmed, .next_relay_at, .wake_failures, .next_wake_at,
-		                            .stale_reported, .last_hold, .stale_logged) | .first_at = $now)
+		                            .stale_reported, .last_hold, .hold_logged_at, .stale_logged, .fallback_at) | .first_at = $now)
 		  end'
 	while IFS= read -r ref; do
 		[ -z "$ref" ] || unsubscribe "$ref" "$sid" "pr-final-wake"
@@ -1126,9 +1329,10 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 		0) return ;;
 		2)
 			# It may have reached the session without a turn yet: it may still
-			# be taken, so the fallback that stops the session waits a check
+			# be taken, so the fallback that stops the session waits slow_retry
 			# (the relay backs off).
-			hold "$sid" "relay unconfirmed; the fallback waits a pass"
+			edit "$work_state" --arg s "$sid" --argjson at $((now + slow_retry)) '.pending[$s].fallback_at = $at'
+			hold "$sid" "relay unconfirmed; the fallback waits a minute"
 			return
 			;;
 		esac
@@ -1139,7 +1343,12 @@ deliver() { # deliver <session id>: the spike's state table, first match wins
 }
 
 stop_and_resume() { # stop_and_resume <session id> <config dir> <short id> <cwd> <kind> <why no relay>: the fallback
-	local sid=$1 cfg=$2 id=$3 cwd=$4 kind=$5 why=$6 pid status st inflight updated tempo tries row worker
+	local sid=$1 cfg=$2 id=$3 cwd=$4 kind=$5 why=$6 pid status st inflight updated tempo tries row worker wait_until
+	wait_until=$(jq -r --arg s "$sid" '.pending[$s].fallback_at // 0 | floor' "$work_state")
+	if [ "$now" -lt $((wait_until - 5)) ]; then
+		hold "$sid" "$why; a relay may still land, so the fallback waits until $(iso "$wait_until")"
+		return
+	fi
 	if [ "$kind" != background ]; then
 		# A live terminal session: someone is at it, and a stop would end it
 		# under them. Its events wait for a relay, or until it exits.
@@ -1251,11 +1460,17 @@ cmd_check() {
 	claude_path=$(command -v "$claude_bin" 2>/dev/null) || claude_path=$claude_bin
 	if jq -e '(.subscriptions | length) == 0' "$work_registry" >/dev/null &&
 		jq -e '(.pending // {} | length) == 0' "$work_state" >/dev/null; then
-		log "check skipped=no-subscriptions"
+		# Logged once an hour, not every 15 seconds: the line shows the job
+		# runs, and job.last shows it too.
+		if [ $((now - $(jq -r '.idle_logged_at // 0 | floor' "$work_state"))) -ge 3600 ]; then
+			log "check skipped=no-subscriptions"
+			edit "$work_state" --argjson now "$now" '.idle_logged_at = $now'
+		fi
 		save_files
 		return 0
 	fi
 	poll_feed
+	poll_prs
 	examine_due
 	local sid off
 	# Sessions take turns going first: a few slow ones early in a fixed order
