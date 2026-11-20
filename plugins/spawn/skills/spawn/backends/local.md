@@ -1,12 +1,14 @@
 # Backend: local (`claude --bg`)
 
 The spawner is running on a machine the user has a shell on. Sessions are
-background jobs of the local CLI, recorded under `~/.claude/jobs/`, and the user
-inspects them with `claude agents`, `claude attach`, and `claude logs`.
+background jobs of the local CLI, recorded under the Claude config directory's
+`jobs/` (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/`; each config root has its
+own), and the user inspects them with `claude agents`, `claude attach`, and
+`claude logs`.
 
 ## Resolve a durable launch directory
 
-The bg job records its launch cwd (in `~/.claude/jobs/<id>/state.json`), and later
+The bg job records its launch cwd (in `jobs/<id>/state.json`, above), and later
 attach/resume re-enters that directory. **Never spawn a background session from
 inside a disposable worktree** — once the worktree is cleaned up (e.g. when the
 spawning ticket session finishes), the recorded cwd dangles and attaching to the
@@ -208,10 +210,76 @@ your session:
 - `claude --bg` prints a **session handle** at spawn — record it per unit; it
   survives the user renaming the session and is how you inspect a stuck one later.
 
+## Session links
+
+A background session with Remote Control on has a page on claude.ai/code. That
+page opens the session in a browser, and the Remote Control docs open the same
+address in the Claude app from a QR code. SKILL.md step 5 links each Session
+cell to it. **No documented interface gives a spawner that address**: `claude --bg`
+prints only the short id, the name and the CLI hints, `claude agents --json`
+rows carry no URL, and the agent-view docs say to read session state through
+`claude agents --json` rather than the files under `~/.claude/jobs/`, which are
+not a stable interface. The one place it shows up is one of those files. The
+job's `state.json` (under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/<short id>/`)
+has a `bridgeSessionId` field, the Remote Control session's `cse_…` id. The
+page is `https://claude.ai/code/session_…`, with the same suffix: the
+cloud docs name `cse_…` and `session_…` as two spellings of a session's id, and
+its claude.ai/code URL as `https://claude.ai/code/session_…`.
+
+What was checked, on Claude Code 2.1.326 (the toolbox's #346):
+
+- **The mapping**, for two jobs. A background session whose `bridgeSessionId`
+  was `cse_<x>` was given its own link by the harness as
+  `https://claude.ai/code/session_<x>`, with the same `<x>`. An earlier job had
+  `cse_<y>`, and the `Claude-Session:` trailers on its commits read
+  `https://claude.ai/code/session_<y>`.
+- **When it's written.** It wasn't there when `claude --bg` returned, and it
+  was there about a second later.
+- **Remote Control off.** A job launched with
+  `--settings '{"remoteControlAtStartup":false}'` never got the field (it
+  stayed `null` for 90 seconds). Every job on a machine with Remote Control
+  auto-connect on (`remoteControlAtStartup: true`) had one.
+- **A stopped job keeps it, and a resume keeps the same one.** After
+  `claude --bg --resume`, which reuses the job's directory, the field still
+  held the id it had before, for the 30 seconds it was watched. So a resumed
+  unit links the page it already had. What that page shows while its session
+  is stopped hasn't been checked.
+- **Not seen:** a job with `bridgeOutboundOnly: true`. Every job seen had
+  `false`. The read links such a job anyway, and whether its page opens the
+  session hasn't been checked.
+
+So the read is best-effort and fails soft: any change to the file in a later
+release, or a missing field, leaves the plain name, never a guessed link. That
+also means a release that moves the field makes the links stop appearing with
+no other sign, so when a documented way to get the address arrives (a URL in
+`claude --bg`'s output or a `claude agents --json` field), switch to it and
+drop this read. Read the field, never build it. Run this **once**, in a Bash
+call of its own after every launch and resume of the fan-out has returned
+(that next tool call comes more than a second later in practice), with each
+unit's short id: the hex id on the `backgrounded · <id> · …` line its launch
+or resume printed, else its listing row's `id`. Don't wait and re-read for a
+unit that has no link yet; it keeps the plain name.
+
+```bash
+for id in <short id> <short id>; do
+  url=$(jq -r '.bridgeSessionId | strings | select(test("\\Acse_[A-Za-z0-9]+\\z"))
+               | "https://claude.ai/code/session_" + ltrimstr("cse_")' \
+    "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs/$id/state.json" 2>/dev/null)
+  printf '%s\t%s\n' "$id" "${url:--}"
+done
+```
+
+Each line is a short id and its link, or `-` when there is none (no file, no
+field, a value that isn't a plain `cse_…` id, or a read that failed). Where
+the link may go (the report, and nowhere public) is SKILL.md step 5's rule.
+
 ## Report
 
 Name column = the `--name` you passed (for a resumed unit, its existing name,
-marked *resumed*). Point at the inspect commands: `claude agents` (list),
+marked *resumed*), linked to the session's page from *Session links* above
+when the read found one, and the plain name in backticks when it didn't.
+Point at the inspect commands: `claude agents` (list),
 `claude attach "<name>"` (open), `claude logs "<name>"` (read-only). Quote
-names — they contain spaces. Those are for the user's terminal; from a tool call,
+names — they contain spaces. Those are for the user's terminal, and they stay
+in the report whether or not the names are linked. From a tool call,
 list with `claude agents --json --all` (above).

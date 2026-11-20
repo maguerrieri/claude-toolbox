@@ -57,11 +57,13 @@ As `spawn` does — print a table, then hand back (don't block on the siblings):
 
 | Issue | Session | Scope |
 |---|---|---|
-| ABC-12 | `widgets ABC-12: add GeoIP routing` | `<one-line summary>` |
+| ABC-12 | [`widgets ABC-12: add GeoIP routing`](https://claude.ai/code/session_01ABC…) | `<one-line summary>` |
+
+Link each Session cell to the session's page exactly as the `spawn` skill's step 5 says (where the link comes from is its backend file's *Session links*), and keep the plain name in backticks for a sibling with no link. The rule and its fallbacks live there, so don't restate them here.
 
 When a model was resolved, say which one the siblings were launched on, and name any `Session model` line skipped, for an invalid value or a role that doesn't exist (`launch-model.md`); a resumed row keeps its launch model, so don't claim the new one for it. When the request itself named a model ("/spawn-tickets 12 on opus"), say that it picked none, since the lines are the only input, so nobody assumes it took effect.
 
-Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces); on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
+Print the inspect path your **backend** specifies — locally `claude agents` / `claude attach "<name>"` / `claude logs "<name>"` (quote the name — it contains spaces), which stay even when the names are linked; on cloud, the session IDs plus `list_sessions` / `get_session`, since the CLI commands don't reach a web user.
 
 ## SPAWN does NOT
 
