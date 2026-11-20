@@ -9,8 +9,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
-  list pulls in every plugin below except `gm`, `provenance` and
-  `pr-notifier`. Install this one to get the default set. New default plugins
+  list pulls in every plugin below except `gm`, `provenance`, `pr-notifier`
+  and `mdl`. Install this one to get the default set. New default plugins
   added to this repo should also be added to its dependencies.
 - **conventions** — cross-repo development conventions: commit-message and
   PR-title formats, and a portable repository-instruction policy built around a canonical root
@@ -93,6 +93,11 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   git-versioned saves that autosave every turn's dialogue, and a GM screen (a
   `gm:screen` subagent plus state sealed on disk) that keeps secrets out of the
   player's transcript.
+- **mdl** — `/mdl big`, `/mdl medium` and `/mdl small` switch the session's
+  model and effort level together, in place of `/model` then `/effort`. A mod
+  (a plugin of function hooks): the three presets are yours to set in
+  `/config`, and it ships none. The switch applies from your next message, and
+  saves what `/model` and `/effort` save. See [its README](plugins/mdl/README.md).
 - **provenance** — researcher and verifier agents plus the orchestration skill
   for [provenance](https://github.com/maguerrieri/provenance), a cited-research
   pipeline whose citations a machine checks and a person reviews. It lives in
@@ -154,8 +159,8 @@ the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
-six default plugins (`gm`, `provenance` and `pr-notifier` aren't `defaults`
-dependencies; install them separately).
+six default plugins (`gm`, `provenance`, `pr-notifier` and `mdl` aren't
+`defaults` dependencies; install them separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these

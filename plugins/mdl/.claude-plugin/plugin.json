@@ -1,0 +1,40 @@
+{
+  "name": "mdl",
+  "description": "/mdl big|medium|small: switch the session's model and effort level together, from three presets you set in /config",
+  "version": "0.1.0",
+  "author": {
+    "name": "Mari Guerrieri"
+  },
+  "userConfig": {
+    "bigModel": {
+      "type": "string",
+      "title": "big: model",
+      "description": "The model /mdl big switches to, as /model takes it: an alias such as opus, sonnet, haiku or fable (opus[1m] for the 1M context), or a full model ID. Unset, /mdl big says it isn't configured."
+    },
+    "bigEffort": {
+      "type": "string",
+      "title": "big: effort",
+      "description": "The effort level /mdl big sets, as /effort takes it: low, medium, high, xhigh, max, or auto (the model's own default). Unset, /mdl big says it isn't configured."
+    },
+    "mediumModel": {
+      "type": "string",
+      "title": "medium: model",
+      "description": "The model /mdl medium switches to, as /model takes it: an alias such as opus, sonnet, haiku or fable (opus[1m] for the 1M context), or a full model ID. Unset, /mdl medium says it isn't configured."
+    },
+    "mediumEffort": {
+      "type": "string",
+      "title": "medium: effort",
+      "description": "The effort level /mdl medium sets, as /effort takes it: low, medium, high, xhigh, max, or auto (the model's own default). Unset, /mdl medium says it isn't configured."
+    },
+    "smallModel": {
+      "type": "string",
+      "title": "small: model",
+      "description": "The model /mdl small switches to, as /model takes it: an alias such as opus, sonnet, haiku or fable (opus[1m] for the 1M context), or a full model ID. Unset, /mdl small says it isn't configured."
+    },
+    "smallEffort": {
+      "type": "string",
+      "title": "small: effort",
+      "description": "The effort level /mdl small sets, as /effort takes it: low, medium, high, xhigh, max, or auto (the model's own default). Unset, /mdl small says it isn't configured."
+    }
+  }
+}

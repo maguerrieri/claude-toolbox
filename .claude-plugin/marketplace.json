@@ -51,6 +51,11 @@
       "description": "Wakes the local session that owns a PR when the owner or a configured review bot acts on it, or when it merges or closes"
     },
     {
+      "name": "mdl",
+      "source": "./plugins/mdl",
+      "description": "/mdl big|medium|small: switch the session's model and effort level together, from three presets you set in /config"
+    },
+    {
       "name": "provenance",
       "source": {
         "source": "github",
