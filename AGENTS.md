@@ -253,6 +253,46 @@ it. The transcript
 shows which body a prompt such as `/<name>` loaded, since a skill's starts
 `Base directory for this skill:`.
 
+## Mods in the desktop app: local sessions draw, Remote Control ones don't
+
+A mod's `ui.render` hooks draw in the desktop app for a session the app hosts
+on its own machine, over the local (stdio) transport. In a Remote Control
+session the app opens, the evidence says nothing a mod draws shows up: no
+band, and no pane or widget either, since every one of them is drawn through
+the same requests. Checked on Claude Code 2.1.326 for #345 (the test below
+also passes on 2.1.325, the version ledger CI pins):
+
+- **The local transport draws, checked by running it.**
+  `plugins/ledger/tests/test-band-desktop.py` drives a headless session over
+  stdio the way a `desktop` client does. `initialize` lists `ui_surface_v1`,
+  `ui_attach` puts `desktop` on the roster, and a `ui_render` of `AbovePrompt`
+  answers the ledger band's row. Show and `/ledger-band` expand and fold it.
+  Ledger CI runs it against the pinned CLI, with no login.
+- **Remote Control is consistent with drawing nothing, read from the binary
+  but not run.** `claude remote-control` spawns each session as `claude
+  --print --sdk-url <sessions API URL>`, a remote transport, with
+  `CLAUDE_CODE_ENVIRONMENT_KIND=bridge`. It sets no `CLAUDE_CODE_ENTRYPOINT`
+  (the transcript says `entrypoint: sdk-cli`) and no
+  `CLAUDE_CODE_REMOTE_SESSION_ID`. Over a remote transport the engine lists
+  `ui_surface_v1` and takes `ui_*` requests only when, among other
+  conditions, `CLAUDE_CODE_REMOTE_SESSION_ID` is set and the entrypoint is on
+  its list of app clients (`claude-desktop`, `remote_desktop`,
+  `remote_mobile` and the like), and a Remote Control session meets neither.
+  That matches what the owner saw in a Remote Control session as `bot` that
+  the desktop app opened: `/ledger-band` ran, since commands cross the
+  bridge, but no band appeared.
+- **Telling the two apart:** a Remote Control session's process has
+  `--sdk-url` in its arguments and `claude remote-control` as its parent
+  (`ps -o ppid=,args= -p <pid>`; `~/.claude/sessions/<pid>.json` maps a live
+  session's `pid` to its `sessionId`). A session the desktop app hosts runs
+  as the macOS user the app runs as, so the app reaches another user's
+  sessions (`bot`'s) only through Remote Control.
+
+So `/ledger` is the way to read a ledger in a Remote Control session. If a
+release changes this, the probe's requests are the place to start: the
+`@internal` docs of `ui_attach`, `ui_render` and `ui_press` are in the CLI's
+binary.
+
 ## SKILL.md size — when to split phases into their own files
 
 ticket-workflow's `SKILL.md` keeps the phases **in one file** by default (~430

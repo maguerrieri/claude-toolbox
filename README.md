@@ -80,7 +80,11 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   `ticket-workflow`'s sessions record into it and start their "status?"
   answers from it. Local sessions only: the ledgers are files under
   `~/.claude/session-ledger/`. The band shows this session's ledger alone; a
-  glanceable view across every session's ledger is #316.
+  glanceable view across every session's ledger is #316. It draws in the
+  terminal and in a session the desktop app hosts, but not in a Remote
+  Control session (one `claude remote-control` started, opened from the
+  desktop app, a phone or the web), which draws no mod UI as far as #345
+  checked: use `/ledger` there.
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
