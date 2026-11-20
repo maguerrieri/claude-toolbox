@@ -199,13 +199,42 @@ failed_read() { # failed_read <stderr file>
 	return 1
 }
 
-api() { # api <endpoint> [gh api args...]: one REST read, raw JSON on stdout
-	# </dev/null: gh never needs stdin here.
-	"$gh_bin" api "$@" ${host:+--hostname "$host"} </dev/null 2>"$tmp/err-api" || failed_read "$tmp/err-api"
+perl_bin=$(command -v perl 2>/dev/null) || perl_bin=
+bounded() { # bounded <err file> <command...>: run it, cut off at the deadline (and after 2m at most)
+	local err=$1 left rc
+	shift
+	left=$((timeout - (SECONDS - start)))
+	[ "$left" -ge 1 ] || left=1
+	[ "$left" -le 120 ] || left=120
+	if [ -n "$perl_bin" ]; then
+		# The read runs in a process group of its own, killed whole at the
+		# alarm: a child left running (gh under gh-rest-list.sh) would hold
+		# the $(...) pipe open, and the caller would wait for it anyway.
+		"$perl_bin" -e '
+			my $t = shift;
+			my $pid = fork() // die "fork: $!\n";
+			if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV or die "exec $ARGV[0]: $!\n"; }
+			$SIG{ALRM} = sub { kill "KILL", -$pid; waitpid($pid, 0); exit 142; };
+			alarm $t;
+			waitpid($pid, 0);
+			alarm 0;
+			exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);' "$left" "$@" 2>"$err"
+	else
+		"$@" 2>"$err"
+	fi
+	rc=$?
+	[ "$rc" -ne 142 ] || echo "pr-wait.sh: a GitHub read was cut off after ${left}s, at the wait's deadline or its two-minute limit" >>"$err"
+	return "$rc"
 }
 
+api() { # api <endpoint> [gh api args...]: one REST read, raw JSON on stdout
+	# </dev/null: gh never needs stdin here.
+	bounded "$tmp/err-api" "$gh_bin" api "$@" ${host:+--hostname "$host"} </dev/null || failed_read "$tmp/err-api"
+}
+
+export GH_REST_LIST_GH=$gh_bin
 rest_list() { # rest_list <endpoint> [gh-rest-list.sh args...]: every item, one JSON array
-	GH_REST_LIST_GH="$gh_bin" bash "$here/gh-rest-list.sh" "$@" ${host:+--hostname "$host"} </dev/null 2>"$tmp/err-list" ||
+	bounded "$tmp/err-list" bash "$here/gh-rest-list.sh" "$@" ${host:+--hostname "$host"} </dev/null ||
 		failed_read "$tmp/err-list"
 }
 
@@ -292,16 +321,17 @@ read_pr() { # sets pr_json and age, and state/detail when the PR or its head end
 
 poll_ci() {
 	local runs suites statuses summary fresh
-	# Only the fields used: a check run's output can be large, and Linux caps
-	# one argument (the --argjson below) at 128 KB.
+	# Each list goes to jq as a file (--slurpfile), never an argument: Linux
+	# caps one argument at 128 KB, which a head's check runs can pass. Only
+	# the fields used are kept, since a check run's output can be large.
 	runs=$(rest_list "repos/$repo/commits/$sha/check-runs" --key check_runs) || return 1
-	runs=$(printf '%s' "$runs" | j -c 'map({name, status, conclusion, suite: .check_suite.id})') || return 1
+	printf '%s' "$runs" | j -c 'map({name, status, conclusion, suite: .check_suite.id})' >"$tmp/runs.json" || return 1
 	suites=$(rest_list "repos/$repo/commits/$sha/check-suites" --key check_suites) || return 1
-	suites=$(printf '%s' "$suites" | j -c 'map(select(.app.slug == "github-actions") | {id, status})') || return 1
+	printf '%s' "$suites" | j -c 'map(select(.app.slug == "github-actions") | {id, status})' >"$tmp/suites.json" || return 1
 	# Every page: a failing context past the first 100 would otherwise read
 	# as green.
 	statuses=$(rest_list "repos/$repo/commits/$sha/status" --key statuses) || return 1
-	statuses=$(printf '%s' "$statuses" | j -c 'map({context, state})') || return 1
+	printf '%s' "$statuses" | j -c 'map({context, state})' >"$tmp/statuses.json" || return 1
 	# Classified as github-rest.md's CI read and gh pr checks do: a stale
 	# conclusion is pending, these conclusions fail, the rest pass.
 	# An unfinished Actions suite with runs is a workflow with jobs still to
@@ -309,10 +339,12 @@ poll_ci() {
 	# settled, since GitHub can leave such a suite queued for good.
 	fresh=true
 	! settled || fresh=false
-	summary=$(j -rn --argjson runs "$runs" --argjson suites "$suites" --argjson st "$statuses" --argjson bots "$bot_runs" --argjson fresh "$fresh" '
+	summary=$(j -rn --slurpfile R "$tmp/runs.json" --slurpfile S "$tmp/suites.json" --slurpfile T "$tmp/statuses.json" \
+		--argjson bots "$bot_runs" --argjson fresh "$fresh" '
 		def failed: test("^(failure|cancelled|timed_out|action_required|startup_failure)$");
 		def isbot: . as $n | any($bots[]; . == $n);
-		[$runs[] | select(.name | isbot | not)] as $mine
+		$R[0] as $runs | $S[0] as $suites | $T[0] as $st
+		| [$runs[] | select(.name | isbot | not)] as $mine
 		| ([$runs[] | select(.name | isbot) | .suite] - [$mine[] | .suite]) as $botsuites
 		| ([$mine[] | {name, suite, s: (if .status != "completed" or .conclusion == "stale" then "pending"
 		                       elif ((.conclusion // "") | failed) then .conclusion else "pass" end)}]

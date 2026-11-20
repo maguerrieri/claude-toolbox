@@ -24,6 +24,7 @@ trap 'rm -rf "$tmp"' EXIT
 cat >"$tmp/gh" <<'STUB_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$STUB_DIR/calls"
+[ -z "${STUB_SLEEP:-}" ] || sleep "$STUB_SLEEP" # a read that stalls
 if [ -n "${STUB_FAIL:-}" ]; then
 	echo "$STUB_FAIL" >&2
 	exit 1
@@ -253,6 +254,33 @@ before=$SECONDS
 record "ci #7 aaaaaaaaaaaa: timeout after 2s; last: pending 1 of 1 running: hooks|exit 4" 'ci: an interval past the deadline is cut short' \
 	"$(run ci 7 --head "$A" --interval 30s --timeout 2s)"
 record yes 'ci: so the wait keeps to its deadline' "$([ $((SECONDS - before)) -le 4 ] && echo yes || echo no)"
+
+# A read that stalls is cut off at the deadline too.
+reset
+fx pulls_7 "$(pr "$A" '' true clean)"
+before=$SECONDS
+got=$(STUB_SLEEP=5 run mergeable 7 --interval 0 --timeout 1s)
+case $got in
+"mergeable #7 "*": timeout after 1s; last: a read failing: pr-wait.sh: a GitHub read was cut off after 1s"*"|exit 4") got=ok ;;
+esac
+record ok 'ci: a stalled read ends the wait at its deadline' "$got"
+record yes 'ci: not when the read would have finished' "$([ $((SECONDS - before)) -le 3 ] && echo yes || echo no)"
+
+# Check runs too big for one command-line argument (Linux caps one at
+# 128 KB): 600 runs with long names, over six pages.
+reset
+fx pulls_7 "$(pr "$A")"
+fx "commits_${A}_status" "$(statuses)"
+for p in 1 2 3 4 5 6 7; do
+	n=100
+	[ "$p" -lt 7 ] || n=0
+	f="commits_${A}_check-runs"
+	[ "$p" = 1 ] || f="$f.p$p"
+	jq -cn --argjson p "$p" --argjson n "$n" \
+		'{check_runs: [range($n) | {name: ("job-\($p)-\(.)-" + ("x" * 2000)), status: "completed", conclusion: "success", check_suite: {id: 1}}]}' \
+		>"$stub/$f"
+done
+record "ci #7 aaaaaaaaaaaa: green 600 passed|exit 0" 'ci: hundreds of long-named checks, past one argument' "$(run ci 7 --head "$A" --interval 0)"
 
 # --- reads that fail ---------------------------------------------------------
 
