@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/symbol_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Demonic figure"},
+    {"max": 20, "result": "Eldritch being"},
+    {"max": 30, "result": "Fanged skull"},
+    {"max": 35, "result": "Gargoyle"},
+    {"max": 45, "result": "Grim reaper"},
+    {"max": 50, "result": "Headless figure"},
+    {"max": 60, "result": "Kraken or tentacles"},
+    {"max": 70, "result": "Menacing Skeleton"},
+    {"max": 80, "result": "Monstrous claw"},
+    {"max": 85, "result": "Monstrous eye"},
+    {"max": 95, "result": "Monstrous skull or jaws"},
+    {"max": 100, "result": "Spider"}
+  ]
+}

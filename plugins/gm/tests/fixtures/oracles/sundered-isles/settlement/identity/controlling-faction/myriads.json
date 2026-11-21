@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/settlement/identity/controlling_faction/myriads",
+  "die": "1d100",
+  "rows": [
+    {"max": 60, "result": "Known faction"},
+    {"max": 75, "result": "Unknown faction"},
+    {"max": 90, "result": "Independent"},
+    {"max": 95, "result": "Factions in cooperation"},
+    {"max": 100, "result": "Factions in conflict"}
+  ]
+}

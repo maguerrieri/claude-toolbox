@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/secrecy/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Cloaks"},
+    {"max": 20, "result": "Daggers"},
+    {"max": 30, "result": "Eyes"},
+    {"max": 40, "result": "Masks"},
+    {"max": 50, "result": "Phantoms"},
+    {"max": 60, "result": "Ravens"},
+    {"max": 70, "result": "Serpents"},
+    {"max": 80, "result": "Shadows"},
+    {"max": 90, "result": "Specters"},
+    {"max": 100, "result": "Spiders"}
+  ]
+}

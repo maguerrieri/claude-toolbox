@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/adventures/factions/cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Acheron’s Armada — Ghost ships under the command of an undead imperial admiral. This vengeful wraith seeks to carry on the war that cost them their life."},
+    {"max": 20, "result": "Blighthulk — Titanic ship cursed with incessant corrosion and rot. Its crew must constantly add wood, sails, and fittings from salvaged wrecks and defeated foes into this massive and unnerving chimera-craft."},
+    {"max": 30, "result": "Bloodmarked League — An order of occultists, each bearing a blood-red tattoo on their wrist, who are dedicated to hunting and banishing the restless dead."},
+    {"max": 40, "result": "Brineblessed — Cult of sailors cursed by a drowned god. Their bodies and ships are corrupted by horrible aspects of the sea—riddled with barnacles, rotting seaweed, and brackish slime."},
+    {"max": 50, "result": "Carrion Fleet — Fleet under the command of a necromancer. The dreadful ships are festooned with bones and bloodied sails, crewed by skeletal undead, and escorted by the risen corpse of a slain behemoth."},
+    {"max": 60, "result": "Fireships — Ships burning with unquenchable fire and crewed by bone-scorched undead. The flagship was set aflame by marauders in a port attack, and its cursed commander seeks to spread the fire to other vessels and expand the accursed fleet."},
+    {"max": 70, "result": "Forgeborn — Uncanny metal automatons who are said to embody the stolen souls of dead mariners. They cruise the isles in ironclad ships."},
+    {"max": 80, "result": "Gilded Fleet — Pirates who seized a forbidden treasure. They are cursed with a ceaseless, insatiable hunger to hoard riches from all corners of the isles."},
+    {"max": 90, "result": "Nightships — Dread ships of the vampire clans, shrouded in an eternal gloom. Their undead crews leave wrecks and blood-drained corpses in their wake."},
+    {"max": 100, "result": "Tidebound — Devout cultists who were granted eternal life in exchange for unending service to their patron sea god. They must not tarry on land or at anchor, lest death catches up with them to take its toll."}
+  ]
+}

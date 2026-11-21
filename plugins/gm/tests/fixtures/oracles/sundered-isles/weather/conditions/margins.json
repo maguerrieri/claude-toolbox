@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:sundered_isles/weather/conditions/margins",
+  "die": "1d100",
+  "rows": [
+    {"max": 60, "result": "Fair Weather"},
+    {"max": 100, "result": "Foul Weather (`oracles/weather/foul.md`)"}
+  ]
+}

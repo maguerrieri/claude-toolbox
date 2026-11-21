@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/identity_society",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Alliance"},
+    {"max": 30, "result": "Brethren"},
+    {"max": 35, "result": "Circle"},
+    {"max": 50, "result": "Clan"},
+    {"max": 55, "result": "Coalition"},
+    {"max": 60, "result": "Fellowship"},
+    {"max": 65, "result": "House"},
+    {"max": 70, "result": "Kinship"},
+    {"max": 75, "result": "Pact"},
+    {"max": 80, "result": "Sept"},
+    {"max": 95, "result": "Tribe"},
+    {"max": 100, "result": "Unity"}
+  ]
+}

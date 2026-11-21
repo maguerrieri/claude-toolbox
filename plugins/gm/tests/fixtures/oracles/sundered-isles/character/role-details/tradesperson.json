@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/tradesperson",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Baker"},
+    {"max": 20, "result": "Brewer / Winemaker"},
+    {"max": 30, "result": "Butcher"},
+    {"max": 40, "result": "Mason"},
+    {"max": 50, "result": "Metal worker"},
+    {"max": 60, "result": "Shipwright / boatwright"},
+    {"max": 70, "result": "Tattooist"},
+    {"max": 80, "result": "Tinker / Engineer"},
+    {"max": 90, "result": "Undertaker"},
+    {"max": 100, "result": "Woodworker"}
+  ]
+}

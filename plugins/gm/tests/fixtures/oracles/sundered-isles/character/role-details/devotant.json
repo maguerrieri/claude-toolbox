@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/devotant",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Clergy"},
+    {"max": 40, "result": "Cultist"},
+    {"max": 60, "result": "Inquisitor"},
+    {"max": 80, "result": "Monk"},
+    {"max": 100, "result": "Pilgrim"}
+  ]
+}

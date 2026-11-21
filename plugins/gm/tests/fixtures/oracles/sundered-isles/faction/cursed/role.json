@@ -1,0 +1,20 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/cursed/role",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Artificers"},
+    {"max": 15, "result": "Beast hunters"},
+    {"max": 25, "result": "Constructs"},
+    {"max": 30, "result": "Cultists"},
+    {"max": 35, "result": "Deep-dwellers"},
+    {"max": 40, "result": "Ghost hunters or occultists"},
+    {"max": 45, "result": "Lycanthropes or shape changers"},
+    {"max": 55, "result": "Monster hunters"},
+    {"max": 65, "result": "Necromancers"},
+    {"max": 70, "result": "Sorcerers or witches"},
+    {"max": 80, "result": "Undead or undying"},
+    {"max": 85, "result": "Vampires"},
+    {"max": 90, "result": "Witch hunters"},
+    {"max": 100, "result": "Roll twice; combine those results as a single faction or set them against each other as opposing factions"}
+  ]
+}

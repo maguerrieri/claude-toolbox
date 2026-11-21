@@ -1,0 +1,32 @@
+{
+  "id": "oracle_rollable:sundered_isles/island/coastline_aspects",
+  "die": "1d100",
+  "rows": [
+    {"max": 2, "result": "Broad bay protected by offshore islet"},
+    {"max": 8, "result": "Channel separates a neighboring island"},
+    {"max": 10, "result": "Dramatic columns of volcanic rock"},
+    {"max": 14, "result": "Deep harbor within artificial breakwater"},
+    {"max": 16, "result": "Expansive, gently-sloped beach"},
+    {"max": 26, "result": "Exposed mudflats"},
+    {"max": 28, "result": "Fringing reef and lagoon"},
+    {"max": 34, "result": "Inundated by tidal flooding"},
+    {"max": 38, "result": "Jagged outcroppings"},
+    {"max": 42, "result": "Marshy sloughs"},
+    {"max": 44, "result": "Narrow inlet into sheltered cove"},
+    {"max": 46, "result": "Numerous small beaches"},
+    {"max": 50, "result": "Remains of old seawall"},
+    {"max": 52, "result": "River estuary"},
+    {"max": 56, "result": "Rocky ledges beneath stone bluffs"},
+    {"max": 58, "result": "Rocky promontory extends far out to sea"},
+    {"max": 62, "result": "Rocky shoals within shallow waters"},
+    {"max": 66, "result": "Rugged boulder beaches"},
+    {"max": 72, "result": "Sandy beaches and dunes"},
+    {"max": 78, "result": "Sea caves"},
+    {"max": 80, "result": "Sea stacks"},
+    {"max": 84, "result": "Shallow waters sheltered by sandbars"},
+    {"max": 88, "result": "Steep-sided gorge"},
+    {"max": 94, "result": "Swampy mangrove thickets"},
+    {"max": 98, "result": "Tall headlands surround pocket beach"},
+    {"max": 100, "result": "Towering cliffs rise directly from the sea"}
+  ]
+}

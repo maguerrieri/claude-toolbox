@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/outlaw",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Burglar / Thief"},
+    {"max": 20, "result": "Charlatan"},
+    {"max": 30, "result": "Crime boss"},
+    {"max": 40, "result": "Forger"},
+    {"max": 50, "result": "Gambler"},
+    {"max": 60, "result": "Insurgent"},
+    {"max": 70, "result": "Pirate"},
+    {"max": 80, "result": "Raider"},
+    {"max": 90, "result": "Ruffian"},
+    {"max": 100, "result": "Smuggler"}
+  ]
+}

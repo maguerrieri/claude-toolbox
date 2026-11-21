@@ -1,0 +1,18 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/first_look_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Abyssal"},
+    {"max": 15, "result": "Aflame"},
+    {"max": 20, "result": "Beastly"},
+    {"max": 30, "result": "Decaying"},
+    {"max": 45, "result": "Eerie"},
+    {"max": 55, "result": "Ghostly"},
+    {"max": 65, "result": "Grotesque"},
+    {"max": 75, "result": "Mechanical"},
+    {"max": 80, "result": "Shadowy"},
+    {"max": 85, "result": "Sinister"},
+    {"max": 95, "result": "Sorcerous"},
+    {"max": 100, "result": "Transforming"}
+  ]
+}

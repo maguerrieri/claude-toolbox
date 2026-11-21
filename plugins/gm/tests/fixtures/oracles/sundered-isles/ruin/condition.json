@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:sundered_isles/ruin/condition",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Devastated — Ravaged by calamity"},
+    {"max": 25, "result": "Unrecognizable — Reclaimed by nature"},
+    {"max": 40, "result": "Collapsed — Toppled or in pieces"},
+    {"max": 60, "result": "Unstable — Actively crumbling or sinking"},
+    {"max": 80, "result": "Timeworn — Marked by desolation"},
+    {"max": 90, "result": "Whole — Standing the test of time"},
+    {"max": 95, "result": "Well-preserved — In remarkable condition"},
+    {"max": 100, "result": "Rebuilding — In the process or restoration"}
+  ]
+}

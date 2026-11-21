@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/wastes",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Abandoned mineshaft"},
+    {"max": 10, "result": "Animal tracks in the sand"},
+    {"max": 15, "result": "Carrion birds roosting in a dead tree"},
+    {"max": 20, "result": "Dried riverbed"},
+    {"max": 25, "result": "Expanse of shifting, loose sand"},
+    {"max": 30, "result": "Fossilized tracks of an ancient beast"},
+    {"max": 35, "result": "Freshwater spring oasis"},
+    {"max": 40, "result": "Half-buried statue"},
+    {"max": 45, "result": "Maze of wind-carved spires"},
+    {"max": 50, "result": "Narrow trail through steep-sided ravine"},
+    {"max": 55, "result": "Natural stone bridge spans a canyon"},
+    {"max": 60, "result": "Parched lakebed"},
+    {"max": 65, "result": "Petrified forest"},
+    {"max": 70, "result": "Plain of rocky rubble"},
+    {"max": 75, "result": "Rainbow-hued rock formations"},
+    {"max": 80, "result": "Rock walls with ancient petroglyphs"},
+    {"max": 85, "result": "Shadowy cave"},
+    {"max": 90, "result": "Sprawling bones of a leviathan"},
+    {"max": 95, "result": "Sun-bleached skeletal remains"},
+    {"max": 100, "result": "Towering stone arches"}
+  ]
+}

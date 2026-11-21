@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/prompts",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 40, "result": "Action (`oracles/action.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 60, "result": "Descriptor (`oracles/descriptor.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 80, "result": "Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"},
+    {"max": 100, "result": "Action (`oracles/action.md`) + Descriptor (`oracles/descriptor.md`) + Focus (`oracles/focus.md`)"}
+  ]
+}

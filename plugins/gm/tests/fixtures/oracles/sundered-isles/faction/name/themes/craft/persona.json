@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/craft/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Anvils"},
+    {"max": 20, "result": "Artificers"},
+    {"max": 30, "result": "Artisans"},
+    {"max": 40, "result": "Hammers"},
+    {"max": 50, "result": "Hands"},
+    {"max": 60, "result": "Machinists"},
+    {"max": 70, "result": "Menders"},
+    {"max": 80, "result": "Riggers"},
+    {"max": 90, "result": "Sparks"},
+    {"max": 100, "result": "Tinkers"}
+  ]
+}

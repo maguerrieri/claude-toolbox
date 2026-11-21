@@ -1,0 +1,8 @@
+{
+  "id": "oracle_rollable:sundered_isles/shipwreck/orientation/position/inland",
+  "die": "1d100",
+  "rows": [
+    {"max": 80, "result": "Stranded on dry ground or rocks"},
+    {"max": 100, "result": "Perched on improbably high ground"}
+  ]
+}

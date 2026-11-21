@@ -1,0 +1,24 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/roles",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Academic (`oracles/character/role-details/academic.md`)"},
+    {"max": 10, "result": "Agent (`oracles/character/role-details/agent.md`)"},
+    {"max": 15, "result": "Caregiver (`oracles/character/role-details/caregiver.md`)"},
+    {"max": 20, "result": "Combatant (`oracles/character/role-details/combatant.md`)"},
+    {"max": 25, "result": "Devotant (`oracles/character/role-details/devotant.md`)"},
+    {"max": 30, "result": "Laborer (`oracles/character/role-details/laborer.md`)"},
+    {"max": 35, "result": "Merchant (`oracles/character/role-details/merchant.md`)"},
+    {"max": 40, "result": "Mystic (`oracles/character/role-details/mystic.md`)"},
+    {"max": 45, "result": "Outcast (`oracles/character/role-details/outcast.md`)"},
+    {"max": 50, "result": "Outlander (`oracles/character/role-details/outlander.md`)"},
+    {"max": 55, "result": "Outlaw (`oracles/character/role-details/outlaw.md`)"},
+    {"max": 60, "result": "Performer (`oracles/character/role-details/performer.md`)"},
+    {"max": 70, "result": "Sailor (`oracles/character/role-details/sailor.md`)"},
+    {"max": 75, "result": "Scavenger (`oracles/character/role-details/scavenger.md`)"},
+    {"max": 80, "result": "Statesperson (`oracles/character/role-details/statesperson.md`)"},
+    {"max": 85, "result": "Tradesperson (`oracles/character/role-details/tradesperson.md`)"},
+    {"max": 95, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

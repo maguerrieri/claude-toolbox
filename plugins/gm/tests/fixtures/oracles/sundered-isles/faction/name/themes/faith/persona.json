@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/faith/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Acolytes"},
+    {"max": 20, "result": "Disciples"},
+    {"max": 30, "result": "Flames"},
+    {"max": 40, "result": "Harbingers"},
+    {"max": 50, "result": "Heralds"},
+    {"max": 60, "result": "Inquisitors"},
+    {"max": 70, "result": "Lightbringers"},
+    {"max": 80, "result": "Martyrs"},
+    {"max": 90, "result": "Redeemers"},
+    {"max": 100, "result": "Servants"}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/highlands",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Bubbling mountain spring"},
+    {"max": 10, "result": "Cavernous opening in cliff face"},
+    {"max": 15, "result": "Constructed bridge over a wide chasm"},
+    {"max": 20, "result": "Crumbling watchtower atop an overlook"},
+    {"max": 25, "result": "Fallen tree or stone arch over a gorge"},
+    {"max": 30, "result": "Intricately stacked cairns"},
+    {"max": 35, "result": "Mist-shrouded ravine"},
+    {"max": 40, "result": "Narrow ridgeline trail"},
+    {"max": 45, "result": "Ornate stone carvings"},
+    {"max": 50, "result": "River crashing through a narrow gorge"},
+    {"max": 55, "result": "Scars of a recent landslide"},
+    {"max": 60, "result": "Sheer precipice"},
+    {"max": 65, "result": "Sheltered highland lake"},
+    {"max": 70, "result": "Steep, rocky slope"},
+    {"max": 75, "result": "Stone stairs carved into a cliff face"},
+    {"max": 80, "result": "Thundering waterfall"},
+    {"max": 85, "result": "Towering rock spires"},
+    {"max": 90, "result": "Vantage point with an expansive view"},
+    {"max": 95, "result": "Veins of ore"},
+    {"max": 100, "result": "Winding footpath"}
+  ]
+}

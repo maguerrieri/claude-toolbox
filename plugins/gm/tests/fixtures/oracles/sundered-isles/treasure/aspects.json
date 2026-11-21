@@ -1,0 +1,22 @@
+{
+  "id": "oracle_rollable:sundered_isles/treasure/aspects",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Bears the mark of a notorious figure"},
+    {"max": 16, "result": "Contains a long-lost object or artifact"},
+    {"max": 20, "result": "Coveted by a newly-revealed rival"},
+    {"max": 24, "result": "Guarded by a sentry or caretaker"},
+    {"max": 28, "result": "Held in a vulnerable repository"},
+    {"max": 32, "result": "Hidden among worthless items"},
+    {"max": 40, "result": "Holds a clue to a greater treasure"},
+    {"max": 48, "result": "Hunted by a foe or faction"},
+    {"max": 56, "result": "Includes counterfeit valuables"},
+    {"max": 64, "result": "Marked with a menacing warning"},
+    {"max": 72, "result": "Once claimed as pillage or spoils"},
+    {"max": 76, "result": "Planted as a lure for the unwary"},
+    {"max": 84, "result": "Protected by a clever trap"},
+    {"max": 88, "result": "Put out-of-reach by a barrier or obstacle"},
+    {"max": 96, "result": "Secured by a complex lock"},
+    {"max": 100, "result": "Shows signs of pilfering or tampering"}
+  ]
+}

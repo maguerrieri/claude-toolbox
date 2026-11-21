@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/scavenger",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Beachcomber"},
+    {"max": 40, "result": "Grave Robber"},
+    {"max": 60, "result": "Relic hunter"},
+    {"max": 80, "result": "Shipbreaker"},
+    {"max": 100, "result": "Wreck diver"}
+  ]
+}

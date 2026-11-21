@@ -1,0 +1,9 @@
+{
+  "id": "oracle_rollable:sundered_isles/island/nearby_islands/margins",
+  "die": "1d100",
+  "rows": [
+    {"max": 60, "result": "Isolated — No other islands in sight"},
+    {"max": 85, "result": "Island pair — One other island in sight"},
+    {"max": 100, "result": "Island group — Several islands in sight"}
+  ]
+}

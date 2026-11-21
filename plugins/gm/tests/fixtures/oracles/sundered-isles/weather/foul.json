@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:sundered_isles/weather/foul",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Stifling — Windless, oppressive heat"},
+    {"max": 25, "result": "Listless — Light winds and sweltering heat"},
+    {"max": 40, "result": "Misty — Light winds and damp fog"},
+    {"max": 55, "result": "Foggy — Light winds and dense fog"},
+    {"max": 75, "result": "Heavy — High winds, steady rain, and rough waters"},
+    {"max": 90, "result": "Stormy — Powerful winds, pelting rain, and high seas"},
+    {"max": 100, "result": "Raging — Destructive winds, torrential rain, and monstrous waves"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/affluence/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Emerald"},
+    {"max": 20, "result": "Gilded"},
+    {"max": 30, "result": "Golden"},
+    {"max": 40, "result": "Illustrious"},
+    {"max": 50, "result": "Jade"},
+    {"max": 60, "result": "Sapphire"},
+    {"max": 70, "result": "Silver"},
+    {"max": 80, "result": "Sovereign"},
+    {"max": 90, "result": "Supreme"},
+    {"max": 100, "result": "Trueborn"}
+  ]
+}

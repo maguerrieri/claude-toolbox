@@ -1,0 +1,10 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/name/moniker_cursed/category",
+  "die": "1d100",
+  "rows": [
+    {"max": 40, "result": "Dreadful Persona (`oracles/character/name/moniker-cursed/dreadful-persona.md`)"},
+    {"max": 60, "result": "Eldritch Powers (`oracles/character/name/moniker-cursed/eldritch-powers.md`)"},
+    {"max": 90, "result": "Ill-Fated Nature (`oracles/character/name/moniker-cursed/ill-fated-nature.md`)"},
+    {"max": 100, "result": "Mechanical Form (`oracles/character/name/moniker-cursed/mechanical-form.md`)"}
+  ]
+}

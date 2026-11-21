@@ -10,7 +10,7 @@ ADAPTERS = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "adapte
 
 
 def test_real_adapters_all_valid(validate_path):
-    # every shipped adapter (generic, ironsworn-core, ironsworn, starforged) must validate
+    # every shipped adapter (generic, ironsworn-core, ironsworn, starforged, sundered-isles) must validate
     p = run(validate_path, "--all", ADAPTERS)
     assert p.returncode == 0, p.stdout + p.stderr
 

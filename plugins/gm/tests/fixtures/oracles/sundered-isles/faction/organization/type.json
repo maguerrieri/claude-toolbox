@@ -1,0 +1,27 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/organization/type",
+  "die": "1d100",
+  "rows": [
+    {"max": 2, "result": "Artisans"},
+    {"max": 6, "result": "Assassins"},
+    {"max": 10, "result": "Couriers"},
+    {"max": 18, "result": "Courtesans"},
+    {"max": 24, "result": "Healers"},
+    {"max": 30, "result": "Hunters"},
+    {"max": 36, "result": "Insurgents"},
+    {"max": 44, "result": "Mariners"},
+    {"max": 46, "result": "Mercenaries / privateers"},
+    {"max": 52, "result": "Mystics / seers"},
+    {"max": 56, "result": "Naturalists"},
+    {"max": 60, "result": "Navigators / cartographers"},
+    {"max": 62, "result": "Pirates / raiders"},
+    {"max": 66, "result": "Rebels"},
+    {"max": 72, "result": "Relic hunters"},
+    {"max": 76, "result": "Religious disciples"},
+    {"max": 78, "result": "Shipbuilders"},
+    {"max": 84, "result": "Smugglers"},
+    {"max": 90, "result": "Spies"},
+    {"max": 96, "result": "Traders"},
+    {"max": 100, "result": "Wreckers"}
+  ]
+}

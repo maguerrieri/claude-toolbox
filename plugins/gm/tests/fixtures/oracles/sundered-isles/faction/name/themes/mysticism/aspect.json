@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/mysticism/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Astral"},
+    {"max": 20, "result": "Crystal"},
+    {"max": 30, "result": "Gleaming"},
+    {"max": 40, "result": "Moonbound"},
+    {"max": 50, "result": "Murmuring"},
+    {"max": 60, "result": "Obsidian"},
+    {"max": 70, "result": "Orbis"},
+    {"max": 80, "result": "Runemarked"},
+    {"max": 90, "result": "Shadow"},
+    {"max": 100, "result": "Spellbound"}
+  ]
+}

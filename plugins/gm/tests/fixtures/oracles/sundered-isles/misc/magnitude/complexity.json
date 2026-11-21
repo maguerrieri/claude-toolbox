@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/complexity",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Simple"},
+    {"max": 35, "result": "Basic"},
+    {"max": 65, "result": "Manageable"},
+    {"max": 85, "result": "Complicated"},
+    {"max": 100, "result": "Bewildering"}
+  ]
+}

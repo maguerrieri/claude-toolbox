@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Advance warning of an ambush or lurking foe"},
+    {"max": 8, "result": "Cache of supplies"},
+    {"max": 12, "result": "Clear path through otherwise difficult terrain"},
+    {"max": 16, "result": "Clue offers insight into a current quest or mystery"},
+    {"max": 20, "result": "Clue to a foe's nature or vulnerabilities"},
+    {"max": 24, "result": "Clue to the history or nature of this land"},
+    {"max": 28, "result": "Creatures show the way or offer inspiration"},
+    {"max": 32, "result": "Evidence that others have passed this way"},
+    {"max": 36, "result": "Foe inadvertently reveals themselves or tips their hand"},
+    {"max": 40, "result": "Friendly community in sight"},
+    {"max": 44, "result": "Helpful traveler crosses your path"},
+    {"max": 48, "result": "Ideal weather takes hold"},
+    {"max": 52, "result": "Impressive vista offers comfort or inspiration"},
+    {"max": 56, "result": "Moment of fellowship or inner peace"},
+    {"max": 60, "result": "Opening to distract, escape, or avoid foes"},
+    {"max": 64, "result": "Opening to get the drop on a foe"},
+    {"max": 68, "result": "Path transitions into favorable terrain"},
+    {"max": 72, "result": "Plants or herbs with helpful qualities"},
+    {"max": 76, "result": "Plea for help from a potential benefactor"},
+    {"max": 80, "result": "Plentiful hunting or foraging opportunities"},
+    {"max": 84, "result": "Refuge offers a place to hide, plan, or recover"},
+    {"max": 88, "result": "Signpost or marker provides guidance"},
+    {"max": 92, "result": "Source of fresh water"},
+    {"max": 96, "result": "Unusual location offers opportunities for exploration"},
+    {"max": 100, "result": "Vantage point reveals the lay of the land"}
+  ]
+}

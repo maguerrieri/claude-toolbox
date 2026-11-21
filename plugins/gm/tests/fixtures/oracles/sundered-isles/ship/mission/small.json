@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/mission/small",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Transport people"},
+    {"max": 8, "result": "Transport cargo"},
+    {"max": 14, "result": "Conduct trade"},
+    {"max": 18, "result": "Hunt creatures"},
+    {"max": 22, "result": "Patrol an area"},
+    {"max": 32, "result": "Explore or travel to an area"},
+    {"max": 38, "result": "Engage an enemy"},
+    {"max": 48, "result": "Conduct piracy"},
+    {"max": 56, "result": "Conduct diplomacy"},
+    {"max": 64, "result": "Conduct espionage"},
+    {"max": 68, "result": "Conduct research"},
+    {"max": 74, "result": "Deliver item or message"},
+    {"max": 84, "result": "Smuggle contraband"},
+    {"max": 94, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

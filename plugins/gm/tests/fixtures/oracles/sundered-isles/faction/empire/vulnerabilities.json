@@ -1,0 +1,28 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/empire/vulnerabilities",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Catastrophic military defeat"},
+    {"max": 8, "result": "Coffers are running low"},
+    {"max": 12, "result": "Crippling bureaucracy"},
+    {"max": 16, "result": "Defection of a key ally"},
+    {"max": 20, "result": "Defiant colony"},
+    {"max": 24, "result": "Feckless or distracted leadership"},
+    {"max": 28, "result": "Impending succession crisis"},
+    {"max": 34, "result": "Infighting and treachery among leaders"},
+    {"max": 38, "result": "Infiltrated by a rival"},
+    {"max": 42, "result": "Insurgency recruits new members"},
+    {"max": 46, "result": "Overconfidence in a tactic or weapon"},
+    {"max": 50, "result": "Overextended military"},
+    {"max": 54, "result": "Prophecy of their downfall"},
+    {"max": 58, "result": "Rampant internal corruption"},
+    {"max": 62, "result": "Religious schism causes dissent"},
+    {"max": 66, "result": "Rival empire emerges"},
+    {"max": 72, "result": "Sparks of rebellion"},
+    {"max": 78, "result": "Vulnerable industry"},
+    {"max": 84, "result": "Vulnerable resource in short supply"},
+    {"max": 90, "result": "Vulnerable trade route"},
+    {"max": 96, "result": "Vulnerable treasure hoard"},
+    {"max": 100, "result": "Whispers of a potential coup"}
+  ]
+}

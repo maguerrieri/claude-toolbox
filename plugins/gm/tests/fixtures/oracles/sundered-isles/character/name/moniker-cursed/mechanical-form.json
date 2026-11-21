@@ -1,0 +1,22 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/name/moniker_cursed/mechanical_form",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Anvil"},
+    {"max": 13, "result": "Bladehand"},
+    {"max": 20, "result": "Brassbolt"},
+    {"max": 26, "result": "Clank"},
+    {"max": 33, "result": "Cog"},
+    {"max": 40, "result": "Forgeheart"},
+    {"max": 46, "result": "Gadget"},
+    {"max": 52, "result": "Gear"},
+    {"max": 58, "result": "Ironclaw"},
+    {"max": 64, "result": "Ironeye"},
+    {"max": 70, "result": "Ironshell"},
+    {"max": 76, "result": "Rattle"},
+    {"max": 82, "result": "Rig"},
+    {"max": 88, "result": "Rust"},
+    {"max": 94, "result": "Spark"},
+    {"max": 100, "result": "Tinker"}
+  ]
+}

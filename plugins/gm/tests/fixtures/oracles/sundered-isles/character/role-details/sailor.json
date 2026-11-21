@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/sailor",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Bosun"},
+    {"max": 20, "result": "Captain"},
+    {"max": 30, "result": "Carpenter"},
+    {"max": 40, "result": "Cook"},
+    {"max": 50, "result": "Deckhand"},
+    {"max": 60, "result": "First Mate"},
+    {"max": 70, "result": "Gunner"},
+    {"max": 80, "result": "Marine"},
+    {"max": 90, "result": "Master-at-arms"},
+    {"max": 100, "result": "Quartermaster"}
+  ]
+}

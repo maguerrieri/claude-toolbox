@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/discovery/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Adepts"},
+    {"max": 20, "result": "Archivists"},
+    {"max": 30, "result": "Beacons"},
+    {"max": 40, "result": "Couriers"},
+    {"max": 50, "result": "Guides"},
+    {"max": 60, "result": "Keepers"},
+    {"max": 70, "result": "Outlanders"},
+    {"max": 80, "result": "Seekers"},
+    {"max": 90, "result": "Venturers"},
+    {"max": 100, "result": "Wayfinders"}
+  ]
+}

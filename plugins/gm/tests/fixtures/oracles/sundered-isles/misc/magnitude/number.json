@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/number",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "None / one"},
+    {"max": 35, "result": "Few"},
+    {"max": 65, "result": "Several"},
+    {"max": 85, "result": "Many"},
+    {"max": 100, "result": "Countless"}
+  ]
+}

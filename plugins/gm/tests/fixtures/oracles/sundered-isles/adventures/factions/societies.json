@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/adventures/factions/societies",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Akiya — Coalition of clans known for their sleek and speedy ships. They gather each year to celebrate the ebb of the storm season, and hang rows of vibrantly colored flags from their rigging to honor the dead."},
+    {"max": 20, "result": "Arsu / Azizos — Once a single tribe, the loyalty of these people is divided between two rulers descended from rival heirs. They often war against one another, but now have a fragile alliance against a mutual foe."},
+    {"max": 30, "result": "Kai — Seagoing folk who build their homes and ships from luminous glimmerwood. This resource is harvested from the coastal swamps of their homeland, an environment under threat of destruction."},
+    {"max": 40, "result": "Khazeera — Warring people who inhabit an enduring city-state at the edge of an active volcano. Molten rock and slag from this sacred volcano is used in the heated shot for their destructive cannonry, and their soldiers wield blades forged in its fires."},
+    {"max": 50, "result": "Morien — Seafolk who forsake cannons and muskets. They sail low-profile catamarans and set upon their foes with stealthy ambushes."},
+    {"max": 60, "result": "Otani — People who dwell in island highlands. They largely forsake the sea, but send out seafaring envoys to build ties with other communities."},
+    {"max": 70, "result": "Sularia — Beast-bonded people who commune with magnificent elder rays. They are sworn to protect the seas from hunters and despoilers."},
+    {"max": 80, "result": "Talan — Scrappy seafolk who range far among the islands. They maintain a floating trade settlement open to any who visit with shuttered gunports."},
+    {"max": 90, "result": "Thalassa — Recent refugees of a cataclysmic war. They are desperate to gain allies against the enemy they believe will follow them to the isles."},
+    {"max": 100, "result": "Uktanu — Reclusive people who trace their lineage to the first inhabitants of the isles. They are sworn to protect the sacred sites and relics of their ancient forebears."}
+  ]
+}

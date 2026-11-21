@@ -1,0 +1,20 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/threshold_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Bloody trail leading inside"},
+    {"max": 14, "result": "Carved with eldritch symbols"},
+    {"max": 21, "result": "Glimpses of a spectral form"},
+    {"max": 28, "result": "Guarded by a monstrous creature"},
+    {"max": 35, "result": "Hung with webs or mucus"},
+    {"max": 43, "result": "Littered with bones"},
+    {"max": 50, "result": "Marked with a foreboding warning"},
+    {"max": 57, "result": "Monstrous howls or roars from within"},
+    {"max": 64, "result": "Shrouded in unnatural fog"},
+    {"max": 72, "result": "Skull-shaped edifice"},
+    {"max": 79, "result": "Stench of death"},
+    {"max": 86, "result": "Surrounded by blighted terrain"},
+    {"max": 93, "result": "Unnerving sense of being watched"},
+    {"max": 100, "result": "Unnerving stillness or quiet"}
+  ]
+}
