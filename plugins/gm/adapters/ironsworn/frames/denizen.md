@@ -1,12 +1,12 @@
 # denizen frame
 
-A creature or foe of the Ironlands.
+A creature or foe of the Ironlands. Kinds are the five NPC types of `rules/encounters.md`.
 
 ## Axes
 
 | Axis | Values |
 |------|--------|
-| kind | beast, horror, ironlander, elf, raider |
+| kind | ironlander, firstborn, animal, beast, horror |
 | drive | hunger, territory, sorrow, malice |
 | tell | a sound, a smell, a mark, a stillness |
 | threat | lurks, hunts, ambushes, corrupts |

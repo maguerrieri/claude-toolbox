@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:classic/turning_point/major_plot_twist",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "It was all a diversion."},
+    {"max": 10, "result": "A dark secret is revealed."},
+    {"max": 15, "result": "A trap is sprung."},
+    {"max": 20, "result": "An assumption is revealed to be false."},
+    {"max": 25, "result": "A secret alliance is revealed."},
+    {"max": 30, "result": "Your actions benefit an enemy."},
+    {"max": 35, "result": "Someone returns unexpectedly."},
+    {"max": 40, "result": "A more dangerous foe is revealed."},
+    {"max": 45, "result": "You and an enemy share a common goal."},
+    {"max": 50, "result": "A true identity is revealed."},
+    {"max": 55, "result": "You are betrayed by someone who was trusted."},
+    {"max": 60, "result": "You are too late."},
+    {"max": 65, "result": "The true enemy is revealed."},
+    {"max": 70, "result": "The enemy gains new allies."},
+    {"max": 75, "result": "A new danger appears."},
+    {"max": 80, "result": "Someone or something goes missing."},
+    {"max": 85, "result": "The truth of a relationship is revealed."},
+    {"max": 90, "result": "Two seemingly unrelated situations are shown to be connected."},
+    {"max": 95, "result": "Unexpected powers or abilities are revealed."},
+    {"max": 100, "result": "Roll twice more on this table. Both results occur. If they are the same result, make it more dramatic."}
+  ]
+}

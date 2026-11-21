@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:classic/settlement/quick_name/suffix",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "moor"},
+    {"max": 8, "result": "ford"},
+    {"max": 12, "result": "crag"},
+    {"max": 16, "result": "watch"},
+    {"max": 20, "result": "hope"},
+    {"max": 24, "result": "wood"},
+    {"max": 28, "result": "ridge"},
+    {"max": 32, "result": "stone"},
+    {"max": 36, "result": "haven"},
+    {"max": 40, "result": "fall(s)"},
+    {"max": 44, "result": "river"},
+    {"max": 48, "result": "field"},
+    {"max": 52, "result": "hill"},
+    {"max": 56, "result": "bridge"},
+    {"max": 60, "result": "mark"},
+    {"max": 64, "result": "cairn"},
+    {"max": 68, "result": "land"},
+    {"max": 72, "result": "hall"},
+    {"max": 76, "result": "mount"},
+    {"max": 80, "result": "rock"},
+    {"max": 84, "result": "brook"},
+    {"max": 88, "result": "barrow"},
+    {"max": 92, "result": "stead"},
+    {"max": 96, "result": "home"},
+    {"max": 100, "result": "wick"}
+  ]
+}

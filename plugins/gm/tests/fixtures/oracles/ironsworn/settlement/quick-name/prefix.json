@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:classic/settlement/quick_name/prefix",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Bleak"},
+    {"max": 8, "result": "Green"},
+    {"max": 12, "result": "Wolf"},
+    {"max": 16, "result": "Raven"},
+    {"max": 20, "result": "Gray"},
+    {"max": 24, "result": "Red"},
+    {"max": 28, "result": "Axe"},
+    {"max": 32, "result": "Great"},
+    {"max": 36, "result": "Wood"},
+    {"max": 40, "result": "Low"},
+    {"max": 44, "result": "White"},
+    {"max": 48, "result": "Storm"},
+    {"max": 52, "result": "Black"},
+    {"max": 56, "result": "Mourn"},
+    {"max": 60, "result": "New"},
+    {"max": 64, "result": "Stone"},
+    {"max": 68, "result": "Grim"},
+    {"max": 72, "result": "Lost"},
+    {"max": 76, "result": "High"},
+    {"max": 80, "result": "Rock"},
+    {"max": 84, "result": "Shield"},
+    {"max": 88, "result": "Sword"},
+    {"max": 92, "result": "Frost"},
+    {"max": 96, "result": "Thorn"},
+    {"max": 100, "result": "Long"}
+  ]
+}

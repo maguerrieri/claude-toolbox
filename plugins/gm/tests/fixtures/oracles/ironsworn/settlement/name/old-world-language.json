@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/settlement/name/old_world_language",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Abon"},
+    {"max": 20, "result": "Daveza"},
+    {"max": 30, "result": "Damula"},
+    {"max": 40, "result": "Essus"},
+    {"max": 50, "result": "Sina"},
+    {"max": 60, "result": "Kazeera"},
+    {"max": 70, "result": "Khazu"},
+    {"max": 80, "result": "Sova"},
+    {"max": 90, "result": "Nabuma"},
+    {"max": 100, "result": "Tiza"}
+  ]
+}

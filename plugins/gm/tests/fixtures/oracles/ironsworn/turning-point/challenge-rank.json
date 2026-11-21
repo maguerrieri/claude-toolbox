@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:classic/turning_point/challenge_rank",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Troublesome"},
+    {"max": 55, "result": "Dangerous"},
+    {"max": 80, "result": "Formidable"},
+    {"max": 93, "result": "Extreme"},
+    {"max": 100, "result": "Epic"}
+  ]
+}

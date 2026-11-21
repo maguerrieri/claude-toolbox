@@ -71,7 +71,7 @@ A base adapter may be marked `abstract: true` in its front-matter (not playable 
 | `rules/character-creation.md` | walks its steps to build the character, instead of the generic concept-and-name flow |
 | `rules/sector-creation.md` | walks its steps to build the starting location, writing what it makes to the campaign's state files |
 
-`starforged` ships all four; `generic` and `ironsworn` ship none and keep the generic flow. The files are prose the core follows, like the rest of an adapter: steps, and the tables to roll for each.
+`starforged` ships all four. `ironsworn` ships all but `rules/sector-creation.md`: its starting location is a step of `rules/campaign-launch.md`. `generic` ships none and keeps the generic flow. The files are prose the core follows, like the rest of an adapter: steps, and the tables to roll for each.
 
 ## Visibility (the GM screen)
 
