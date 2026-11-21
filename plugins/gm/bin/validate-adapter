@@ -22,9 +22,13 @@ TABLE_ENTRY = re.compile(r"^- (?:\[(\d+)\]\s*)?(.*)$")
 
 AXIS_ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*$")
 
+# A table cited in adapter prose: `oracles/<path>.md`, the path relative to oracles/.
+ORACLE_REF = re.compile(r"oracles/([\w./-]+\.md)")
+
 
 def parse_frontmatter(path):
-    text = open(path).read()
+    with open(path) as fh:
+        text = fh.read()
     m = re.match(r"^---\n(.*?)\n---", text, re.S)
     if not m:
         return None, text
@@ -83,19 +87,12 @@ def validate_table(path):
     return errs
 
 
-def validate_adapter(adapter_dir, adapters_root):
-    errs = []
+def extends_chain(adapter_dir, adapters_root):
+    """(chain, errs): the adapter's dir and its extends: ancestors, child first,
+    plus any cycle or missing-parent error that cut the walk short."""
     name = os.path.basename(adapter_dir.rstrip("/"))
-    manifest = os.path.join(adapter_dir, "adapter.md")
-    if not os.path.isfile(manifest):
-        return [f"{name}: missing adapter.md"]
-    fm, text = parse_frontmatter(manifest)
-    if fm is None:
-        return [f"{name}: adapter.md is missing YAML front-matter"]
-    if not fm.get("name"):
-        errs.append(f"{name}: front-matter missing 'name'")
-
-    parent, seen, chain = fm.get("extends"), {name}, [adapter_dir]
+    fm, _ = parse_frontmatter(os.path.join(adapter_dir, "adapter.md"))
+    parent, seen, chain, errs = (fm or {}).get("extends"), {name}, [adapter_dir], []
     while parent:
         if parent in seen:
             errs.append(f"{name}: extends cycle involving '{parent}'")
@@ -108,6 +105,23 @@ def validate_adapter(adapter_dir, adapters_root):
         chain.append(os.path.dirname(pmanifest))
         pfm, _ = parse_frontmatter(pmanifest)
         parent = (pfm or {}).get("extends")
+    return chain, errs
+
+
+def validate_adapter(adapter_dir, adapters_root):
+    errs = []
+    name = os.path.basename(adapter_dir.rstrip("/"))
+    manifest = os.path.join(adapter_dir, "adapter.md")
+    if not os.path.isfile(manifest):
+        return [f"{name}: missing adapter.md"]
+    fm, text = parse_frontmatter(manifest)
+    if fm is None:
+        return [f"{name}: adapter.md is missing YAML front-matter"]
+    if not fm.get("name"):
+        errs.append(f"{name}: front-matter missing 'name'")
+
+    chain, chain_errs = extends_chain(adapter_dir, adapters_root)
+    errs += chain_errs
 
     for f in sorted(glob.glob(os.path.join(adapter_dir, "oracles", "**", "*.md"), recursive=True)):
         errs += validate_table(f)
@@ -125,7 +139,7 @@ def validate_adapter(adapter_dir, adapters_root):
             prose.append((os.path.relpath(f, adapter_dir), fh.read()))
     # Data files union along the extends: chain, so a parent's table counts.
     for where, body in prose:
-        for ref in sorted(set(re.findall(r"oracles/([\w./-]+\.md)", body))):
+        for ref in sorted(set(ORACLE_REF.findall(body))):
             if not any(os.path.isfile(os.path.join(d, "oracles", ref)) for d in chain):
                 errs.append(f"{name}: {where} references oracles/{ref}, which is missing")
     return errs

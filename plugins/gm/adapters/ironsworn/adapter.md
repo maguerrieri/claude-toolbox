@@ -27,9 +27,13 @@ See `rules/moves.md` for the full curated move set. Reference moves by name; the
 
 Use the oracles in `oracles/` to answer open questions and spark the fiction:
 
+- **Ask the Oracle** (yes/no): decide the odds of a yes, then roll that table: `oracles/moves/ask-the-oracle/almost-certain.md`, `oracles/moves/ask-the-oracle/likely.md`, `oracles/moves/ask-the-oracle/fifty-fifty.md`, `oracles/moves/ask-the-oracle/unlikely.md`, or `oracles/moves/ask-the-oracle/small-chance.md`. On a **match** (both digits the same: 11, 22 … 99, or 100), an extreme result or twist has occurred.
+- **A spark** (inspiration): `oracles/action.md` + `oracles/theme.md`, read together as below.
+
 | When you need… | Roll |
 |---|---|
-| A complication or unexpected action | `oracles/action.md` + `oracles/theme.md` together |
+| A yes/no answer | the Ask the Oracle table for your odds (above) |
+| A complication or unexpected action | a spark (above) |
 | A region or terrain | `oracles/region.md` |
 | A place or landmark | `oracles/location.md` |
 | An Ironlander NPC name | `oracles/character-name.md` |
