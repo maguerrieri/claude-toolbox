@@ -49,7 +49,9 @@
 # within --settle of the push. Other apps' suites are left out (a Vercel,
 # Cloudflare or Claude app's sit queued with no runs for good), and so is the
 # review bot's own run (copilot-pull-request-reviewer), which is `review`'s
-# to wait for.
+# to wait for, and which fails whenever Copilot is out of quota. Only the run
+# from GitHub's own dynamic workflow is left out: a job a PR names the same
+# counts as CI, so a failing one can't hide behind the name.
 #
 # Output: one stdout line per state change, "<subcommand> #<pr> <sha12>:
 # <state>[ <detail>]", ending with the final state, so the same call works as
@@ -319,6 +321,30 @@ read_pr() { # sets pr_json and age, and state/detail when the PR or its head end
 
 # --- ci --------------------------------------------------------------------
 
+# The check suites behind runs named as a review bot's (bot_runs) that GitHub
+# itself started, written to $tmp/botsuites.json. Copilot's review runs in a
+# workflow GitHub creates, with event "dynamic" and a path under dynamic/,
+# which no workflow file in a repo can produce; a job a PR names the same
+# runs from a workflow file, so it stays in ci like any other check. A suite
+# keeps its workflow run, so each is read once.
+verified_bot_suites() {
+	local ids id found verdict out='[]'
+	ids=$(j -r --argjson bots "$bot_runs" '[.[] | select(.name as $n | any($bots[]; . == $n)) | .suite | numbers] | unique | .[]' "$tmp/runs.json") ||
+		return 1
+	for id in $ids; do
+		[[ $id =~ ^[0-9]+$ ]] || continue
+		if [ ! -f "$tmp/botsuite-$id" ]; then
+			found=$(api "repos/$repo/actions/runs" -X GET -f check_suite_id="$id" -f per_page=10) || return 1
+			verdict=$(printf '%s' "$found" |
+				j -r 'if any(.workflow_runs[]?; .event == "dynamic" and ((.path // "") | startswith("dynamic/"))) then "yes" else "no" end') ||
+				return 1
+			printf '%s' "$verdict" >"$tmp/botsuite-$id"
+		fi
+		[ "$(cat "$tmp/botsuite-$id")" != yes ] || out=$(printf '%s' "$out" | j -c --argjson i "$id" '. + [$i]') || return 1
+	done
+	printf '%s' "$out" >"$tmp/botsuites.json"
+}
+
 poll_ci() {
 	local runs suites statuses summary fresh
 	# Each list goes to jq as a file (--slurpfile), never an argument: Linux
@@ -332,6 +358,7 @@ poll_ci() {
 	# as green.
 	statuses=$(rest_list "repos/$repo/commits/$sha/status" --key statuses) || return 1
 	printf '%s' "$statuses" | j -c 'map({context, state})' >"$tmp/statuses.json" || return 1
+	verified_bot_suites || return 1
 	# Classified as github-rest.md's CI read and gh pr checks do: a stale
 	# conclusion is pending, these conclusions fail, the rest pass.
 	# An unfinished Actions suite with runs is a workflow with jobs still to
@@ -340,12 +367,12 @@ poll_ci() {
 	fresh=true
 	! settled || fresh=false
 	summary=$(j -rn --slurpfile R "$tmp/runs.json" --slurpfile S "$tmp/suites.json" --slurpfile T "$tmp/statuses.json" \
-		--argjson bots "$bot_runs" --argjson fresh "$fresh" '
+		--slurpfile V "$tmp/botsuites.json" --argjson bots "$bot_runs" --argjson fresh "$fresh" '
 		def failed: test("^(failure|cancelled|timed_out|action_required|startup_failure)$");
-		def isbot: . as $n | any($bots[]; . == $n);
+		def isbot: . as $r | any($bots[]; . == $r.name) and any($V[0][]; . == $r.suite);
 		$R[0] as $runs | $S[0] as $suites | $T[0] as $st
-		| [$runs[] | select(.name | isbot | not)] as $mine
-		| ([$runs[] | select(.name | isbot) | .suite] - [$mine[] | .suite]) as $botsuites
+		| [$runs[] | select(isbot | not)] as $mine
+		| ([$runs[] | select(isbot) | .suite] - [$mine[] | .suite]) as $botsuites
 		| ([$mine[] | {name, suite, s: (if .status != "completed" or .conclusion == "stale" then "pending"
 		                       elif ((.conclusion // "") | failed) then .conclusion else "pass" end)}]
 		 + [$st[] | {name: .context, suite: null, s: (if .state == "pending" then "pending"

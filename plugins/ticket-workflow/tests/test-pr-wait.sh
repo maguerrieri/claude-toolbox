@@ -33,10 +33,14 @@ fi
 shift
 endpoint=
 page=1
+suite=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-f)
-		case ${2:-} in page=*) page=${2#page=} ;; esac
+		case ${2:-} in
+		page=*) page=${2#page=} ;;
+		check_suite_id=*) suite=${2#check_suite_id=} ;;
+		esac
 		shift 2
 		;;
 	-X | -F | --hostname | --jq) shift 2 ;;
@@ -45,6 +49,7 @@ while [ $# -gt 0 ]; do
 done
 key=$(printf '%s' "${endpoint#repos/o/r/}" | tr / _)
 [ "$page" = 1 ] || key=$key.p$page # page 2 of a list is the fixture <key>.p2
+[ -z "$suite" ] || key=$key.s$suite # a suite's workflow runs are actions_runs.s<id>
 n=$(($(cat "$STUB_DIR/n-$key" 2>/dev/null || echo 0) + 1))
 echo "$n" >"$STUB_DIR/n-$key"
 if [ "${STUB_FAIL_ONCE:-}" = "$key" ] && [ "$n" = 1 ]; then
@@ -194,15 +199,32 @@ record "ci #7 aaaaaaaaaaaa: green 2 passed|exit 0" 'ci: a stray queued Actions s
 fx pulls_7 "$(pr "$A")"
 record "ci #7 aaaaaaaaaaaa: green 2 passed|exit 0" 'ci: or once this wait has run past --settle' "$(run ci 7 --head "$A" --interval 1s --settle 1s)"
 
-# The review bot's run is review's to wait for, not ci's.
+# The review bot's run is review's to wait for, not ci's, but only the one
+# from GitHub's own dynamic workflow (as on #352: event dynamic, path
+# dynamic/agents/copilot-pull-request-reviewer; it fails when Copilot is out
+# of quota). A job a PR names the same is CI like any other.
 reset
 fx pulls_7 "$(pr "$A")"
 fx "commits_${A}_check-runs" "$(runs hooks:completed:success:1 copilot-pull-request-reviewer:in_progress::9)"
 fx "commits_${A}_check-suites" "$(suites github-actions:1:completed github-actions:9:in_progress)"
 fx "commits_${A}_status" "$(statuses)"
+fx actions_runs.s9 '{"total_count":1,"workflow_runs":[{"event":"dynamic","path":"dynamic/agents/copilot-pull-request-reviewer"}]}'
+fx actions_runs.s1 '{"total_count":1,"workflow_runs":[{"event":"pull_request","path":".github/workflows/ci.yml"}]}'
 record "ci #7 aaaaaaaaaaaa: green 1 passed|exit 0" "ci: leaves out Copilot's run and its suite" "$(run ci 7 --head "$A" --interval 0)"
 fx "commits_${A}_check-runs" "$(runs hooks:completed:success:1 copilot-pull-request-reviewer:completed:failure:9)"
 record "ci #7 aaaaaaaaaaaa: green 1 passed|exit 0" "ci: and Copilot's run failing isn't a CI failure" "$(run ci 7 --head "$A" --interval 0)"
+fx "commits_${A}_check-runs.1" "$(runs hooks:in_progress::1 copilot-pull-request-reviewer:completed:failure:9)"
+record "2 polls, 1 suite read" 'ci: each suite is checked once, not on every poll' \
+	"$(run ci 7 --head "$A" --interval 0 >/dev/null; echo "$(lines) polls, $(calls actions/runs) suite read")"
+rm "$stub/commits_${A}_check-runs.1"
+fx "commits_${A}_check-runs" "$(runs hooks:completed:success:1 copilot-pull-request-reviewer:completed:failure:1)"
+fx "commits_${A}_check-suites" "$(suites github-actions:1:completed)"
+record "ci #7 aaaaaaaaaaaa: failed copilot-pull-request-reviewer (failure)|exit 1" \
+	"ci: a job a PR's own workflow names like Copilot's run can't hide a failure" "$(run ci 7 --head "$A" --interval 0)"
+fx actions_runs.s1 'not json'
+got=$(run ci 7 --head "$A" --interval 0)
+case $got in *": error a read failed 3 times in a row: pr-wait.sh: unexpected reply from GitHub"*"|exit 2") got=ok ;; esac
+record ok "ci: a suite whose workflow can't be read is an error, never left out" "$got"
 
 # The head: GitHub can show the old one for a moment after a push, and a
 # head that moves after it was seen ends the wait.

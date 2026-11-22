@@ -275,7 +275,10 @@ head's check suites as well (`commits/<sha>/check-suites`), and counts a GitHub 
 that hasn't completed as pending, so a job still waiting on another (`needs:`) isn't missed
 before GitHub creates its run. It ignores other apps' suites, which can sit `queued` with no runs
 for good (seen for Vercel, Cloudflare and Claude apps), and it leaves out Copilot's own
-`copilot-pull-request-reviewer` run, which is the review wait's.
+`copilot-pull-request-reviewer` run, which is the review wait's and fails whenever Copilot is out
+of quota. It leaves out only the run from GitHub's own workflow for it (its suite's workflow run
+has event `dynamic` and a path under `dynamic/`, `actions/runs?check_suite_id=<id>`), so a job a
+PR's own workflow names the same still counts as CI.
 
 ## Review threads (`REVIEW_BOT`)
 
