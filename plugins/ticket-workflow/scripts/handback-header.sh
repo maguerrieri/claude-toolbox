@@ -28,8 +28,11 @@
 # or none read), the role marker's `issue:` line when it has exactly one (read
 # through role-marker.sh show), else the one issue the PR's body closes (any
 # closing keyword GitHub reads, `Closes #<n>` as the github tracker's PR_REF
-# writes it). Another session's PR (one whose head isn't the current branch)
-# takes only the one issue its body closes, never this session's.
+# writes it). A PR whose head isn't the current branch takes the recorded issue
+# only when its body closes it (this session's own PR, after FINISH has checked
+# out the base), else the one issue its body closes, so another session's PR
+# never takes this session's issue. Past FINISH, a Jira PR (no closing keyword)
+# needs --issue.
 #
 # The session: this session's own page by default, or another's with --session
 # (a relay naming a child's), or none with --no-session. A relay with no id for
@@ -148,9 +151,9 @@ if [ -z "$pr_number" ] && pr_url_ok "$pr_arg"; then
 	rest=${rest#*/}
 	repo=${rest%%/*}
 	number=${rest##*/}
-	host_args=()
-	[ "$host" = github.com ] || host_args=(--hostname "$host")
-	got=$("$gh_bin" api ${host_args[@]+"${host_args[@]}"} "repos/$owner/$repo/pulls/$number" \
+	# Always name the URL's host: without --hostname, gh api goes to GH_HOST
+	# when that is set, which may be another host than the URL's.
+	got=$("$gh_bin" api --hostname "$host" "repos/$owner/$repo/pulls/$number" \
 		--jq "\"\\(.number)\\t\\(.html_url)\\t\\(.head.ref)\\t\" + ($closes)" 2>/dev/null) && read_pr "$got"
 fi
 pr_missing=''
@@ -166,12 +169,18 @@ if [ -z "$issue" ]; then
 		branch=$(git branch --show-current 2>/dev/null)
 		[ -n "$branch" ] && [ "$pr_head" = "$branch" ] || own=''
 	fi
+	recorded=''
+	marker=$(bash "$here/role-marker.sh" show 2>/dev/null)
+	issues=$(printf '%s\n' "$marker" | sed -n 's/^issue: //p')
+	if [ -n "$issues" ] && [ "$(printf '%s\n' "$issues" | wc -l | tr -d ' ')" = 1 ] && issue_ok "$issues"; then
+		recorded=$issues
+	fi
+	# Another branch's PR still takes the recorded issue when its body closes
+	# it: this session's own PR after FINISH has left its branch.
 	if [ -n "$own" ]; then
-		marker=$(bash "$here/role-marker.sh" show 2>/dev/null)
-		issues=$(printf '%s\n' "$marker" | sed -n 's/^issue: //p')
-		if [ -n "$issues" ] && [ "$(printf '%s\n' "$issues" | wc -l | tr -d ' ')" = 1 ] && issue_ok "$issues"; then
-			issue=$issues
-		fi
+		issue=$recorded
+	else
+		case ",$pr_closes," in *",$recorded,"*) issue=$recorded ;; esac
 	fi
 	# Else the one issue the PR's body closes.
 	case "$issue,$pr_closes" in

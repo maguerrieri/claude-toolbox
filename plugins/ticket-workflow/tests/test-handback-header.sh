@@ -171,6 +171,10 @@ record "PR #361 · $other" "another session's PR closing two issues: no issue pa
 record "PR #361 · $other" "another session's PR closing none (Jira): no issue part, never this session's" \
 	"$(hh STUB_PR="$(pr_json 361 "$other" 'Implements ABC-13' other)" -- --pr 361)"
 record "PR #361" "and its --core" "$(hh STUB_PR="$(pr_json 361 "$other" 'Implements ABC-13' other)" -- --pr 361 --core)"
+record "#356 → PR #360 · $url" "another branch's PR that closes the recorded issue keeps it (past FINISH Step 4)" \
+	"$(hh STUB_PR="$(pr_json 360 "$url" $'Closes #304\nCloses #356' gone)" -- --pr "$url")"
+record "PR #360 · $url" "but not one closing two other issues" \
+	"$(hh STUB_PR="$(pr_json 360 "$url" $'Closes #304\nCloses #305' gone)" -- --pr "$url")"
 record "#999 → PR #360 · $url" "outside a repo (no current branch), a --pr is another's" \
 	"$(HH_CWD="$tmp" hh STUB_PR="$(pr_json 360 "$url" 'Closes #999')" -- --pr "$url")"
 record "#999 → PR #360 · $url" "--issue wins over the marker and the PR" "$(hh STUB_PR="$own" -- --issue 999)"
@@ -214,7 +218,7 @@ record "#356 → PR #7 · $up" "a fork's checkout links the upstream PR gh repor
 	"$(HH_CWD="$tmp/fork" hh STUB_PR="$(pr_json 7 "$up" 'Closes #356')" -- --pr "$up")"
 record "#356 → PR #7 · $up" "and, with gh pr view refused, the REST read of the URL's repo" \
 	"$(HH_CWD="$tmp/fork" hh STUB_PR=graphql STUB_REST="$(rest_json 7 "$up" 'Closes #356')" -- --pr "$up")"
-record "api repos/up/r/pulls/7" "the REST read names the URL's repo, not origin's" \
+record "api --hostname github.com repos/up/r/pulls/7" "the REST read names the URL's host and repo, not origin's" \
 	"$(grep '^api' "$tmp/all-args" | sed -E 's/ --jq .*//')"
 record 3 "both fork runs' gh calls were seen" "$(grep -c . "$tmp/all-args")"
 record 0 "no gh call in either names the fork" "$(grep -c someone "$tmp/all-args")"
@@ -222,6 +226,9 @@ record 0 "no gh call in either names the fork" "$(grep -c someone "$tmp/all-args
 ghe=https://ghe.example.com/o/r/pull/5
 hh STUB_PR=graphql STUB_REST="$(rest_json 5 "$ghe" '')" -- --pr "$ghe" >/dev/null
 record "api --hostname ghe.example.com repos/o/r/pulls/5" "another host's URL reads that host" \
+	"$(grep '^api' "$tmp/args" | sed -E 's/ --jq .*//')"
+hh STUB_PR=graphql STUB_REST="$(rest_json 360 "$url" '')" GH_HOST=ghe.example.com -- --pr "$url" >/dev/null
+record "api --hostname github.com repos/o/r/pulls/360" "a github.com URL names its host even with GH_HOST set to another" \
 	"$(grep '^api' "$tmp/args" | sed -E 's/ --jq .*//')"
 record "#356" "gh pr view refused for a number: no REST guess at the repo" \
 	"$(hh STUB_PR=graphql STUB_REST="$(rest_json 360 "$url" '')" -- --pr 360)"

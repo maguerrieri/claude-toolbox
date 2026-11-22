@@ -100,7 +100,8 @@ A child pinging its spawner about its own issue (`pushed:`, `done:`,
 whole line where its format shows the core, so the spawner has the links without looking them up and can relay
 them to the owner as they are: `done: #356 → PR #360 · <PR url> · session
 <url>`, or `blocked: #356 → PR #360 · <PR url> · session <url> — merge needs
-the owner`. Run it right before the ping, as START Step 9 runs it, and send
+the owner`. Run it right before the ping, as START Step 9 runs it (and with `--issue
+<id>` once FINISH has left the PR's branch, as its Step 5 does), and send
 what it printed: a part it couldn't read (no PR yet, Remote Control off, a
 terminal session) is missing, never written in by hand. Where this skill
 names a ping by its detail alone (`blocked: merge needs the owner`), the
