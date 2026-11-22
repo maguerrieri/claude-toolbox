@@ -2,18 +2,21 @@
 # Tests for scripts/handback-header.sh, the line a hand-back, a child's ping
 # and a relay lead with (START Step 9, messaging.md's *Naming a PR*):
 #
-# - the issue comes from --issue, else the role marker's one issue: line,
-#   checked against the issues the PR's body closes, else the one issue the
-#   body closes; a Jira key is printed as it is;
+# - the issue comes from --issue, else, for this session's own PR (the
+#   current branch's), the role marker's one issue: line, else the one issue
+#   the PR's body closes; another session's PR never takes this session's
+#   issue; a Jira key is printed as it is;
 # - the PR comes from gh pr view (on --pr or the current branch), with a REST
 #   read of the repo a URL names when gh pr view fails (a cloud session), and
-#   never from origin, so a fork's checkout links the upstream PR;
+#   never from origin, so a fork's checkout links the upstream PR; a --pr it
+#   can't read exits 1;
 # - the session link comes only from where the spawn skill's backend files
-#   say: CLAUDE_CODE_REMOTE_SESSION_ID's plain session_ id, or a local job's
-#   state.json bridgeSessionId, the same read as backends/local.md's snippet,
-#   run on the same job files; anything else leaves no link;
-# - no marker, no PR, Remote Control off, or a failed read leaves that part
-#   out and still exits 0; a bad argument exits 2;
+#   say: CLAUDE_CODE_REMOTE_SESSION_ID's plain session_ (or cse_) id, or a
+#   local job's state.json bridgeSessionId, the same read as
+#   backends/local.md's snippet, run on the same job files; anything else
+#   leaves no link; --core prints the issue and PR alone;
+# - no marker, no PR, Remote Control off, or a failed session read leaves that
+#   part out and still exits 0; a bad or empty argument exits 2;
 # - START Step 9's documented run prints the header, every doc that writes a
 #   PR-naming line points at messaging.md's *Naming a PR*, and the older
 #   PR-alone forms appear only where a receiver is told to accept them.
@@ -22,6 +25,8 @@
 #   STUB_PR     the JSON gh pr view reads, or `graphql` for the cloud proxy's
 #               refusal; empty means no PR for the branch
 #   STUB_REST   the JSON the REST read gets; empty fails it
+# Each run's cwd is a repo on branch `feature` (HH_CWD overrides it), so a
+# PR whose head is `feature` is this session's own.
 #
 #   bash plugins/ticket-workflow/tests/test-handback-header.sh
 set -u
@@ -63,10 +68,13 @@ STUB_EOF
 chmod +x "$tmp/gh"
 
 mkdir -p "$tmp/roles" "$tmp/home"
+git init -q -b feature "$tmp/repo"
+git init -q -b feature "$tmp/fork" && git -C "$tmp/fork" remote add origin https://github.com/someone/r.git
 
-# hh [VAR=value ...] [-- script args ...]: the script's output, in an
-# environment holding only these variables, with this session's marker under
-# $tmp/roles (session t1).
+# hh [VAR=value ...] [-- script args ...]: the script's output, run in
+# ${HH_CWD:-$tmp/repo} in an environment holding only these variables, with
+# this session's marker under $tmp/roles (session t1). Each run's gh calls
+# are in $tmp/args, and every run's in $tmp/all-args.
 hh() {
 	local vars=()
 	while [ $# -gt 0 ] && [ "$1" != -- ]; do
@@ -75,10 +83,12 @@ hh() {
 	done
 	[ $# -eq 0 ] || shift
 	: >"$tmp/args"
-	env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_ROLES_DIR="$tmp/roles" CLAUDE_CODE_SESSION_ID=t1 \
+	(cd "${HH_CWD:-$tmp/repo}" && env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_ROLES_DIR="$tmp/roles" \
+		CLAUDE_CODE_SESSION_ID=t1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
 		HANDBACK_HEADER_GH="$tmp/gh" STUB_ARGS="$tmp/args" ${vars[@]+"${vars[@]}"} \
-		bash "$script" "$@" 2>/dev/null
+		bash "$script" "$@" 2>/dev/null)
 	last_exit=$?
+	cat "$tmp/args" >>"$tmp/all-args"
 }
 # code [VAR=value ...] [-- script args ...]: the script's exit code.
 code() {
@@ -92,15 +102,18 @@ marker() { # marker <content>: this session's role marker, or none for ''
 job() { # job <dir> <state.json text>
 	mkdir -p "$1" && printf '%s\n' "$2" >"$1/state.json"
 }
-pr_json() { # pr_json <number> <url> <body>
-	jq -cn --argjson n "$1" --arg u "$2" --arg b "$3" '{number: $n, url: $u, body: $b}'
+pr_json() { # pr_json <number> <url> <body> [<head branch>, feature by default]
+	jq -cn --argjson n "$1" --arg u "$2" --arg b "$3" --arg h "${4:-feature}" \
+		'{number: $n, url: $u, headRefName: $h, body: $b}'
 }
-rest_json() { # rest_json <number> <html_url> <body>
-	jq -cn --argjson n "$1" --arg u "$2" --arg b "$3" '{number: $n, html_url: $u, body: $b}'
+rest_json() { # rest_json <number> <html_url> <body> [<head branch>]
+	jq -cn --argjson n "$1" --arg u "$2" --arg b "$3" --arg h "${4:-feature}" \
+		'{number: $n, html_url: $u, head: {ref: $h}, body: $b}'
 }
 
 url=https://github.com/o/r/pull/360
 own=$(pr_json 360 "$url" $'## Summary\n- x\n\nCloses #356\n')
+other=https://github.com/o/r/pull/361
 job "$tmp/job-on" '{"bridgeSessionId": "cse_01ABCDEFGHJKMNPQRSTVWXYZ", "bridgeOutboundOnly": false}'
 job "$tmp/job-off" '{"bridgeSessionId": null, "bridgeOutboundOnly": null}'
 job "$tmp/job-bad" 'not json'
@@ -112,11 +125,12 @@ link=https://claude.ai/code/session_01ABCDEFGHJKMNPQRSTVWXYZ
 marker ''
 record '' "no marker, no PR, no session: an empty line" "$(hh)"
 record 0 "and it still exits 0" "$(code)"
-record 'gh: pr view --json number,url,body' "the PR is the current branch's, through gh pr view" \
+record 'gh: pr view --json number,url,headRefName,body' "the PR is the current branch's, through gh pr view" \
 	"$(hh >/dev/null; sed -E 's/ --jq .*//; s/^/gh: /' "$tmp/args")"
 
 marker $'implementer\nissue: 356\nnotify: x'
 record '#356' "the marker's issue, with no PR yet" "$(hh)"
+record 0 "no PR yet, with no --pr, still exits 0" "$(code)"
 record "#356 → PR #360 · $url" "the issue and the PR" "$(hh STUB_PR="$own")"
 record "#356 → PR #360 · $url · session $link" "and the session, from CLAUDE_JOB_DIR's state.json" \
 	"$(hh STUB_PR="$own" CLAUDE_JOB_DIR="$tmp/job-on")"
@@ -127,35 +141,47 @@ record "#356 → PR #360 · $url" "a job file that isn't JSON: no session part" 
 	"$(hh STUB_PR="$own" CLAUDE_JOB_DIR="$tmp/job-bad")"
 record "#356 → PR #360 · $url" "a job directory with no state.json: no session part" \
 	"$(hh STUB_PR="$own" CLAUDE_JOB_DIR="$tmp/job-empty")"
-record 0 "a failed read still exits 0" "$(code STUB_PR="$own" CLAUDE_JOB_DIR="$tmp/job-bad")"
+record 0 "a failed session read still exits 0" "$(code STUB_PR="$own" CLAUDE_JOB_DIR="$tmp/job-bad")"
 record "#356 → PR #360 · $url" "--no-session leaves this session's link out" \
 	"$(hh STUB_PR="$own" CLAUDE_JOB_DIR="$tmp/job-on" -- --no-session)"
+record "#356 → PR #360" "--core prints the issue and the PR alone, no URL or session" \
+	"$(hh STUB_PR="$own" CLAUDE_JOB_DIR="$tmp/job-on" -- --core)"
 
 marker ''
 record "#356 → PR #360 · $url" "no marker: the one issue the PR closes" "$(hh STUB_PR="$own")"
 record "PR #360 · $url" "no marker and a PR closing two issues: no issue part" \
 	"$(hh STUB_PR="$(pr_json 360 "$url" $'Closes #356\nCloses #304')")"
 record "PR #360 · $url" "no marker and a PR closing none" "$(hh STUB_PR="$(pr_json 360 "$url" 'No footer')")"
-record "PR #360 · $url" "a PR with a null body" "$(hh STUB_PR='{"number": 360, "url": "https://github.com/o/r/pull/360", "body": null}')"
+record "PR #360 · $url" "a PR with a null body" \
+	"$(hh STUB_PR='{"number": 360, "url": "https://github.com/o/r/pull/360", "headRefName": "feature", "body": null}')"
 
 # --- Which issue ------------------------------------------------------------
 
 marker $'implementer\nissue: 356'
-record "#356 → PR #360 · $url" "the recorded issue, among two the PR closes" \
+record "#356 → PR #360 · $url" "this session's PR keeps the recorded issue, among two it closes" \
 	"$(hh STUB_PR="$(pr_json 360 "$url" $'Closes #304\nCloses #356')")"
-record "#346 → PR #347 · https://github.com/o/r/pull/347" "another PR's issue, not this session's" \
-	"$(hh STUB_PR="$(pr_json 347 https://github.com/o/r/pull/347 'Closes #346')" -- --pr 347)"
-record "PR #347 · https://github.com/o/r/pull/347" "another PR closing two others: no issue part" \
-	"$(hh STUB_PR="$(pr_json 347 https://github.com/o/r/pull/347 $'Closes #1\nCloses #2')" -- --pr 347)"
-record "#356 → PR #360 · $url" "a PR body with no closing keyword (Jira's PR_REF) keeps the recorded issue" \
+record "#356 → PR #360 · $url" "and with --pr naming it, its head being this branch" \
+	"$(hh STUB_PR="$(pr_json 360 "$url" 'Closes #304')" -- --pr "$url")"
+record "#356 → PR #360 · $url" "a body with no closing keyword (Jira's PR_REF) keeps the recorded issue" \
 	"$(hh STUB_PR="$(pr_json 360 "$url" 'Implements it.')")"
+record "#346 → PR #361 · $other" "another session's PR takes its own issue, not this session's" \
+	"$(hh STUB_PR="$(pr_json 361 "$other" 'Closes #346' other)" -- --pr 361)"
+record "PR #361 · $other" "another session's PR closing two issues: no issue part" \
+	"$(hh STUB_PR="$(pr_json 361 "$other" $'Closes #1\nCloses #2' other)" -- --pr 361)"
+record "PR #361 · $other" "another session's PR closing none (Jira): no issue part, never this session's" \
+	"$(hh STUB_PR="$(pr_json 361 "$other" 'Implements ABC-13' other)" -- --pr 361)"
+record "PR #361" "and its --core" "$(hh STUB_PR="$(pr_json 361 "$other" 'Implements ABC-13' other)" -- --pr 361 --core)"
+record "#999 → PR #360 · $url" "outside a repo (no current branch), a --pr is another's" \
+	"$(HH_CWD="$tmp" hh STUB_PR="$(pr_json 360 "$url" 'Closes #999')" -- --pr "$url")"
 record "#999 → PR #360 · $url" "--issue wins over the marker and the PR" "$(hh STUB_PR="$own" -- --issue 999)"
 record "#999" "--issue with a leading #" "$(hh -- --issue '#999')"
 record "ABC-12 → PR #360 · $url" "a Jira key, printed as it is" "$(hh STUB_PR="$own" -- --issue ABC-12)"
 marker $'implementer\nissue: ABC-12'
 record "ABC-12" "a Jira key from the marker" "$(hh)"
+record "ABC-12 → PR #360 · $url" "an incidental closing keyword in this session's own PR doesn't replace its key" \
+	"$(hh STUB_PR="$(pr_json 360 "$url" 'Implements ABC-12; fixes #45 in the vendored lib')")"
 marker $'implementer\nissue: 356\nissue: 357'
-record "PR #360 · $url" "two recorded issues, the PR closing neither: no issue part" \
+record "PR #360 · $url" "two recorded issues, the PR closing two others: no issue part" \
 	"$(hh STUB_PR="$(pr_json 360 "$url" 'Closes #1, closes #2')")"
 record "#357 → PR #360 · $url" "two recorded issues: the one the PR closes" \
 	"$(hh STUB_PR="$(pr_json 360 "$url" 'Closes #357')")"
@@ -176,23 +202,22 @@ done
 
 marker $'implementer\nissue: 356'
 hh STUB_PR="$own" -- --pr "$url" >/dev/null
-record "pr view $url --json number,url,body" "--pr is passed to gh pr view as it is" \
+record "pr view $url --json number,url,headRefName,body" "--pr is passed to gh pr view as it is" \
 	"$(sed -E 's/ --jq .*//' "$tmp/args")"
 
 # A fork's checkout: origin is the fork, and the PR is upstream's. The script
 # never reads origin: gh pr view on the URL, or the REST read of the repo the
 # URL names.
-fork="$tmp/fork"
-git init -q "$fork" && git -C "$fork" remote add origin https://github.com/someone/r.git
 up=https://github.com/up/r/pull/7
-fork_hh() { (cd "$fork" && hh "$@"); }
+: >"$tmp/all-args"
 record "#356 → PR #7 · $up" "a fork's checkout links the upstream PR gh reports" \
-	"$(fork_hh STUB_PR="$(pr_json 7 "$up" 'Closes #356')" -- --pr "$up")"
+	"$(HH_CWD="$tmp/fork" hh STUB_PR="$(pr_json 7 "$up" 'Closes #356')" -- --pr "$up")"
 record "#356 → PR #7 · $up" "and, with gh pr view refused, the REST read of the URL's repo" \
-	"$(fork_hh STUB_PR=graphql STUB_REST="$(rest_json 7 "$up" 'Closes #356')" -- --pr "$up")"
+	"$(HH_CWD="$tmp/fork" hh STUB_PR=graphql STUB_REST="$(rest_json 7 "$up" 'Closes #356')" -- --pr "$up")"
 record "api repos/up/r/pulls/7" "the REST read names the URL's repo, not origin's" \
-	"$(grep '^api' "$tmp/args" | sed -E 's/ --jq .*//')"
-record 0 "no gh call names the fork" "$(grep -c someone "$tmp/args")"
+	"$(grep '^api' "$tmp/all-args" | sed -E 's/ --jq .*//')"
+record 3 "both fork runs' gh calls were seen" "$(grep -c . "$tmp/all-args")"
+record 0 "no gh call in either names the fork" "$(grep -c someone "$tmp/all-args")"
 
 ghe=https://ghe.example.com/o/r/pull/5
 hh STUB_PR=graphql STUB_REST="$(rest_json 5 "$ghe" '')" -- --pr "$ghe" >/dev/null
@@ -202,11 +227,15 @@ record "#356" "gh pr view refused for a number: no REST guess at the repo" \
 	"$(hh STUB_PR=graphql STUB_REST="$(rest_json 360 "$url" '')" -- --pr 360)"
 record 0 "and no REST read" "$(hh STUB_PR=graphql -- --pr 360 >/dev/null; grep -c '^api' "$tmp/args")"
 record "#356" "both reads failing: no PR part" "$(hh STUB_PR=graphql -- --pr "$url")"
+record 1 "and a --pr it couldn't read exits 1, so the caller adds the URL it holds" \
+	"$(code STUB_PR=graphql -- --pr "$url")"
+record 1 "as does a --pr number gh pr view can't find" "$(code -- --pr 360)"
 
 for bad in '{"number": 360, "url": "https://github.com/o/r/pull/361", "body": ""}' \
 	'{"number": 360, "url": "javascript:alert(1)//pull/360", "body": ""}' \
 	'{"number": 360, "url": "https://github.com/o/r/pull/360 https://evil/pull/360", "body": ""}' \
 	'{"number": 360, "url": "https://github.com/o/r/pull/360\nhttps://evil", "body": ""}' \
+	'{"number": 360, "url": "https://github.com/o/r/pull/360", "headRefName": "a\tb", "body": ""}' \
 	'{"number": "360x", "url": "https://github.com/o/r/pull/360", "body": ""}' \
 	'{"number": 360, "url": "https://github.com/o/r/issues/360", "body": ""}' \
 	'{"url": "https://github.com/o/r/pull/360"}'; do
@@ -218,10 +247,12 @@ done
 marker $'implementer\nissue: 356'
 record "#356 · session https://claude.ai/code/session_01XYZ" "a cloud session's own session_ id" \
 	"$(hh CLAUDE_CODE_REMOTE_SESSION_ID=session_01XYZ)"
+record "#356 · session https://claude.ai/code/session_01XYZ" "a cloud cse_ id, mapped as backends/local.md records" \
+	"$(hh CLAUDE_CODE_REMOTE_SESSION_ID=cse_01XYZ)"
 record "#356 · session https://claude.ai/code/session_01XYZ" "the cloud id wins over a job directory" \
 	"$(hh CLAUDE_CODE_REMOTE_SESSION_ID=session_01XYZ CLAUDE_JOB_DIR="$tmp/job-on")"
-for bad in cse_01XYZ session_ 'session_01](https://evil' 'session_01 x' $'session_01\nx' 'session_a_b' x; do
-	record "#356" "a cloud id that isn't a plain session_ id: '$bad'" \
+for bad in session_ cse_ 'session_01](https://evil' 'session_01 x' $'session_01\nx' $'cse_01\n' 'session_a_b' x; do
+	record "#356" "a cloud id that isn't a plain session_ or cse_ id: '$bad'" \
 		"$(hh CLAUDE_CODE_REMOTE_SESSION_ID="$bad" CLAUDE_JOB_DIR="$tmp/job-on")"
 done
 record "#356" "a terminal session (no job directory, not cloud): no session part" "$(hh)"
@@ -260,6 +291,27 @@ record "session $link" "--session wins over this session's own job" \
 
 # --- Usage ------------------------------------------------------------------
 
+usage_case() { # usage_case <script args ...>: expect exit 2
+	record 2 "usage error: $*" "$(code CLAUDE_JOB_DIR="$tmp/job-on" -- "$@")"
+}
+usage_case --pr 'x;y'
+usage_case --pr https://github.com/o/r/issues/1
+usage_case --pr "$(printf '%s\n%s' "$url" "$url")"
+usage_case --pr
+usage_case --pr ''
+usage_case --issue 'a b'
+usage_case --issue -x
+usage_case --issue
+usage_case --issue ''
+usage_case --session ../x
+usage_case --session a/b
+usage_case --session _x
+usage_case --session ''
+usage_case --session a0000001 --no-session
+usage_case --core --session a0000001
+usage_case --bogus
+usage_case extra
+
 # --- The docs ---------------------------------------------------------------
 
 skill="$plugin/skills/ticket-workflow"
@@ -270,7 +322,7 @@ step9=$(extract_block "$skill/SKILL.md" 'handback-header.sh" --pr <pr url>')
 record yes "START Step 9's header block found in SKILL.md" "$([ -n "$step9" ] && echo yes || echo no)"
 marker $'implementer\nissue: 356'
 record "#356 → PR #360 · $url · session $link" "START Step 9's block, run as documented, prints the header" \
-	"$(: >"$tmp/args"; env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_ROLES_DIR="$tmp/roles" \
+	"$(cd "$tmp/repo" && : >"$tmp/args" && env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_ROLES_DIR="$tmp/roles" \
 		CLAUDE_CODE_SESSION_ID=t1 HANDBACK_HEADER_GH="$tmp/gh" STUB_ARGS="$tmp/args" STUB_PR="$own" \
 		CLAUDE_JOB_DIR="$tmp/job-on" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" \
 		bash -c "${step9//<pr url>/$url}" 2>/dev/null)"
@@ -301,22 +353,5 @@ older=$(find "$skill" "$plugin/commands" -name '*.md' -print | sort | while read
 record "" "the PR-alone forms appear only where a receiver accepts an older sender" "$older"
 record yes "messaging.md's *Naming a PR* lists the older forms" \
 	"$(awk '/^## Naming a PR/{on=1} on && /^\*\*Older senders/{print "yes"; exit}' "$skill/messaging.md")"
-
-usage_case() { # usage_case <script args ...>: expect exit 2
-	record 2 "usage error: $*" "$(code -- "$@")"
-}
-usage_case --pr 'x;y'
-usage_case --pr https://github.com/o/r/issues/1
-usage_case --pr "$(printf '%s\n%s' "$url" "$url")"
-usage_case --pr
-usage_case --issue 'a b'
-usage_case --issue -x
-usage_case --issue
-usage_case --session ../x
-usage_case --session a/b
-usage_case --session _x
-usage_case --session a0000001 --no-session
-usage_case --bogus
-usage_case extra
 
 finish
