@@ -47,13 +47,14 @@ and assemble what comes back up.
   url> · session <url>`, the header a child's ping carries (`messaging.md`,
   *Naming a PR*), passed on as it came. When the ping had none (a child on an
   older plugin version, or a poll read off GitHub), build it from data with
-  `scripts/handback-header.sh --issue <id> --pr <pr url> --session <id>`, where
-  `<id>` is the child's short id (the hex id its launch printed, or its
-  `claude agents --json --all` row's `id`) or, for a cloud child, the
+  `scripts/handback-header.sh --issue <id> --pr <pr url> --session <child id>`,
+  where `<child id>` is the child's short id (the hex id its launch printed,
+  or its `claude agents --json --all` row's `id`) or, for a cloud child, the
   `session_…` id its launch returned: the same lookup the spawn report uses
-  (the `spawn` skill's *Session links*). A missing link is left out, never
-  guessed, and the session link goes only to the owner, never into a PR, an
-  issue, a comment or a `COORD` marker.
+  (the `spawn` skill's *Session links*). Holding neither, pass `--no-session`
+  instead, since without either flag the script links your own session. A
+  missing link is left out, never guessed, and the session link goes only to
+  the owner, never into a PR, an issue, a comment or a `COORD` marker.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
   installs it; its `ledger:record` skill says how) and the session is local,
   not a cloud session, which the ledger doesn't reach. Record each decision

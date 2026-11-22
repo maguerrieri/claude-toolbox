@@ -105,18 +105,26 @@ what it printed: a part it couldn't read (no PR yet, Remote Control off, a
 terminal session) is missing, never written in by hand. Where this skill
 names a ping by its detail alone (`blocked: merge needs the owner`), the
 header still goes between the prefix and the detail. A line a spawner sends
-down (`finish:`, `raise:`, `request:`, `restack:`) carries the core alone.
+down (`finish:`, `raise:`, `request:`, `restack:`) carries the core alone, which
+the script's `--core` prints for any PR (for a PR another session owns, its
+issue comes from the one issue that PR closes).
 
 **Older senders.** A session on an earlier version of this plugin names the
 PR alone: `finish: #<pr> (grant: …)`, `merged: #<pr>`, `raise: cap <n> on PR
 #<pr>`, `request: PR #<pr>: …`, and `restack: #<parent> merged into <base>;
 restack #<pr> onto <base>`, where each bare `#<n>` is a PR. Accept both forms.
-Every check keys on the PR number, as it always has.
+Every check keys on the PR number, as it always has. It works the other way
+too: a receiver on an earlier version may take the first `#<n>` of a new line,
+the issue, for the PR, and then fails safe, declining a `finish:` as `not my
+PR` or answering a `restack:` with its one reply. When one of those comes back
+for a line you sent in the new form, send it again in the older one above.
 
 **A mismatched issue fails safe.** When a line names an issue, check that the
 PR it names closes that issue, by the reference the tracker's `PR_REF` writes:
-`Closes #<issue>` in the PR's body on GitHub (`gh pr view <pr> --json body -q
-.body`), the key in its title or body on Jira. If it doesn't, the line names
+on GitHub, any closing keyword GitHub reads before `#<issue>` in the PR's body
+(`Closes`, `Fixes` or `Resolves`, in any of their forms, such as `Fixes
+#<issue>`; read it with `gh pr view <pr> --json body -q .body`), and on Jira,
+the key in its title or body. That is the same match the script uses. If it doesn't, the line names
 the wrong PR: a `finish:` is declined (`not my PR`), a `restack:` gets the one
 reply START Step 8's *Verify it* gives, and a `raise:` or `request:` gets a
 one-line reply saying so and changes nothing.
