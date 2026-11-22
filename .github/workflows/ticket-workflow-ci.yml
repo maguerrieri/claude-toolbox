@@ -49,3 +49,5 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-agents-listing.sh
       - name: Session-link (Remote Control page) tests
         run: bash plugins/ticket-workflow/tests/test-session-links.sh
+      - name: Hand-back header tests
+        run: bash plugins/ticket-workflow/tests/test-handback-header.sh
