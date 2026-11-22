@@ -2,9 +2,9 @@
 #
 # bin/pr-notifier runs it three times per examined PR, with --arg phase:
 #   edits   prints the node ids (one per line) of comments edited after the
-#           baseline, and of new items whose text may ride the wake and that
-#           look edited, whose editor the notifier then reads through GraphQL
-#           (the REST timeline names an item's author, never its editor)
+#           baseline, and of new items whose text may ride the wake, whose
+#           last edit and editor the notifier then reads through GraphQL (the
+#           REST timeline names an item's author, never its editor)
 #   need    prints the logins (one per line) whose owner-check result the
 #           filter needs (needs_owner): new items, and edits, by an actor that
 #           is neither the sessions' own login nor any bot, and the authors
@@ -132,8 +132,8 @@ def record($i; $verdict; $reason):
 # phases: an item the filter decides, by a login that is neither the
 # sessions' own nor a bot's.
   def needs_owner($i): class($i) == "check";
-# An item whose REST times differ may have been edited; GraphQL's
-# lastEditedAt (in $editors) settles it.
+# An item whose REST times differ, for the wake's updated token only: whose
+# text rides is GraphQL's call (owner_text).
   def looks_edited($i): ($i.updated_at // "") != "" and $i.updated_at != $i.at;
 # New items whose text may ride the wake: a check-class author's, and the
 # line comments of such a review.
@@ -144,17 +144,18 @@ def record($i; $verdict; $reason):
   def owner_ok($i): needs_owner($i) and $owners[$i.actor | lc] == 0;
 # {text, text_cut} for an item whose author the owner check accepted, and
 # whose last editor it accepted too when GraphQL shows an edit; {} for any
-# other item, or one whose editor couldn't be read.
+# other item. GraphQL decides whether it was edited, never REST's times, so
+# an item it didn't return (a failed read, no node id) gets no text, and so
+# does one GraphQL shows edited after the REST read that gave its text.
   def owner_text($i):
     if ($owner_text | not) or (owner_ok($i) | not) then {}
     else ($i.body // "" | if type == "string" then . else "" end) as $b
-      | (if looks_edited($i) | not then true
-         else ($editors[$i.node_id] // null) as $ed
-           | if $ed == null then false
-             elif $ed.edited_at == null then true
-             elif ($ed.login // "") == "" then false
-             else owner_ok({actor: $ed.login, type: ($ed.type // "")}) end
-         end) as $ok
+      | ($editors[$i.node_id // ""] // null) as $ed
+      | (if $ed == null then false
+         elif $ed.edited_at == null then true
+         elif ($ed.login // "") == "" then false
+         elif ($ed.edited_at | tostring) > ($i.updated_at // "") then false
+         else owner_ok({actor: $ed.login, type: ($ed.type // "")}) end) as $ok
       | if $ok then {text: $b[0:$text_store], text_cut: (($b | length) > $text_store)} else {} end
     end;
 # Who and when, as the wake shows it: the item's creation, and its last
@@ -209,15 +210,15 @@ def record($i; $verdict; $reason):
       else . end;
   if $phase == "edits" then
     [ ($items[] | select(edited(.)) | .node_id),
-      (text_candidates | select(looks_edited(.)) | .node_id) ]
+      (text_candidates | .node_id) ]
     | map(select(type == "string" and . != "")) | unique | .[]
   elif $phase == "need" then
     [ ($new[] | select(.at >= $baseline) | select(needs_owner(.)) | .actor),
       ($items[] | select(edited(.)) | edit(.) // empty | select(needs_owner(.)) | .actor),
       # Whose text rides the wake: an edited comment's author, and the
-      # editor of a new item that shows an edit.
+      # editor GraphQL names for a new item.
       (if $owner_text then $items[] | select(edited(.)) | select(needs_owner(.)) | .actor else empty end),
-      (text_candidates | select(looks_edited(.)) | edit(.) // empty | select(needs_owner(.)) | .actor) ]
+      (text_candidates | edit(.) // empty | select(needs_owner(.)) | .actor) ]
     | unique_by(lc) | .[]
   else
     ($pr[0] // {}) as $p

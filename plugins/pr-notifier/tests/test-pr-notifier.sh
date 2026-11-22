@@ -4,8 +4,9 @@
 # posing as a bot), coalescing, each delivery state, the feed's 304 and poll
 # interval, the direct poll (its pace, batching, failures and rate limit, and
 # dedup with the feed), a missed notification and catch-up after downtime, merges, Codex's
-# edited summary, the wake environment, bounded holds, the lock, and the
-# stable-path shim. The vendored owner-check.sh runs for real, on the gh stub.
+# edited summary, the wake's details and the owner's quoted text (#353), the wake
+# environment, bounded holds, the lock, and the stable-path shim. The vendored
+# owner-check.sh runs for real, on the gh stub.
 #
 #   bash plugins/pr-notifier/tests/test-pr-notifier.sh
 set -u
@@ -119,14 +120,17 @@ graphql)
 		[ -z "$missing" ] || { echo 'gh: Could not resolve to a PullRequest' >&2; exit 1; }
 		exit 0
 	fi
-	# Each item's last editor from $STUB/editor-<node id> ("<login> <User|Bot>"),
-	# edited at a fixed time; $STUB/ghost-<node id> is an edit whose editor
-	# GraphQL can't name; anything else was never edited.
+	# Each item's last editor from $STUB/editor-<node id> ("<login> <User|Bot>
+	# <edited at>"); $STUB/ghost-<node id> is an edit whose editor GraphQL
+	# can't name; $STUB/missing-<node id> a node the read doesn't return;
+	# anything else was never edited.
 	[ ! -f "$STUB/graphql.fail" ] || { echo 'gh: HTTP 502' >&2; exit 1; }
 	out=$(for id in "${ids[@]}"; do
-		if [ -f "$STUB/editor-$id" ]; then
-			read -r l t <"$STUB/editor-$id"
-			jq -n --arg id "$id" --arg l "$l" --arg t "$t" '{id: $id, lastEditedAt: "2026-11-01T00:00:00Z", editor: {login: $l, __typename: $t}}'
+		if [ -f "$STUB/missing-$id" ]; then
+			echo null
+		elif [ -f "$STUB/editor-$id" ]; then
+			read -r l t e <"$STUB/editor-$id"
+			jq -n --arg id "$id" --arg l "$l" --arg t "$t" --arg e "$e" '{id: $id, lastEditedAt: $e, editor: {login: $l, __typename: $t}}'
 		elif [ -f "$STUB/ghost-$id" ]; then
 			jq -n --arg id "$id" '{id: $id, lastEditedAt: "2026-11-01T00:00:00Z", editor: null}'
 		else
@@ -308,8 +312,8 @@ comment() { # comment <pr> <id> <login> <type> <created> [updated] [body]
 		html_url: "https://github.com/o/r/pull/\($pr)#issuecomment-\($id)", node_id: "IC_\($id)",
 		created_at: $c, updated_at: $up, body: $b}'
 }
-editor() { # editor <comment id> <login> [User|Bot]: who GraphQL says last edited it
-	echo "$2 ${3:-User}" >"$STUB/editor-IC_$1"
+editor() { # editor <comment id> <login> [User|Bot] [edited at]: who GraphQL says last edited it, and when
+	echo "$2 ${3:-User} ${4:-2026-10-01T00:00:00Z}" >"$STUB/editor-IC_$1"
 }
 review() { # review <pr> <id> <login> <type> <submitted>
 	jq -n --argjson pr "$1" --argjson id "$2" --arg u "$3" --arg t "$4" --arg s "$5" \
@@ -659,6 +663,18 @@ timeline 7 "$(comment 7 821 mari User "$T1" "$(iso $((T0 + 90)))" 'SECRET maybe 
 nt "$T" check
 record "1|no" "an owner's comment whose editor can't be read wakes, with no text" \
 	"$(wakes)|$(prompt | grep -q SECRET && echo yes || echo no)"
+
+# REST's times never vouch for an item: GraphQL must return it, and show no
+# edit after the read that gave its text.
+reset
+touch "$STUB/missing-IC_822" "$STUB/missing-PRR_823"
+editor 824 mari User "$(iso $((T0 + 200)))"
+timeline 7 "$(comment 7 822 mari User "$T1" "$T1" 'SECRET unreturned')" \
+	"$(rv 7 823 mari User "$(iso $((T0 + 70)))" approved "$H" 'SECRET unreturned review')" \
+	"$(comment 7 824 mari User "$(iso $((T0 + 80)))" "$(iso $((T0 + 90)))" 'SECRET edited after the read')"
+nt "$T" check
+record "3|no" "an item GraphQL doesn't return, or shows edited after the REST read, wakes with no text, even one REST shows unedited" \
+	"$(prompt | grep -c '^- ')|$(prompt | grep -q 'SECRET\|text=' && echo yes || echo no)"
 
 reset
 settings '{"owner_text_cap": 40}'
