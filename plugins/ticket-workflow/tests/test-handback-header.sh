@@ -13,7 +13,10 @@
 #   state.json bridgeSessionId, the same read as backends/local.md's snippet,
 #   run on the same job files; anything else leaves no link;
 # - no marker, no PR, Remote Control off, or a failed read leaves that part
-#   out and still exits 0; a bad argument exits 2.
+#   out and still exits 0; a bad argument exits 2;
+# - START Step 9's documented run prints the header, every doc that writes a
+#   PR-naming line points at messaging.md's *Naming a PR*, and the older
+#   PR-alone forms appear only where a receiver is told to accept them.
 #
 # gh is replaced by a stub that runs the script's own --jq filter over:
 #   STUB_PR     the JSON gh pr view reads, or `graphql` for the cloud proxy's
@@ -256,6 +259,48 @@ record "session $link" "--session wins over this session's own job" \
 	"$(hh CLAUDE_CONFIG_DIR="$cfg" CLAUDE_JOB_DIR="$tmp/job-off" -- --session a0000001)"
 
 # --- Usage ------------------------------------------------------------------
+
+# --- The docs ---------------------------------------------------------------
+
+skill="$plugin/skills/ticket-workflow"
+repo=$(cd "$plugin/../.." && pwd)
+
+# START Step 9's documented run, with its placeholder filled, prints the header.
+step9=$(extract_block "$skill/SKILL.md" 'handback-header.sh" --pr <pr url>')
+record yes "START Step 9's header block found in SKILL.md" "$([ -n "$step9" ] && echo yes || echo no)"
+marker $'implementer\nissue: 356'
+record "#356 → PR #360 · $url · session $link" "START Step 9's block, run as documented, prints the header" \
+	"$(: >"$tmp/args"; env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_ROLES_DIR="$tmp/roles" \
+		CLAUDE_CODE_SESSION_ID=t1 HANDBACK_HEADER_GH="$tmp/gh" STUB_ARGS="$tmp/args" STUB_PR="$own" \
+		CLAUDE_JOB_DIR="$tmp/job-on" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" \
+		bash -c "${step9//<pr url>/$url}" 2>/dev/null)"
+
+# Every doc that writes a PR-naming line points at the one definition, and the
+# older forms that name the PR alone appear only where a receiver is told to
+# accept them: a paragraph (blank-line separated) holding one says "older
+# sender".
+for f in SKILL.md messaging.md notifier.md phases/finish.md phases/epic.md \
+	roles/implementer.md roles/planner.md roles/epic-coordinator.md profiles/default.md; do
+	record yes "$f names messaging.md's *Naming a PR* or the header script" \
+		"$(grep -q 'Naming a PR\|handback-header\.sh' "$skill/$f" && echo yes || echo no)"
+done
+old_forms='(finish|merged): #<pr>|raise: cap <[a-z]+> on PR #|request: PR #|resumed: [a-z]+( <[a-z]+>)? on PR #|restack: #<(parent|pr)>|restack #<(pr|yours|child|dependent)> onto|PR #<pr> needs the owner'
+scan_old() { # scan_old <file>: one line per paragraph using a PR-alone form without saying "older sender"
+	awk -v f="${1#"$repo/"}" -v re="$old_forms" '
+		function check() { if (para ~ re && tolower(para) !~ /older sender/) print f ": " substr(para, 1, 80); para = "" }
+		/^[ \t]*$/ { check(); next }
+		{ para = para " " $0 }
+		END { check() }
+	' "$1"
+}
+printf '%s\n' 'ping `merged: #<pr>` when done' '' 'then `raise: cap <n> on PR #<pr>`' '' \
+	'An older sender may send `finish: #<pr> (grant: …)`.' '' 'answers `resumed: cap <n> on PR #<pr>`' '' \
+	'`restack: #<parent> merged into main;' 'restack #<yours> onto main`' >"$tmp/old.md"
+record 4 "the scan finds each PR-alone form outside an older-sender paragraph" "$(scan_old "$tmp/old.md" | grep -c .)"
+older=$(find "$skill" "$plugin/commands" -name '*.md' -print | sort | while read -r f; do scan_old "$f"; done)
+record "" "the PR-alone forms appear only where a receiver accepts an older sender" "$older"
+record yes "messaging.md's *Naming a PR* lists the older forms" \
+	"$(awk '/^## Naming a PR/{on=1} on && /^\*\*Older senders/{print "yes"; exit}' "$skill/messaging.md")"
 
 usage_case() { # usage_case <script args ...>: expect exit 2
 	record 2 "usage error: $*" "$(code -- "$@")"

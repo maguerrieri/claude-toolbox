@@ -417,8 +417,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     the cap never blocks.
   - **No hand-back first.** A request moves no count, so it needs no raise, and a comment can't
     collide with the child's rewrites of the PR body. A spawner relays one at once:
-    `request: PR #<pr>: <the owner's words> (owner: <how and when>)` by SendMessage on a local
-    edge, or on cloud that line as a PR comment plus a `request: PR #<pr> <comment URL>` hint by
+    `request: #<issue> → PR #<pr>: <the owner's words> (owner: <how and when>)` by SendMessage on a local
+    edge, or on cloud that line as a PR comment plus a `request: #<issue> → PR #<pr> <comment URL>` hint by
     the child-bound one-shot Routine, as for a `raise:`. The owner's own comment on the PR wakes a
     local child that handed back when the pr-notifier is installed, since START Step 9 subscribes
     the PR to it at the hand-back (the skill's `notifier.md`). Elsewhere a plain PR comment may not wake a child
@@ -428,7 +428,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     spawner. A child mid-round lets the review in flight on its
     head land (it waits for that in-turn anyway), then posts the record and pushes the request
     with that round's fixes, or alone as an owner head when there is nothing to fix or it is at
-    its cap. A child that had handed back resumes for it and pings `resumed: request on PR #<pr>`
+    its cap. A child that had handed back resumes for it and pings `resumed: request on <header>` (`messaging.md`'s *Naming a PR*)
     on a local edge. Before it pushes, it rewrites its `Final diff:` line to `pending` (START Step
     7's record rules), so no gate reads the last hand-back's pass as covering the new code and
     EPIC Step 6 can't freeze its row again early. Once that head is reviewed it runs the final
@@ -524,7 +524,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `body`); a session with no PR write at all can't raise, so it leaves the raise to the owner.
     Re-read the body to confirm the new cap stuck. A coordinator also posts
     `budget: <child-id> rounds=<new>` on the epic where `COORD` is writable (EPIC Step 5). Then wake
-    the child with a `raise: cap <new> on PR #<pr>` hint. Locally that's SendMessage
+    the child with a `raise: cap <new> on #<issue> → PR #<pr>` hint (`messaging.md`'s *Naming a PR*). Locally that's SendMessage
     (`messaging.md`). On cloud, where nothing spans sessions, it's the one-shot Routine bound to the
     child, which any cloud spawner can schedule (the `spawn` skill's `backends/cloud.md`, and EPIC
     Step 6 for the call). The hint authorizes nothing. It only tells the child that its PR changed.
@@ -537,7 +537,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     its last disposition comment (leave that comment as posted; the next round's answer supersedes
     it) and any held self-review lines in the body, each rewritten to `fixed in <sha> — …` as its
     fix lands (START Step 7). With a `Notify:` spawner, it also pings
-    `resumed: cap <c> on PR #<pr>`. A hint whose PR line shows no raise changes nothing: the child
+    `resumed: cap <c> on <header>` (`messaging.md`'s *Naming a PR*). A hint whose PR line shows no raise changes nothing: the child
     stays handed back and says so, to the sender on a local edge or in a PR comment on cloud.
     Verified live on 2026-09-25 (#175). A local spawned child in auto mode, handed back at cap 1,
     resumed on its coordinator's line edit and `raise:` hint with no permission-layer refusal. It

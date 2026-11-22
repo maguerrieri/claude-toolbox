@@ -109,6 +109,17 @@ cross-session message from a relay named `pr-notifier`, which the skill's read-o
 ticket-workflow calls the notifier only at its stable path and codes against its
 wake template; a change to either belongs to the `pr-notifier` plugin.
 
+Every hand-back, a child's ping and a planner's or coordinator's relay lead
+with one line, `#<issue> → PR #<pr> · <PR url> · session <url>`, which
+`plugins/ticket-workflow/scripts/handback-header.sh` prints from the role
+marker, GitHub and the session's own claude.ai/code page (its tests:
+`bash plugins/ticket-workflow/tests/test-handback-header.sh`), so no report
+depends on a session remembering them. Its `#<issue> → PR #<pr>` core is how
+every ping and request line names a PR, and receivers still accept an older
+sender's PR-alone form (`messaging.md`, *Naming a PR*). The session link is
+the owner's own: it never goes into a PR, an issue, a comment or a `COORD`
+marker.
+
 ## Development workflow
 
 Built with the **`superpowers`** plugin (from the built-in `claude-plugins-official`
