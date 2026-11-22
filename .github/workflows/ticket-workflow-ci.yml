@@ -35,6 +35,8 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-gh-rest-list.sh
       - name: GitHub-verified check tests
         run: bash plugins/ticket-workflow/tests/test-gh-verified.sh
+      - name: PR-wait tests (CI, review bot and mergeability waits; a read that keeps failing must exit, not spin)
+        run: bash plugins/ticket-workflow/tests/test-pr-wait.sh
       - name: Owner-check tests
         run: bash plugins/ticket-workflow/tests/test-owner-check.sh
       - name: Owner-approval tests (the owner's approving review as a merge grant)
