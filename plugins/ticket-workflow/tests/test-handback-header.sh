@@ -343,7 +343,7 @@ for f in SKILL.md messaging.md notifier.md phases/finish.md phases/epic.md \
 	record yes "$f names messaging.md's *Naming a PR* or the header script" \
 		"$(grep -q 'Naming a PR\|handback-header\.sh' "$skill/$f" && echo yes || echo no)"
 done
-old_forms='(finish|merged): #<pr>|raise: cap <[a-z]+> on PR #|request: PR #|resumed: [a-z]+( <[a-z]+>)? on PR #|restack: #<(parent|pr)>|restack #<(pr|yours|child|dependent)> onto|PR #<pr> needs the owner'
+old_forms='(finish|merged): #<pr>|(raise: cap <[a-z]+>|approval: <review url>) on PR #|request: PR #|resumed: [a-z]+( <[a-z]+>)? on PR #|restack: #<(parent|pr)>|restack #<(pr|yours|child|dependent)> onto|PR #<pr> needs the owner'
 scan_old() { # scan_old <file>: one line per paragraph using a PR-alone form without saying "older sender"
 	awk -v f="${1#"$repo/"}" -v re="$old_forms" '
 		function check() { if (para ~ re && tolower(para) !~ /older sender/) print f ": " substr(para, 1, 80); para = "" }
