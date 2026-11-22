@@ -230,13 +230,17 @@ record "api --hostname ghe.example.com repos/o/r/pulls/5" "another host's URL re
 hh STUB_PR=graphql STUB_REST="$(rest_json 360 "$url" '')" GH_HOST=ghe.example.com -- --pr "$url" >/dev/null
 record "api --hostname github.com repos/o/r/pulls/360" "a github.com URL names its host even with GH_HOST set to another" \
 	"$(grep '^api' "$tmp/args" | sed -E 's/ --jq .*//')"
-record "#356" "gh pr view refused for a number: no REST guess at the repo" \
+record "PR #360" "gh pr view refused for a number: the PR as passed, no REST guess at the repo, no issue" \
 	"$(hh STUB_PR=graphql STUB_REST="$(rest_json 360 "$url" '')" -- --pr 360)"
 record 0 "and no REST read" "$(hh STUB_PR=graphql -- --pr 360 >/dev/null; grep -c '^api' "$tmp/args")"
-record "#356" "both reads failing: no PR part" "$(hh STUB_PR=graphql -- --pr "$url")"
-record 1 "and a --pr it couldn't read exits 1, so the caller adds the URL it holds" \
+record "PR #360 · $url" "both reads failing: the URL as passed, and not this session's issue" \
+	"$(hh STUB_PR=graphql -- --pr "$url")"
+record 1 "and a --pr it couldn't read exits 1, so the caller adds the issue it knows is its own" \
 	"$(code STUB_PR=graphql -- --pr "$url")"
 record 1 "as does a --pr number gh pr view can't find" "$(code -- --pr 360)"
+record "PR #361" "another session's PR it can't read never takes this session's issue (--core)" \
+	"$(hh -- --pr 361 --core)"
+record "PR #361 · session $link" "and its session part stays" "$(hh CLAUDE_JOB_DIR="$tmp/job-on" -- --pr 361)"
 
 for bad in '{"number": 360, "url": "https://github.com/o/r/pull/361", "body": ""}' \
 	'{"number": 360, "url": "javascript:alert(1)//pull/360", "body": ""}' \
@@ -327,6 +331,8 @@ repo=$(cd "$plugin/../.." && pwd)
 # START Step 9's documented run, with its placeholder filled, prints the header.
 step9=$(extract_block "$skill/SKILL.md" 'handback-header.sh" --pr <pr url>')
 record yes "START Step 9's header block found in SKILL.md" "$([ -n "$step9" ] && echo yes || echo no)"
+record 1 "and it appears once" "$(grep -c 'handback-header.sh" --pr <pr url>' "$skill/SKILL.md")"
+record 1 "Step 9 has one 'Then report:' paragraph" "$(grep -c '^Then report:' "$skill/SKILL.md")"
 marker $'implementer\nissue: 356'
 record "#356 → PR #360 · $url · session $link" "START Step 9's block, run as documented, prints the header" \
 	"$(cd "$tmp/repo" && : >"$tmp/args" && env -i PATH="$PATH" HOME="$tmp/home" CLAUDE_SESSION_ROLES_DIR="$tmp/roles" \

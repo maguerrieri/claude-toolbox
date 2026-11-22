@@ -22,17 +22,18 @@
 # resolution picks the repo (in a fork's checkout, pass the PR's URL). When gh
 # pr view fails on a URL (a cloud session, whose proxy refuses the GraphQL it
 # uses), the PR is read over REST from the repo the URL names. Its URL is
-# printed only in the shape https://<host>/<owner>/<repo>/pull/<n>.
+# printed only in the shape https://<host>/<owner>/<repo>/pull/<n>. A --pr it
+# can't read either way is printed as passed (`PR #<n>`, and the URL when it
+# was one), unchecked and with no issue it can't vouch for, and the exit is 1.
 #
-# The issue: --issue, else, for this session's own PR (the current branch's,
-# or none read), the role marker's `issue:` line when it has exactly one (read
-# through role-marker.sh show), else the one issue the PR's body closes (any
-# closing keyword GitHub reads, `Closes #<n>` as the github tracker's PR_REF
-# writes it). A PR whose head isn't the current branch takes the recorded issue
-# only when its body closes it (this session's own PR, after FINISH has checked
-# out the base), else the one issue its body closes, so another session's PR
-# never takes this session's issue. Past FINISH, a Jira PR (no closing keyword)
-# needs --issue.
+# The issue: --issue, else the role marker's `issue:` line when it has exactly
+# one (read through role-marker.sh show) and the PR is known to be this
+# session's own: no --pr (the current branch's PR, or none yet), a --pr read
+# whose head is the current branch, or one whose body closes that issue (this
+# session's own PR once FINISH has checked out the base). Else the one issue
+# the PR's body closes (any closing keyword GitHub reads, `Closes #<n>` as the
+# github tracker's PR_REF writes it), so another session's PR never takes this
+# session's issue. Past FINISH, a Jira PR (no closing keyword) needs --issue.
 #
 # The session: this session's own page by default, or another's with --session
 # (a relay naming a child's), or none with --no-session. A relay with no id for
@@ -56,8 +57,8 @@
 # never in a PR, an issue, a comment or a COORD marker.
 #
 # Exits 0 with whatever it could read, 1 when --pr names a PR it couldn't read
-# (the line, printed anyway, has no PR part, so the caller adds the URL it
-# holds), and 2 on a usage error. HANDBACK_HEADER_GH overrides the gh binary
+# (the line, printed anyway, carries that PR as passed and no recorded issue,
+# so the caller adds the issue it knows is its own), and 2 on a usage error. HANDBACK_HEADER_GH overrides the gh binary
 # (the tests' stub).
 # shellcheck source-path=SCRIPTDIR
 set -uo pipefail
@@ -156,33 +157,45 @@ if [ -z "$pr_number" ] && pr_url_ok "$pr_arg"; then
 	got=$("$gh_bin" api --hostname "$host" "repos/$owner/$repo/pulls/$number" \
 		--jq "\"\\(.number)\\t\\(.html_url)\\t\\(.head.ref)\\t\" + ($closes)" 2>/dev/null) && read_pr "$got"
 fi
-pr_missing=''
-[ -n "$pr_number" ] || [ -z "$pr_arg" ] || pr_missing=1
+# A --pr it couldn't read is printed as it was passed (its number, and its URL
+# when it was one), unchecked, and the exit is 1.
+pr_unread=''
+if [ -z "$pr_number" ] && [ -n "$pr_arg" ]; then
+	pr_unread=1
+	case "$pr_arg" in
+	*[!0-9]*) pr_number=${pr_arg##*/} pr_url=$pr_arg ;;
+	*) pr_number=$pr_arg ;;
+	esac
+fi
 
 # --- The issue --------------------------------------------------------------
 
+# The role marker's issue labels a PR only when the PR is known to be this
+# session's own: no --pr (the current branch's PR, or none yet), a --pr read
+# whose head is the branch checked out here, or a --pr read whose body closes
+# that issue (this session's own PR once FINISH has left its branch). Any other
+# PR, one that couldn't be read included, takes only the one issue its body
+# closes, so another session's PR never takes this session's issue.
 if [ -z "$issue" ]; then
-	# This session's own PR: none read, the current branch's (no --pr), or one
-	# whose head is the branch checked out here.
-	own=1
-	if [ -n "$pr_number" ] && [ -n "$pr_arg" ]; then
-		branch=$(git branch --show-current 2>/dev/null)
-		[ -n "$branch" ] && [ "$pr_head" = "$branch" ] || own=''
-	fi
 	recorded=''
 	marker=$(bash "$here/role-marker.sh" show 2>/dev/null)
 	issues=$(printf '%s\n' "$marker" | sed -n 's/^issue: //p')
 	if [ -n "$issues" ] && [ "$(printf '%s\n' "$issues" | wc -l | tr -d ' ')" = 1 ] && issue_ok "$issues"; then
 		recorded=$issues
 	fi
-	# Another branch's PR still takes the recorded issue when its body closes
-	# it: this session's own PR after FINISH has left its branch.
-	if [ -n "$own" ]; then
-		issue=$recorded
-	else
-		case ",$pr_closes," in *",$recorded,"*) issue=$recorded ;; esac
+	own=''
+	if [ -z "$pr_arg" ]; then
+		own=1
+	elif [ -z "$pr_unread" ]; then
+		branch=$(git branch --show-current 2>/dev/null)
+		if [ -n "$branch" ] && [ "$pr_head" = "$branch" ]; then
+			own=1
+		else
+			case ",$pr_closes," in *",$recorded,"*) own=1 ;; esac
+		fi
 	fi
-	# Else the one issue the PR's body closes.
+	[ -z "$own" ] || issue=$recorded
+	# Else, or with no recorded issue, the one issue the PR's body closes.
 	case "$issue,$pr_closes" in
 	,*,* | ,) ;;
 	,*) issue=$pr_closes ;;
@@ -231,9 +244,9 @@ fi
 line=$issue
 if [ -n "$pr_number" ]; then
 	line="${line:+$line → }PR #$pr_number"
-	[ -n "$core" ] || line="$line · $pr_url"
+	[ -n "$core" ] || [ -z "$pr_url" ] || line="$line · $pr_url"
 fi
 [ -z "$session" ] || line="${line:+$line · }session $session"
 printf '%s\n' "$line"
-[ -z "$pr_missing" ] || exit 1
+[ -z "$pr_unread" ] || exit 1
 exit 0
