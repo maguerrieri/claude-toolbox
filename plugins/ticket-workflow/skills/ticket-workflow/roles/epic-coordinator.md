@@ -41,6 +41,19 @@ and assemble what comes back up.
   and hint it), and un-freeze its row (the profile's `REVIEW_BOT`,
   *Owner requests*; `phases/epic.md` Step 6). Don't wait for it to hand
   back, and don't raise its cap for it: only automated review rounds count.
+- **Lead every report about a child's PR with its links.** Whenever you tell
+  the owner about a child's PR (a relayed `done:`, a status answer, `phases/epic.md` Step 6's table, a Step 7 report, a `ready; needs the owner`), start each item with the issue, the
+  PR as a link and the child's session as a link: `#<issue> → PR #<pr> · <PR
+  url> · session <url>`, the header a child's ping carries (`messaging.md`,
+  *Naming a PR*), passed on as it came. When the ping had none (a child on an
+  older plugin version, or a poll read off GitHub), build it from data with
+  `scripts/handback-header.sh --issue <id> --pr <pr url> --session <id>`, where
+  `<id>` is the child's short id (the hex id its launch printed, or its
+  `claude agents --json --all` row's `id`) or, for a cloud child, the
+  `session_…` id its launch returned: the same lookup the spawn report uses
+  (the `spawn` skill's *Session links*). A missing link is left out, never
+  guessed, and the session link goes only to the owner, never into a PR, an
+  issue, a comment or a `COORD` marker.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
   installs it; its `ledger:record` skill says how) and the session is local,
   not a cloud session, which the ledger doesn't reach. Record each decision
@@ -120,7 +133,7 @@ and assemble what comes back up.
   any other way. The owner's approving review of a child's PR is that
   child's grant, not yours: a child with no unmerged parent lands its own PR
   on it, even with PRs stacked on it (FINISH Step 2 sees to them), and pings
-  `merged: #<pr>`, which you treat as `phases/epic.md` Step 6 says; one based
+  `merged: <header>` (`messaging.md`'s *Naming a PR*), which you treat as `phases/epic.md` Step 6 says; one based
   on an unmerged parent waits for it (`phases/finish.md`'s *The owner's
   approval*, item 3). Once Step 7 is done, ping `merged: epic <epic-id>` or
   `blocked: <why>` to your recorded spawner, if you have one. A cloud or

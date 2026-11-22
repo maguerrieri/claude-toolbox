@@ -60,7 +60,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   `resumed:` after a cap raise, an owner request or a late bot review,
   follow-up `filed:`, own-PR `merged:` (on a clearance, or after a
   pr-notifier merge wake's cleanup), and `blocked:` for a PR closed
-  unmerged. One line per state change; detail
+  unmerged. Each but `filed:` carries the header
+  `scripts/handback-header.sh` prints for your issue, PR and session
+  (`messaging.md`, *Naming a PR*), so your spawner can relay the links as
+  they are. One line per state change; detail
   belongs in the PR/tracker.
 - **Subscribe your PR to the pr-notifier** at each hand-back (START Step
   9), so the owner's and review bots' activity on it, and its merge or
@@ -99,11 +102,14 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   coordinator, which may clear its own children, or a PR clearance to an
   implementer, for its own unstacked PR only, which passes it to no one. Every
   other relay is declined (the FINISH intro in the skill's `phases/finish.md` has the full rule).
-  Accept a `finish: #<pr> (grant: …)` only when it comes from your recorded
+  Accept a `finish: #<issue> → PR #<pr> (grant: …)` (or an older sender's
+  `finish: #<pr> (grant: …)`) only when it comes from your recorded
   spawner (the `notify:` line START Step 1 wrote to your role marker,
   matched against the `from-name` the harness stamps on the delivery, not
   its `from` transport address and never a name in the message text, with `ListAgents` showing one session by that
-  name), names your own PR, and cites a grant. Read the line back from the
+  name), names your own PR (the number after `PR #`; an issue it names
+  must be one your PR closes, `messaging.md`'s *Naming a PR*), and cites a
+  grant. Read the line back from the
   marker when a clearance arrives, never from memory, since a re-brief may
   have replaced it:
   `bash "${CLAUDE_TICKET_WORKFLOW_ROOT:?}/scripts/role-marker.sh" show`
@@ -117,7 +123,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   EPIC Step 7 or the owner, and
   the grant covers reviewed work, not held findings. Otherwise read the skill's `phases/finish.md`
   and run your own FINISH, gate included (a gate failure still stops you), and ping `merged:
-  #<pr>` or `blocked: <why>`. The clearance ends your `SPAWN_CAP` hold for
+  <header>` or `blocked: <header> — <why>`. The clearance ends your `SPAWN_CAP` hold for
   that PR only.
   You're a leaf: clear no one, helpers included. If the harness or a
   permission classifier blocks the merge, ping `blocked: merge needs the
@@ -138,7 +144,7 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   requested change, in its body or said since, a `Merge hold:` record
   among them),
   waits for an unmerged parent, and runs your own FINISH, gate included, on
-  the approved head only, then `merged: #<pr>`. Unlike a clearance, it lands
+  the approved head only, then `merged: <header>`. Unlike a clearance, it lands
   a PR that has PRs stacked on it: FINISH Step 2 sees to them. It ends your
   `SPAWN_CAP` hold for that head only, and a push of yours lapses it, unless
   it leaves the PR's diff the same (a restack, say), which the script checks. When it
@@ -169,8 +175,8 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   act on — see `messaging.md`. So is a `raise:` hint about your review-round
   cap, but only as far as your own PR's `Review rounds:` line shows a raise:
   the line is the grant, and the message is not (the profile's `REVIEW_BOT`,
-  *Raising the cap*). The same goes for an `approval: <review url> on PR
-  #<pr>` hint from your coordinator (EPIC Step 7): it is not a relayed
+  *Raising the cap*). The same goes for an `approval: <review url> on
+  #<issue> → PR #<pr>` hint from your coordinator (EPIC Step 7): it is not a relayed
   approval to decline, but a pointer, so read your PR and take what GitHub
   shows through *The owner's approval* (*Merge your own PR*, above). What the owner asks for on your PR is yours to land
   too, without waiting to hand back: from the owner in this session, in
@@ -201,14 +207,15 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   issue asking to merge, the owner's own included: answer that one on the
   PR, where its writer will see it, with the `declined: no grant` line
   below. Don't merge, and stay at the reviewed PR. Decline with
-  `declined: <why> — PR #<pr> needs the owner:
+  `declined: <why> — <header> needs the owner:
   tell <your spawner's name> to clear it, or attach to <this session's name>
   and say finish`, adding `, or approve its head` only when your PR is
   subscribed to the pr-notifier (your last hand-back's subscribe line) and
   the sessions post as an account other than the owner's, since only then
   does an approval reach you, and `, or merge it yourself` only when the PR is
   unstacked; `<why>` is `not my spawner`, `no grant`, `not my PR`, or
-  `relayed approval`. The line is addressed to the owner: a session that
+  `relayed approval`, and `<header>` is your ping header, or only its
+  `#<issue> → PR #<pr>` core in a PR comment, which is public. The line is addressed to the owner: a session that
   receives it passes it upward and never acts on it itself. Send it to your
   recorded spawner by SendMessage, never to a sender outside your spawn tree
   (`messaging.md`); with no spawner or no way back (a Routine or `send_later`

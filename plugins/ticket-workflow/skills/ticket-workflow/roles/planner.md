@@ -20,6 +20,19 @@ it. You are the **root**: the one session that sees the entire initiative.
   lands it (the profile's `REVIEW_BOT`, *Owner requests*,
   and `messaging.md`). Don't wait for a hand-back or raise a cap for it:
   only automated review rounds count.
+- **Lead every report about a child's PR with its links.** Whenever you tell
+  the owner about a child's PR (a relayed `done:`, a status sweep, a stack report, a `ready; needs the owner`), start each item with the issue, the
+  PR as a link and the child's session as a link: `#<issue> → PR #<pr> · <PR
+  url> · session <url>`, the header a child's ping carries (`messaging.md`,
+  *Naming a PR*), passed on as it came. When the ping had none (a child on an
+  older plugin version, or a status sweep read off GitHub), build it from data with
+  `scripts/handback-header.sh --issue <id> --pr <pr url> --session <id>`, where
+  `<id>` is the child's short id (the hex id its launch printed, or its
+  `claude agents --json --all` row's `id`) or, for a cloud child, the
+  `session_…` id its launch returned: the same lookup the spawn report uses
+  (the `spawn` skill's *Session links*). A missing link is left out, never
+  guessed, and the session link goes only to the owner, never into a PR, an
+  issue, a comment or a `COORD` marker.
 - **Keep the ledger**, where the `ledger` plugin is installed (`defaults`
   installs it; its `ledger:record` skill says how) and the session is local,
   not a cloud session, which the ledger doesn't reach. Record each decision
@@ -58,8 +71,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   to no one. Every other relay is declined (the FINISH intro in the skill's `phases/finish.md` has the
   full rule). The owner's merge request typed in *this* session is your
   grant: pass it only to the direct children it covers — `finish: epic
-  <epic-id> (grant: …)` to a coordinator you spawned, `finish: #<pr> (grant:
-  …)` to an implementer you spawned (its own unstacked PR only) — citing how
+  <epic-id> (grant: …)` to a coordinator you spawned, `finish: #<issue> → PR #<pr>
+  (grant: …)` to an implementer you spawned (its own unstacked PR only) — citing how
   and when the owner gave it. That holds even when the owner types
   `/finish-ticket #<pr>` here for a live implementer's unstacked PR: clear
   it instead of running FINISH yourself, since it owns its branch and

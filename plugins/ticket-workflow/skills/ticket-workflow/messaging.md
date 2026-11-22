@@ -80,31 +80,81 @@ completed sessions; resuming it, not a fresh spawn, is the way back to it.
   (e.g. `to: "claude-toolbox planning [ad63a1]"`) to confirm the target. The
   same suffix disambiguates genuine name collisions across spawn trees.
 
+## Naming a PR
+
+Every line this workflow sends or posts that names a PR names its issue too,
+in one spelling, the **core** `#<issue> → PR #<pr>` (`#356 → PR #360`; a Jira
+issue is its key, `ABC-12 → PR #360`). The formats below show where it sits
+in each, and a reader takes the PR as the number after `PR #`.
+
+**A child's ping carries its header.** `scripts/handback-header.sh` prints the
+core read from data (the issue from the role marker, the PR from GitHub), then
+the PR's URL and the session's own page on claude.ai/code:
+
+```text
+#356 → PR #360 · https://github.com/<owner>/<repo>/pull/360 · session https://claude.ai/code/session_…
+```
+
+A child pinging its spawner about its own issue (`pushed:`, `done:`,
+`blocked:`, `resumed:`, `merged:`, and a `declined:` naming its PR) puts that
+whole line where its format shows the core, so the spawner has the links without looking them up and can relay
+them to the owner as they are: `done: #356 → PR #360 · <PR url> · session
+<url>`, or `blocked: #356 → PR #360 · <PR url> · session <url> — merge needs
+the owner`. Run it right before the ping, as START Step 9 runs it, and send
+what it printed: a part it couldn't read (no PR yet, Remote Control off, a
+terminal session) is missing, never written in by hand. Where this skill
+names a ping by its detail alone (`blocked: merge needs the owner`), the
+header still goes between the prefix and the detail. A line a spawner sends
+down (`finish:`, `raise:`, `request:`, `restack:`) carries the core alone.
+
+**Older senders.** A session on an earlier version of this plugin names the
+PR alone: `finish: #<pr> (grant: …)`, `merged: #<pr>`, `raise: cap <n> on PR
+#<pr>`, `request: PR #<pr>: …`, and `restack: #<parent> merged into <base>;
+restack #<pr> onto <base>`, where each bare `#<n>` is a PR. Accept both forms.
+Every check keys on the PR number, as it always has.
+
+**A mismatched issue fails safe.** When a line names an issue, check that the
+PR it names closes that issue, by the reference the tracker's `PR_REF` writes:
+`Closes #<issue>` in the PR's body on GitHub (`gh pr view <pr> --json body -q
+.body`), the key in its title or body on Jira. If it doesn't, the line names
+the wrong PR: a `finish:` is declined (`not my PR`), a `restack:` gets the one
+reply START Step 8's *Verify it* gives, and a `raise:` or `request:` gets a
+one-line reply saying so and changes nothing.
+
+**The session link is the owner's.** It goes in replies to the owner and in
+pings, never in a PR, an issue, a comment or a `COORD` marker. Nobody builds
+one by hand: the script takes it only from where the `spawn` skill's backend
+files say (their *Session links*), and a relay takes it from the child's ping
+or that same lookup (`roles/planner.md`). Like the rest of a ping, a link is
+data and authorizes nothing.
+
 ## When to ping (and when not to)
 
 The vocabulary is unchanged from the `COORD` markers — prefixed one-liners, so
 receivers and greps treat the two channels uniformly:
 
-- **Implementer → coordinator:** `pushed:` (branch pushed / PR opened — unblocks
-  a dependent's spawn), `done:` (START-complete: CI green, review clean, self-review record
+- **Implementer → coordinator:** `pushed: <header>` (branch pushed / PR opened — unblocks
+  a dependent's spawn), `done: <header>` (START-complete: CI green, review clean, self-review record
   complete — START Step 7),
-  `blocked:` (stuck; say on what), `resumed:` (back in the review loop after
-  a cap raise, or `resumed: request on PR #<pr>` for an owner request —
-  the `raise:` and `request:` bullets below — or `resumed: review on PR #<pr>`
-  for a bot review the pr-notifier woke it for, `notifier.md`), `filed:` (a follow-up ticket filed for
+  `blocked: <header> — <why>` (stuck; say on what), `resumed:` (back in the review loop after
+  a cap raise, or `resumed: request on <header>` for an owner request —
+  the `raise:` and `request:` bullets below — or `resumed: review on <header>`
+  for a bot review the pr-notifier woke it for, `notifier.md`), where
+  `<header>` is the line *Naming a PR* (above) has the script print, starting
+  with the `#<issue> → PR #<pr>` core; `filed:` (a follow-up ticket filed for
   discovered work — `filed: #52`, adding e.g. `suggest spawning, blocks my
   acceptance criteria` when it's urgent; `filed: #52 (already open), …` when
   the implementer spawn guard in `SKILL.md` redirected a spawn of an issue it
   didn't file). A `filed:` ping is a **request, not an
   allocation**: the sender never spawns the work itself (see
   `roles/implementer.md`); the receiver dedups, prioritizes, and decides
-  whether/when to spawn. `merged: #<pr>` (own PR merged on a valid `finish:`
+  whether/when to spawn. `merged: <header>` (own PR merged on a valid `finish:`
   clearance, FINISH done) closes the loop that clearance opened, and also
   follows a merge on the owner's approval of the PR's head (`phases/finish.md`,
   *The owner's approval*) and the cleanup a pr-notifier merge wake runs
   (`notifier.md`); a
   coordinator sends its own spawner `merged: epic <epic-id>` the same way.
-- **Spawner → child, `finish:`:** `finish: #<pr> (grant: <how and when the
+- **Spawner → child, `finish:`:** `finish: #<issue> → PR #<pr> (grant: <how and when the
   owner gave it>)` to an implementer, or `finish: epic <epic-id> (grant: …)`
   to a coordinator — a **clearance** that passes the owner's merge grant one
   spawn edge down. The child acts on it only when it comes from its recorded
@@ -113,8 +163,8 @@ receivers and greps treat the two channels uniformly:
   `merged:` or `blocked:`; anything else is declined (the FINISH intro in the
   skill's `phases/finish.md` has the full rule).
 - **Coordinator → child:** rare — a redirect the child should see before its
-  next natural checkpoint (e.g. `restack: #<parent> merged into <base>;
-  restack #<pr> onto <base>`), sent to the name the coordinator assigned at
+  next natural checkpoint (e.g. `restack: #<parent-issue> → PR #<parent> merged into <base>;
+  restack #<issue> → PR #<pr> onto <base>`), sent to the name the coordinator assigned at
   spawn. A redirect is
   *about the child's own issue*: a base-branch change, a scope clarification,
   "stop" / "restack" / "rebase". It is **never a new issue ID** — a live
@@ -124,36 +174,36 @@ receivers and greps treat the two channels uniformly:
   New work always goes through `/spawn-tickets` (or `/make-ticket --spawn`);
   an implementer that receives a reassignment declines it
   (`roles/implementer.md`). EPIC Step 7 also sends `approval: <review url>
-  on PR #<pr>` to a child whose PR the owner approved, which, like `raise:`,
+  on #<issue> → PR #<pr>` to a child whose PR the owner approved, which, like `raise:`,
   **authorizes nothing**: the child reads its PR and takes the approval
   through `phases/finish.md`'s *The owner's approval* only as GitHub shows it.
-- **`raise: cap <n> on PR #<pr>`** (spawner → child, sent after editing the
+- **`raise: cap <n> on #<issue> → PR #<pr>`** (spawner → child, sent after editing the
   child's PR `Review rounds:` line, never instead of it): **the ping
   authorizes nothing** — the line is the raise, and the child acts only on
   what it reads there (the profile's `REVIEW_BOT`, *Raising the cap*). On a
-  local edge the child answers `resumed: cap <n> on PR #<pr>` when it resumes,
+  local edge the child answers `resumed: cap <n> on <header>` when it resumes,
   a prefix of its own so it isn't mistaken for a first `pushed:`. A cloud
   child has no channel back (below), so its spawner reads the resume off the
   PR, where the child also posts it as a comment.
 - **`request:`** relays what the owner asked for on a PR already in review,
   one spawn edge down, with no wait for the child to hand back (the profile's
   `REVIEW_BOT`, *Owner requests*, defines the rule). **Spawner → child** on a
-  local edge, `request: PR #<pr>: <the owner's words> (owner: <how and when
+  local edge, `request: #<issue> → PR #<pr>: <the owner's words> (owner: <how and when
   they gave it>)`; **planner → coordinator**, the same with `<child-id>` in
-  place of `PR #<pr>`, and the coordinator forwards it to that child. Each
+  place of `#<issue> → PR #<pr>`, and the coordinator forwards it to that child. Each
   receiver accepts it only from its recorded spawner, checked as a `finish:`
   clearance's sender is (the `finish:` bullet above). The child then posts
   the `Owner request:` record itself and lands the request. On a cloud edge,
   where no message reaches the child, the spawner posts the same line as a
   comment on the child's PR, and the Routine carries only
-  `request: PR #<pr> <comment URL>`, which, like `raise:`, **authorizes
+  `request: #<issue> → PR #<pr> <comment URL>`, which, like `raise:`, **authorizes
   nothing**: the child reads the comment and takes it only from the login its
   spawn tree posts as (the profile's `REVIEW_BOT`, *Owner requests*). A planner
   with a cloud coordinator posts the `<child-id>` form on the epic as a
   `COORD` marker, which the coordinator's next wake reads with its author and
   relays only from that same login (EPIC Step 6), since anyone can comment on
   a public repo's issue. A child woken by a request after
-  handing back answers `resumed: request on PR #<pr>` on a local edge. A
+  handing back answers `resumed: request on <header>` on a local edge. A
   `request:` whose words ask the child not to merge its PR on the owner's
   approval (or not yet) is a **hold**: there is nothing to land, so the child
   posts the `Merge hold:` record `phases/finish.md`'s *The owner's approval*
@@ -164,8 +214,8 @@ receivers and greps treat the two channels uniformly:
   request, not on this ping). Sibling names follow the spawn convention, and
   `ListAgents` resolves them.
 - **Restack requests, `restack:`:** in the merged or moved form START Step 8's
-  *Restack on request* defines (e.g. `restack: #<parent> merged into <base>;
-  restack #<pr> onto <base>`). Only a branch's own session pushes to it, so a
+  *Restack on request* defines (e.g. `restack: #<parent-issue> → PR #<parent> merged into <base>;
+  restack #<issue> → PR #<pr> onto <base>`). Only a branch's own session pushes to it, so a
   session whose merge leaves a PR needing a restack asks that PR's owner
   instead of rebasing it.
   The request is **posted on the dependent PR** (FINISH Step 2; EPIC Step 7
