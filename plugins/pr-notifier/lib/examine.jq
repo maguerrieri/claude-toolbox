@@ -1,6 +1,7 @@
 # examine.jq: one PR's issue timeline and state, turned into wake events.
 #
-# bin/pr-notifier runs it three times per examined PR, with --arg phase:
+# bin/pr-notifier runs it up to five times per examined PR, with --arg phase
+# (texts and texts_need only when owner_text is on):
 #   edits   prints the node ids (one per line) of comments edited after the
 #           baseline, whose editor the notifier then reads through GraphQL
 #           (the REST timeline names an item's author, never its editor)
@@ -10,8 +11,9 @@
 #           comment's author, whose text rides the wake only if it passes
 #   texts   once those checks are in: the node ids of the owner's new items
 #           (and the line comments the wake lists of the owner's reviews),
-#           whose body, last edit and editor the notifier reads through
-#           GraphQL in one query, for the text the wake quotes
+#           and of the owner's edited comments, whose body, last edit and
+#           editor the notifier reads through GraphQL in one query, for the
+#           text the wake quotes
 #   texts_need  the editors GraphQL named for those, to check in turn
 #   result  prints {ps, events, log}: the PR's new cursor, the events to
 #           queue (each with its details), and one record per filtered item
@@ -52,7 +54,7 @@ def codex_state:
               | "\(.commit_sha // ""):\(.status // "")") catch null) // "")
     else null end;
 
-# A line comment, normalized: who and when, its text, and where it sits.
+# A line comment, normalized: who and when, and where it sits.
 def line_comment:
   {key: "review_comment:\(.id)", kind: "review", actor: (.user.login // ""),
    type: (.user.type // ""), url: (.html_url // ""), at: (.created_at // ""),
@@ -143,11 +145,14 @@ def record($i; $verdict; $reason):
   def looks_edited($i): ($i.updated_at // "") != "" and $i.updated_at != $i.at;
 # The owner check accepted this login (exit 0) on this read.
   def owner_ok($i): needs_owner($i) and $owners[$i.actor | lc] == 0;
-# New items whose text may ride the wake: an author's the owner check
-# accepted, and the line comments the wake lists of such a review.
+# Items whose text may ride the wake: new ones by an author the owner check
+# accepted, the line comments the wake lists of such a review, and the
+# owner's comments edited since they were last seen, by an editor the check
+# accepted too (one someone else edited can't be quoted, so isn't read).
   def text_candidates:
     if $owner_text then
-      $new[] | select(.at >= $baseline and owner_ok(.)) | (., ((.lines // [])[:20][] | select(owner_ok(.))))
+      ($new[] | select(.at >= $baseline and owner_ok(.)) | (., ((.lines // [])[:20][] | select(owner_ok(.))))),
+      ($items[] | select(edited(.)) | select(owner_ok(.)) | select(edit(.) as $e | $e != null and owner_ok($e)))
     else empty end;
 # The owner's text for an item whose author the owner check accepted: the
 # body GraphQL returned, read in the same query as its last edit and editor,
@@ -222,7 +227,8 @@ def record($i; $verdict; $reason):
       (if $owner_text then $items[] | select(edited(.)) | select(needs_owner(.)) | .actor else empty end) ]
     | unique_by(lc) | .[]
   elif $phase == "texts" then
-    # Run once the owner checks are in, so only the owner's new items are read.
+    # Run once the owner checks are in, so only the owner's items are read:
+    # new ones, and edited comments of the owner's.
     [ text_candidates | .node_id | select(type == "string" and . != "") ] | unique | .[]
   elif $phase == "texts_need" then
     # The editors GraphQL named for them.

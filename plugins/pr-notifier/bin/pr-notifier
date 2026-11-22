@@ -640,29 +640,34 @@ check_owners() { # check_owners <owner>/<repo> <phase> <examine.jq args...>: own
 	done < <(jq -nr --arg phase "$phase" --argjson owners "$owners" "$@" -f "$examine_jq")
 }
 
-edit_authors() { # edit_authors <out file>, node ids on stdin: writes {node id: {edited_at, body, login, type}} for each node GraphQL returns
+edit_authors() { # edit_authors <out file> [body], node ids on stdin: writes {node id: {edited_at, login, type[, body]}} for each node GraphQL returns
 	# login and type are there only when GraphQL names an editor; edited_at
-	# is null for an item never edited, and body is its text as that same
-	# read found it. A node the read missed has no entry. GitHub takes at
-	# most 100 ids a query, so they go a hundred at a time, and a query that
-	# fails costs only its own hundred. The result goes to a file: bodies can
-	# be too long for an argument.
-	local out=$1 ids=() id i=0 k=0 args
+	# is null for an item never edited. With "body", the query also reads
+	# each item's body, its text as that same read found it: the texts phase
+	# asks for it, for the owner's items only, and the edits phase doesn't. A
+	# node the read missed has no entry. GitHub takes at most 100 ids a
+	# query, so they go a hundred at a time. gh exits 1 when any id can't be
+	# resolved (a comment deleted since the timeline read) and still prints
+	# the rest, so the response's data decides, not the exit code, and a
+	# query that fails outright costs only its own hundred. The result goes to
+	# a file: bodies can be too long for an argument.
+	local out=$1 body=${2:+ body} ids=() id i=0 k=0 args
 	while IFS= read -r id; do
 		[[ $id =~ ^[A-Za-z0-9_=-]+$ ]] && ids+=("$id")
 	done
 	while [ "$i" -lt "${#ids[@]}" ]; do
 		args=()
 		for id in "${ids[@]:$i:100}"; do args+=(-f "ids[]=$id"); done
-		"$gh_bin" api graphql "${args[@]}" -f query='query($ids:[ID!]!){nodes(ids:$ids){
-			... on IssueComment{id lastEditedAt body editor{login __typename}}
-			... on PullRequestReview{id lastEditedAt body editor{login __typename}}
-			... on PullRequestReviewComment{id lastEditedAt body editor{login __typename}}}}' \
-			--jq '[.data.nodes[]? | select(type == "object" and (.id | type) == "string")
-				| {(.id): ({edited_at: .lastEditedAt, body: .body}
-					+ if .editor != null then {login: .editor.login, type: (if .editor.__typename == "Bot" then "Bot" else "User" end)} else {} end)}]
-				| add // {}' \
-			</dev/null >"$out.c$k" 2>/dev/null || : >"$out.c$k"
+		"$gh_bin" api graphql "${args[@]}" -f query="query(\$ids:[ID!]!){nodes(ids:\$ids){
+			... on IssueComment{id lastEditedAt$body editor{login __typename}}
+			... on PullRequestReview{id lastEditedAt$body editor{login __typename}}
+			... on PullRequestReviewComment{id lastEditedAt$body editor{login __typename}}}}" \
+			</dev/null >"$out.r$k" 2>/dev/null
+		jq -c '[.data.nodes[]? | select(type == "object" and (.id | type) == "string")
+			| {(.id): ({edited_at: .lastEditedAt} + (if has("body") then {body} else {} end)
+				+ if .editor != null then {login: .editor.login, type: (if .editor.__typename == "Bot" then "Bot" else "User" end)} else {} end)}]
+			| add // {}' "$out.r$k" >"$out.c$k" 2>/dev/null || : >"$out.c$k"
+		rm -f "$out.r$k"
 		i=$((i + 100))
 		k=$((k + 1))
 	done
@@ -712,7 +717,7 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	# text, so a stranger's items cost no query. One that can't be read is
 	# quoted not at all.
 	if [ "$owner_text" = true ]; then
-		edit_authors "$edf.texts" < <(jq -nr --arg phase texts --argjson owners "$owners" "$@" -f "$examine_jq")
+		edit_authors "$edf.texts" body < <(jq -nr --arg phase texts --argjson owners "$owners" "$@" -f "$examine_jq")
 		jq -cs '(.[0] // {}) + (.[1] // {})' "$edf" "$edf.texts" >"$edf.new" 2>/dev/null && mv -f "$edf.new" "$edf"
 		check_owners "$repo_path" texts_need "$@"
 	fi

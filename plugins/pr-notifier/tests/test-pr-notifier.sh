@@ -50,7 +50,7 @@ cat >"$tmp/bin/gh" <<'GH_EOF'
 printf '%s\n' "$*" >>"$STUB/gh.log"
 [ "$1" = api ] || exit 1
 shift
-inc= hdr= ep= filter= slurp= ids=() method=GET body= input=
+inc= hdr= ep= filter= slurp= ids=() method=GET body= input= want_body=
 while [ $# -gt 0 ]; do
 	case $1 in
 	-i) inc=1; shift ;;
@@ -62,7 +62,11 @@ while [ $# -gt 0 ]; do
 	--hostname) shift 2 ;;
 	-X) method=$2; shift 2 ;;
 	-f | -F)
-		case $2 in "ids[]="*) ids+=("${2#ids\[\]=}") ;; body=*) body=${2#body=} ;; esac
+		case $2 in
+		"ids[]="*) ids+=("${2#ids\[\]=}") ;;
+		body=*) body=${2#body=} ;;
+		query=*) case $2 in *' body '*) want_body=1 ;; esac ;;
+		esac
 		shift 2
 		;;
 	*) ep=$1; shift ;;
@@ -123,12 +127,15 @@ graphql)
 	# Each item's last editor from $STUB/editor-<node id> ("<login> <User|Bot>
 	# <edited at>"); $STUB/ghost-<node id> is an edit whose editor GraphQL
 	# can't name; $STUB/missing-<node id> a node the read doesn't return;
-	# anything else was never edited. Its body is the timeline fixtures', or
-	# $STUB/body-<node id>'s. More than 100 ids fail, as GitHub's cap does;
-	# $STUB/editors.sizes has each request's id count.
+	# anything else was never edited. Its body, when the query asks for one,
+	# is the timeline fixtures', or $STUB/body-<node id>'s. A missing node
+	# makes gh exit 1 after printing the rest, as it does for NOT_FOUND. More
+	# than 100 ids fail, as GitHub's cap does; $STUB/editors.sizes has each
+	# request's id count, and whether it asked for bodies.
 	[ ! -f "$STUB/graphql.fail" ] || { echo 'gh: HTTP 502' >&2; exit 1; }
-	echo "${#ids[@]}" >>"$STUB/editors.sizes"
+	if [ -n "$want_body" ]; then echo "${#ids[@]}:body"; else echo "${#ids[@]}:no"; fi >>"$STUB/editors.sizes"
 	[ "${#ids[@]}" -le 100 ] || { echo 'gh: GraphQL: too many ids' >&2; exit 1; }
+	for id in "${ids[@]}"; do [ ! -f "$STUB/missing-$id" ] || missing=1; done
 	out=$(for id in "${ids[@]}"; do
 		if [ -f "$STUB/body-$id" ]; then
 			b=$(cat "$STUB/body-$id")
@@ -146,7 +153,12 @@ graphql)
 		else
 			jq -n --arg id "$id" --arg b "$b" '{id: $id, lastEditedAt: null, body: $b, editor: null}'
 		fi
-	done | jq -s '{data: {nodes: .}}')
+	done | jq -s --arg w "$want_body" '{data: {nodes: map(if $w == "" and type == "object" then del(.body) else . end)}}')
+	if [ -n "${missing:-}" ]; then
+		printf '%s\n' "$out" | jq '. + {errors: [{type: "NOT_FOUND", message: "Could not resolve to a node"}]}'
+		echo 'gh: Could not resolve to a node' >&2
+		exit 1
+	fi
 	;;
 rate_limit)
 	# The REST budget, from $STUB/rest.json.
@@ -704,7 +716,8 @@ edited=()
 for i in $(seq 1 110); do edited+=("$(comment 7 $((3000 + i)) mari User "$pre" "$(iso $((T0 + 60)))" 'edited')"); done
 timeline 7 "$(rv 7 605 mari User "$T1" commented "$H" 'big review')" "$(thread "${lcs[@]}")" "${strangers[@]}" "${edited[@]}"
 nt "$T" check
-record '100,10,21' "110 edited comments are read in batches of 100, then the owner's review and its 20 listed comments, and no stranger's comment" \
+record '100:no,10:no,21:body' \
+	"110 edited comments are read in batches of 100 with no bodies, then the owner's review and its 20 listed comments with theirs, and no stranger's comment, nor an owner's someone else edited" \
 	"$(paste -sd, - <"$STUB/editors.sizes")"
 record '20|text=full' "so the owner's review and its comments are all quoted" \
 	"$(prompt | grep -c '^  - line-comment .* text=full$')|$(prompt | grep '#pullrequestreview-605' | awk '{ print $NF }')"
@@ -721,6 +734,25 @@ settings '{"owner_text_cap": "0050"}'
 timeline 7 "$(comment 7 891 mari User "$T1" "$T1" "$(printf '%060d' 0)")"
 nt "$T" check
 record "1|text=truncated" 'a setting with leading zeros is read as decimal' "$(wakes)|$(prompt | sed -n 3p | awk '{ print $NF }')"
+
+# A text cut where only invisible characters were kept is still cut.
+reset
+settings '{"owner_text_cap": 20}'
+timeline 7 "$(comment 7 892 mari User "$T1" "$T1" "$(for i in $(seq 1 100); do printf '\xe2\x80\x8b'; done)the real request")"
+nt "$T" check
+record "text=truncated|0" 'a cut text that cleans to nothing says truncated, not empty' \
+	"$(prompt | sed -n 3p | awk '{ print $NF }')|$(prompt | grep -c '^  >')"
+
+# An owner's edit by the owner is read with its body, and quoted.
+reset
+timeline 7 "$(comment 7 893 mari User "$pre" "$pre" 'before')"
+nt "$T" check
+editor 893 mari
+timeline 7 "$(comment 7 893 mari User "$pre" "$(iso $((T + 100)))" 'after')"
+: >"$STUB/editors.sizes"
+nt $((T + 400)) check
+record "1:no,1:body|  > after" "the owner's own edit is read once without its body, then once with it, and quoted" \
+	"$(paste -sd, - <"$STUB/editors.sizes")|$(prompt | tail -n 1)"
 
 reset
 settings '{"owner_text_cap": 40}'

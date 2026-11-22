@@ -101,7 +101,8 @@ def unit($line; $ind; $d):
       if $u.text == null then .out = [$u.line]
       else ($u.text.raw | clean | capped($cap)) as $c
         | ($c.lines | map(length + 1) | add // 0) as $cost
-        | if ($c.lines | length) == 0 then .out = ["\($u.line) text=empty"]
+        # A cut text that cleans to nothing is still cut: the rest is unread.
+        | if ($c.lines | length) == 0 then .out = ["\($u.line) text=\(if $u.text.cut then "truncated" else "empty" end)"]
           elif $cost > .left then .out = ["\($u.line) text=omitted"]
           else .left -= $cost
             | .out = ["\($u.line) text=\(if $c.cut or $u.text.cut then "truncated" else "full" end)"]
