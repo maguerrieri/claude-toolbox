@@ -91,7 +91,10 @@ number_setting() { # number_setting <key> <default>: a whole number of seconds
 	local v
 	v=$(setting "$1" "$2")
 	case $v in '' | *[!0-9]*) v=$2 ;; esac
-	printf '%s' "$v"
+	# Decimal, however many leading zeros: shell arithmetic reads 0500 as
+	# octal, and 08 as an error.
+	v=${v#"${v%%[!0]*}"}
+	printf '%s' "${v:-0}"
 }
 
 load_settings() {
@@ -627,33 +630,55 @@ owner_status() { # owner_status <owner>/<repo> <login>: owner-check's exit code
 	echo "$code"
 }
 
-edit_authors() { # node ids on stdin: prints {node id: {edited_at, login, type}} for each node GraphQL returns
+check_owners() { # check_owners <owner>/<repo> <phase> <examine.jq args...>: owner checks for the logins that phase prints
+	# Adds each result to the caller's owners ({lowercased login: exit code}).
+	local repo=$1 phase=$2 login
+	shift 2
+	while IFS= read -r login; do
+		[ -n "$login" ] || continue
+		owners=$(jq -c --arg l "$(lc "$login")" --argjson c "$(owner_status "$repo" "$login")" '.[$l] = $c' <<<"$owners")
+	done < <(jq -nr --arg phase "$phase" --argjson owners "$owners" "$@" -f "$examine_jq")
+}
+
+edit_authors() { # edit_authors <out file>, node ids on stdin: writes {node id: {edited_at, body, login, type}} for each node GraphQL returns
 	# login and type are there only when GraphQL names an editor; edited_at
-	# is null for an item never edited. A node the read missed has no entry.
-	local args=() id
+	# is null for an item never edited, and body is its text as that same
+	# read found it. A node the read missed has no entry. GitHub takes at
+	# most 100 ids a query, so they go a hundred at a time, and a query that
+	# fails costs only its own hundred. The result goes to a file: bodies can
+	# be too long for an argument.
+	local out=$1 ids=() id i=0 k=0 args
 	while IFS= read -r id; do
-		[[ $id =~ ^[A-Za-z0-9_=-]+$ ]] && args+=(-f "ids[]=$id")
+		[[ $id =~ ^[A-Za-z0-9_=-]+$ ]] && ids+=("$id")
 	done
-	if [ "${#args[@]}" -eq 0 ]; then
-		echo '{}'
+	while [ "$i" -lt "${#ids[@]}" ]; do
+		args=()
+		for id in "${ids[@]:$i:100}"; do args+=(-f "ids[]=$id"); done
+		"$gh_bin" api graphql "${args[@]}" -f query='query($ids:[ID!]!){nodes(ids:$ids){
+			... on IssueComment{id lastEditedAt body editor{login __typename}}
+			... on PullRequestReview{id lastEditedAt body editor{login __typename}}
+			... on PullRequestReviewComment{id lastEditedAt body editor{login __typename}}}}' \
+			--jq '[.data.nodes[]? | select(type == "object" and (.id | type) == "string")
+				| {(.id): ({edited_at: .lastEditedAt, body: .body}
+					+ if .editor != null then {login: .editor.login, type: (if .editor.__typename == "Bot" then "Bot" else "User" end)} else {} end)}]
+				| add // {}' \
+			</dev/null >"$out.c$k" 2>/dev/null || : >"$out.c$k"
+		i=$((i + 100))
+		k=$((k + 1))
+	done
+	if [ "$k" -eq 0 ]; then
+		echo '{}' >"$out"
 		return
 	fi
-	local out
-	out=$("$gh_bin" api graphql "${args[@]}" -f query='query($ids:[ID!]!){nodes(ids:$ids){
-		... on IssueComment{id lastEditedAt editor{login __typename}}
-		... on PullRequestReview{id lastEditedAt editor{login __typename}}
-		... on PullRequestReviewComment{id lastEditedAt editor{login __typename}}}}' \
-		--jq '[.data.nodes[]? | select(type == "object" and (.id | type) == "string")
-			| {(.id): ({edited_at: .lastEditedAt}
-				+ if .editor != null then {login: .editor.login, type: (if .editor.__typename == "Bot" then "Bot" else "User" end)} else {} end)}]
-			| add // {}' \
-		</dev/null 2>/dev/null) || out=
-	[ -n "$out" ] || out='{}'
-	jq -c 'if type == "object" then . else {} end' <<<"$out" 2>/dev/null || echo '{}'
+	# A chunk that failed or printed something else counts as {}.
+	jq -cn '[inputs | if type == "object" then . else {} end] | add // {}' "$out".c* >"$out.merged" 2>/dev/null ||
+		echo '{}' >"$out.merged"
+	rm -f "$out".c*
+	mv -f "$out.merged" "$out"
 }
 
 examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read failed
-	local ref=$1 repo_path=${1%#*} n=${1##*#} baseline login owners editors result
+	local ref=$1 repo_path=${1%#*} n=${1##*#} baseline login owners result edf=$run_tmp/editors.json
 	baseline=$(jq -r --arg r "$ref" '[.subscriptions[] | select(.pr == $r) | .subscribed_at] | min // empty' "$work_registry")
 	[ -n "$baseline" ] || return 0
 	read_my_login || {
@@ -672,21 +697,27 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 		return 1
 	}
 	jq --arg r "$ref" '.prs[$r] // {}' "$work_state" >"$run_tmp/ps.json"
+	echo '{}' >"$edf"
 	set -- --slurpfile tl "$run_tmp/tl.json" --slurpfile pr "$run_tmp/pr.json" --slurpfile psf "$run_tmp/ps.json" \
-		--arg me "$my_login" --argjson bots "$review_bots" --arg baseline "$baseline" --argjson now "$now" \
-		--argjson retry_window "$retry_window" --argjson owner_text "$owner_text" --argjson text_store $((owner_text_cap * 4))
-	# Who edited each comment edited since it was last seen, and each new
-	# item whose text may ride the wake that looks edited: the REST timeline
-	# names only its author. An editor that can't be read is retried, and its
-	# item's text left out.
-	editors=$(edit_authors < <(jq -nr --arg phase edits --argjson editors '{}' --argjson owners '{}' "$@" -f "$examine_jq"))
+		--slurpfile edf "$edf" --arg me "$my_login" --argjson bots "$review_bots" --arg baseline "$baseline" \
+		--argjson now "$now" --argjson retry_window "$retry_window" --argjson owner_text "$owner_text" \
+		--argjson text_store $((owner_text_cap * 4))
+	# Who edited each comment edited since it was last seen: the REST
+	# timeline names only its author. An editor that can't be read is retried.
+	edit_authors "$edf" < <(jq -nr --arg phase edits --argjson owners '{}' "$@" -f "$examine_jq")
 	owners='{}'
-	while IFS= read -r login; do
-		[ -n "$login" ] || continue
-		owners=$(jq -c --arg l "$(lc "$login")" --argjson c "$(owner_status "$repo_path" "$login")" '.[$l] = $c' <<<"$owners")
-	done < <(jq -nr --arg phase need --argjson editors "$editors" --argjson owners '{}' "$@" -f "$examine_jq")
+	check_owners "$repo_path" need "$@"
+	# The owner's new items: their text, last edit and editor in one read,
+	# and an owner check for each editor it names. Nothing else is read for
+	# text, so a stranger's items cost no query. One that can't be read is
+	# quoted not at all.
+	if [ "$owner_text" = true ]; then
+		edit_authors "$edf.texts" < <(jq -nr --arg phase texts --argjson owners "$owners" "$@" -f "$examine_jq")
+		jq -cs '(.[0] // {}) + (.[1] // {})' "$edf" "$edf.texts" >"$edf.new" 2>/dev/null && mv -f "$edf.new" "$edf"
+		check_owners "$repo_path" texts_need "$@"
+	fi
 	result=$run_tmp/result.json
-	jq -n --arg phase result --argjson editors "$editors" --argjson owners "$owners" "$@" -f "$examine_jq" >"$result" || {
+	jq -n --arg phase result --argjson owners "$owners" "$@" -f "$examine_jq" >"$result" || {
 		log "examine pr=$ref error=\"filter failed\""
 		return 1
 	}

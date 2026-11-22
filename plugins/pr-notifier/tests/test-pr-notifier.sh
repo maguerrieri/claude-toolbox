@@ -123,18 +123,28 @@ graphql)
 	# Each item's last editor from $STUB/editor-<node id> ("<login> <User|Bot>
 	# <edited at>"); $STUB/ghost-<node id> is an edit whose editor GraphQL
 	# can't name; $STUB/missing-<node id> a node the read doesn't return;
-	# anything else was never edited.
+	# anything else was never edited. Its body is the timeline fixtures', or
+	# $STUB/body-<node id>'s. More than 100 ids fail, as GitHub's cap does;
+	# $STUB/editors.sizes has each request's id count.
 	[ ! -f "$STUB/graphql.fail" ] || { echo 'gh: HTTP 502' >&2; exit 1; }
+	echo "${#ids[@]}" >>"$STUB/editors.sizes"
+	[ "${#ids[@]}" -le 100 ] || { echo 'gh: GraphQL: too many ids' >&2; exit 1; }
 	out=$(for id in "${ids[@]}"; do
+		if [ -f "$STUB/body-$id" ]; then
+			b=$(cat "$STUB/body-$id")
+		else
+			b=$(jq -rn --arg id "$id" '[inputs | .. | objects | select(.node_id? == $id) | .body // ""] | first // ""' "$STUB"/timeline-*.json)
+		fi
 		if [ -f "$STUB/missing-$id" ]; then
 			echo null
 		elif [ -f "$STUB/editor-$id" ]; then
 			read -r l t e <"$STUB/editor-$id"
-			jq -n --arg id "$id" --arg l "$l" --arg t "$t" --arg e "$e" '{id: $id, lastEditedAt: $e, editor: {login: $l, __typename: $t}}'
+			jq -n --arg id "$id" --arg l "$l" --arg t "$t" --arg e "$e" --arg b "$b" \
+				'{id: $id, lastEditedAt: $e, body: $b, editor: {login: $l, __typename: $t}}'
 		elif [ -f "$STUB/ghost-$id" ]; then
-			jq -n --arg id "$id" '{id: $id, lastEditedAt: "2026-11-01T00:00:00Z", editor: null}'
+			jq -n --arg id "$id" --arg b "$b" '{id: $id, lastEditedAt: "2026-11-01T00:00:00Z", body: $b, editor: null}'
 		else
-			jq -n --arg id "$id" '{id: $id, lastEditedAt: null, editor: null}'
+			jq -n --arg id "$id" --arg b "$b" '{id: $id, lastEditedAt: null, body: $b, editor: null}'
 		fi
 	done | jq -s '{data: {nodes: .}}')
 	;;
@@ -317,7 +327,7 @@ editor() { # editor <comment id> <login> [User|Bot] [edited at]: who GraphQL say
 }
 review() { # review <pr> <id> <login> <type> <submitted>
 	jq -n --argjson pr "$1" --argjson id "$2" --arg u "$3" --arg t "$4" --arg s "$5" \
-		'{event: "reviewed", id: $id, user: {login: $u, type: $t}, state: "commented", submitted_at: $s,
+		'{event: "reviewed", id: $id, node_id: "PRR_\($id)", user: {login: $u, type: $t}, state: "commented", submitted_at: $s,
 		html_url: "https://github.com/o/r/pull/\($pr)#pullrequestreview-\($id)", body: "LGTM"}'
 }
 timeline() { # timeline <pr> [item json...]
@@ -465,7 +475,7 @@ record no 'without an owner check' "$(has "$STUB/gh.log" 'collaborators')"
 
 reset
 line() { # line <comment id> <review id>: a line-commented timeline item
-	jq -n --argjson c "$1" --argjson r "$2" '{event: "line-commented", comments: [{id: $c, pull_request_review_id: $r,
+	jq -n --argjson c "$1" --argjson r "$2" '{event: "line-commented", comments: [{id: $c, node_id: "PRRC_\($c)", pull_request_review_id: $r,
 		user: {login: "mari", type: "User"}, created_at: "'"$T1"'", html_url: "https://github.com/o/r/pull/7#discussion_r\($c)"}]}'
 }
 timeline 7 "$(review 7 401 mari User "$T1")" "$(line 501 401)" "$(line 502 401)" "$(line 503 999)"
@@ -635,13 +645,13 @@ up=$(iso $((T0 + 90)))
 timeline 7 "$(comment 7 801 mari User "$T1" "$up" 'SECRET edited by wes')" "$(comment 7 802 mari User "$T1" "$up" 'edited by mari')" \
 	"$(comment 7 803 mari User "$T1" "$up" 'SECRET edited by a ghost')" "$(comment 7 804 mari User "$T1" "$up" 'updated, never edited')"
 nt "$T" check
-record "- comment $U#issuecomment-801 by=mari type=User at=$T1 updated=$up
+record "- comment $U#issuecomment-801 by=mari type=User at=$T1 updated=$up text=unverified
 - comment $U#issuecomment-802 by=mari type=User at=$T1 updated=$up text=full
   > edited by mari
-- comment $U#issuecomment-803 by=mari type=User at=$T1 updated=$up
+- comment $U#issuecomment-803 by=mari type=User at=$T1 updated=$up text=unverified
 - comment $U#issuecomment-804 by=mari type=User at=$T1 updated=$up text=full
   > updated, never edited" \
-	"the owner's comment carries its text unless someone else, or an editor GraphQL can't name, last edited it" \
+	"the owner's comment carries its text unless someone else, or an editor GraphQL can't name, last edited it, which it marks unverified" \
 	"$(prompt | tail -n +3)"
 
 reset
@@ -664,17 +674,53 @@ nt "$T" check
 record "1|no" "an owner's comment whose editor can't be read wakes, with no text" \
 	"$(wakes)|$(prompt | grep -q SECRET && echo yes || echo no)"
 
-# REST's times never vouch for an item: GraphQL must return it, and show no
-# edit after the read that gave its text.
+# REST never vouches for a text: the quote is the body GraphQL returned with
+# its last edit and editor, in one read, and an item it doesn't return gets
+# none, however unedited REST shows it.
 reset
 touch "$STUB/missing-IC_822" "$STUB/missing-PRR_823"
-editor 824 mari User "$(iso $((T0 + 200)))"
+editor 824 wes
+printf 'edited by wes since' >"$STUB/body-IC_824"
+editor 825 mari
+printf 'the newer words' >"$STUB/body-IC_825"
 timeline 7 "$(comment 7 822 mari User "$T1" "$T1" 'SECRET unreturned')" \
 	"$(rv 7 823 mari User "$(iso $((T0 + 70)))" approved "$H" 'SECRET unreturned review')" \
-	"$(comment 7 824 mari User "$(iso $((T0 + 80)))" "$(iso $((T0 + 90)))" 'SECRET edited after the read')"
+	"$(comment 7 824 mari User "$(iso $((T0 + 80)))" "$(iso $((T0 + 80)))" 'SECRET before the edit')" \
+	"$(comment 7 825 mari User "$(iso $((T0 + 85)))" "$(iso $((T0 + 85)))" 'SECRET the older words')"
 nt "$T" check
-record "3|no" "an item GraphQL doesn't return, or shows edited after the REST read, wakes with no text, even one REST shows unedited" \
-	"$(prompt | grep -c '^- ')|$(prompt | grep -q 'SECRET\|text=' && echo yes || echo no)"
+record "4|3|no|  > the newer words" \
+	"GraphQL's read decides: an item it doesn't return, or someone else edited since REST's, is unverified, and the owner's newer edit is what's quoted" \
+	"$(prompt | grep -c '^- ')|$(prompt | grep -c 'text=unverified$')|$(prompt | grep -q 'SECRET\|wes since' && echo yes || echo no)|$(prompt | tail -n 1)"
+
+# GitHub reads at most 100 ids a query: a review with more line comments is
+# read in batches, and only the owner's items are read for their text.
+reset
+lcs=()
+for i in $(seq 1 30); do lcs+=("$(lcm $((950 + i)) 605 mari User "$T1")"); done
+strangers=()
+for i in $(seq 1 120); do strangers+=("$(comment 7 $((2000 + i)) eve User "$T1" "$T1" 'SECRET stranger')"); done
+for i in $(seq 1 110); do editor $((3000 + i)) eve; done
+edited=()
+for i in $(seq 1 110); do edited+=("$(comment 7 $((3000 + i)) mari User "$pre" "$(iso $((T0 + 60)))" 'edited')"); done
+timeline 7 "$(rv 7 605 mari User "$T1" commented "$H" 'big review')" "$(thread "${lcs[@]}")" "${strangers[@]}" "${edited[@]}"
+nt "$T" check
+record '100,10,21' "110 edited comments are read in batches of 100, then the owner's review and its 20 listed comments, and no stranger's comment" \
+	"$(paste -sd, - <"$STUB/editors.sizes")"
+record '20|text=full' "so the owner's review and its comments are all quoted" \
+	"$(prompt | grep -c '^  - line-comment .* text=full$')|$(prompt | grep '#pullrequestreview-605' | awk '{ print $NF }')"
+
+# Review and comment ids are past 2^31 on GitHub.
+reset
+timeline 7 "$(thread "$(lcm 2512345601 3412345678 mari User "$T1" '{"in_reply_to_id": 2512345600}')")"
+nt "$T" check
+record "reply_to=2512345600 review=3412345678" 'a reply names its comment and review by their real ids' \
+	"$(prompt | sed -n 3p | grep -o 'reply_to=[^ ]* review=[^ ]*')"
+
+reset
+settings '{"owner_text_cap": "0050"}'
+timeline 7 "$(comment 7 891 mari User "$T1" "$T1" "$(printf '%060d' 0)")"
+nt "$T" check
+record "1|text=truncated" 'a setting with leading zeros is read as decimal' "$(wakes)|$(prompt | sed -n 3p | awk '{ print $NF }')"
 
 reset
 settings '{"owner_text_cap": 40}'

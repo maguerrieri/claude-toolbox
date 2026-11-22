@@ -2,13 +2,17 @@
 #
 # bin/pr-notifier runs it three times per examined PR, with --arg phase:
 #   edits   prints the node ids (one per line) of comments edited after the
-#           baseline, and of new items whose text may ride the wake, whose
-#           last edit and editor the notifier then reads through GraphQL (the
-#           REST timeline names an item's author, never its editor)
+#           baseline, whose editor the notifier then reads through GraphQL
+#           (the REST timeline names an item's author, never its editor)
 #   need    prints the logins (one per line) whose owner-check result the
 #           filter needs (needs_owner): new items, and edits, by an actor that
-#           is neither the sessions' own login nor any bot, and the authors
-#           and editors that decide whose text rides the wake
+#           is neither the sessions' own login nor any bot, and an edited
+#           comment's author, whose text rides the wake only if it passes
+#   texts   once those checks are in: the node ids of the owner's new items
+#           (and the line comments the wake lists of the owner's reviews),
+#           whose body, last edit and editor the notifier reads through
+#           GraphQL in one query, for the text the wake quotes
+#   texts_need  the editors GraphQL named for those, to check in turn
 #   result  prints {ps, events, log}: the PR's new cursor, the events to
 #           queue (each with its details), and one record per filtered item
 #           for the log
@@ -24,8 +28,10 @@
 #   $retry_window  --argjson: seconds a failed owner check is retried
 #   $owner_text    --argjson: whether the owner's text may ride the wake
 #   $text_store    --argjson: characters of an item's text kept for the wake
-#   $editors       --argjson: {node id: {edited_at, login, type}}, login and
-#                  type only when GraphQL names an editor (need, result)
+#   $edf           --slurpfile: {node id: {edited_at, body, login, type}},
+#                  login and type only when GraphQL names an editor (need,
+#                  texts, texts_need, result); a file, since bodies can be
+#                  too long for an argument
 #   $owners        --argjson: {lowercased login: owner-check exit code} (result)
 #
 # An event's details are raw values as GitHub gave them. lib/wake.jq checks
@@ -51,7 +57,7 @@ def line_comment:
   {key: "review_comment:\(.id)", kind: "review", actor: (.user.login // ""),
    type: (.user.type // ""), url: (.html_url // ""), at: (.created_at // ""),
    id: (.id | tostring), node_id: (.node_id // ""),
-   updated_at: (.updated_at // .created_at // ""), body: (.body // ""),
+   updated_at: (.updated_at // .created_at // ""),
    path, line, original_line, start_line, original_start_line, side, subject_type,
    reply_to: .in_reply_to_id, review: .pull_request_review_id};
 
@@ -74,7 +80,7 @@ def items:
         {key: "comment:\($e.id)", kind: "comment", actor: ($e.user.login // ""),
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.created_at // ""),
          id: ($e.id | tostring), node_id: ($e.node_id // ""),
-         updated_at: ($e.updated_at // $e.created_at // ""), body: ($e.body // ""),
+         updated_at: ($e.updated_at // $e.created_at // ""),
          # Only a configured bot's comment can be a Codex summary: anyone can
          # post one's text, so a stranger's copy is an ordinary comment.
          codex: (if ($e.user.type // "") == "Bot" and ($bots_lc | index(($e.user.login // "") | lc)) != null
@@ -83,7 +89,7 @@ def items:
         {key: "review:\($e.id)", kind: "review", actor: ($e.user.login // ""),
          type: ($e.user.type // ""), url: ($e.html_url // ""), at: ($e.submitted_at // ""),
          node_id: ($e.node_id // ""), updated_at: ($e.updated_at // $e.submitted_at // ""),
-         body: ($e.body // ""), state: (($e.state // "") | lc), commit: $e.commit_id,
+         state: (($e.state // "") | lc), commit: $e.commit_id,
          lines: ($lines[$e.id | tostring] // [])}
       elif $e.event == "line-commented" then
         ($e.comments // [])[] | select(type == "object") | line_comment
@@ -111,7 +117,7 @@ def record($i; $verdict; $reason):
 | items as $items
 | [ $items[] | select($seenset[.key] | not) ] as $new
 | ($ps.comments // {}) as $tracked
-| ($editors // {}) as $editors
+| (($edf // [])[0] // {}) as $editors
 # A comment's updated_at as last recorded. One with no entry was last seen
 # unedited, so its creation time stands in.
 | def prev_updated($i): (($tracked[$i.id] // {}).updated_at) // $i.at;
@@ -135,28 +141,27 @@ def record($i; $verdict; $reason):
 # An item whose REST times differ, for the wake's updated token only: whose
 # text rides is GraphQL's call (owner_text).
   def looks_edited($i): ($i.updated_at // "") != "" and $i.updated_at != $i.at;
-# New items whose text may ride the wake: a check-class author's, and the
-# line comments of such a review.
-  def text_candidates:
-    if $owner_text then $new[] | select(.at >= $baseline and needs_owner(.)) | (., (.lines // [])[])
-    else empty end;
 # The owner check accepted this login (exit 0) on this read.
   def owner_ok($i): needs_owner($i) and $owners[$i.actor | lc] == 0;
-# {text, text_cut} for an item whose author the owner check accepted, and
-# whose last editor it accepted too when GraphQL shows an edit; {} for any
-# other item. GraphQL decides whether it was edited, never REST's times, so
-# an item it didn't return (a failed read, no node id) gets no text, and so
-# does one GraphQL shows edited after the REST read that gave its text.
+# New items whose text may ride the wake: an author's the owner check
+# accepted, and the line comments the wake lists of such a review.
+  def text_candidates:
+    if $owner_text then
+      $new[] | select(.at >= $baseline and owner_ok(.)) | (., ((.lines // [])[:20][] | select(owner_ok(.))))
+    else empty end;
+# The owner's text for an item whose author the owner check accepted: the
+# body GraphQL returned, read in the same query as its last edit and editor,
+# when it was never edited or its last editor passes the check too. REST's
+# times play no part. {text_unverified} for an owner's item GraphQL didn't
+# return (a failed read, no node id) or that someone else, or an editor
+# GraphQL can't name, last edited; {} for anyone else's.
   def owner_text($i):
     if ($owner_text | not) or (owner_ok($i) | not) then {}
-    else ($i.body // "" | if type == "string" then . else "" end) as $b
-      | ($editors[$i.node_id // ""] // null) as $ed
-      | (if $ed == null then false
-         elif $ed.edited_at == null then true
-         elif ($ed.login // "") == "" then false
-         elif ($ed.edited_at | tostring) > ($i.updated_at // "") then false
-         else owner_ok({actor: $ed.login, type: ($ed.type // "")}) end) as $ok
-      | if $ok then {text: $b[0:$text_store], text_cut: (($b | length) > $text_store)} else {} end
+    else ($editors[$i.node_id // ""] // null) as $ed
+      | if $ed == null or ($ed.body | type) != "string" then {text_unverified: true}
+        elif $ed.edited_at != null and (($ed.login // "") == "" or (owner_ok({actor: $ed.login, type: ($ed.type // "")}) | not))
+        then {text_unverified: true}
+        else {text: $ed.body[0:$text_store], text_cut: (($ed.body | length) > $text_store)} end
     end;
 # Who and when, as the wake shows it: the item's creation, and its last
 # update when that differs.
@@ -209,17 +214,19 @@ def record($i; $verdict; $reason):
         | .log += [record($i; "drop"; "\($why); settled")]
       else . end;
   if $phase == "edits" then
-    [ ($items[] | select(edited(.)) | .node_id),
-      (text_candidates | .node_id) ]
-    | map(select(type == "string" and . != "")) | unique | .[]
+    $items[] | select(edited(.)) | .node_id | select(. != "")
   elif $phase == "need" then
     [ ($new[] | select(.at >= $baseline) | select(needs_owner(.)) | .actor),
       ($items[] | select(edited(.)) | edit(.) // empty | select(needs_owner(.)) | .actor),
-      # Whose text rides the wake: an edited comment's author, and the
-      # editor GraphQL names for a new item.
-      (if $owner_text then $items[] | select(edited(.)) | select(needs_owner(.)) | .actor else empty end),
-      (text_candidates | edit(.) // empty | select(needs_owner(.)) | .actor) ]
+      # Whose text rides the wake: an edited comment's author too.
+      (if $owner_text then $items[] | select(edited(.)) | select(needs_owner(.)) | .actor else empty end) ]
     | unique_by(lc) | .[]
+  elif $phase == "texts" then
+    # Run once the owner checks are in, so only the owner's new items are read.
+    [ text_candidates | .node_id | select(type == "string" and . != "") ] | unique | .[]
+  elif $phase == "texts_need" then
+    # The editors GraphQL named for them.
+    [ text_candidates | edit(.) // empty | select(needs_owner(.)) | .actor ] | unique_by(lc) | .[]
   else
     ($pr[0] // {}) as $p
     | reduce $new[] as $i (

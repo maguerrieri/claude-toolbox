@@ -27,6 +27,8 @@ def login_ok: type == "string" and test("^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\\[bot\\
 def sha_ok: type == "string" and test("^[0-9a-f]{40}$");
 def time_ok: type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$");
 def count_ok: type == "number" and . >= 0 and . == floor and . < 1000000000;
+# GitHub's database ids, already past 2^31: any whole number JSON holds exactly.
+def id_ok: type == "number" and . > 0 and . == floor and . < 9007199254740992;
 def in_set($xs): . as $v | any($xs[]; . == $v);
 # A path in the diff: plain segments, none of them "." or "..", none
 # starting with "-", so it reads as a path and never as an option.
@@ -46,7 +48,7 @@ def place($d):
   tok("side"; $d.side; in_set(["LEFT", "RIGHT"])),
   (if $d.subject == "file" then "subject=file" else empty end),
   (if $d.outdated == true then "outdated=yes" else empty end),
-  tok("reply_to"; $d.reply_to; count_ok);
+  tok("reply_to"; $d.reply_to; id_ok);
 def on_head($d; $head):
   if ($d.commit | sha_ok) and ($head | sha_ok) then "on_head=\(if $d.commit == $head then "yes" else "no" end)" else empty end;
 
@@ -72,11 +74,12 @@ def capped($cap):
   | .lines |= (if length > 0 and .[-1] == "" then .[:-1] else . end);
 
 # One rendered unit: a line of the template, and the details' text, if any,
-# to quote under it at the given indent.
+# to quote under it at the given indent. An owner's item whose text the
+# notifier couldn't vouch for says so (text=unverified), with no quote.
 def unit($line; $ind; $d):
-  {line: $line, ind: $ind,
-   text: (if $quote and ($d | type) == "object" and ($d.text | type) == "string"
-          then {raw: $d.text, cut: ($d.text_cut == true)} else null end)};
+  (($d | type) == "object") as $o
+  | {line: (if $quote and $o and $d.text_unverified == true then "\($line) text=unverified" else $line end), ind: $ind,
+     text: (if $quote and $o and ($d.text | type) == "string" then {raw: $d.text, cut: ($d.text_cut == true)} else null end)};
 
 .prs as $prs
 | [ (.pending[$s].events // []) | group_by(.pr)[]
@@ -90,7 +93,7 @@ def unit($line; $ind; $d):
        | unit(([ "- \(.kind) \(.url | on_page($pu))", who($d),
                  tok("state"; $d.state; in_set(["approved", "changes_requested", "commented", "dismissed"])),
                  tok("commit"; $d.commit; sha_ok), on_head($d; $pr.head), tok("comments"; $d.comments_total; count_ok),
-                 place($d), tok("review"; $d.review; count_ok) ] | join(" ")); "  "; $d),
+                 place($d), tok("review"; $d.review; id_ok) ] | join(" ")); "  "; $d),
          (($d.comments // []) | if type == "array" then .[:20][] else empty end | select(type == "object") as $c
           | unit(([ "  - line-comment \($c.url | on_page($pu))", place($c), tok("updated"; $c.updated; time_ok) ]
                   | join(" ")); "    "; $c))) ] as $units

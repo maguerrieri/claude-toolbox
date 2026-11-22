@@ -451,14 +451,16 @@ the wake's in all (`owner_text_budget`), and it is cleaned of control and invisi
 characters, with every line prefixed `> `, so no line of it can pass for a line of the
 template.
 
-Whether an item was edited is GraphQL's call (`lastEditedAt` and `editor`), never
-REST's times: an item GraphQL doesn't return, or shows edited after the REST read that
-gave its text, gets none.
+The quoted text is GraphQL's, never REST's: the body returned in the same read as the
+item's `lastEditedAt` and `editor`, so the text and the editor it was checked against
+come from one moment. An owner's item GraphQL doesn't return, or that someone else last
+edited, is marked `text=unverified` with no quote.
 
-What that costs: the details come from the PR and timeline reads examine already makes,
-plus the editor query, which now also covers each new review, comment or line comment
-by a login that needs an owner check (one query per examined PR that has any), and one
-more owner check for an edited comment's author. The trust model is unchanged: the wake is a pointer, its
+What that costs: the details come from the PR and timeline reads examine already makes.
+The text takes one more GraphQL query per examined PR on which the owner posted
+something new (only the owner's items are read, so a stranger's comments cost none), in
+batches of 100 ids, GitHub's limit per query, as the edited-comment query now goes
+too. And an edited comment's author gets an owner check of its own. The trust model is unchanged: the wake is a pointer, its
 details a hint, and a session still reads an item and checks its author on GitHub
 before acting on it. The quoted text passes through the relay's model, which copies it
 verbatim and is checked for that (*The relay*); a relay that changes it counts as
