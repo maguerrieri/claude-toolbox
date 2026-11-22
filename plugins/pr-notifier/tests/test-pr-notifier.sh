@@ -570,7 +570,7 @@ reset
 prh 7 "$H" main
 lcs=()
 for i in 1 2 3 4 5 6 7 8; do
-	# Built by jq: bash 3.2 mangles \" inside "$(...)".
+	# Built by jq: bash 3.2 brace-expands a double-quoted {a, b} inside "$(...)" (AGENTS.md).
 	x=$(jq -cn --arg p "src/f$i.sh" --argjson l $((10 * i)) --arg b "comment $i" '{path: $p, line: $l, original_line: $l, body: $b}')
 	lcs+=("$(lcm $((700 + i)) 601 mari User "$T1" "$x")")
 done

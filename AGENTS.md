@@ -220,6 +220,14 @@ that isn't a draft. Print a boolean field bare (`\(.draft)`, which prints
 `false`, `true` or `null`) and compare against the string. Found in the same
 place, by the tests.
 
+3.2 also brace-expands a double-quoted `{a, b}` inside a `$(…)` that is
+itself in double quotes, across the whole word: `arr+=("$(f "{\"a\": 1,
+\"b\": 2}")")` runs `f` once per comma-separated part, so `arr` gains two
+entries, `"a": 1` and ` "b": 2`, where bash 5 runs it once on the whole
+object. Build JSON for such a call with `jq -n --arg`, or write it in single
+quotes, which 3.2 leaves alone. Found while writing #353's tests, which
+passed under bash 5 and failed under 3.2.
+
 ## Plugin commands and skills: one name each
 
 A plugin's `commands/<name>.md` and `skills/<name>/SKILL.md` both register as
