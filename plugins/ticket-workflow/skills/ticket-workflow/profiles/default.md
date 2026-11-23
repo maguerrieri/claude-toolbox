@@ -389,8 +389,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
       admin while the tree's login is one, or a failed read. That includes an owner's comment
       another login last edited: it isn't read as the owner's, not even as the version the owner
       last wrote, though what the child recorded and landed from it before that edit stands. The
-      comment is not the owner's: it is review feedback whose push counts. The tree's own login is the one case that
-      keeps a rule of its own. Where the sessions post as the owner's account but it is below
+      comment is not the owner's: it is review feedback whose push counts. The tree's own login is
+      the one case that keeps a rule of its own. Where the sessions post as the owner's account but it is below
       admin (an owner with write on an org repo, say), its comments follow exit 3's rule, as they
       did before this check: the child passes `--same-account`, which takes that login as exit 3,
       editor rule included. Where the sessions post as an account of their own, nothing from it

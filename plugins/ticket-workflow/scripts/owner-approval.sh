@@ -47,8 +47,8 @@
 #        account's;
 #      - its body, and each line comment it carries, is unedited, last edited
 #        by its author, or last edited by another owner, with the newest entry
-#        of its edit history agreeing (notifier.md's rule for an edited item,
-#        which #301's owner-comment.sh puts in a script), read in one GraphQL
+#        of its edit history agreeing (the default profile's rule in *The
+#        owner's comments*, which owner-comment.sh runs), read in one GraphQL
 #        read that also re-reads the review's state and commit, which must
 #        still be APPROVED and the commit the REST read named.
 #      It prints one JSON object on stdout: {"pr", "head", "approved" (the
