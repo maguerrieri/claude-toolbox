@@ -1,4 +1,5 @@
 ---
+name: make-ticket
 description: >-
   Use when asked to file, create, or write up an issue/ticket from the current discussion
   ("make a ticket for this", "file an issue for that bug"), including compound
@@ -8,7 +9,9 @@ argument-hint: <description> [--spawn | --start]
 ---
 Make a ticket for: **$ARGUMENTS**
 
-**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), file the issue but run neither flag (unless the skill's Step 0 *Projects mode* FILE bullet lets this thread start the issue it files for its own ask) and follow that routing instead of what this command says below.
+When the line above shows no arguments (this skill loaded on its own trigger rather than typed), take them from the request instead, wherever the steps below use them.
+
+**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), file the issue but run neither flag (unless the skill's Step 0 *Projects mode* FILE bullet lets this thread start the issue it files for its own ask) and follow that routing instead of what this skill says below.
 
 **Invoke the `ticket-workflow` skill now via the Skill tool** and run its **FILE** mini-phase — do not read its `SKILL.md` directly. Parse "$ARGUMENTS" as the issue description plus at most one routing flag: `--spawn` (file, then hand the new ID to the SPAWN phase — a background `/start-ticket` session) or `--start` (file, then run the START phase on it inline in this session). No flag → file the issue and stop.
 

@@ -323,8 +323,8 @@ skill="$here/../skills/ticket-workflow"
 self_pin=$(extract_block "$skill/SKILL.md" 'role-marker.sh" pin <role> --issue <id>' | sed -e 's/<role>/implementer/' -e 's/<id>/52/')
 notify_doc=$(extract_block "$skill/SKILL.md" 'role-marker.sh" notify' | sed 's/^<session name>$/helper planning/')
 role_read=$(extract_block "$skill/SKILL.md" 'role-marker.sh" show')
-role_pin=$(extract_block "$here/../commands/role.md" 'role-marker.sh" pin <role>' | sed 's/<role>/planner/')
-role_none=$(extract_block "$here/../commands/role.md" 'role-marker.sh" unpin')
+role_pin=$(extract_block "$here/../skills/role/SKILL.md" 'role-marker.sh" pin <role>' | sed 's/<role>/planner/')
+role_none=$(extract_block "$here/../skills/role/SKILL.md" 'role-marker.sh" unpin')
 for snippet in self_pin notify_doc role_read role_pin role_none; do
 	record yes "doc snippet $snippet found" "$([ -n "${!snippet}" ] && echo yes || echo no)"
 done
