@@ -194,10 +194,11 @@ open needs came later, in #330 (*The band*, below).
   `agent_id`), the owner's own `/ledger` and the turn the band starts on a
   Resolve (*The band*: the plugin's message, never the owner's words) get
   nothing. The band shows the open needs to the owner; this hook puts them in
-  front of the session. A pr-notifier wake
-  gets the reminder, since it points at GitHub activity that may be the
-  owner's (a merge, an answer on the PR), and the rule says it counts only
-  for what the session checks there. For whatever else the hook can't tell
+  front of the session. A pr-notifier wake gets the reminder, as a stopped
+  session's resume prompt or as the cross-session message the notifier's
+  relay (a session named `pr-notifier`) sends a live one, since it points at
+  GitHub activity that may be the owner's (a merge, an answer on the PR), and
+  the rule says it counts only for what the session checks there. For whatever else the hook can't tell
   from the owner's prompt (a spawner resuming a stopped child with a prompt of
   its own), the rule says only the owner's words and actions count.
 - **Garbage collection**: the SessionStart hook deletes ledger files untouched

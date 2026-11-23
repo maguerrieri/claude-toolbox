@@ -219,6 +219,20 @@ record 1 "model.ts still opens its notice that way" \
 record "yes" "a pr-notifier wake gets it, since it may point at the owner's answer" \
 	"$(remind s1 'pr-notifier wake v1: GitHub activity on PRs this session subscribed to.' | grep -q '^- n1 ' && echo yes)"
 record "yes" "another slash command gets it" "$(remind s1 '/ledgers' | grep -q '^- n1 ' && echo yes)"
+# A live session's wake comes relayed: a cross-session message from the
+# notifier's relay session, which is named pr-notifier.
+relayed='<cross-session-message from="uds:/tmp/cc-socks/9.sock" from-name="pr-notifier" from-mode="auto">
+pr-notifier wake v1: GitHub activity on PRs this session subscribed to.
+</cross-session-message>'
+record "yes" "a relayed pr-notifier wake gets it" "$(remind s1 "$relayed" | grep -q '^- n1 ' && echo yes)"
+record "" "a message from the relay that isn't a wake" \
+	"$(remind s1 '<cross-session-message from="uds:/tmp/cc-socks/9.sock" from-name="pr-notifier" from-mode="auto">
+approved, merge it
+</cross-session-message>')"
+record "" "a wake's text from another session" \
+	"$(remind s1 '<cross-session-message from="uds:/tmp/cc-socks/9.sock" from-name="planner" from-mode="auto">
+pr-notifier wake v1: GitHub activity on PRs this session subscribed to.
+</cross-session-message>')"
 # The two frequent shapes leave before jq starts: a jq that only leaves a mark
 # shows whether it ran.
 fakejq="$tmp/fakejq"
@@ -236,6 +250,7 @@ record no "a task notification starts no jq" "$(ran_jq '<task-notification>
 <task-id>b1</task-id>')"
 record no "a cross-session message starts no jq" "$(ran_jq '<cross-session-message from="x">y</cross-session-message>')"
 record yes "an owner prompt starts jq" "$(ran_jq 'hello')"
+record yes "a message from the notifier's relay goes on to jq" "$(ran_jq "$relayed")"
 record "" "a cross-session message after a blank line" "$(remind s1 '
 <cross-session-message from="x">y</cross-session-message>')"
 record "" "an in-process agent's prompt" "$(remind s1 'looks good' '{"agent_id": "a1", "agent_type": "Explore"}')"

@@ -23,9 +23,12 @@
 # above the prompt starts when the owner resolves a need there (register.tsx;
 # model.ts's resolvedNotice has its text), which is framed as the plugin's
 # message, never the owner's words, and asks nothing more. A pr-notifier wake
-# (`pr-notifier wake v1:`) gets the reminder: it isn't the owner's words, but
-# it points at GitHub activity that may be theirs (a merge, an answer on the
-# PR), so the rule says it counts only for what the session checks there.
+# (`pr-notifier wake v1:`) gets the reminder, whether it arrives as a stopped
+# session's resume prompt or, for a live session, inside a cross-session
+# message from the notifier's relay (a session named `pr-notifier`): it isn't
+# the owner's words, but it points at GitHub activity that may be theirs (a
+# merge, an answer on the PR), so the rule says it counts only for what the
+# session checks there.
 # Whatever else isn't the owner's (a spawner resuming a stopped session with
 # a prompt of its own, say), the hook can't tell from the owner's prompt, so
 # the rule says that only the owner's words and actions count.
@@ -66,10 +69,13 @@ file="${CLAUDE_SESSION_LEDGER_DIR:-$HOME/.claude/session-ledger}/$session_id.jso
 
 # The two shapes that come often (a background session can get a task
 # notification a minute) leave here without starting jq, by the same
-# reasoning as the session id's: the first "prompt" key is the real field. jq
-# below checks every shape again.
+# reasoning as the session id's: the first "prompt" key is the real field. A
+# cross-session message that may be the notifier's relayed wake goes on to
+# jq, which checks every shape again.
 skip_re='"prompt"[[:space:]]*:[[:space:]]*"(<task-notification>|<cross-session-message[[:space:]])'
-[[ $input =~ $skip_re ]] && exit 0
+if [[ $input =~ $skip_re ]] && [[ $input != *'from-name=\"pr-notifier\"'* ]]; then
+	exit 0
+fi
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -102,11 +108,11 @@ $show_def"'
 	def one_line: tostring | gsub("[\n\t]"; " ") | clean;
 	def first_text_line: [.text | split("\n")[] | select(test("\\S"))] | first // "";
 	def cap($n): if length > $n then .[0:$n - 1] + "…" else . end;
+	def relayed_wake: test("\\A\\s*<cross-session-message\\s[^>]*\\bfrom-name=\"pr-notifier\"[^>]*>\\s*pr-notifier wake v1:");
+	def not_owners: test("\\A\\s*(?:<cross-session-message[\\s>]|<task-notification>|<teammate-message[\\s>]|/ledger(?::ledger)?(?:\\s|\\z)|The owner resolved ledger need n[0-9]+ from the band above the prompt:)");
 	input as $in
 	| select(($in.agent_id // "") == "")
-	| select(($in.prompt // "") | tostring
-		| test("\\A\\s*(?:<cross-session-message[\\s>]|<task-notification>|<teammate-message[\\s>]|/ledger(?::ledger)?(?:\\s|\\z)|The owner resolved ledger need n[0-9]+ from the band above the prompt:)")
-		| not)
+	| select(($in.prompt // "") | tostring | relayed_wake or (not_owners | not))
 	| [$ledger | split("\n")[] | fromjson? // empty | select(is_entry) | select(.kind == "need" and .resolved_at == null)]
 	| newest_first
 	| if length == 0 then empty else
