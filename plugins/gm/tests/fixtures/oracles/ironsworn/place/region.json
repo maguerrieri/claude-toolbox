@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/place/region",
+  "die": "1d100",
+  "rows": [
+    {"max": 12, "result": "Barrier Islands"},
+    {"max": 24, "result": "Ragged Coast"},
+    {"max": 34, "result": "Deep Wilds"},
+    {"max": 46, "result": "Flooded Lands"},
+    {"max": 60, "result": "Havens"},
+    {"max": 72, "result": "Hinterlands"},
+    {"max": 84, "result": "Tempest Hills"},
+    {"max": 94, "result": "Veiled Mountains"},
+    {"max": 99, "result": "Shattered Wastes"},
+    {"max": 100, "result": "Elsewhere"}
+  ]
+}

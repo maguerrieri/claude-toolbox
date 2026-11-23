@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:classic/name/other/varou",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Vata"},
+    {"max": 8, "result": "Zora"},
+    {"max": 12, "result": "Jasna"},
+    {"max": 16, "result": "Charna"},
+    {"max": 20, "result": "Tana"},
+    {"max": 24, "result": "Soveen"},
+    {"max": 28, "result": "Radka"},
+    {"max": 32, "result": "Zlata"},
+    {"max": 36, "result": "Leesla"},
+    {"max": 40, "result": "Byna"},
+    {"max": 44, "result": "Meeka"},
+    {"max": 48, "result": "Iskra"},
+    {"max": 52, "result": "Jarek"},
+    {"max": 56, "result": "Darva"},
+    {"max": 60, "result": "Neda"},
+    {"max": 64, "result": "Keha"},
+    {"max": 68, "result": "Zhivka"},
+    {"max": 72, "result": "Kvata"},
+    {"max": 76, "result": "Staysa"},
+    {"max": 80, "result": "Evka"},
+    {"max": 84, "result": "Vuksha"},
+    {"max": 88, "result": "Muko"},
+    {"max": 92, "result": "Dreko"},
+    {"max": 96, "result": "Aleko"},
+    {"max": 100, "result": "Vojan"}
+  ]
+}

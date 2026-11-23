@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/settlement/name/manmade_edifice",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Whitebridge"},
+    {"max": 20, "result": "Lonefort"},
+    {"max": 30, "result": "Highcairn"},
+    {"max": 40, "result": "Redhall"},
+    {"max": 50, "result": "Darkwell"},
+    {"max": 60, "result": "Timberwall"},
+    {"max": 70, "result": "Stonetower"},
+    {"max": 80, "result": "Thornhall"},
+    {"max": 90, "result": "Cinderhome"},
+    {"max": 100, "result": "Fallowfield"}
+  ]
+}

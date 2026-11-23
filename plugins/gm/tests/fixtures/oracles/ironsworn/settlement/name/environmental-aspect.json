@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/settlement/name/environmental_aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Winterhome"},
+    {"max": 20, "result": "Windhaven"},
+    {"max": 30, "result": "Stormrest"},
+    {"max": 40, "result": "Bleakfrost"},
+    {"max": 50, "result": "Springtide"},
+    {"max": 60, "result": "Duskmoor"},
+    {"max": 70, "result": "Frostcrag"},
+    {"max": 80, "result": "Springbrook"},
+    {"max": 90, "result": "Icebreak"},
+    {"max": 100, "result": "Summersong"}
+  ]
+}

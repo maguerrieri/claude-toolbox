@@ -1,0 +1,31 @@
+{
+  "id": "oracle_rollable:classic/name/other/trolls",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Rattle"},
+    {"max": 8, "result": "Scratch"},
+    {"max": 12, "result": "Wallow"},
+    {"max": 16, "result": "Groak"},
+    {"max": 20, "result": "Gimble"},
+    {"max": 24, "result": "Scar"},
+    {"max": 28, "result": "Cratch"},
+    {"max": 32, "result": "Creech"},
+    {"max": 36, "result": "Shush"},
+    {"max": 40, "result": "Glush"},
+    {"max": 44, "result": "Slar"},
+    {"max": 48, "result": "Gnash"},
+    {"max": 52, "result": "Stoad"},
+    {"max": 56, "result": "Grig"},
+    {"max": 60, "result": "Bleat"},
+    {"max": 64, "result": "Chortle"},
+    {"max": 68, "result": "Cluck"},
+    {"max": 72, "result": "Slith"},
+    {"max": 76, "result": "Mongo"},
+    {"max": 80, "result": "Creak"},
+    {"max": 84, "result": "Burble"},
+    {"max": 88, "result": "Vrusk"},
+    {"max": 92, "result": "Snuffle"},
+    {"max": 96, "result": "Leech"},
+    {"max": 100, "result": "Herk"}
+  ]
+}

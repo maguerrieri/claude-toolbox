@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:classic/settlement/name/something_else",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "A trade good (Ironhome)"},
+    {"max": 20, "result": "An Old World city (New Arkesh)"},
+    {"max": 30, "result": "A founder or famous settler (Kei's Hall)"},
+    {"max": 40, "result": "A god (Elisora)"},
+    {"max": 50, "result": "A historical item (Blackhelm)"},
+    {"max": 60, "result": "A firstborn race (Elfbrook)"},
+    {"max": 70, "result": "An elvish word or name (Nessana)"},
+    {"max": 80, "result": "A mythic belief or event (Ghostwalk)"},
+    {"max": 90, "result": "A positive term (Hope)"},
+    {"max": 100, "result": "A negative term (Forsaken)"}
+  ]
+}

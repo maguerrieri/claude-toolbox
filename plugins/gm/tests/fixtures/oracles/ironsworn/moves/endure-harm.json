@@ -1,0 +1,11 @@
+{
+  "id": "move.oracle_rollable:classic/suffer/endure_harm.endure_harm",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "The harm is mortal. Face Death."},
+    {"max": 20, "result": "You are dying. You need to Heal within an hour or two, or Face Death."},
+    {"max": 35, "result": "You are unconscious and out of action. If left alone, you come back to your senses in an hour or two. If you are vulnerable to a foe not inclined to show mercy, Face Death."},
+    {"max": 50, "result": "You are reeling and fighting to stay conscious. If you engage in any vigorous activity (such as running or fighting) before taking a breather for a few minutes, roll on this table again (before resolving the other move)."},
+    {"max": 100, "result": "You are battered but still standing."}
+  ]
+}

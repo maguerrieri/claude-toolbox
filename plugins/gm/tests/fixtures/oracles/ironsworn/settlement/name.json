@@ -1,0 +1,13 @@
+{
+  "id": "oracle_rollable:classic/settlement/name",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "__A feature of the landscape.__ Envision what it is. What makes it unusual or distinctive?\n→ Roll `oracles/settlement/name/landscape-feature.md`"},
+    {"max": 30, "result": "__A manmade edifice.__ What is it? Why is it important to this settlement’s history?,\n→ Roll `oracles/settlement/name/manmade-edifice.md`"},
+    {"max": 45, "result": "__A creature.__ Why have the people of this settlement chosen this creature as their totem? How is it represented in art or rituals?\n→ Roll `oracles/settlement/name/creature.md`"},
+    {"max": 60, "result": "__A historical event.__ What happened here? What place or practice commemorates this event?\n→ Roll `oracles/settlement/name/historical-event.md`"},
+    {"max": 75, "result": "__A word in an Old World language.__ What culture is represented by this word? What does it translate to?\n→ Roll `oracles/settlement/name/old-world-language.md`"},
+    {"max": 90, "result": "__A season or environmental aspect.__ What influence does the weather have on this settlement?\n→ Roll `oracles/settlement/name/environmental-aspect.md`"},
+    {"max": 100, "result": "Something Else...\n→ Roll `oracles/settlement/name/something-else.md`"}
+  ]
+}
