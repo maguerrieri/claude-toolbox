@@ -109,7 +109,9 @@ open needs came later, in #330 (*The band*, below).
   well-formed id (at most nine digits, so a hand-edited `n1.5` can't break the
   arithmetic, and numbering stops at the last one rather than repeat it).
   Which lines count as entries is one jq definition, `scripts/is-entry.jq`,
-  that the script's reads, its resolves and the hook's reaping all load.
+  that the script's reads, its resolves and the prompt hook (below) all load,
+  and how a view shows an entry's characters and orders entries is another,
+  `scripts/show.jq`, that `list` and the prompt hook share.
   `cwd` is where
   the session wrote from, which nothing here reads yet; it's kept so #316 can
   name a session that `claude agents` doesn't list (an interactive one).
@@ -173,6 +175,33 @@ open needs came later, in #330 (*The band*, below).
 - **"status?" starts from the ledger.** The planner and coordinator charters
   start from `ledger.sh list` (their own decisions and needs), then sweep the
   children as before, until #316 brings the children's ledgers into one view.
+- **Open needs ride the owner's prompts** (#320). The rules said to resolve a
+  need once the owner answered it, but nothing put that in front of the
+  session when the answer came: on 2026-11-15 the owner asked for the very
+  listing a need waited on, got it, and the need stayed open. A
+  `UserPromptSubmit` hook (`hooks/ledger-prompt-reminder.sh`) now adds this
+  session's open needs to each of the owner's prompts, with the rule: resolve
+  one the owner has clearly answered, name it in the reply, and leave it open
+  when unsure. It's bounded, since it rides every prompt while a need is open
+  (five needs, newest first, 120 characters a line, then a count of the
+  rest), reads the ledger without the lock (a write renames a whole file into
+  place), and prints nothing with no open need, no ledger, or no jq. Only the
+  owner can answer a need, and the hook's input names no source (checked on
+  Claude Code 2.1.325): a cross-session message and a background task's
+  notification each fire the hook as a prompt of its own, told apart only by
+  how it opens (`<cross-session-message `, `<task-notification>`). Those, a
+  teammate's message, a subagent's report to the session (`<agent-message`),
+  an in-process agent's prompt (its input carries an
+  `agent_id`), the owner's own `/ledger` and the turn the band starts on a
+  Resolve (*The band*: the plugin's message, never the owner's words) get
+  nothing. The band shows the open needs to the owner; this hook puts them in
+  front of the session. A pr-notifier wake gets the reminder, as a stopped
+  session's resume prompt or as the cross-session message the notifier's
+  relay (a session named `pr-notifier`) sends a live one, since it points at
+  GitHub activity that may be the owner's (a merge, an answer on the PR), and
+  the rule says it counts only for what the session checks there. For whatever else the hook can't tell
+  from the owner's prompt (a spawner resuming a stopped child with a prompt of
+  its own), the rule says only the owner's words and actions count.
 - **Garbage collection**: the SessionStart hook deletes ledger files untouched
   for 90 days. That's longer than the 30 ticket-workflow gives role markers,
   because a ledger holds what the owner decided and what a session still

@@ -95,10 +95,10 @@ export const ledgerFileOf = (dir: string, session: string): string | undefined =
 export const isResolvable = (id: string): boolean => /^n[1-9][0-9]{0,8}$/.test(id)
 
 /**
- * The characters scripts/ledger.sh's `clean` shows as `?`: control characters
+ * The characters scripts/show.jq's `clean` shows as `?`: control characters
  * (C0 but tab and newline, DEL, C1), zero-width and bidi-override ones, soft
  * hyphens, invisible separators and tag characters, so a ledger's text can't
- * reorder or hide what's drawn around it. Keep it in step with the script's.
+ * reorder or hide what's drawn around it. Keep it in step with show.jq's.
  */
 export const clean = (text: string): string =>
   text.replace(

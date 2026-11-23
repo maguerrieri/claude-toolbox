@@ -78,6 +78,9 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   so for one add a chord for the command to `~/.claude/keybindings.json`
   (`ctrl+x l` is free by default):
   `{ "bindings": [{ "context": "Chat", "bindings": { "ctrl+x l": "command:ledger-band" } }] }`.
+  The band is for the owner; for the session, a prompt hook lists the same
+  open needs on each of the owner's prompts, so it resolves the ones the
+  owner just answered.
   `ticket-workflow`'s sessions record into it and start their "status?"
   answers from it. Local sessions only: the ledgers are files under
   `~/.claude/session-ledger/`. The band shows this session's ledger alone; a
