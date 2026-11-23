@@ -1,7 +1,7 @@
 {
   "name": "generate",
-  "description": "Diverse bulk ideation: the generate skill + /generate command, with a pluggable Promotion adapter for the decision handoff",
-  "version": "0.1.0",
+  "description": "Diverse bulk ideation: the generate skill, typed as /generate, with a pluggable Promotion adapter for the decision handoff",
+  "version": "0.2.0",
   "author": {
     "name": "Mario Guerrieri"
   }
