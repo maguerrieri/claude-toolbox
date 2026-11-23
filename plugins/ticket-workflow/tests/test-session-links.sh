@@ -97,7 +97,7 @@ for f in "$spawn_plugin/skills/spawn/backends/local.md" "$cloud_md"; do
 done
 for f in "$plugin/skills/ticket-workflow/phases/spawn.md" \
 	"$plugin/skills/ticket-workflow/phases/epic.md" \
-	"$plugin/commands/spawn-epic.md"; do
+	"$plugin/skills/spawn-epic/SKILL.md"; do
 	record yes "${f#"$repo/"} points at the spawn skill's step 5 and *Session links*" \
 		"$(grep 'Session links' "$f" | grep -q "the \`spawn\` skill's step 5" && echo yes || echo no)"
 	record 0 "${f#"$repo/"} doesn't restate the read" "$(grep -c 'bridgeSessionId\|state\.json' "$f")"

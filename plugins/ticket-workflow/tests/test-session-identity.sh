@@ -208,11 +208,11 @@ record yes "doc code blocks hold the marker runs (found $marker_runs)" "$([ "$ma
 
 # Each known launch site still has its launch in a code block, and each known
 # marker site its run, so moving one into prose can't pass the scan vacuously.
-for f in "$skill/phases/spawn.md" "$skill/phases/epic.md" "$plugin/commands/spawn-epic.md" "$spawn_plugin/skills/spawn/backends/local.md"; do
+for f in "$skill/phases/spawn.md" "$skill/phases/epic.md" "$plugin/skills/spawn-epic/SKILL.md" "$spawn_plugin/skills/spawn/backends/local.md"; do
 	record yes "${f#"$plugin/../"} has a launch in a code block" \
 		"$([ "$(scan_blocks "$f" | sed -n 's/^launches=//p')" -gt 0 ] && echo yes || echo no)"
 done
-for f in "$skill/SKILL.md" "$plugin/commands/role.md" "$plugin/commands/spawn-epic.md"; do
+for f in "$skill/SKILL.md" "$plugin/skills/role/SKILL.md" "$plugin/skills/spawn-epic/SKILL.md"; do
 	record yes "${f#"$plugin/../"} runs role-marker.sh in a code block" \
 		"$([ "$(scan_blocks "$f" | sed -n 's/^marker_runs=//p')" -gt 0 ] && echo yes || echo no)"
 done

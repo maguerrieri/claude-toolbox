@@ -362,7 +362,7 @@ printf '%s\n' 'ping `merged: #<pr>` when done' '' 'then `raise: cap <n> on PR #<
 	'An older sender may send `finish: #<pr> (grant: …)`.' '' 'answers `resumed: cap <n> on PR #<pr>`' '' \
 	'`restack: #<parent> merged into main;' 'restack #<yours> onto main`' >"$tmp/old.md"
 record 4 "the scan finds each PR-alone form outside an older-sender paragraph" "$(scan_old "$tmp/old.md" | grep -c .)"
-older=$(find "$skill" "$plugin/commands" -name '*.md' -print | sort | while read -r f; do scan_old "$f"; done)
+older=$(find "$plugin/skills" -name '*.md' -print | sort | while read -r f; do scan_old "$f"; done)
 record "" "the PR-alone forms appear only where a receiver accepts an older sender" "$older"
 record yes "messaging.md's *Naming a PR* lists the older forms" \
 	"$(awk '/^## Naming a PR/{on=1} on && /^\*\*Older senders/{print "yes"; exit}' "$skill/messaging.md")"

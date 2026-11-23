@@ -1,9 +1,10 @@
 ---
+name: spawn-tickets
 description: Use when asked to work issues/tickets in parallel or in the background ("get issues 3, 5, 8 moving while I'm out", "file an issue and /spawn-tickets it"), or when /spawn-tickets appears anywhere in the message
 argument-hint: <issue-id> [<issue-id> ...] [briefing]
 ---
 Spawn parallel work for: **$ARGUMENTS**
 
-**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), spawn nothing and follow the skill's Step 0 *Projects mode* routing instead of what this command says below.
+**Projects mode first.** In a Claude Project (any `mcp__hearthbot__` tool present), spawn nothing and follow the skill's Step 0 *Projects mode* routing instead of what this skill says below.
 
 **Invoke the `ticket-workflow` skill now via the Skill tool** and run its **SPAWN** phase — do not read its `SKILL.md` directly. Parse "$ARGUMENTS" into issue IDs (plus any per-issue or shared briefing text), append the selected profile's `SPAWN_CAP` to each, and spawn one background session per issue running `/start-ticket` — letting the `spawn` skill's step 3 **select the backend** (cloud `create_session` vs local `claude --bg`; the durable-launch-directory rule applies only to the local backend and lives in its backend file), named `"<repo> <issue-key>: <quick description>"` (repo name, issue key, then an under-5-word summary recognizable in the session list — spaces and special characters are fine). Report the table of spawned sessions and hand back — don't block on them.

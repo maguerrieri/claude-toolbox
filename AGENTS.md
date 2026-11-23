@@ -238,11 +238,22 @@ answered, and its plain form prints the list bare. A session reads and
 resolves its ledger through the recording rules instead, which have
 `user-invocable: false`, so the model's skill list carries their trigger
 description and a bare `/record` doesn't load them.
-Verified on Claude Code 2.1.325 while fixing `ledger` (#318). `spawn` and
-`generate` still have the clash (#321). Most of this repo's typed entry
-points (`/role`, `/start-ticket`, the `gm` commands) are still plugin
-commands, so bare they work only where a user-level copy in
-`~/.claude/commands/` stands in (#322).
+Verified on Claude Code 2.1.325 while fixing `ledger` (#318).
+
+The rest of the repo follows the rule (#321, #322). `ticket-workflow`'s typed
+entry points (`/role`, `/make-ticket`, `/start-ticket`, `/finish-ticket`,
+`/spawn-tickets`, `/start-epic`, `/spawn-epic`) are skills of those names,
+each handing off to the `ticket-workflow` skill. `spawn` and `generate` each
+have one skill, which takes the typed arguments itself (`argument-hint` and
+`$ARGUMENTS`), since there the typed form and the model's trigger run the same
+procedure. A skill loaded with no arguments, by the model on its own trigger
+or by another skill, gets an empty `$ARGUMENTS`, so those two say where their
+input comes from then. `gm` keeps its commands: its docs give
+only the qualified form (`/gm:play`), which a command answers to, and its
+names are too generic to take bare (Claude Code has its own `/rewind`). A
+user-level command of the same name, such as a copy in `~/.claude/commands/`,
+still takes the bare name before a plugin's skill does; the plugin's stays
+reachable as `/<plugin>:<name>`.
 
 A command a plugin's hooks module (a mod) registers with
 `$.command.register` is a third kind, and it is bare: `ledger`'s band
@@ -262,7 +273,20 @@ false` is missing from both, so ask the model to quote its skill list to see
 it. The transcript
 (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<cwd slug>/<session id>.jsonl`)
 shows which body a prompt such as `/<name>` loaded, since a skill's starts
-`Base directory for this skill:`.
+`Base directory for this skill:`. Add `--tools ""` (before another flag, since
+it takes a list) so the session can't act on the prompt. To check a bare name
+interactively, launch a throwaway `claude --bg --setting-sources local
+--strict-mcp-config --plugin-dir <plugin dir> --tools "" --model haiku
+"/<name>"` from a worktree, which is a trusted directory. `--setting-sources
+local` leaves out both the project settings that enable the installed copy
+and the user-level commands, which `user` would load and let shadow the
+plugin. Read its transcript under the worktree's slug, then `claude stop` and
+`claude rm` it before the worktree goes: a background session records its
+launch directory, which is why lasting ones launch from the main checkout. A
+session pinned as an implementer can't launch one that
+leads with `/start-ticket`, `/start-epic`, `/spawn-tickets`, `/spawn-epic`, or
+`/make-ticket` with `--spawn` or `--start`: the role guard denies it as an
+issue spawn, so check those from an unpinned session.
 
 ## SKILL.md size — when to split phases into their own files
 

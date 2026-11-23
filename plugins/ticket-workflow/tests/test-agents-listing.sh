@@ -115,14 +115,14 @@ record 1 "epic.md's sample row shows state and class, not status" \
 # No skill or command doc decides by status, or shows a lifecycle value in
 # it (docs/ holds dated specs and plans, which keep their history).
 stale=$(grep -rnE 'decide by `status`|\.status *[!=]=|select\(\.status|"status": "(stopped|done|working|blocked)"|status (is|of) `(stopped|done|working|blocked)`|a status you can.t place' \
-	"$spawn_plugin/skills" "$spawn_plugin/commands" "$plugin/skills" "$plugin/commands" 2>/dev/null |
+	"$spawn_plugin/skills" "$plugin/skills" |
 	grep -v 'session_status' | wc -l | tr -d ' ')
 record 0 "no doc keys the lookup on status" "$stale"
 
 # Nor on bare state names, which miss a live done row and a dead blocked one:
 # a resume decision names the lookup's class.
 stale=$(grep -rnE '`stopped` (or|/) `done`' \
-	"$spawn_plugin/skills" "$spawn_plugin/commands" "$plugin/skills" "$plugin/commands" 2>/dev/null |
+	"$spawn_plugin/skills" "$plugin/skills" |
 	wc -l | tr -d ' ')
 record 0 "no doc decides a resume by stopped or done alone" "$stale"
 

@@ -1,6 +1,7 @@
 ---
 name: generate
 description: Bulk-ideate a diverse, axis-tagged pool of candidates for an open-ended content type (game factions, event tables, product names, NPCs, test scenarios, …) without the LLM "mode-collapse" that turns "give me 30 X" into 30 reskins of one idea. Runs a morphological-analysis loop — frame → diversity-prompted parallel passes → axis-tag → cluster — with judgment OFF (capture, don't decide). Use to generate/expand a batch of a type, affinity-cluster a pool for gaps, or scaffold a new type's frame. A contested item promotes to your decision process via a pluggable Promotion adapter.
+argument-hint: '<type> [count] [generate|cluster|frame]'
 ---
 
 # Generate (the reservoir loop)
@@ -10,6 +11,13 @@ candidates, captured into a running reservoir file. This is the **divergent**
 counterpart to a **convergent** decision process: it never closes (a roster is
 many *coexisting* items), and it hands off to a decision only at one seam —
 [promotion](#promotion-the-one-seam-to-a-decision), which is **pluggable** (Step 0).
+
+**Typed as `/generate`**, this skill takes `<type> [count] [mode]` as its
+arguments: **$ARGUMENTS**. Read them as the [inputs](#inputs) below: the
+content type, an optional count, and an optional mode (`generate`, the default,
+`cluster` or `frame`). When they're empty (the skill loaded on its own trigger),
+or read as a literal placeholder (a harness that doesn't fill one in), take the
+same three from the request. Either way, Step 0 comes first.
 
 Grounding for every rule here is the vendored
 [`references/generation-research.md`](references/generation-research.md)

@@ -234,8 +234,8 @@ run_doc() { # run_doc <initial | none> <command> [plugin root]
 self_pin=$(extract_block "$skill/SKILL.md" 'role-marker.sh" pin <role> --issue <id>' | sed -e 's/<role>/implementer/' -e 's/<id>/52/')
 notify_doc=$(extract_block "$skill/SKILL.md" 'role-marker.sh" notify' | sed "s/^<session name>\$/repo planning/")
 show_doc=$(extract_block "$skill/SKILL.md" 'role-marker.sh" show')
-role_pin=$(extract_block "$plugin/commands/role.md" 'role-marker.sh" pin <role>' | sed 's/<role>/planner/')
-role_unpin=$(extract_block "$plugin/commands/role.md" 'role-marker.sh" unpin')
+role_pin=$(extract_block "$plugin/skills/role/SKILL.md" 'role-marker.sh" pin <role>' | sed 's/<role>/planner/')
+role_unpin=$(extract_block "$plugin/skills/role/SKILL.md" 'role-marker.sh" unpin')
 for doc in self_pin notify_doc show_doc role_pin role_unpin; do
 	record yes "doc one-liner $doc found" "$([ -n "${!doc}" ] && echo yes || echo no)"
 done
