@@ -22,7 +22,8 @@ LaunchDaemon. [INSTALL.md](INSTALL.md) has the checklist Mari runs, what
 | Path | What |
 |---|---|
 | `bin/pr-notifier` | The CLI: `subscribe`, `unsubscribe`, `status`, `check` |
-| `lib/examine.jq` | The filter: one PR's issue timeline and state, turned into wake events |
+| `lib/examine.jq` | The filter: one PR's issue timeline and state, turned into wake events and their details |
+| `lib/wake.jq` | The wake prompt: renders a session's held events, checking every value as it enters |
 | `scripts/owner-check.sh` | Vendored from ticket-workflow (#291), below |
 | `scripts/pr-notifier-shim.sh` | What the install copies to the stable path |
 | `scripts/install.sh` | The install: the shim, the job script, `wake_path`, and the launchd job |
@@ -433,10 +434,35 @@ whole environment, since it restarts nothing.
 
 ## The wake prompt
 
-A fixed template carrying only URLs, specified in `skills/pr-notifier/SKILL.md`, which
-is the contract ticket-workflow (#294) codes against. It opens with
-`pr-notifier wake v1:`, whether a resume delivers it as the prompt or a relay delivers it
-inside a cross-session message.
+A fixed template, specified in `skills/pr-notifier/SKILL.md`, which is the contract
+ticket-workflow (#294) codes against. It opens with `pr-notifier wake v1:`, whether a
+resume delivers it as the prompt or a relay delivers it inside a cross-session message.
+`lib/wake.jq` renders it.
+
+Each event carries details (#353) taken from the reads the filter already makes, so a
+woken session can go straight to what it must answer: who acted and when, a review's
+state, commit and line-comment count, each line comment's file and line (a review's
+listed under it), and the PR's head and base. Each is a closed-set word, a number, a
+sha, a timestamp, or a login, path or branch checked against a strict pattern, and one
+that fails renders as `?`. The owner's own text is quoted too: an item's whose author
+`owner-check.sh` accepted with exit 0 on that read, and, when GraphQL shows an edit,
+whose last editor it accepted as well. Each item's text is capped (`owner_text_cap`),
+the wake's in all (`owner_text_budget`), and it is cleaned of control and invisible
+characters, with every line prefixed `> `, so no line of it can pass for a line of the
+template.
+
+Whether an item was edited is GraphQL's call (`lastEditedAt` and `editor`), never
+REST's times: an item GraphQL doesn't return, or shows edited after the REST read that
+gave its text, gets none.
+
+What that costs: the details come from the PR and timeline reads examine already makes,
+plus the editor query, which now also covers each new review, comment or line comment
+by a login that needs an owner check (one query per examined PR that has any), and one
+more owner check for an edited comment's author. The trust model is unchanged: the wake is a pointer, its
+details a hint, and a session still reads an item and checks its author on GitHub
+before acting on it. The quoted text passes through the relay's model, which copies it
+verbatim and is checked for that (*The relay*); a relay that changes it counts as
+unconfirmed, as before.
 
 ## Settings
 
@@ -459,6 +485,9 @@ inside a cross-session message.
 | `relay_wait` | `30` | Seconds a relay waits for its message to show as a turn |
 | `hold_bound` | `1800` | Seconds before a held session is reported stale, and before one with no row is unsubscribed |
 | `drop_comment` | `true` | `false` unsubscribes a session with no row without commenting on its PRs |
+| `owner_text` | `true` | `false` quotes no comment text in the wake, the owner's included |
+| `owner_text_cap` | `500` | Characters of one item's quoted text (at least 20); a longer one is cut and marked `text=truncated` |
+| `owner_text_budget` | `4000` | Characters of quoted text in one wake; past it, an item is marked `text=omitted` |
 | `wake_path` | the notifier's own `PATH` | The `PATH` every `claude` call gets, and the one a resume merges behind the session's own |
 
 The install sets `wake_path` to the user's full login-shell `PATH`, captured once, and
