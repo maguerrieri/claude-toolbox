@@ -1,0 +1,21 @@
+{
+  "id": "oracle_rollable:sundered_isles/getting_underway/create_your_character/your_backstory_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 7, "result": "Banished because of uncanny nature or abilities"},
+    {"max": 14, "result": "Bearing a relic of dreadful power"},
+    {"max": 20, "result": "Desperate to unlock the secrets of forbidden magic"},
+    {"max": 26, "result": "Forged and made animate by forbidden technologies"},
+    {"max": 33, "result": "Grievously wounded and given new life by forbidden magic or technology"},
+    {"max": 40, "result": "Haunted by the spirit of someone you failed or wronged"},
+    {"max": 47, "result": "Home destroyed by a monstrous beast"},
+    {"max": 54, "result": "Home destroyed by undead or inhuman foes"},
+    {"max": 61, "result": "Inherited a dreadful curse"},
+    {"max": 67, "result": "Killed an albatross; plagued by foul luck ever since"},
+    {"max": 73, "result": "Sole survivor of a string of unlikely disasters"},
+    {"max": 80, "result": "Suffered a vision of a horrible fate"},
+    {"max": 87, "result": "Survived an attack at sea by a cursed ship"},
+    {"max": 94, "result": "Survived an attack at sea by a monstrous sea beast"},
+    {"max": 100, "result": "Targeted or hunted by a dreadful being"}
+  ]
+}

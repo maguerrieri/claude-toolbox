@@ -1,0 +1,14 @@
+{
+  "id": "oracle_rollable:sundered_isles/shipwreck/opportunity",
+  "die": "1d100",
+  "rows": [
+    {"max": 25, "result": "Useful provisions or salvage"},
+    {"max": 40, "result": "Intriguing map or chart"},
+    {"max": 55, "result": "Ship's log with valuable information"},
+    {"max": 65, "result": "Explorer or survivor with a tale to tell"},
+    {"max": 85, "result": "Intact Cargo (`oracles/ship/cargo.md`)"},
+    {"max": 96, "result": "Treasure (`oracles/treasure/value/small.md`) (small repository)"},
+    {"max": 99, "result": "Treasure (`oracles/treasure/value/medium.md`) (medium repository)"},
+    {"max": 100, "result": "Treasure (`oracles/treasure/value/large.md`) (large repository)"}
+  ]
+}

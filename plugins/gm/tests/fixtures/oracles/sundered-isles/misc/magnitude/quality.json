@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/quality",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Broken"},
+    {"max": 35, "result": "Fragile"},
+    {"max": 65, "result": "Reliable"},
+    {"max": 85, "result": "Durable"},
+    {"max": 100, "result": "Indestructible"}
+  ]
+}

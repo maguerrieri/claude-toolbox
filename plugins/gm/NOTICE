@@ -28,6 +28,31 @@ MIT license does not cover these files.
                           abridged, changes were made. Those three files
                           are licensed CC BY-NC-SA 4.0.
 
+- adapters/sundered-isles/ — Sundered Isles, an expansion for
+                          Ironsworn: Starforged
+                          (c) 2024 Shawn Tomkin, licensed CC BY-NC-SA 4.0
+                          https://www.ironswornrpg.com/
+                          Converted from Datasworn's JSON edition
+                          (https://github.com/rsek/datasworn, tag
+                          v0.1.0-prerelease, commit e643a75) by
+                          tools/datasworn-import; changes were made
+                          (format conversion, cross-reference paths,
+                          merged indexes, and one table's missing rows
+                          restored from the book). Not commercial use.
+
+                          Except: rules/moves.md and the three tables
+                          under oracles/moves/ are licensed CC BY 4.0,
+                          as Datasworn tags the Sundered Isles moves
+                          (merged there with the Starforged SRD's).
+
+                          rules/campaign-launch.md,
+                          rules/character-creation.md,
+                          rules/sector-creation.md and adapter.md are
+                          adapted from the Sundered Isles Guidebook
+                          (c) 2024 Shawn Tomkin, licensed CC BY-NC-SA 4.0;
+                          abridged and paraphrased, changes were made.
+                          SOURCE.md there lists the license of each file.
+
 This plugin is not affiliated with or endorsed by Shawn Tomkin. Each adapter
 also carries a SOURCE.md with its specific attribution.
 

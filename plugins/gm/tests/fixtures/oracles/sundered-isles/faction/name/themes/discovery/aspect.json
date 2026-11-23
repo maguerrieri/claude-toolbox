@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/discovery/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Ancient"},
+    {"max": 20, "result": "Awakened"},
+    {"max": 30, "result": "Azure"},
+    {"max": 40, "result": "Elder"},
+    {"max": 50, "result": "Emblazoned"},
+    {"max": 60, "result": "Enlightened"},
+    {"max": 70, "result": "First"},
+    {"max": 80, "result": "Roaming"},
+    {"max": 90, "result": "Starmarked"},
+    {"max": 100, "result": "Wandering"}
+  ]
+}

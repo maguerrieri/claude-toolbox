@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/getting_underway/take_command/ship_history",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Acquired in a duel of honor"},
+    {"max": 10, "result": "Awarded by a vote of the crew, after the former captain died an untimely death"},
+    {"max": 15, "result": "Bestowed by an eccentric shipwright"},
+    {"max": 20, "result": "Built or refitted by a community, and granted to its captain as their emissary"},
+    {"max": 25, "result": "Captured in battle, and awarded by the former captain"},
+    {"max": 30, "result": "Earned in exchange for a perilous undertaking or heroic deed"},
+    {"max": 35, "result": "Entrusted by a faction, and commanded in their service"},
+    {"max": 40, "result": "Found as a wreck, and refitted to make it seaworthy"},
+    {"max": 45, "result": "Gifted by an anonymous benefactor"},
+    {"max": 50, "result": "Inherited from a dead or missing relative or mentor"},
+    {"max": 55, "result": "Leased under exorbitant terms"},
+    {"max": 60, "result": "Obtained in trade for a precious object"},
+    {"max": 65, "result": "Obtained through a false identity or counterfeit documents"},
+    {"max": 70, "result": "On grant from an underworld figure in exchange for completing unscrupulous missions"},
+    {"max": 75, "result": "Once a timeworn, unwanted ship, painstakingly refitted to its new role"},
+    {"max": 80, "result": "Purchased at a suspiciously cheap price"},
+    {"max": 85, "result": "Seized in a mutiny against its former captain"},
+    {"max": 90, "result": "Stolen from under the nose of a powerful faction"},
+    {"max": 95, "result": "Taken while fleeing an attack or disaster"},
+    {"max": 100, "result": "Won in a high-stakes bet"}
+  ]
+}

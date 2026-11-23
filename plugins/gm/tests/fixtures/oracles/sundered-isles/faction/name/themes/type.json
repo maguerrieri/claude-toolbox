@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/type",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Affluence (`oracles/faction/name/themes/affluence/`)"},
+    {"max": 20, "result": "Craft (`oracles/faction/name/themes/craft/`)"},
+    {"max": 30, "result": "Discovery (`oracles/faction/name/themes/discovery/`)"},
+    {"max": 40, "result": "Faith (`oracles/faction/name/themes/faith/`)"},
+    {"max": 50, "result": "Loyalty (`oracles/faction/name/themes/loyalty/`)"},
+    {"max": 60, "result": "Mysticism (`oracles/faction/name/themes/mysticism/`)"},
+    {"max": 70, "result": "Rebellion (`oracles/faction/name/themes/rebellion/`)"},
+    {"max": 80, "result": "Secrecy (`oracles/faction/name/themes/secrecy/`)"},
+    {"max": 90, "result": "War (`oracles/faction/name/themes/war/`)"},
+    {"max": 100, "result": "Curses (`oracles/faction/name/themes/curses/`)"}
+  ]
+}

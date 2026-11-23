@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/inland_cave/feature_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Bewitching illusion"},
+    {"max": 10, "result": "Bones of a colossal beast"},
+    {"max": 15, "result": "Corpses come to life"},
+    {"max": 20, "result": "Corpses entombed within stone"},
+    {"max": 25, "result": "Creepy echoes"},
+    {"max": 30, "result": "Eldritch shrine or monument"},
+    {"max": 35, "result": "Impenetrable darkness"},
+    {"max": 40, "result": "Lights snuffed out"},
+    {"max": 45, "result": "Monstrous predator"},
+    {"max": 50, "result": "Oversized eggs"},
+    {"max": 55, "result": "Passage carved by a burrowing beast"},
+    {"max": 60, "result": "Rotting stench"},
+    {"max": 65, "result": "Spectral manifestation"},
+    {"max": 70, "result": "Surfaces covered by cyst-like growths"},
+    {"max": 75, "result": "Trail of ooze"},
+    {"max": 80, "result": "Unnatural cold"},
+    {"max": 85, "result": "Unnaturally aggressive creatures"},
+    {"max": 90, "result": "Unnaturally thick webbing"},
+    {"max": 95, "result": "Unnerving howls or roars"},
+    {"max": 100, "result": "Webbed or cocooned corpses"}
+  ]
+}

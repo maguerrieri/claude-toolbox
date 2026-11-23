@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/curses/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Cursed"},
+    {"max": 20, "result": "Bloodless"},
+    {"max": 30, "result": "Bloody"},
+    {"max": 40, "result": "Broken"},
+    {"max": 50, "result": "Fallen"},
+    {"max": 60, "result": "Haunted"},
+    {"max": 70, "result": "Infernal"},
+    {"max": 80, "result": "Risen"},
+    {"max": 90, "result": "Shattered"},
+    {"max": 100, "result": "Undying"}
+  ]
+}

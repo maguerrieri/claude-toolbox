@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/scrub",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Abandoned homestead"},
+    {"max": 10, "result": "Cavernous sinkhole"},
+    {"max": 15, "result": "Craggy outcroppings"},
+    {"max": 20, "result": "Crumbling stone wall"},
+    {"max": 25, "result": "Expanse of deep, sucking mud"},
+    {"max": 30, "result": "Field of blooming wildflowers"},
+    {"max": 35, "result": "Field of shoulder-high grasses"},
+    {"max": 40, "result": "Large insect mounds"},
+    {"max": 45, "result": "Maze of trails through dense shrubs"},
+    {"max": 50, "result": "Meandering river or stream"},
+    {"max": 55, "result": "Misty hollow"},
+    {"max": 60, "result": "Old stone road"},
+    {"max": 65, "result": "Plain of rugged, exposed rock"},
+    {"max": 70, "result": "Scattered stones of a fallen structure"},
+    {"max": 75, "result": "Spring-fed lake or pond"},
+    {"max": 80, "result": "Stand of spindly trees"},
+    {"max": 85, "result": "Thorny thicket"},
+    {"max": 90, "result": "Towering, solitary tree"},
+    {"max": 95, "result": "Watering hole"},
+    {"max": 100, "result": "Weathered burial mounds"}
+  ]
+}

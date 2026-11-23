@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/role_details/agent",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Assassin"},
+    {"max": 40, "result": "Bounty Hunter / Pirate hunter"},
+    {"max": 60, "result": "Courier"},
+    {"max": 80, "result": "Investigator"},
+    {"max": 100, "result": "Spy"}
+  ]
+}

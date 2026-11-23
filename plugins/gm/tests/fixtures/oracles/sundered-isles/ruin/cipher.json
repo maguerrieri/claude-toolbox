@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/ruin/cipher",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Carved glyphs"},
+    {"max": 20, "result": "Hastily written markings"},
+    {"max": 30, "result": "Hidden chamber or passage"},
+    {"max": 40, "result": "Map or document"},
+    {"max": 50, "result": "Murals, statues, or other artwork"},
+    {"max": 60, "result": "Personal memento"},
+    {"max": 70, "result": "Puzzle, key, or device"},
+    {"max": 80, "result": "Remains of the dead"},
+    {"max": 90, "result": "Signs of other explorers or guardians"},
+    {"max": 100, "result": "Unusual architecture"}
+  ]
+}

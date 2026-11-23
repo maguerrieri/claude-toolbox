@@ -1,0 +1,12 @@
+{
+  "id": "oracle_rollable:sundered_isles/shipwreck/orientation/scale",
+  "die": "1d100",
+  "rows": [
+    {"max": 30, "result": "Small (cutter, sloop)"},
+    {"max": 60, "result": "Medium (corvette, schooner)"},
+    {"max": 85, "result": "Large (frigate, galleon)"},
+    {"max": 95, "result": "Colossal (titan, dreadnought)"},
+    {"max": 99, "result": "Heap (tangled with another wreck)"},
+    {"max": 100, "result": "Graveyard (amid a labyrinth of wrecks)"}
+  ]
+}

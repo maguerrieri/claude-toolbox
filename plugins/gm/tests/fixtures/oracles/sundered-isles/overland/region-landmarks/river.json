@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/river",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Branching watercourse"},
+    {"max": 10, "result": "Cascading rapids"},
+    {"max": 15, "result": "Debris forming a dam"},
+    {"max": 20, "result": "Eddies swirl in a large, limpid pool"},
+    {"max": 25, "result": "Flooded riverbanks"},
+    {"max": 30, "result": "Gulch strewn with mossy boulders"},
+    {"max": 35, "result": "Landed boat"},
+    {"max": 40, "result": "Mighty fallen tree spans the river"},
+    {"max": 45, "result": "Muddy landing"},
+    {"max": 50, "result": "Old dock perched over the water"},
+    {"max": 55, "result": "Plunging series of terraced waterfalls"},
+    {"max": 60, "result": "Remains of an old bridge"},
+    {"max": 65, "result": "River-fed lake"},
+    {"max": 70, "result": "Sandy shoal in the midst of the river"},
+    {"max": 75, "result": "Shadowy passage flanked by tall cliffs"},
+    {"max": 80, "result": "Shallow ford"},
+    {"max": 85, "result": "Snaking, slow-moving watercourse"},
+    {"max": 90, "result": "Strong current leading to a high waterfall"},
+    {"max": 95, "result": "Trees crowd the river's edge"},
+    {"max": 100, "result": "Wrecked ship or boat"}
+  ]
+}

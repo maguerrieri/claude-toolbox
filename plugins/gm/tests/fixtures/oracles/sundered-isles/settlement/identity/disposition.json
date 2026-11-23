@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/settlement/identity/disposition",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Hostile"},
+    {"max": 15, "result": "Threatening"},
+    {"max": 25, "result": "Demanding"},
+    {"max": 35, "result": "Unwelcoming"},
+    {"max": 50, "result": "Wary"},
+    {"max": 65, "result": "Indifferent"},
+    {"max": 75, "result": "In need"},
+    {"max": 85, "result": "Welcoming"},
+    {"max": 95, "result": "Friendly"},
+    {"max": 100, "result": "Helpful"}
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/shore",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Approaching or anchored ship"},
+    {"max": 10, "result": "Beached shipwreck"},
+    {"max": 15, "result": "Black sand beach"},
+    {"max": 20, "result": "Craggy rocks and tide pools"},
+    {"max": 25, "result": "Geometric columns of volcanic rock"},
+    {"max": 30, "result": "Grassy dunes"},
+    {"max": 35, "result": "Landed boat"},
+    {"max": 40, "result": "Mangrove thicket"},
+    {"max": 45, "result": "Picturesque sandy beach"},
+    {"max": 50, "result": "River outlet"},
+    {"max": 55, "result": "Rocky shelf with geysering blowholes"},
+    {"max": 60, "result": "Saltwater gorge"},
+    {"max": 65, "result": "Sandspit connecting to a rocky islet"},
+    {"max": 70, "result": "Seals basking on rocky outcroppings"},
+    {"max": 75, "result": "Squawking seabirds circling tall rocks"},
+    {"max": 80, "result": "Storm-swept debris"},
+    {"max": 85, "result": "Tall seaside cliffs"},
+    {"max": 90, "result": "Watery sea cave"},
+    {"max": 95, "result": "Wave-swept pebble beach"},
+    {"max": 100, "result": "Wide, saltwater channel"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/size",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Undersized"},
+    {"max": 35, "result": "Small"},
+    {"max": 65, "result": "Medium"},
+    {"max": 85, "result": "Large"},
+    {"max": 100, "result": "Huge"}
+  ]
+}

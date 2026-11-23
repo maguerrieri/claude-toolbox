@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/empire/leadership",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Assembly or council"},
+    {"max": 20, "result": "Dynastic ruler"},
+    {"max": 30, "result": "Military leader"},
+    {"max": 35, "result": "Prophesied ruler"},
+    {"max": 45, "result": "Regent"},
+    {"max": 55, "result": "Regional governors"},
+    {"max": 65, "result": "Religious leader"},
+    {"max": 75, "result": "Self-appointed dictator"},
+    {"max": 85, "result": "Wealthy elite"},
+    {"max": 100, "result": "Power struggle (roll twice)"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/value",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Worthless"},
+    {"max": 35, "result": "Cheap"},
+    {"max": 65, "result": "Common"},
+    {"max": 85, "result": "Valuable"},
+    {"max": 100, "result": "Priceless"}
+  ]
+}

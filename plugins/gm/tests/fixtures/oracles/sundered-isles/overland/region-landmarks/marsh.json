@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/marsh",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Bursts of flaming marsh gas"},
+    {"max": 10, "result": "Copse of rotted tree trunks"},
+    {"max": 15, "result": "Dense thicket of reeds"},
+    {"max": 20, "result": "Field of flowers upon sodden ground"},
+    {"max": 25, "result": "Hovels stand precariously on stilts"},
+    {"max": 30, "result": "Large island of dry land"},
+    {"max": 35, "result": "Muddy, sinking quagmire"},
+    {"max": 40, "result": "Nest of slithering serpents"},
+    {"max": 45, "result": "Nests of squawking waterfowl"},
+    {"max": 50, "result": "Pools of bubbling marsh gas"},
+    {"max": 55, "result": "Raised trail winds through a watery maze"},
+    {"max": 60, "result": "Rotting wooden walkway"},
+    {"max": 65, "result": "Shallow waterways flanked by tall grass"},
+    {"max": 70, "result": "Soggy mist-shrouded field"},
+    {"max": 75, "result": "Tall, rocky hillock"},
+    {"max": 80, "result": "Thicket of spindly trees atop a low hill"},
+    {"max": 85, "result": "Toppled stone tower"},
+    {"max": 90, "result": "Wide channel of deep water"},
+    {"max": 95, "result": "Wide, algae-covered pond"},
+    {"max": 100, "result": "Witchlights dance above dark pools"}
+  ]
+}

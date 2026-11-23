@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/cave/scale/inland_cave",
+  "die": "1d100",
+  "rows": [
+    {"max": 20, "result": "Troublesome — Minor cave system"},
+    {"max": 50, "result": "Dangerous — Limited cave system"},
+    {"max": 75, "result": "Formidable — Extensive cave system"},
+    {"max": 90, "result": "Extreme — Vast cave system"},
+    {"max": 100, "result": "Epic — Fathomless cave system"}
+  ]
+}

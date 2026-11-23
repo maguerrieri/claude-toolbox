@@ -1,0 +1,25 @@
+{
+  "id": "oracle_rollable:sundered_isles/getting_underway/take_command/crew",
+  "die": "1d100",
+  "rows": [
+    {"max": 8, "result": "Eclectic mix of all sorts of folk"},
+    {"max": 14, "result": "Adventurers and trailblazers, seeking the far horizon"},
+    {"max": 18, "result": "Disciplined military force, doing their duty"},
+    {"max": 22, "result": "Experienced mariners, lending an able hand"},
+    {"max": 26, "result": "Glory hunters, looking to make a mark"},
+    {"max": 32, "result": "Kin of a seafaring people, honoring traditions"},
+    {"max": 38, "result": "Marauders and brigands, taking their share of the spoils"},
+    {"max": 44, "result": "Novice mariners, undertaking their first adventure"},
+    {"max": 48, "result": "Old salts brought out of retirement, undertaking a final adventure"},
+    {"max": 54, "result": "Outcasts and exiles, bound by their differences"},
+    {"max": 60, "result": "Rebels, fighting for freedom"},
+    {"max": 66, "result": "Refugees from a faraway land, finding a new home"},
+    {"max": 70, "result": "Religious zealots, serving their god"},
+    {"max": 74, "result": "Scoundrels and spies, always watching"},
+    {"max": 78, "result": "Survivors of a horrible cataclysm, preserving what remains"},
+    {"max": 82, "result": "Survivors of a terrible attack, seeking revenge"},
+    {"max": 86, "result": "Turncoat imperials, sworn against former compatriots"},
+    {"max": 90, "result": "Unprincipled mercenaries, earning blood money"},
+    {"max": 100, "result": "Roll twice; these groups are at odds"}
+  ]
+}

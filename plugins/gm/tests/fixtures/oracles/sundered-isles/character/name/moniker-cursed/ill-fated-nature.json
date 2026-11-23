@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/name/moniker_cursed/ill_fated_nature",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Blackspot"},
+    {"max": 10, "result": "Blight"},
+    {"max": 15, "result": "Calamity"},
+    {"max": 20, "result": "Fluke"},
+    {"max": 25, "result": "Graves"},
+    {"max": 30, "result": "Grim"},
+    {"max": 35, "result": "Harbinger"},
+    {"max": 40, "result": "Harrow"},
+    {"max": 45, "result": "Husk"},
+    {"max": 50, "result": "Jinx"},
+    {"max": 55, "result": "Jonah"},
+    {"max": 60, "result": "Leech"},
+    {"max": 65, "result": "Luckless"},
+    {"max": 70, "result": "Maggot"},
+    {"max": 75, "result": "Pox"},
+    {"max": 80, "result": "Rot"},
+    {"max": 85, "result": "Scar"},
+    {"max": 90, "result": "Scourge"},
+    {"max": 95, "result": "Twice-drowned"},
+    {"max": 100, "result": "Wither"}
+  ]
+}

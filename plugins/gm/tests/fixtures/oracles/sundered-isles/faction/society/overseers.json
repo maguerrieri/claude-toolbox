@@ -1,0 +1,20 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/society/overseers",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Appointed local leaders"},
+    {"max": 10, "result": "Artisans or trade guilds"},
+    {"max": 15, "result": "Delegates gathered at convocations"},
+    {"max": 25, "result": "Elder councils"},
+    {"max": 35, "result": "Hereditary rulers"},
+    {"max": 40, "result": "Mystics or seers"},
+    {"max": 45, "result": "Prophesied or fated rulers"},
+    {"max": 50, "result": "Religious orders"},
+    {"max": 55, "result": "Scholars or sages"},
+    {"max": 60, "result": "Shadowy cabals"},
+    {"max": 70, "result": "Warlords or champions"},
+    {"max": 80, "result": "Single absolute authority"},
+    {"max": 90, "result": "Operatives of another faction"},
+    {"max": 100, "result": "Varied or informal leadership"}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/magnitude/power",
+  "die": "1d100",
+  "rows": [
+    {"max": 15, "result": "Weak"},
+    {"max": 35, "result": "Minor"},
+    {"max": 65, "result": "Moderate"},
+    {"max": 85, "result": "Strong"},
+    {"max": 100, "result": "Overwhelming"}
+  ]
+}

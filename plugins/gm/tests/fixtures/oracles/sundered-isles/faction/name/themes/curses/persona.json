@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/curses/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Bones"},
+    {"max": 20, "result": "Jackals"},
+    {"max": 30, "result": "Revenants"},
+    {"max": 40, "result": "Shades"},
+    {"max": 50, "result": "Skulls"},
+    {"max": 60, "result": "Slayers"},
+    {"max": 70, "result": "Souls"},
+    {"max": 80, "result": "Swarm"},
+    {"max": 90, "result": "Wraiths"},
+    {"max": 100, "result": "Wretches"}
+  ]
+}

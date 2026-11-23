@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/mysticism/persona",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Adepts"},
+    {"max": 20, "result": "Alchemists"},
+    {"max": 30, "result": "Augurs"},
+    {"max": 40, "result": "Enchanters"},
+    {"max": 50, "result": "Mages"},
+    {"max": 60, "result": "Oracles"},
+    {"max": 70, "result": "Sages"},
+    {"max": 80, "result": "Seers"},
+    {"max": 90, "result": "Sorcerers"},
+    {"max": 100, "result": "Witches"}
+  ]
+}

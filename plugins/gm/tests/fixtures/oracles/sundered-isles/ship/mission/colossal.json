@@ -1,0 +1,25 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/mission/colossal",
+  "die": "1d100",
+  "rows": [
+    {"max": 4, "result": "Blockade a location"},
+    {"max": 8, "result": "Break a blockade"},
+    {"max": 12, "result": "Attack a Location"},
+    {"max": 16, "result": "Evacuate a location"},
+    {"max": 20, "result": "Transport people"},
+    {"max": 28, "result": "Transport cargo"},
+    {"max": 36, "result": "Conduct trade"},
+    {"max": 42, "result": "Hunt creatures"},
+    {"max": 48, "result": "Patrol an area"},
+    {"max": 52, "result": "Explore or travel to an area"},
+    {"max": 64, "result": "Engage an enemy"},
+    {"max": 74, "result": "Conduct piracy"},
+    {"max": 76, "result": "Conduct diplomacy"},
+    {"max": 78, "result": "Conduct espionage"},
+    {"max": 80, "result": "Conduct research"},
+    {"max": 82, "result": "Deliver item or message"},
+    {"max": 84, "result": "Smuggle contraband"},
+    {"max": 94, "result": "Action (`oracles/action.md`) + Theme (`oracles/theme.md`)"},
+    {"max": 100, "result": "Roll twice"}
+  ]
+}

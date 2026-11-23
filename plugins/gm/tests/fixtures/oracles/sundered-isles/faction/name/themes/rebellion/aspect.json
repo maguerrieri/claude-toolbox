@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/rebellion/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Apostate"},
+    {"max": 20, "result": "Forsworn"},
+    {"max": 30, "result": "Free"},
+    {"max": 40, "result": "Mutinous"},
+    {"max": 50, "result": "Rebel"},
+    {"max": 60, "result": "Sovereign"},
+    {"max": 70, "result": "Tidebound"},
+    {"max": 80, "result": "Unbound"},
+    {"max": 90, "result": "Unchained"},
+    {"max": 100, "result": "Wayward"}
+  ]
+}

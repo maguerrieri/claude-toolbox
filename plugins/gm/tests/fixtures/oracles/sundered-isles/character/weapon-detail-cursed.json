@@ -1,0 +1,24 @@
+{
+  "id": "oracle_rollable:sundered_isles/character/weapon_detail_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Adorned with bone or skull motifs"},
+    {"max": 15, "result": "Bound to a vengeful spirit"},
+    {"max": 20, "result": "Burning with intense flame"},
+    {"max": 25, "result": "Charged with arcane energy"},
+    {"max": 30, "result": "Consumes the souls of its victims"},
+    {"max": 35, "result": "Dripping with foul ichor"},
+    {"max": 40, "result": "Enveloped in icy frost"},
+    {"max": 45, "result": "Etched with sinister glyphs"},
+    {"max": 50, "result": "Feeding upon the lifeforce of its wielder"},
+    {"max": 55, "result": "Inflicts festering wounds"},
+    {"max": 60, "result": "Oozing with corrosive venom"},
+    {"max": 65, "result": "Powered by strange mechanisms"},
+    {"max": 70, "result": "Radiating a sickly light"},
+    {"max": 75, "result": "Summoned out of thin air"},
+    {"max": 80, "result": "Tarnished with unnatural decay"},
+    {"max": 85, "result": "Transforms its wielder"},
+    {"max": 95, "result": "Whispering irresistible commands"},
+    {"max": 100, "result": "Wreathed in smoke and ash"}
+  ]
+}

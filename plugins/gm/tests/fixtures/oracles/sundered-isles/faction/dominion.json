@@ -1,0 +1,7 @@
+{
+  "id": "oracle_rollable:starforged/faction/dominion",
+  "die": null,
+  "rows": [
+    {"max": 1, "result": "Replaced in Sundered Isles: use Faction Oracles (`oracles/faction/`)."}
+  ]
+}

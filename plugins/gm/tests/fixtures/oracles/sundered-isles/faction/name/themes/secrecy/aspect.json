@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/faction/name/themes/secrecy/aspect",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Ashen"},
+    {"max": 20, "result": "Gossamer"},
+    {"max": 30, "result": "Gray"},
+    {"max": 40, "result": "Hidden"},
+    {"max": 50, "result": "Shrouded"},
+    {"max": 60, "result": "Silent"},
+    {"max": 70, "result": "Umbral"},
+    {"max": 80, "result": "Unseen"},
+    {"max": 90, "result": "Veiled"},
+    {"max": 100, "result": "Whispering"}
+  ]
+}

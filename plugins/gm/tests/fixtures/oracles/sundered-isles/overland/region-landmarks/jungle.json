@@ -1,0 +1,26 @@
+{
+  "id": "oracle_rollable:sundered_isles/overland/region_landmarks/jungle",
+  "die": "1d100",
+  "rows": [
+    {"max": 5, "result": "Ancient tree with a vast canopy"},
+    {"max": 10, "result": "Branches crowded with colorful birds"},
+    {"max": 15, "result": "Carved, moss-covered stones"},
+    {"max": 20, "result": "Cave mouth hung with dripping vines"},
+    {"max": 25, "result": "Curtains of hanging vines"},
+    {"max": 30, "result": "Fallen tree spans a ravine"},
+    {"max": 35, "result": "Fragrant fruit trees abuzz with insects"},
+    {"max": 40, "result": "Glade filled with vibrant butterflies"},
+    {"max": 45, "result": "Majestic falls spill into a rocky gorge"},
+    {"max": 50, "result": "Narrow path twists through undergrowth"},
+    {"max": 55, "result": "River cascading over smooth rocks"},
+    {"max": 60, "result": "Rocky spires cloaked in greenery"},
+    {"max": 65, "result": "Rope bridge spans a river gorge"},
+    {"max": 70, "result": "Rope bridges connect towering trees"},
+    {"max": 75, "result": "Serene pool below a terraced waterfall"},
+    {"max": 80, "result": "Tangled thicket of thorny plants"},
+    {"max": 85, "result": "Unbroken canopy casts deep shade"},
+    {"max": 90, "result": "Water-filled sinkhole"},
+    {"max": 95, "result": "Whispering bamboo grove"},
+    {"max": 100, "result": "Wide, slow-moving river"}
+  ]
+}

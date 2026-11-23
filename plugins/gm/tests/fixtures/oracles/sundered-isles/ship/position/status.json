@@ -1,0 +1,15 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/position/status",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "In Battle"},
+    {"max": 25, "result": "Anchored"},
+    {"max": 35, "result": "Getting underway"},
+    {"max": 60, "result": "Underway (approaching)"},
+    {"max": 75, "result": "Underway (outbound)"},
+    {"max": 85, "result": "Underway (parallel)"},
+    {"max": 95, "result": "In distress"},
+    {"max": 98, "result": "Adrift"},
+    {"max": 100, "result": "Run aground"}
+  ]
+}

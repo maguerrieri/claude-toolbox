@@ -1,0 +1,27 @@
+{
+  "id": "oracle_rollable:sundered_isles/misc/sea_battle_features",
+  "die": "1d100",
+  "rows": [
+    {"max": 2, "result": "Adrift mariners"},
+    {"max": 6, "result": "Congregating creatures"},
+    {"max": 10, "result": "Deepening night"},
+    {"max": 18, "result": "Expanse of rocky shoals"},
+    {"max": 24, "result": "Exposed sandbar"},
+    {"max": 30, "result": "Fast-changing tide"},
+    {"max": 36, "result": "Floating debris"},
+    {"max": 44, "result": "Fog bank"},
+    {"max": 46, "result": "Incoming rogue wave"},
+    {"max": 52, "result": "Large rocky islet"},
+    {"max": 56, "result": "Large sea creature"},
+    {"max": 60, "result": "Row of tall sea stacks"},
+    {"max": 62, "result": "Ship graveyard"},
+    {"max": 66, "result": "Smoking sea volcano"},
+    {"max": 72, "result": "Strong currents"},
+    {"max": 76, "result": "Swirling whirlpool"},
+    {"max": 78, "result": "Thickly-packed seaweed"},
+    {"max": 84, "result": "Tideswept reef"},
+    {"max": 90, "result": "Foul Weather (`oracles/weather/foul.md`)"},
+    {"max": 96, "result": "Shipwreck (`oracles/shipwreck/`)"},
+    {"max": 100, "result": "Ruin (`oracles/ruin/`)"}
+  ]
+}

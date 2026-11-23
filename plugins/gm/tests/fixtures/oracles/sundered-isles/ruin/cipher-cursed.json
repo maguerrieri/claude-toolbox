@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/ruin/cipher_cursed",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Deadly trap or infernal mechanism"},
+    {"max": 20, "result": "Dreadful document or book"},
+    {"max": 30, "result": "Ghostly reenactment"},
+    {"max": 40, "result": "Harrowing dreams or visions"},
+    {"max": 50, "result": "Messages or symbols written in blood"},
+    {"max": 60, "result": "Monstrous or beastly guardians"},
+    {"max": 70, "result": "Signs of horrific death or violence"},
+    {"max": 80, "result": "Sorcerous enchantment or artifact"},
+    {"max": 90, "result": "Spectral visitation or warning"},
+    {"max": 100, "result": "Warning from a dead or dying explorer"}
+  ]
+}

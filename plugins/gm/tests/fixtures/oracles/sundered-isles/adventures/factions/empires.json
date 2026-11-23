@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/adventures/factions/empires",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Argosy Company — Trade company that commands a fleet of beast-hunting ships and pays bounties on beasts to independent captains. Their unscrupulous merchants deal in trophies and resources gathered from slain creatures."},
+    {"max": 20, "result": "Eldarian Remnants — Loyalists of a fallen empire who seek to restore their former glory among the isles, guided by a charismatic and shrewd military leader. The sails of their ships are emblazoned with a burning phoenix."},
+    {"max": 30, "result": "Empire of Solas — Age-old dominion ruled by an immortal god-emperor. Their ostentatious ships are adorned with gold metalwork and filigreed sails."},
+    {"max": 40, "result": "Firgovian Regency — Fracturing empire facing a succession crisis in the aftermath of the monarch’s assassination. Rival claimants gather their armies and navies to take the crown by force."},
+    {"max": 50, "result": "Hand of Theya — Iron-fisted theocracy under the rule of a council of priests. Their mandates are enforced by red-robed inquisitors."},
+    {"max": 60, "result": "Kyrody Dominion — Expansive empire with far-flung territories. Their holdings within the isles are overseen by corrupt and squabbling governors, each vying for greater power and wealth."},
+    {"max": 70, "result": "Meridian Company — Powerful trade company with diverse holdings and boundless political influence. They function as a shadow government behind other powers."},
+    {"max": 80, "result": "Norish Empire — War-mongering clans newly united under a powerful warlord. Their warships are fitted with imposing rams and heavy boarding ramps."},
+    {"max": 90, "result": "Skulde Alliance — Ambitious empire that wields a powerful military. At the vanguard of their fleets are the dragon-riders of the Crimson Guard, who house their steeds and launch their attacks from colossal carrier ships."},
+    {"max": 100, "result": "Sovereign States — Industrialist power formed from the remnants of warring nations. They are governed by an oligarchical council whose members scheme and backstab to advance their own interests."}
+  ]
+}

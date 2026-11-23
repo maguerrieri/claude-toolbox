@@ -1,0 +1,10 @@
+{
+  "id": "oracle_rollable:sundered_isles/ship/position/range",
+  "die": "1d100",
+  "rows": [
+    {"max": 40, "result": "Distant — On the horizon and too far to make out details"},
+    {"max": 75, "result": "Far — Observable but well beyond weapons range"},
+    {"max": 95, "result": "Medium — Easily discernible and nearly within weapons range"},
+    {"max": 100, "result": "Near — Sighted or revealed at very close range"}
+  ]
+}

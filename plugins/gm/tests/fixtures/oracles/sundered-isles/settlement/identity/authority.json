@@ -1,0 +1,16 @@
+{
+  "id": "oracle_rollable:sundered_isles/settlement/identity/authority",
+  "die": "1d100",
+  "rows": [
+    {"max": 10, "result": "Ruthless"},
+    {"max": 20, "result": "Oppressive"},
+    {"max": 30, "result": "Corrupt"},
+    {"max": 40, "result": "Firm"},
+    {"max": 50, "result": "Lawless"},
+    {"max": 60, "result": "Disputed"},
+    {"max": 70, "result": "Ambivalent"},
+    {"max": 80, "result": "Fair"},
+    {"max": 90, "result": "Protective"},
+    {"max": 100, "result": "Benevolent"}
+  ]
+}
