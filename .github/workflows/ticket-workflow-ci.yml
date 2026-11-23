@@ -39,6 +39,8 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-owner-check.sh
       - name: Owner-approval tests (the owner's approving review as a merge grant)
         run: bash plugins/ticket-workflow/tests/test-owner-approval.sh
+      - name: Owner-comment tests (a comment's author and last editor)
+        run: bash plugins/ticket-workflow/tests/test-owner-comment.sh
       - name: PR-subscription helper tests (pr-notifier subscribe and unsubscribe)
         run: bash plugins/ticket-workflow/tests/test-pr-subscription.sh
       - name: Install zsh (the round-count, agents-listing and session-link tests also run their snippets under zsh)
