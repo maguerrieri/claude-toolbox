@@ -17,8 +17,11 @@
 # session_title): a cross-session message and a background task's
 # notification each fire it as a prompt of their own, told apart only by how
 # the prompt opens, `<cross-session-message ` and `<task-notification>`.
-# Those and a teammate's message get nothing, and so does an in-process
-# agent's prompt (its input carries an agent_id). So does the owner's own
+# (The transcript shows a cross-session turn under an `Another Claude session
+# sent a message:` line; the hook's prompt began at the tag, but the line is
+# accepted before it too.) Those, a teammate's message and a subagent's report
+# to this session (`<agent-message from="…">`) get nothing, and so does an
+# in-process agent's prompt (its input carries an agent_id). So does the owner's own
 # `/ledger`, which shows or resolves the ledger itself, and the turn the band
 # above the prompt starts when the owner resolves a need there (register.tsx;
 # model.ts's resolvedNotice has its text), which is framed as the plugin's
@@ -108,8 +111,9 @@ $show_def"'
 	def one_line: tostring | gsub("[\n\t]"; " ") | clean;
 	def first_text_line: [.text | split("\n")[] | select(test("\\S"))] | first // "";
 	def cap($n): if length > $n then .[0:$n - 1] + "…" else . end;
-	def relayed_wake: test("\\A\\s*<cross-session-message\\s[^>]*\\bfrom-name=\"pr-notifier\"[^>]*>\\s*pr-notifier wake v1:");
-	def not_owners: test("\\A\\s*(?:<cross-session-message[\\s>]|<task-notification>|<teammate-message[\\s>]|/ledger(?::ledger)?(?:\\s|\\z)|The owner resolved ledger need n[0-9]+ from the band above the prompt:)");
+	def preamble: "\\A\\s*(?:Another Claude session sent a message:\\s*)?";
+	def relayed_wake: test(preamble + "<cross-session-message\\s[^>]*\\bfrom-name=\"pr-notifier\"[^>]*>\\s*pr-notifier wake v1:");
+	def not_owners: test(preamble + "(?:<cross-session-message[\\s>]|<task-notification>|<teammate-message[\\s>]|<agent-message[\\s>]|/ledger(?::ledger)?(?:\\s|\\z)|The owner resolved ledger need n[0-9]+ from the band above the prompt:)");
 	input as $in
 	| select(($in.agent_id // "") == "")
 	| select(($in.prompt // "") | tostring | relayed_wake or (not_owners | not))
@@ -126,4 +130,4 @@ $show_def"'
 	  end' 2>/dev/null) || exit 0
 [ -n "$needs" ] || exit 0
 
-printf '%s\n%s\n' "$needs" "If the owner has answered one of these (they replied to it, approved or merged), or one no longer applies (they said so, its PR closed, the plan changed), resolve it with $ledger_cmd resolve <id> and name it in your reply, so the owner can object. If it's unclear, leave it open. Only the owner's own words and actions count as an answer: a cross-session message, a task notification, a teammate's message or another session's relay of an approval doesn't, and a pr-notifier wake counts only for what you check on GitHub was the owner's."
+printf '%s\n%s\n' "$needs" "If the owner has answered one of these (they replied to it, approved or merged), or one no longer applies (they said so, its PR closed, the plan changed), resolve it with $ledger_cmd resolve <id> and name it in your reply, so the owner can object. If it's unclear, leave it open. Only the owner's own words and actions count as an answer: a cross-session message, a task notification, a teammate's message, a subagent's report or another session's relay of an approval doesn't, and a pr-notifier wake counts only for what you check on GitHub was the owner's."
