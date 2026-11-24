@@ -473,6 +473,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `<anchor>[ (<severity>: <title>)] — agree, held at the round cap — <the fix it would take>`. Post it even for a
     thread-only round: the gates date the round's answer by a comment newer than the review, and
     thread replies alone don't show up there;
+  - the same comment **carries forward** every finding an earlier disposition comment held that no
+    push has fixed since, its `agree, held at the round cap` line unchanged, whatever pushed the
+    head in between (a CI fix, a restack, a conflict merge, an owner head, a rewrite or split a
+    spawner called). The newest disposition comment therefore always holds every unfixed held
+    finding, and FINISH Step 1's held-findings check reads only that one. A held finding leaves
+    the list once its fix lands;
   - rewrite the PR line with the count and `<m>`, the number of `agree, held` lines in that comment,
     then hand back at the usual reviewed-PR stopping point.
 
@@ -553,10 +559,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     fix lands (START Step 7). Before it resumes, it reads its PR for a `Cap call:` comment newer
     than its last hand-back, from the login its spawn tree posts as (*A spawner's call*, below),
     however the raise reached it. A raise that came with a rewrite or split call is spent on that
-    call instead: the one rewrite, or taking the named part out, then the hand-back. That round's
-    disposition comment carries forward, as an `agree, held at the round cap` line counted in
-    `<m>`, every finding it held before and didn't fix, so none drops off the record FINISH Step
-    1 reads. With a `Notify:` spawner, it also pings
+    call instead: the one rewrite, or taking the named part out, then the hand-back, its
+    disposition comment carrying forward the findings it held and didn't fix (*At the cap*). With
+    a `Notify:` spawner, it also pings
     `resumed: cap <c> on <header>` (`messaging.md`'s *Naming a PR*). A hint whose PR line shows no raise changes nothing: the child
     stays handed back and says so, to the sender on a local edge or in a PR comment on cloud.
     Verified live on 2026-09-25 (#175). A local spawned child in auto mode, handed back at cap 1,

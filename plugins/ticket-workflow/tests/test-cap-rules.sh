@@ -119,6 +119,8 @@ record 1 "EPIC Step 6's cloud redirects carry the cap call: hint" \
 record 1 "a stop call holds the merge in FINISH Step 1's merge-blocker scan" \
 	"$(has "$finish_md" "a spawner's \`Cap call: stop\` comment that no later \`Cap call:\` comment has lifted")"
 record 1 "A spawner's call says how a stop is lifted" "$(has "$profile" '**A stop holds the PR until it is lifted.**')"
+record 1 "At the cap carries every unfixed held finding forward" \
+	"$(has "$profile" '  - the same comment **carries forward** every finding an earlier disposition comment held')"
 record 1 "the held-findings check reads the newest disposition comment's lines" \
 	"$(has "$finish_md" 'lines of the newest disposition comment (the ones its `<m>` counts)')"
 record 1 "EPIC reports a stopped row as terminal" "$(has "$epic_md" 'reported **stuck** with what was tried, **stopped** by your')"
