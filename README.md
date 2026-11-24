@@ -61,8 +61,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   `~/.local/bin/pr-notifier`; it reads every subscribed PR's summary in one GraphQL
   query, polls the account's GitHub notifications and
   sweeps each subscribed PR, filters on the PR's timeline (a stranger's comment
-  wakes nothing), and delivers a fixed wake prompt carrying only URLs: in place to a
-  live session, by a one-shot Haiku relay's message, or by resuming a stopped one. A launchd job runs it every 15 seconds; installing that job is a checklist,
+  wakes nothing), and delivers a fixed wake prompt of URLs, checked details and the
+  owner's own quoted text: in place to a live session, by a one-shot Haiku relay's message, or by resuming a stopped one. A launchd job runs it every 15 seconds; installing that job is a checklist,
   [its INSTALL.md](plugins/pr-notifier/INSTALL.md), around `scripts/install.sh`. See
   [its README](plugins/pr-notifier/README.md).
 - **ledger** — a per-session record of the decisions the owner made and what
