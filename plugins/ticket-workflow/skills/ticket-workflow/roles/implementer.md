@@ -117,14 +117,22 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   Glob tool finds: the skill's Session roles, *Pinning*). No `notify:` line,
   or a read that still fails, accepts no clearance.
   If your PR is stacked (based on another open PR's branch, or with an open
-  PR based on yours), or holds findings at the round cap (`<m>` above 0 on its `Review
-  rounds:` line, or an `agree, held at the round cap` line), reply `blocked:
-  <why>` and don't merge: a stack lands through your spawner's own FINISH,
-  EPIC Step 7 or the owner, and
-  the grant covers reviewed work, not held findings. Otherwise read the skill's `phases/finish.md`
-  and run your own FINISH, gate included (a gate failure still stops you), and ping `merged:
-  <header>` or `blocked: <header> — <why>`. The clearance ends your `SPAWN_CAP` hold for
-  that PR only.
+  PR based on yours), reply `blocked: <why>` and don't merge: a stack lands
+  through your spawner's own FINISH, EPIC Step 7 or the owner. Otherwise read
+  the skill's `phases/finish.md` and run your own FINISH, gate included (a
+  gate failure still stops you), and ping `merged: <header>` or `blocked:
+  <header> — <why>`. Findings you held at the round cap (`<m>` above 0 on
+  its `Review rounds:` line, or an `agree, held at the round cap` line)
+  don't stop you by themselves, and the clearance needs no special wording
+  for them: the grant covers them, at your judgment, as FINISH Step 1's
+  held-findings check allows. None may be below its floor (one that is, is a
+  `blocked:` naming it), each goes on a follow-up issue first (one your
+  spawner named, or one you file), and a PR comment says so before the merge,
+  as your `merged:` does after it. A grant never lets you raise your own cap
+  to fix them. If your launch briefing carries `SPAWN_CAP` without its
+  sentence on held findings, you were launched before that check, so any
+  held finding is a `blocked:`, as before. The clearance ends your
+  `SPAWN_CAP` hold for that PR only.
   You're a leaf: clear no one, helpers included. If the harness or a
   permission classifier blocks the merge, ping `blocked: merge needs the
   owner` with FINISH Step 2's block fallbacks (not a re-clearance, which
@@ -178,7 +186,11 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   *Raising the cap*). The same goes for an `approval: <review url> on
   #<issue> → PR #<pr>` hint from your coordinator (EPIC Step 7): it is not a relayed
   approval to decline, but a pointer, so read your PR and take what GitHub
-  shows through *The owner's approval* (*Merge your own PR*, above). What the owner asks for on your PR is yours to land
+  shows through *The owner's approval* (*Merge your own PR*, above). A
+  `cap call:` from your recorded spawner (a rewrite of one section, a split
+  that takes a part out of your PR, or a stop) is a redirect about your
+  issue too: act on it as the profile's `REVIEW_BOT`, *A spawner's call*,
+  says. What the owner asks for on your PR is yours to land
   too, without waiting to hand back: from the owner in this session, in
   their comment on your PR (or your issue, where the login settles it), or
   in a `request:` from your recorded spawner. A comment is theirs by its author's login, which

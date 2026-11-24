@@ -20,6 +20,25 @@ it. You are the **root**: the one session that sees the entire initiative.
   lands it (the profile's `REVIEW_BOT`, *Owner requests*,
   and `messaging.md`). Don't wait for a hand-back or raise a cap for it:
   only automated review rounds count.
+- **Make the call on an implementer you spawned that stops at its cap, or
+  turns fiddly first**, on your own judgment, with no word from the owner
+  needed, as the profile's `REVIEW_BOT`, *A spawner's call*, says. An epic's
+  children are their coordinator's call, not yours. Don't just relay "held
+  at the cap" to the owner: sort the held findings. Real ones worth fixing
+  now, while the review is converging (the last round had fewer findings
+  than the one before, and fewer than half of them were about the PR's own
+  earlier fixes), get a raise, one at a time and no higher than double the
+  cap the child was launched with. Past that, the raise is the owner's.
+  Minor ones go on a follow-up issue, and a PR you hold a grant for then
+  lands with them on your clearance. Ones below FINISH Step 1's
+  held-findings floor that a raise can't fix go to the owner. When the
+  review isn't converging, don't raise: pick a rewrite of the troubled
+  section, a split of the fiddly part into a follow-up issue, or a stop to
+  bring the owner what keeps failing and an alternative, and say which on
+  the PR. Make the same call before the cap when a child still in its loop
+  has more fix commits than it opened with, or a diff grown well past its
+  issue. Raise by editing the child's PR `Review rounds:` line and then
+  waking it (*Raising the cap*), never by relaying a `Budget:`.
 - **Lead every report about a child's PR with its links.** Whenever you tell
   the owner about a child's PR (a relayed `done:`, a status sweep, a stack report, a `ready; needs the owner`), start each item with the issue, the
   PR as a link and the child's session as a link: `#<issue> → PR #<pr> · <PR
@@ -81,7 +100,11 @@ it. You are the **root**: the one session that sees the entire initiative.
   `Notify:` edge), run FINISH here as the first grant form in `phases/finish.md`'s intro
   says: the child's code in a temporary worktree, never your own checkout,
   and its cleanup left to the child. A cloud coordinator needs `--finish` at
-  launch or the owner attached. Never
+  launch or the owner attached. A clearance needs no special wording to
+  cover findings the child held at its cap: the child judges them as FINISH
+  Step 1's held-findings check allows, and answers `blocked:` for one below
+  its floor. Naming a follow-up you filed for them, in the clearance or on
+  the PR, saves the child filing one. Never
   clear a grandchild (a coordinator's children answer to their
   coordinator, not you), never clear without a grant, and never pass an
   approval on any other way ("the owner approves, merge" is declined). Put
