@@ -703,8 +703,9 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	}
 	jq --arg r "$ref" '.prs[$r] // {}' "$work_state" >"$run_tmp/ps.json"
 	echo '{}' >"$edf"
+	echo '{}' >"$edf.texts"
 	set -- --slurpfile tl "$run_tmp/tl.json" --slurpfile pr "$run_tmp/pr.json" --slurpfile psf "$run_tmp/ps.json" \
-		--slurpfile edf "$edf" --arg me "$my_login" --argjson bots "$review_bots" --arg baseline "$baseline" \
+		--slurpfile edf "$edf" --slurpfile txf "$edf.texts" --arg me "$my_login" --argjson bots "$review_bots" --arg baseline "$baseline" \
 		--argjson now "$now" --argjson retry_window "$retry_window" --argjson owner_text "$owner_text" \
 		--argjson text_store $((owner_text_cap * 4))
 	# Who edited each comment edited since it was last seen: the REST
@@ -715,10 +716,11 @@ examine() { # examine <ref>: reads the PR and queues its new events; 1 if a read
 	# The owner's new items: their text, last edit and editor in one read,
 	# and an owner check for each editor it names. Nothing else is read for
 	# text, so a stranger's items cost no query. One that can't be read is
-	# quoted not at all.
+	# quoted not at all. This read is kept apart from the one above, which
+	# alone decides an edit's verdict, so an editor that changes between the
+	# two can cost the quote but never the wake.
 	if [ "$owner_text" = true ]; then
 		edit_authors "$edf.texts" body < <(jq -nr --arg phase texts --argjson owners "$owners" "$@" -f "$examine_jq")
-		jq -cs '(.[0] // {}) + (.[1] // {})' "$edf" "$edf.texts" >"$edf.new" 2>/dev/null && mv -f "$edf.new" "$edf"
 		check_owners "$repo_path" texts_need "$@"
 	fi
 	result=$run_tmp/result.json
@@ -1097,7 +1099,7 @@ landed() { # landed <message id> <transcript...>: the message is a turn in the s
 relay_prompt() { # relay_prompt <address> <text>: what the relay session is asked to do
 	printf '%s\n' "You relay one message for pr-notifier. Call the SendMessage tool exactly once. Set its \"to\" to exactly this address:" \
 		"$1" \
-		"Set its \"message\" to exactly the text between the BEGIN and END lines below, verbatim: no added words, no quotes, nothing left out. Call no other tool, then stop." \
+		"Set its \"message\" to exactly the text between the BEGIN and END lines below, verbatim: no added words, no quotation marks around it, nothing left out, and every line kept exactly as written, including lines that start with spaces or with >. Call no other tool, then stop." \
 		BEGIN "$2" END
 }
 

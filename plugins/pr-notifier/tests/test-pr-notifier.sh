@@ -142,10 +142,14 @@ graphql)
 		else
 			b=$(jq -rn --arg id "$id" '[inputs | .. | objects | select(.node_id? == $id) | .body // ""] | first // ""' "$STUB"/timeline-*.json)
 		fi
+		# $STUB/text-editor-<node id> answers the body query alone, as an
+		# editor that changed between the two reads.
+		ef=$STUB/editor-$id
+		[ -z "$want_body" ] || [ ! -f "$STUB/text-editor-$id" ] || ef=$STUB/text-editor-$id
 		if [ -f "$STUB/missing-$id" ]; then
 			echo null
-		elif [ -f "$STUB/editor-$id" ]; then
-			read -r l t e <"$STUB/editor-$id"
+		elif [ -f "$ef" ]; then
+			read -r l t e <"$ef"
 			jq -n --arg id "$id" --arg l "$l" --arg t "$t" --arg e "$e" --arg b "$b" \
 				'{id: $id, lastEditedAt: $e, body: $b, editor: {login: $l, __typename: $t}}'
 		elif [ -f "$STUB/ghost-$id" ]; then
@@ -763,6 +767,33 @@ timeline 7 "$(rv 7 606 mari User "$T1" changes_requested "$H" 'edited since')"
 nt "$T" check
 record "updated=$edited_at" "an owner's review edited before the read shows GraphQL's edit time, though REST shows none" \
 	"$(prompt | sed -n 3p | grep -o 'updated=[^ ]*')"
+
+# The edits read alone decides an edit's verdict, and the texts read alone a
+# quote: an editor that changes between the two costs the quote, never the wake.
+for late in eve sprue-works-bot; do
+	reset
+	timeline 7 "$(comment 7 895 mari User "$pre" "$pre" 'before')"
+	nt "$T" check
+	editor 895 mari
+	echo "$late User 2026-10-01T00:00:00Z" >"$STUB/text-editor-IC_895"
+	timeline 7 "$(comment 7 895 mari User "$pre" "$(iso $((T + 100)))" 'SECRET after')"
+	nt $((T + 400)) check
+	record "1|by=mari|text=unverified|no" "the owner's edit still wakes when the texts read names $late as the editor, with no quote" \
+		"$(wakes)|$(prompt | sed -n 3p | grep -o 'by=[^ ]*')|$(prompt | sed -n 3p | awk '{ print $NF }')|$(prompt | grep -q SECRET && echo yes || echo no)"
+done
+
+reset
+settings '{"owner_text_cap": 20}'
+timeline 7 "$(comment 7 896 mari User "$T1" "$T1" "$(printf 'aaaaaaaaaaaaaaaaaa\n\nbbbb')")"
+nt "$T" check
+record "- comment $U#issuecomment-896 by=mari type=User at=$T1 text=truncated
+  > aaaaaaaaaaaaaaaaaa" 'a quote cut right after a blank line ends on text, not on a blank quote line' "$(prompt | tail -n +3)"
+
+reset
+timeline 7 "$(comment 7 897 mari User "$T1" "$T1" '/finish-ticket once green, and see /usr/bin/env')"
+nt "$T" check
+record "no|yes" "a slash command in a quote loses its slash, so no command name reaches the prompt; a path keeps it" \
+	"$(prompt | grep -q '/finish-ticket' && echo yes || echo no)|$(prompt | grep -q 'see /usr/bin/env' && echo yes || echo no)"
 
 reset
 settings '{"owner_text_cap": 40}'

@@ -445,8 +445,9 @@ state, commit and line-comment count, each line comment's file and line (a revie
 listed under it), and the PR's head and base. Each is a closed-set word, a number, a
 sha, a timestamp, or a login, path or branch checked against a strict pattern, and one
 that fails renders as `?`. The owner's own text is quoted too: an item's whose author
-`owner-check.sh` accepted with exit 0 on that read, and, when GraphQL shows an edit,
-whose last editor it accepted as well. Each item's text is capped (`owner_text_cap`),
+`owner-check.sh` accepted with exit 0 on that read (or within `owner_ttl` before it,
+since only a yes is cached), and, when GraphQL shows an edit, whose last editor it
+accepted as well. Each item's text is capped (`owner_text_cap`),
 the wake's in all (`owner_text_budget`), and it is cleaned of control and invisible
 characters, with every line prefixed `> `, so no line of it can pass for a line of the
 template.

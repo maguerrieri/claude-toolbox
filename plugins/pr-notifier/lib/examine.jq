@@ -14,7 +14,7 @@
 #           and of the owner's edited comments, whose body, last edit and
 #           editor the notifier reads through GraphQL in one query, for the
 #           text the wake quotes
-#   texts_need  the editors GraphQL named for those, to check in turn
+#   texts_need  every editor that read named, to check in turn
 #   result  prints {ps, events, log}: the PR's new cursor, the events to
 #           queue (each with its details), and one record per filtered item
 #           for the log
@@ -30,10 +30,13 @@
 #   $retry_window  --argjson: seconds a failed owner check is retried
 #   $owner_text    --argjson: whether the owner's text may ride the wake
 #   $text_store    --argjson: characters of an item's text kept for the wake
-#   $edf           --slurpfile: {node id: {edited_at, body, login, type}},
-#                  login and type only when GraphQL names an editor (need,
-#                  texts, texts_need, result); a file, since bodies can be
-#                  too long for an argument
+#   $edf           --slurpfile: the edits phase's read, {node id: {edited_at,
+#                  login, type}}, login and type only when GraphQL names an
+#                  editor (need, texts, texts_need, result); it alone decides
+#                  an edit's verdict
+#   $txf           --slurpfile: the texts phase's read, the same with body
+#                  (texts_need, result), which alone decides a quote; files,
+#                  since bodies can be too long for an argument
 #   $owners        --argjson: {lowercased login: owner-check exit code} (result)
 #
 # An event's details are raw values as GitHub gave them. lib/wake.jq checks
@@ -120,6 +123,7 @@ def record($i; $verdict; $reason):
 | [ $items[] | select($seenset[.key] | not) ] as $new
 | ($ps.comments // {}) as $tracked
 | (($edf // [])[0] // {}) as $editors
+| (($txf // [])[0] // {}) as $texts
 # A comment's updated_at as last recorded. One with no entry was last seen
 # unedited, so its creation time stands in.
 | def prev_updated($i): (($tracked[$i.id] // {}).updated_at) // $i.at;
@@ -159,7 +163,7 @@ def record($i; $verdict; $reason):
 # GraphQL can't name, last edited; {} for anyone else's.
   def owner_text($i):
     if ($owner_text | not) or (owner_ok($i) | not) then {}
-    else ($editors[$i.node_id // ""] // null) as $ed
+    else ($texts[$i.node_id // ""] // null) as $ed
       | if $ed == null or ($ed.body | type) != "string" then {text_unverified: true}
         elif $ed.edited_at != null and (($ed.login // "") == "" or (owner_ok({actor: $ed.login, type: ($ed.type // "")}) | not))
         then {text_unverified: true}
@@ -171,7 +175,7 @@ def record($i; $verdict; $reason):
 # review object can trail a body edit, so an owner's review edited before
 # this read shows the edit.
   def stamp($i):
-    ([$i.updated_at, ($editors[$i.node_id // ""].edited_at // null)]
+    ([$i.updated_at, ($editors[$i.node_id // ""].edited_at // null), ($texts[$i.node_id // ""].edited_at // null)]
      | map(select(type == "string" and . != "")) | max) as $u
     | {by: $i.actor, type: $i.type, at: $i.at}
       + (if $u != null and $u != $i.at then {updated: $u} else {} end);
@@ -234,8 +238,10 @@ def record($i; $verdict; $reason):
     # new ones, and edited comments of the owner's.
     [ text_candidates | .node_id | select(type == "string" and . != "") ] | unique | .[]
   elif $phase == "texts_need" then
-    # The editors GraphQL named for them.
-    [ text_candidates | edit(.) // empty | select(needs_owner(.)) | .actor ] | unique_by(lc) | .[]
+    # Every editor the texts read named that needs a check, whoever the
+    # edits read named: the quote is decided by this read alone.
+    [ $texts[] | select(type == "object" and (.login // "") != "") | {actor: .login, type: (.type // "")}
+      | select(needs_owner(.)) | .actor ] | unique_by(lc) | .[]
   else
     ($pr[0] // {}) as $p
     | reduce $new[] as $i (
