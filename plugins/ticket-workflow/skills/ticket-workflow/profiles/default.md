@@ -550,9 +550,13 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     is reached or the review is clean, starting with the fixes it held: the `agree, held` lines of
     its last disposition comment (leave that comment as posted; the next round's answer supersedes
     it) and any held self-review lines in the body, each rewritten to `fixed in <sha> — …` as its
-    fix lands (START Step 7). A raise that came with its spawner's `cap call:` for a rewrite or a
-    split (*A spawner's call*, below) is spent on that call instead: the one rewrite, or taking
-    the named part out, then the hand-back. With a `Notify:` spawner, it also pings
+    fix lands (START Step 7). Before it resumes, it reads its PR for a `Cap call:` comment newer
+    than its last hand-back, from the login its spawn tree posts as (*A spawner's call*, below),
+    however the raise reached it. A raise that came with a rewrite or split call is spent on that
+    call instead: the one rewrite, or taking the named part out, then the hand-back. That round's
+    disposition comment carries forward, as an `agree, held at the round cap` line counted in
+    `<m>`, every finding it held before and didn't fix, so none drops off the record FINISH Step
+    1 reads. With a `Notify:` spawner, it also pings
     `resumed: cap <c> on <header>` (`messaging.md`'s *Naming a PR*). A hint whose PR line shows no raise changes nothing: the child
     stays handed back and says so, to the sender on a local edge or in a PR comment on cloud.
     Verified live on 2026-09-25 (#175). A local spawned child in auto mode, handed back at cap 1,
@@ -622,7 +626,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     Then tell the child, after the comment and after the raise when there is one: on a local
     edge, SendMessage it `cap call: <rewrite <section> | split <part> to #<follow-up> | stop> on
     #<issue> → PR #<pr>`; on cloud, where no message reaches it, schedule the one-shot Routine a
-    `raise:` hint uses (EPIC Step 6) with `cap call: #<issue> → PR #<pr> <comment URL>`. It is a
+    `raise:` hint uses (EPIC Step 6) with `cap call: #<issue> → PR #<pr> <comment URL>`. With a
+    raise, this line takes the place of *Raising the cap*'s `raise:` hint (edit and re-read the
+    line as that bullet says, but send no `raise:`), so the child's first wake carries both. It is a
     redirect about the child's own issue (`messaging.md`). The child takes a message only from
     its recorded spawner, checked as a `finish:` clearance's sender is, and on cloud reads the
     `Cap call:` comment only from the login its spawn tree posts as (*Owner requests*). Mid-loop,

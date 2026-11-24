@@ -205,7 +205,8 @@ receivers and greps treat the two channels uniformly:
   `REVIEW_BOT`, *A spawner's call*). Otherwise the raise is the owner's, and
   a review that isn't converging gets a `cap call:` instead.
 - **`cap call:`** (spawner → child, after posting its `Cap call:` comment on
-  the child's PR, and after the raise when there is one): `cap call: <rewrite
+  the child's PR, and after the raise when there is one, in place of that
+  raise's `raise:` hint): `cap call: <rewrite
   <section> | split <part> to #<follow-up> | stop> on #<issue> → PR #<pr>`,
   the spawner's choice when a capped child's review isn't converging or a
   child turns fiddly before its cap. It is a redirect about the child's own
