@@ -43,7 +43,10 @@ role and wins over a plain one wherever each sits. Between two lines of the same
 project memory beats this file's, and this file's beats one in the user's own global
 `CLAUDE.md` (in the Claude config directory), which is where a default for every repo goes. With none, launches pass no model
 and Claude Code's default applies; a resumed session keeps the model it was launched with.
-The skill's `launch-model.md` has the rules. This repo sets none.)
+The skill's `launch-model.md` has the rules.
+A monorepo can add a `Session projects: <dirs>` line, e.g. `services/* apps/*`,
+so a spawned session's name leads with the issue's project instead of the repo;
+the skill's Step 0 defines it. This repo sets none of these.)
 
 Work is tracked in **GitHub Issues**. Commits follow the `conventions`
 plugin's format: `[#<n>] (flags) scope: description` — the GitHub issue in

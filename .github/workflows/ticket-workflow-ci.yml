@@ -51,3 +51,5 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-session-links.sh
       - name: Hand-back header tests
         run: bash plugins/ticket-workflow/tests/test-handback-header.sh
+      - name: Session-prefix tests
+        run: bash plugins/ticket-workflow/tests/test-session-prefix.sh
