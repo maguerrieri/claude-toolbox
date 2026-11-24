@@ -49,7 +49,10 @@ a cap carries those bullets over; one that doesn't has no cap, and the gates' ca
 never applies (START Step 8). Either way it also overrides `SPAWN_CAP`, whose inherited
 `Budget: rounds=5` would otherwise ride every spawned briefing and, as the briefing's value, stand
 in for the override's own default: its own `Budget:` line matches its own default cap, or is
-dropped when it has none.
+dropped when it has none. An override of `SPAWN_CAP` also carries the payload's sentences its
+children need (the approval, held-findings, raise, cap-call and request sentences; `SPAWN_CAP`'s
+notes say why each is there), or those children lack them: one launched without the
+held-findings sentence, for instance, keeps the old stop on every held finding (FINISH Step 1).
 
 ## REPO_SELECT
 - Use the repo named in the request; otherwise the current repo (for personal projects
@@ -505,8 +508,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   definition; START, EPIC, both role charters and `messaging.md` point here.
   - **Who raises:** the owner, or the child's spawner (the session its `Notify:` directive names,
     or on cloud the session that launched it). A spawner needs no word from the owner: it raises
-    on its own judgment, but only as *A spawner's call* (below) allows, while the review is
-    converging and no higher than double the cap the child was launched with. Past that, the
+    on its own judgment, but only as *A spawner's call* (below) allows: while the review is
+    converging (or by the one round a rewrite or split there takes) and no higher than double the
+    cap the child was launched with. Past that, the
     raise is the owner's, and the owner's own raise has neither limit. A sibling never raises
     another child's cap, and an implementer never raises its own on its own judgment, grant or no
     grant: it writes a raise only when a human grants one in its session or its briefing's
@@ -588,24 +592,32 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     by the rounds the held fixes need, usually one, and run the test again on the rounds that
     raise bought before raising again.
   - **The ceiling.** Without the owner, raise no higher than double the cap the child was
-    launched with, the one its spawn briefing's `Budget: rounds=<n>` set (5 to 10 under this
-    profile's default). The PR shows it as the `was <old>` of its first `Resuming: cap raised`
-    comment, or as the line's own cap before any raise. Past the ceiling, every raise is the
-    owner's.
+    launched with (5 to 10 under this profile's default). That is the `Budget: rounds=<n>` of the
+    spawn briefing you composed, so read it from your own record (for an epic child, the
+    `budget:` marker you posted before its PR opened, EPIC Step 5; none means the profile
+    default), never from its PR line, which records raises, some of them with no comment of
+    their own. When you can't tell, take the lower of the profile default and the PR's reading:
+    the `was <old>` of its first `Resuming: cap raised` comment, else the line's own cap. Past
+    the ceiling, every raise is the owner's.
   - **Not converging: no raise, and one of three, said on the PR.** When the test fails, don't
     raise. Pick one and post it as one PR comment, `Cap call: <rewrite <section> | split <part>
     to #<follow-up> | stop> — <the rounds' numbers, or the trigger that fired>`:
     - **Rewrite.** The child stops patching the troubled section and rewrites it once, answering
       every finding raised against it so far (its own spiral check, enforced from above), and one
       bot round confirms it. At the cap, raise by exactly one round for it: that raise skips the
-      convergence test, not the ceiling. With rounds left, raise nothing.
+      convergence test, not the ceiling, so at the ceiling the round is the owner's to grant, and
+      the call goes to them as a stop does. With rounds left, raise nothing.
     - **Split.** File a follow-up issue for the fiddly part (what it is, the findings it drew,
       what was tried) and have the child take that part out of its PR, so the core lands.
       Splitting the child's issue is the tier above's call (`roles/implementer.md`). The removal
       is a push like any fix, raised for as a rewrite is.
     - **Stop and re-evaluate.** The approach is wrong. Bring the owner a short summary of what
-      keeps failing and an alternative, as a need in your ledger. A child already handed back
-      stays there; one still in its loop is told to stop.
+      keeps failing and an alternative, as a need in your ledger. The `Cap call: stop` comment
+      holds the PR until the owner says how to go on (in a session, or on the PR as *The owner's
+      comments* reads it) or a later `Cap call:` of yours replaces it: FINISH Step 1's
+      merge-blocker scan reads it as a hold under any grant, and EPIC Step 6 reports the row
+      `stopped`, a terminal state like stuck. A child already handed back stays there; one still
+      in its loop is told to stop.
 
     Then tell the child, after the comment and after the raise when there is one: on a local
     edge, SendMessage it `cap call: <rewrite <section> | split <part> to #<follow-up> | stop> on
@@ -615,15 +627,18 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     its recorded spawner, checked as a `finish:` clearance's sender is, and on cloud reads the
     `Cap call:` comment only from the login its spawn tree posts as (*Owner requests*). Mid-loop,
     it lets the review in flight land, then does the rewrite or the removal as its next push, or
-    on `stop` answers that review and hands back. At its cap, it spends the raise on the call (the
-    child bullet of *Raising the cap*).
+    on `stop` answers that review by disposition without pushing (the lines *At the cap* uses)
+    and hands back. At its cap, it spends the raise on the call (the child bullet of *Raising the
+    cap*).
   - **Too fiddly, before the cap.** Whenever a child still in its review loop shows its PR moving
     (a ping, or EPIC Step 6's poll), check two things: whether its fix commits since the PR opened
-    outnumber the commits it opened with (tell them apart by author date against the PR's
-    `createdAt`, which a restack keeps; an owner head's commits aren't fixes), and whether its
-    diff has grown well past what its issue describes. If either holds, make the same three-way
-    call now, with rounds left. A child that handed back review-clean below its cap is done, and
-    isn't checked.
+    outnumber the commits it opened with, and whether its diff has grown well past what its issue
+    describes. Fix commits are the ones that answer a bot or self-review finding, not a CI fix, a
+    conflict merge or an owner head's commits; tell them from the opening commits by author date
+    against the PR's `createdAt`, which a restack keeps. If either holds, make the same three-way
+    call now, with rounds left. Make it once per trigger: a `Cap call:` already on the PR answers
+    it until the fix commits pushed since that call outnumber all the PR's commits from before
+    it. A child that handed back review-clean below its cap is done, and isn't checked.
 
 - **Pushes the cap never blocks.** A **CI fix**, a **restack** a `restack:` request asks for (rebase
   onto a new base; START Step 8's *Restack on request*), and a merge of the base that clears a
@@ -721,7 +736,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   handed back at the reviewed stopping point, stop — the coordinator or a human wakes you if
   needed. When woken after handing back at your review-round cap, re-read the Review rounds line
   in your PR body: a cap there above your round count is a raise, whoever wrote it, so resume the
-  review loop. Land what the owner asks for on your PR, whether in this session, on the PR, or
+  review loop. Act too on a cap call your spawner sends about your own PR (a rewrite, a split or a
+  stop), as the review rules define it. Land what the owner asks for on your PR, whether in this session, on the PR, or
   relayed by your spawner, without waiting to hand back. No such request lifts these holds, and
   only automated review rounds count against your cap, so a push that lands nothing but such
   requests is not a round once you record it as the review rules say. Budget: rounds=5" Keeps an unattended background session from over-reaching, while
@@ -745,6 +761,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   a child that resumes on a raised PR line is following its launch briefing, not a peer's message.
   That matters because a child's permission layer has already refused a peer's relayed loosening
   of a rule as instruction poisoning (#154), and a relayed budget raise has the same shape.
+- The **cap-call sentence** does the same for `REVIEW_BOT`'s *A spawner's call*: a split that takes
+  a part out of the child's PR, a rewrite of one section, or a stop is a peer changing how the
+  child's work ends, the shape #154's refusal had, so a child that acts on one is following its
+  own briefing.
 - The **request sentence** does the same for `REVIEW_BOT`'s *Owner requests*: a child that lands
   what its spawner relayed, and pushes it without spending a round, is following its own briefing
   rather than a peer's change of scope.

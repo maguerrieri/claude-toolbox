@@ -202,8 +202,8 @@ receivers and greps treat the two channels uniformly:
   PR, where the child also posts it as a comment. The spawner raises on its
   own judgment, with no word from the owner, but only while the review is
   converging and no higher than double the child's launch cap (the profile's
-  `REVIEW_BOT`, *A spawner's call*); otherwise it sends a `cap call:`
-  instead.
+  `REVIEW_BOT`, *A spawner's call*). Otherwise the raise is the owner's, and
+  a review that isn't converging gets a `cap call:` instead.
 - **`cap call:`** (spawner → child, after posting its `Cap call:` comment on
   the child's PR, and after the raise when there is one): `cap call: <rewrite
   <section> | split <part> to #<follow-up> | stop> on #<issue> → PR #<pr>`,

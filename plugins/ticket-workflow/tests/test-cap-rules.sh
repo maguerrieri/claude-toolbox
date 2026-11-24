@@ -59,11 +59,15 @@ for sentence in \
 	'A grant you hold also covers findings you held at your review-round cap' \
 	'Do not arm a periodic PR check-in' \
 	'a cap there above your round count is a raise, whoever wrote it' \
+	'Act too on a cap call your spawner sends about your own PR' \
 	'Land what the owner asks for on your PR'; do
 	record 1 "SPAWN_CAP payload carries: $sentence" \
 		"$(printf '%s\n' "$payload" | grep -cF -- "$sentence")"
 done
 record 1 "SPAWN_CAP's notes explain the held-findings sentence" "$(has "$profile" '- The **held-findings sentence** puts')"
+record 1 "SPAWN_CAP's notes explain the cap-call sentence" "$(has "$profile" '- The **cap-call sentence** does')"
+record 1 "an override of SPAWN_CAP is told to carry the payload's sentences" \
+	"$(has "$profile" "An override of \`SPAWN_CAP\` also carries the payload's sentences")"
 
 # --- FINISH Step 1's held-findings check -------------------------------------
 
@@ -109,5 +113,10 @@ for f in roles/planner.md roles/epic-coordinator.md roles/implementer.md phases/
 	record 1 "$f points to A spawner's call" "$(has "$skill/$f" "*A spawner's call*")"
 done
 record 1 "messaging.md defines the cap call: redirect" "$(grep -c '^- \*\*`cap call:`\*\* ' "$skill/messaging.md")"
+record 1 "EPIC Step 6's cloud redirects carry the cap call: hint" \
+	"$(has "$epic_md" '`cap call: #<issue> → PR #<pr> <comment URL>` hint')"
+record 1 "a stop call holds the merge in FINISH Step 1's merge-blocker scan" \
+	"$(has "$finish_md" "a spawner's \`Cap call: stop\` comment that the owner hasn't answered")"
+record 1 "EPIC reports a stopped row as terminal" "$(has "$epic_md" 'reported **stuck** with what was tried, **stopped** by your')"
 
 finish
