@@ -140,9 +140,6 @@ def record($i; $verdict; $reason):
 # phases: an item the filter decides, by a login that is neither the
 # sessions' own nor a bot's.
   def needs_owner($i): class($i) == "check";
-# An item whose REST times differ, for the wake's updated token only: whose
-# text rides is GraphQL's call (owner_text).
-  def looks_edited($i): ($i.updated_at // "") != "" and $i.updated_at != $i.at;
 # The owner check accepted this login (exit 0) on this read.
   def owner_ok($i): needs_owner($i) and $owners[$i.actor | lc] == 0;
 # Items whose text may ride the wake: new ones by an author the owner check
@@ -169,9 +166,15 @@ def record($i; $verdict; $reason):
         else {text: $ed.body[0:$text_store], text_cut: (($ed.body | length) > $text_store)} end
     end;
 # Who and when, as the wake shows it: the item's creation, and its last
-# update when that differs.
-  def stamp($i): {by: $i.actor, type: $i.type, at: $i.at}
-    + (if looks_edited($i) then {updated: $i.updated_at} else {} end);
+# update when that differs: the later of REST's updated_at and the
+# lastEditedAt GraphQL returned for it, when this examine read one. REST's
+# review object can trail a body edit, so an owner's review edited before
+# this read shows the edit.
+  def stamp($i):
+    ([$i.updated_at, ($editors[$i.node_id // ""].edited_at // null)]
+     | map(select(type == "string" and . != "")) | max) as $u
+    | {by: $i.actor, type: $i.type, at: $i.at}
+      + (if $u != null and $u != $i.at then {updated: $u} else {} end);
 # Where a line comment sits. An outdated one keeps its original line.
   def place($c):
     ($c.line // $c.original_line) as $l

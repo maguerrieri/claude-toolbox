@@ -660,7 +660,7 @@ nt "$T" check
 record "- comment $U#issuecomment-801 by=mari type=User at=$T1 updated=$up text=unverified
 - comment $U#issuecomment-802 by=mari type=User at=$T1 updated=$up text=full
   > edited by mari
-- comment $U#issuecomment-803 by=mari type=User at=$T1 updated=$up text=unverified
+- comment $U#issuecomment-803 by=mari type=User at=$T1 updated=2026-11-01T00:00:00Z text=unverified
 - comment $U#issuecomment-804 by=mari type=User at=$T1 updated=$up text=full
   > updated, never edited" \
 	"the owner's comment carries its text unless someone else, or an editor GraphQL can't name, last edited it, which it marks unverified" \
@@ -753,6 +753,16 @@ timeline 7 "$(comment 7 893 mari User "$pre" "$(iso $((T + 100)))" 'after')"
 nt $((T + 400)) check
 record "1:no,1:body|  > after" "the owner's own edit is read once without its body, then once with it, and quoted" \
 	"$(paste -sd, - <"$STUB/editors.sizes")|$(prompt | tail -n 1)"
+
+# A review's REST times can trail an edit of its body; GraphQL's lastEditedAt,
+# when the notifier read one, is the wake's updated.
+reset
+edited_at=$(iso $((T0 + 300)))
+echo "mari User $edited_at" >"$STUB/editor-PRR_606"
+timeline 7 "$(rv 7 606 mari User "$T1" changes_requested "$H" 'edited since')"
+nt "$T" check
+record "updated=$edited_at" "an owner's review edited before the read shows GraphQL's edit time, though REST shows none" \
+	"$(prompt | sed -n 3p | grep -o 'updated=[^ ]*')"
 
 reset
 settings '{"owner_text_cap": 40}'

@@ -105,7 +105,10 @@ PR https://github.com/<owner>/<repo>/pull/<n> <open|merged|closed>[ head=<sha>][
   - who and when: `by` (the login that acted: an item's author, an edit's editor, a
     merge's merger; a close has none), `type` (GitHub's account type, `User` or `Bot`),
     `at` (when the item was created, or the PR merged or closed), and `updated` (its last
-    update, when that differs from `at`);
+    update as of the notifier's read, when that differs from `at`: the later of REST's
+    `updated_at` and the GraphQL `lastEditedAt` the notifier read for an owner's item or
+    an edited comment; an edit after that read, or a bot's review edited at any time,
+    doesn't show);
   - a review: `state` (`approved`, `changes_requested`, `commented` or `dismissed`),
     `commit` (the commit it was left on, or Codex's summary's), `on_head` (`yes` when that
     is the `PR` line's `head`, else `no`) and `comments` (how many line comments it has);
