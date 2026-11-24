@@ -103,8 +103,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   launch or the owner attached. A clearance needs no special wording to
   cover findings the child held at its cap: the child judges them as FINISH
   Step 1's held-findings check allows, and answers `blocked:` for one below
-  its floor. Naming a follow-up you filed for them, in the clearance or on
-  the PR, saves the child filing one. Never
+  its floor. A follow-up you filed for them, named on the PR in a `Held
+  findings → #<id>` comment, saves the child filing one. Never
   clear a grandchild (a coordinator's children answer to their
   coordinator, not you), never clear without a grant, and never pass an
   approval on any other way ("the owner approves, merge" is declined). Put

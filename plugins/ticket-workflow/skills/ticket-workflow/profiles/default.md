@@ -592,9 +592,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     had fewer findings than the one before it, and fewer than half of the last round's findings
     are about code that an earlier fix in this same PR introduced (lines that a commit pushed
     after the PR opened, in answer to a finding, added or changed). With fewer than two counted
-    rounds there is nothing to compare, so the raise is the owner's. One raise at a time: raise
-    by the rounds the held fixes need, usually one, and run the test again on the rounds that
-    raise bought before raising again.
+    rounds there is nothing to compare, so the test neither passes nor fails: make no raise and
+    no cap call, leave the raise to the owner, and sort the rest of the held findings as above.
+    One raise at a time: raise by the rounds the held fixes need, usually one, and run the test
+    again on the rounds that raise bought before raising again.
   - **The ceiling.** Without the owner, raise no higher than double the cap the child was
     launched with (5 to 10 under this profile's default). That is the `Budget: rounds=<n>` of the
     spawn briefing you composed, so read it from your own record (for an epic child, the
@@ -608,34 +609,41 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     to #<follow-up> | stop> — <the rounds' numbers, or the trigger that fired>`:
     - **Rewrite.** The child stops patching the troubled section and rewrites it once, answering
       every finding raised against it so far (its own spiral check, enforced from above), and one
-      bot round confirms it. At the cap, raise by exactly one round for it: that raise skips the
-      convergence test, not the ceiling, so at the ceiling the round is the owner's to grant, and
-      the call goes to them as a stop does. With rounds left, raise nothing.
+      bot round confirms it. At the cap, raise by exactly one round for it, a raise that skips the
+      convergence test but not the ceiling. With rounds left, raise nothing.
     - **Split.** File a follow-up issue for the fiddly part (what it is, the findings it drew,
       what was tried) and have the child take that part out of its PR, so the core lands.
       Splitting the child's issue is the tier above's call (`roles/implementer.md`). The removal
       is a push like any fix, raised for as a rewrite is.
     - **Stop and re-evaluate.** The approach is wrong. Bring the owner a short summary of what
-      keeps failing and an alternative, as a need in your ledger. The `Cap call: stop` comment
-      holds the PR until the owner says how to go on (in a session, or on the PR as *The owner's
-      comments* reads it) or a later `Cap call:` of yours replaces it: FINISH Step 1's
-      merge-blocker scan reads it as a hold under any grant, and EPIC Step 6 reports the row
-      `stopped`, a terminal state like stuck. A child already handed back stays there; one still
-      in its loop is told to stop.
+      keeps failing and an alternative, as a need in your ledger. A child already handed back
+      stays there; one still in its loop is told to stop.
 
-    Then tell the child, after the comment and after the raise when there is one: on a local
+    At the ceiling, where the round a rewrite or split needs is the owner's to grant, the call is
+    a stop: post `Cap call: stop`, naming the rewrite or split you'd recommend.
+  - **A stop holds the PR until it is lifted.** FINISH Step 1's merge-blocker scan reads an
+    unlifted `Cap call: stop` as a hold under any grant, and EPIC Step 6 reports its row
+    `stopped`, a terminal state like stuck. A later `Cap call:` comment lifts it: a new call of
+    the spawner's, or `Cap call: lifted — <the owner's words> (owner: <where and when>)`, which
+    whichever session in the tree hears the owner's answer posts (the spawner, the child, or its
+    coordinator), as a `Merge hold:` is recorded (`phases/finish.md`, *The owner's approval*). A
+    raise of the PR line made after the stop, with no newer `Cap call:`, is the owner's answer
+    too, since a spawner that stopped a child doesn't raise it: the child posts the lifted line
+    for it, `cap raised to <c>` as the words, when it resumes.
+  - **Telling the child.** After the comment, and after the raise when there is one: on a local
     edge, SendMessage it `cap call: <rewrite <section> | split <part> to #<follow-up> | stop> on
     #<issue> → PR #<pr>`; on cloud, where no message reaches it, schedule the one-shot Routine a
     `raise:` hint uses (EPIC Step 6) with `cap call: #<issue> → PR #<pr> <comment URL>`. With a
     raise, this line takes the place of *Raising the cap*'s `raise:` hint (edit and re-read the
-    line as that bullet says, but send no `raise:`), so the child's first wake carries both. It is a
-    redirect about the child's own issue (`messaging.md`). The child takes a message only from
-    its recorded spawner, checked as a `finish:` clearance's sender is, and on cloud reads the
-    `Cap call:` comment only from the login its spawn tree posts as (*Owner requests*). Mid-loop,
-    it lets the review in flight land, then does the rewrite or the removal as its next push, or
-    on `stop` answers that review by disposition without pushing (the lines *At the cap* uses)
-    and hands back. At its cap, it spends the raise on the call (the child bullet of *Raising the
-    cap*).
+    line as that bullet says, but send no `raise:`), so the child's first wake carries both. It
+    is a redirect about the child's own issue (`messaging.md`). The child takes a message only
+    from its recorded spawner, checked as a `finish:` clearance's sender is, and on cloud reads
+    the `Cap call:` comment only from the login its spawn tree posts as (*Owner requests*).
+    Mid-loop, it lets the review in flight land, then does the rewrite or the removal as its next
+    push, or on `stop` answers that review by disposition without pushing (the lines *At the cap*
+    uses), counts its `agree, held` lines in the `Review rounds:` line's `<m>` even below the
+    cap, so FINISH Step 1's held-findings check finds them once the stop is lifted, and hands
+    back. At its cap, it spends the raise on the call (the child bullet of *Raising the cap*).
   - **Too fiddly, before the cap.** Whenever a child still in its review loop shows its PR moving
     (a ping, or EPIC Step 6's poll), check two things: whether its fix commits since the PR opened
     outnumber the commits it opened with, and whether its diff has grown well past what its issue

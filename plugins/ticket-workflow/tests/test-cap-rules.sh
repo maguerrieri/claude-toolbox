@@ -102,7 +102,8 @@ record "" "no doc keeps the old stop on held findings" "$old"
 record 1 "REVIEW_BOT defines A spawner's call" "$(grep -c "^- \*\*A spawner's call: " "$profile")"
 for part in '**When.**' '**Sort the held findings.**' '**The convergence test, before each raise.**' \
 	'**The ceiling.**' '**Not converging: no raise, and one of three, said on the PR.**' \
-	'**Rewrite.**' '**Split.**' '**Stop and re-evaluate.**' '**Too fiddly, before the cap.**'; do
+	'**Rewrite.**' '**Split.**' '**Stop and re-evaluate.**' '**Telling the child.**' \
+	'**Too fiddly, before the cap.**'; do
 	record 1 "A spawner's call has its part $part" "$(has "$profile" "$part")"
 done
 record 1 "Who raises says a spawner needs no word from the owner" \
@@ -116,7 +117,10 @@ record 1 "messaging.md defines the cap call: redirect" "$(grep -c '^- \*\*`cap c
 record 1 "EPIC Step 6's cloud redirects carry the cap call: hint" \
 	"$(has "$epic_md" '`cap call: #<issue> → PR #<pr> <comment URL>` hint')"
 record 1 "a stop call holds the merge in FINISH Step 1's merge-blocker scan" \
-	"$(has "$finish_md" "a spawner's \`Cap call: stop\` comment that the owner hasn't answered")"
+	"$(has "$finish_md" "a spawner's \`Cap call: stop\` comment that no later \`Cap call:\` comment has lifted")"
+record 1 "A spawner's call says how a stop is lifted" "$(has "$profile" '**A stop holds the PR until it is lifted.**')"
+record 1 "the held-findings check reads the newest disposition comment's lines" \
+	"$(has "$finish_md" 'lines of the newest disposition comment (the ones its `<m>` counts)')"
 record 1 "EPIC reports a stopped row as terminal" "$(has "$epic_md" 'reported **stuck** with what was tried, **stopped** by your')"
 
 finish
