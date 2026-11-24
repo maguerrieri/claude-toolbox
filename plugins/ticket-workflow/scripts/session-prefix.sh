@@ -67,7 +67,8 @@ fi
 scope=${title%%:*}
 
 # The scope's parts, split at , / + & and the word "and", and the first word of
-# each, with any punctuation around it dropped: `spotify-curator scripts` has
+# each, with any punctuation around it dropped (but a name's own trailing . or
+# -, which a project's name may end in): `spotify-curator scripts` has
 # one part headed spotify-curator, `voter-guide and sunset` two. Only a plain
 # directory name (no spaces, slashes or leading dot) can be a project. The
 # split takes two passes, the separators first and then "and" in each part,
@@ -82,8 +83,10 @@ heads=$(printf '%s\n' "$scope" | awk '{
 		}
 	}' |
 	while read -r word _; do
+		# Drop what can't start a name before it, and what a name can't hold
+		# after it, so a trailing . or - stays: `web-` names web-, never web.
 		word=${word#"${word%%[A-Za-z0-9_]*}"}
-		word=${word%"${word##*[A-Za-z0-9_]}"}
+		word=${word%"${word##*[A-Za-z0-9._-]}"}
 		# An if, not &&: a rejected last word would end the loop, and with
 		# pipefail the script, with a failing status.
 		if [[ $word =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then

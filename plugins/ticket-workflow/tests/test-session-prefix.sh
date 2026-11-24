@@ -20,7 +20,7 @@ trap 'chmod -R u+rwx "$tmp" 2>/dev/null; rm -rf "$tmp"' EXIT
 # one name in two parents, an infra/ dir with one project and one
 # non-project, plus a file and a hidden dir that aren't.
 root="$tmp/toolbox"
-mkdir -p "$root"/services/{voter-guide,sunset,home-supplies,.cache} \
+mkdir -p "$root"/services/{voter-guide,sunset,home-supplies,.cache,web,web-,api.} \
 	"$root"/mcp-servers/{spotify-curator,home-supplies,scripts} "$root"/apps/curator-web \
 	"$root"/infra/{firebase-shared,modules}
 touch "$root/services/README.md"
@@ -84,6 +84,11 @@ record 'firebase-shared' 'trailing slashes are fine' "$(prefix 'firebase-shared:
 record 'voter-guide' 'on a star entry too' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'services/*/')"
 record 'voter-guide' 'a path scope names its project part' "$(local_prefix 'services/voter-guide: Fix')"
 record 'voter-guide' 'quotes around a project are dropped' "$(local_prefix '`voter-guide`: Fix')"
+record 'web-' 'a trailing - is part of the name, not web (Copilot review 6046140844)' "$(local_prefix 'web-: Fix the build')"
+record 'web' 'and web is still web' "$(local_prefix 'web: Fix')"
+record 'api.' 'a trailing . is part of the name too' "$(local_prefix 'api.: Bump')"
+record 'web-' 'quotes around such a name are still dropped' "$(local_prefix '`web-`: Fix')"
+record 'toolbox' 'a trailing - on a name that lacks one matches nothing' "$(local_prefix 'sunset-: Fix')"
 record 'toolbox' 'a failed read with another entry still falls back' "$(prefix 'voter-guide: Fix' --root "$root" --projects 'nope/* services/*')"
 # A parent that exists but can't be listed is a read failure too, not an empty
 # directory. Root reads it anyway, so the case only means something as a user.
