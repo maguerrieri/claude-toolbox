@@ -69,8 +69,18 @@ scope=${title%%:*}
 # The scope's parts, split at , / + & and the word "and", and the first word of
 # each, with any punctuation around it dropped: `spotify-curator scripts` has
 # one part headed spotify-curator, `voter-guide and sunset` two. Only a plain
-# directory name (no spaces, slashes or leading dot) can be a project.
-heads=$(printf '%s\n' "$scope" | awk '{ gsub(/[,\/+&]|[[:space:]]and[[:space:]]/, "\n"); print }' |
+# directory name (no spaces, slashes or leading dot) can be a project. The
+# split takes two passes, the separators first and then "and" in each part,
+# padded so an "and" at a part's start or end counts too: `voter-guide,and
+# sunset` names two projects, as `voter-guide, and sunset` does.
+heads=$(printf '%s\n' "$scope" | awk '{
+		n = split($0, parts, /[,\/+&]/)
+		for (i = 1; i <= n; i++) {
+			p = " " parts[i] " "
+			gsub(/[[:space:]]and[[:space:]]/, "\n", p)
+			print p
+		}
+	}' |
 	while read -r word _; do
 		word=${word#"${word%%[A-Za-z0-9_]*}"}
 		word=${word%"${word##*[A-Za-z0-9_]}"}
