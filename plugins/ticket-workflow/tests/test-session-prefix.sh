@@ -174,49 +174,68 @@ record 'voter-guide' 'the docs call: a project' "$(run_doc_call 'voter-guide: Fi
 record 'toolbox' 'the docs call: an area' "$(run_doc_call 'firebase apps: Bump the SDK')"
 
 # The resume lookups. A stub claude prints a listing of sessions launched from
-# one dir, under old (repo) and new (project) prefixes, plus near misses.
-cat >"$tmp/listing.json" <<'LISTING_EOF'
-[
-  {"name": "voter-guide #42: new name", "cwd": "/home/me/toolbox", "status": "done", "sessionId": "b", "startedAt": "2026-10-02T00:00:00Z"},
-  {"name": "toolbox #42: old name", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "a", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "toolbox 42: bare spelling", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "c", "startedAt": "2026-10-03T00:00:00Z"},
-  {"name": "toolbox #420: longer id", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "d", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "toolbox #142: longer id", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "e", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "toolbox #4: shorter id", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "f", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "toolbox #42: another clone", "cwd": "/home/me/other/toolbox", "status": "stopped", "sessionId": "g", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "toolbox #50: follow-up to #42: thing", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "h", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "no colon #42", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "i", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "toolbox PR #42: address review", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "n", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "#42: no prefix", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "o", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "my repo #42: spaced basename", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "p", "startedAt": "2026-10-04T00:00:00Z"},
-  {"name": "my repo #238: epic — spaced basename", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "q", "startedAt": "2026-10-06T00:00:00Z"},
-  {"cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "j", "startedAt": "2026-10-01T00:00:00Z"},
-  {"name": "voter-guide #238: epic — ballots v2", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "l", "startedAt": "2026-10-05T00:00:00Z"},
-  {"name": "toolbox #238: epic — ballots", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "k", "startedAt": "2026-10-04T00:00:00Z"},
-  {"name": "toolbox #238: not the coordinator", "cwd": "/home/me/toolbox", "status": "stopped", "sessionId": "m", "startedAt": "2026-10-01T00:00:00Z"}
-]
-LISTING_EOF
+# one dir, under old (repo) and new (project) prefixes, plus near misses. Its
+# rows have the shape test-agents-listing.sh documents for `claude agents
+# --json --all`: a `pid` and a `status` only while the process lives, a
+# `state` (or none), and an epoch-milliseconds `startedAt`. Built with jq so a
+# missing field is really missing.
+row() { # row <sessionId> <name|-> <state|-> <status|-> <pid|-> <startedAt minute> [cwd]
+	jq -nc --arg id "$1" --arg n "$2" --arg st "$3" --arg su "$4" --arg p "$5" --argjson m "$6" \
+		--arg c "${7:-/home/me/toolbox}" '
+		{id: "a1b2c3d4", cwd: $c, kind: "background", sessionId: $id,
+		 startedAt: (1790380000000 + $m * 60000)}
+		+ (if $n == "-" then {} else {name: $n} end)
+		+ (if $st == "-" then {} else {state: $st} end)
+		+ (if $su == "-" then {} else {status: $su} end)
+		+ (if $p == "-" then {} else {pid: ($p | tonumber)} end)'
+}
+{
+	row b 'voter-guide #42: new name' done idle 4101 2
+	row a 'toolbox #42: old name' stopped - - 1
+	row c 'toolbox 42: bare spelling' working - - 3
+	row d 'toolbox #420: longer id' stopped - - 0
+	row e 'toolbox #142: longer id' stopped - - 0
+	row f 'toolbox #4: shorter id' stopped - - 0
+	row g 'toolbox #42: another clone' stopped - - 0 /home/me/other/toolbox
+	row h 'toolbox #50: follow-up to #42: thing' stopped - - 0
+	row i 'no colon #42' stopped - - 0
+	row n 'toolbox PR #42: address review' stopped - - 0
+	row o '#42: no prefix' stopped - - 0
+	row p 'my repo #42: spaced basename' failed - - 4
+	row q 'my repo #238: epic — spaced basename' stopped - - 6
+	row j - stopped - - 0
+	row l 'voter-guide #238: epic — ballots v2' blocked waiting 4102 5
+	row k 'toolbox #238: epic — ballots' - - - 4
+	row m 'toolbox #238: not the coordinator' stopped - - 0
+} | jq -s . >"$tmp/listing.json"
 mkdir "$tmp/bin"
 cat >"$tmp/bin/claude" <<'STUB_EOF'
 #!/usr/bin/env bash
+[ "$*" = "agents --json --all" ] || { echo "unexpected claude call: $*" >&2; exit 1; }
 cat "$LISTING"
 STUB_EOF
 chmod +x "$tmp/bin/claude"
-lookup() { # lookup <file> <text> <repo>: the sessionIds the docs' block containing <text> keeps
+lookup() { # lookup <shell> <file> <text> <repo>: each match the docs' block containing <text> keeps, as <sessionId>=<class>, oldest first
 	local block
-	block=$(extract_block "$1" "$2" | sed "s|\"<repo>\"|\"$3\"|")
-	PATH="$tmp/bin:$PATH" LISTING="$tmp/listing.json" launch_dir=/home/me/toolbox \
-		bash -c "$block" | jq -r 'map(.sessionId) | join(",")'
+	block=$(extract_block "$2" "$3" | sed "s|\"<repo>\"|\"$4\"|")
+	PATH="$tmp/bin:$PATH" TMPDIR="$tmp" LISTING="$tmp/listing.json" launch_dir=/home/me/toolbox \
+		"$1" -c "$block" | jq -r 'map("\(.sessionId)=\(.class)") | join(",")'
 }
 spawn_block="--argjson ids '[\"#42\", \"42\"]'"
-record 'a,b,c' 'SPAWN: an issue under either prefix and either spelling' \
-	"$(lookup "$skill/phases/spawn.md" "$spawn_block" toolbox)"
-record 'a,b,c,p' 'SPAWN: an old name from a repo whose basename has a space' \
-	"$(lookup "$skill/phases/spawn.md" "$spawn_block" 'my repo')"
-record 'k,l' 'EPIC: a coordinator under either prefix' \
-	"$(lookup "$skill/phases/epic.md" 'startswith("epic — ")' toolbox)"
-record 'k,l,q' 'EPIC: and under a basename with a space' \
-	"$(lookup "$skill/phases/epic.md" 'startswith("epic — ")' 'my repo')"
+# Run the snippets under zsh too when it's installed, since the Bash tool runs
+# zsh.
+shells=(bash)
+command -v zsh >/dev/null 2>&1 && shells+=(zsh)
+for sh in "${shells[@]}"; do
+	record 'a=resumable,b=running,c=resumable' "$sh: SPAWN: an issue under either prefix and either spelling, each classed" \
+		"$(lookup "$sh" "$skill/phases/spawn.md" "$spawn_block" toolbox)"
+	record 'a=resumable,b=running,c=resumable,p=unplaced' "$sh: SPAWN: an old name from a repo whose basename has a space" \
+		"$(lookup "$sh" "$skill/phases/spawn.md" "$spawn_block" 'my repo')"
+	record 'k=unplaced,l=running' "$sh: EPIC: a coordinator under either prefix, each classed" \
+		"$(lookup "$sh" "$skill/phases/epic.md" 'startswith("epic — ")' toolbox)"
+	record 'k=unplaced,l=running,q=resumable' "$sh: EPIC: and under a basename with a space" \
+		"$(lookup "$sh" "$skill/phases/epic.md" 'startswith("epic — ")' 'my repo')"
+done
 
 # Every copy of the ID filter in the docs is the same filter.
 filters=$(grep -rhoE 'def issue_id: [^;]*;' "$skill" "$plugin/commands" | sort -u | wc -l | tr -d ' ')
