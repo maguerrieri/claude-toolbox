@@ -9,8 +9,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
-  list pulls in every plugin below except `gm`, `provenance`,
-  `pr-notifier` and `upkeep`. Install this one to get the default set. New default plugins
+  list pulls in every plugin below except `gm`, `provenance`, `pr-notifier`
+  and `upkeep`. Install this one to get the default set. New default plugins
   added to this repo should also be added to its dependencies.
 - **conventions** — cross-repo development conventions: commit-message and
   PR-title formats, and a portable repository-instruction policy built around a canonical root
