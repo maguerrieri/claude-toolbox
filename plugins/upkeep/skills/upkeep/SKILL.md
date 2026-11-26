@@ -16,11 +16,12 @@ A survey closes, files, comments on, labels, edits, commits, pushes, spawns and
 messages nothing, and starts no Routine. What it may run:
 
 - the scripts below, which only read;
-- `gh` reads (`gh pr list`, `gh pr view`, `gh issue view`, `gh api` GET and
-  GraphQL queries) and `git` reads (`log`, `show`, `grep`, `ls-tree`,
-  `worktree list`);
-- one `git fetch origin <default branch>` first, so the survey reads the
-  branch's current tip. It moves only the remote-tracking ref.
+- `gh` reads (`gh pr view`, `gh issue view`, `gh api` GETs and GraphQL
+  queries, and the like) and `git` reads (`log`, `show`, `grep`, `diff`,
+  `merge-base`, `for-each-ref`, `worktree list`, and the like);
+- `git fetch origin <default branch>`, only when `git ls-remote origin
+  <default branch>` shows the remote ahead of `origin/<default branch>`. It
+  moves only that remote-tracking ref.
 
 Acting on a proposal is a separate request the owner makes after the report,
 handled like any other change ask (in a planner session, a pick becomes a
@@ -48,8 +49,9 @@ No section: use the defaults, and say so on the report's coverage line.
 
 From any checkout of the repo (the git scripts read the default branch at
 `origin`, never the working tree), find the default branch
-(`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`), fetch it,
-then run these, in parallel, since none depends on another:
+(`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`), bring
+`origin/<default>` up to date as above, then run these, in parallel, since
+none depends on another:
 
 ```bash
 bash "${CLAUDE_SKILL_DIR}/scripts/work.sh"
@@ -74,13 +76,16 @@ as that check.
 
 ## 3. Find the candidates
 
+A candidate is one item: a PR, an issue, a branch, a worktree, a file or a
+check's finding.
+
 | Proposal | Source | Make it when |
 |---|---|---|
 | Close PRs | `open-prs` | idle 30 days or more and no `running` session. Conflicting, a draft, or its issue closed by other work makes the case stronger. |
 | Delete branches, remove worktrees | `branches`, `local-branches`, `worktrees` | the branch's PR merged or closed. A worktree with `dirty` above 0 holds uncommitted work: say so, don't count it as clean. |
-| Close or decline issues | `open-issues`, `possible-duplicates` | `merged-but-open`; `mentioned-by-merged` where reading both shows the merged PR did the work; a duplicate pair, after reading both; `catch-all` (split it into issues, or close it); `no-pr` and 60 days old or more. |
+| Close or decline issues | `open-issues`, `possible-duplicates` | `merged-but-open`; `mentioned-by-merged` where reading both shows the merged PR did the work; a duplicate pair, after reading both; `catch-all` idle 30 days or more (split it into issues, or close it); `no-pr` and 60 days old or more. |
 | Fix doc drift | `missing-paths`, checks | a skill, instructions or README names a path that's gone. Specs and plans under `docs/` are records: leave them unless they mislead. |
-| Refactor or split | `files`, `prs`, `instruction-sizes`, `skill-totals` | a file leads on `fix_commits`, `threads` or `restacks`, or keeps growing. |
+| Refactor or split | `files`, `instruction-sizes`, `skill-totals` | a file in the top five of `files` whose fixes came from 3 PRs or more (`fix_prs`), or an instruction or skill file among the ten largest that at least doubled in the window. |
 | Delete files | `unreferenced-files`, `unreferenced-dirs` | one search shows nothing runs it (a glob, a runner script). |
 | Fix what a check found | extra checks | as the check says. |
 
@@ -88,12 +93,14 @@ Closing counts as much as fixing: "close these eight PRs" and "delete this
 script" are proposals in their own right, listed alongside refactors. Group
 like items into one proposal ("Close these 12 PRs"), with each item's numbers.
 
-- **Evidence, or no proposal.** A refactor cites its churn (fix commits,
-  threads, restacks, growth), with numbers. A proposal that rests only on how
-  the code reads to you is dropped: asked to find refactors, a model always
-  finds some.
-- **Read before proposing a close.** Read the issue's or PR's latest comments.
-  A row is not enough to close someone's work.
+- **Evidence, or no proposal.** A refactor cites its churn (fix commits and
+  the PRs they came from, threads, restacks, growth), with numbers. A proposal
+  that rests only on how the code reads to you is dropped: asked to find
+  refactors, a model always finds some.
+- **Read before proposing a close.** Read the item's latest comments, review
+  comments included. A row is not enough to close someone's work. Where the
+  owner chose to keep it (a `deferred` label, a comment saying to wait),
+  quote that in the evidence.
 - **Never propose closing an issue or PR labeled `upkeep:keep`**: the owner
   declined closing it before.
 
@@ -105,18 +112,18 @@ The declines file holds one line per declined proposal:
 - <key> — declined <YYYY-MM-DD> until <YYYY-MM-DD> — <why>
 ```
 
-A key is a verb and a target: `close #<n>`, `delete <path>`, `refactor
-<path>`, `split <path>`, `fix-docs <path>`, `check <check name>`. Drop a
-candidate whose key matches a line whose until-date hasn't passed. For a
-grouped proposal, drop just the items that match. Count what you drop.
+A key is a verb and one item: `close #<n>`, `delete <path>`, `delete-branch
+<name>`, `refactor <path>`, `split <path>`, `fix-docs <path>`, `check <check
+name>`. Drop a candidate whose key matches a line whose until-date hasn't
+passed, and drop just the matching items from a grouped proposal.
 
 ## 5. Rank and cut
 
 Rank by what a proposal buys against what it costs, in this order:
 
 1. Breaking now or about to: a check that will fail CI (two open PRs bumping a
-   plugin to the same version), instructions that send sessions to files that
-   are gone.
+   plugin to the same version), open PRs that will conflict on the same lines,
+   instructions that send sessions to files that are gone.
 2. Cheap closes and deletes with clear evidence. They shrink what every later
    session and survey reads.
 3. Refactors and splits, the strongest evidence first.
@@ -135,14 +142,14 @@ Coverage: <what ran; what was skipped and why; notes>
 
 1. <What to do, in one line>
    Evidence: <the numbers, with links>
-   Cost: <a close | a one-file edit | an issue's worth | an epic>
+   Cost: <a command | a close per item | a one-file edit | an issue's worth | an epic>
    Buys: <what it frees or prevents>
-   Key: <decline key>
+   Key: <the decline key of each item>
 
 2. …
 
-Considered <N> candidates: proposed <k>, dropped <d> (<a> declined or kept,
-<b> without enough evidence, <c> below the cut).
+Considered <N> candidates (items): <k> in the <p> proposals above, dropped <d>
+(<a> declined or kept, <b> without enough evidence, <c> below the cut).
 Say which to act on. To decline one, say so and why, and it won't come back.
 ```
 

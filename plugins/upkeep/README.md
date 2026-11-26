@@ -16,9 +16,10 @@ It surveys:
   near-identical titles;
 - **docs and instructions**: paths a doc names that the repo used to have and
   doesn't any more, and instruction and skill files by size and growth;
-- **hot spots, by evidence**: per file, the review-fix commits, review threads,
-  restacks (force-pushes) of the PRs that touched it, and open PRs touching it
-  now, over the window;
+- **hot spots, by evidence**: per file, the review-fix commits and how many
+  PRs they came from (a one-PR burst reads apart from fixes that keep coming),
+  review threads, restacks (force-pushes) of the PRs that touched it, and open
+  PRs touching it now, over the window;
 - **dead weight**: scripts, code and fixtures nothing names, tests no CI
   workflow runs, and directories nothing names;
 - **the repo's own checks**, listed under `## Upkeep` in its `AGENTS.md`.

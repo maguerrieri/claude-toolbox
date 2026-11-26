@@ -220,6 +220,15 @@ that isn't a draft. Print a boolean field bare (`\(.draft)`, which prints
 `false`, `true` or `null`) and compare against the string. Found in the same
 place, by the tests.
 
+Two more, found while writing `upkeep`'s scripts (#363). `IFS=$'\t' read`
+merges adjacent tabs, since a tab is IFS whitespace, so an empty field in a
+tab-separated row shifts every field after it: print a placeholder such as
+`-` for an empty field. And 3.2 misreads an apostrophe inside a `$( … )`
+that sits within double quotes (`"$(f "it's")"` fails to parse), so keep
+apostrophes out of such strings, as in a test's fixture text. The `upkeep`
+scripts also set `LC_ALL=C`, so `sort` orders rows the same way on every
+machine.
+
 ## Plugin commands and skills: one name each
 
 A plugin's `commands/<name>.md` and `skills/<name>/SKILL.md` both register as
@@ -367,7 +376,9 @@ without a name and source, fails too, since CI doesn't run `claude plugin valida
 
 Settings and extra checks for the `upkeep` plugin's `/upkeep` survey (its
 `README.md` has the format). A review fix here is a commit whose subject
-carries the `CRC` flag, as the `conventions` plugin's format writes it.
+carries the `CRC` flag, as the `conventions` plugin's format writes it. The
+check script below has its own tests, `bash .claude/upkeep/test-checks.sh`,
+which a survey doesn't run.
 
 Window: 90
 Review fixes: ^\[#[0-9]+\] \(CRC[;)]
@@ -376,5 +387,4 @@ Declined: .claude/upkeep/declined.md
 - Plugin versions that collide across open PRs, `defaults` dependencies
   missing from `.claude/settings.json` or the README's snippet (*Dogfooding
   our own plugins*), and marketplace pins whose `ref` and `sha` disagree
-  (*Releasing*): `bash .claude/upkeep/checks.sh`. Its tests:
-  `bash .claude/upkeep/test-checks.sh`.
+  (*Releasing*): `bash .claude/upkeep/checks.sh`.
