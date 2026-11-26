@@ -32,7 +32,8 @@ issue() { # issue <n> <title> <updated days ago> <created days ago> <closing jso
 	jq -nc --argjson nodes "[$(issue 4 "overtaken by other work" 20 40 '[]' '[{"__typename":"PullRequest","number":13,"state":"MERGED"},{"__typename":"PullRequest","number":13,"state":"MERGED"}]'),
 		$(issue 5 "ticket-workflow: Restack stacked children after the parent merges" 9 9 '[]' '[]'),
 		$(issue 6 "spawn: restack stacked children once a parent merges" 8 8 '[]' '[]'),
-		$(issue 7 "spawn: children of a parent session" 7 7 '[]' '[]')]" \
+		$(issue 7 "spawn: children of a parent session" 7 7 '[]' '[]'),
+		$(issue 8 "only a PR in another repo mentions it" 2 2 '[]' '[{"__typename":"PullRequest","number":13,"state":"MERGED","repository":{"nameWithOwner":"o/other"}}]')]" \
 		'{data: {repository: {issues: {nodes: $nodes}}}}'
 } >"$tmp/fx/issues.json"
 
@@ -49,7 +50,7 @@ PATH="$tmp/bin:/usr/bin:/bin:$(dirname "$(command -v jq)")"
 
 bash "$script" --repo owner/repo >"$tmp/out" 2>"$tmp/err"
 record 0 "exits 0" "$?"
-record "#1 #4 #5 #6 #7 #2 #3" "issues most idle first, both pages" "$(rows open-issues "$tmp/out" | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
+record "#1 #4 #5 #6 #7 #2 #3 #8" "issues most idle first, both pages" "$(rows open-issues "$tmp/out" | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
 record "no-pr,catch-all" "#1 flags" "$(row open-issues '#1' "$tmp/out" | col 8)"
 record "100 120 2" "#1 idle, age, comments" "$(row open-issues '#1' "$tmp/out" | awk -F '\t' '{ print $2, $3, $4 }')"
 record "merged-but-open" "#2 flags" "$(row open-issues '#2' "$tmp/out" | col 8)"
@@ -59,6 +60,8 @@ record "open-pr" "#3 flags (an issue's cross-reference isn't a PR)" "$(row open-
 record "-" "#3 has no other PRs" "$(row open-issues '#3' "$tmp/out" | col 7)"
 record "mentioned-by-merged" "#4 flags" "$(row open-issues '#4' "$tmp/out" | col 8)"
 record "#13 merged" "#4 other PRs, once each" "$(row open-issues '#4' "$tmp/out" | col 7)"
+record "o/other#13 merged" "#8: another repo's PR is named with its repo" "$(row open-issues '#8' "$tmp/out" | col 7)"
+record "-" "#8: and sets no flag (it isn't this repo's work)" "$(row open-issues '#8' "$tmp/out" | col 8)"
 
 record "#5 #6" "the one duplicate pair" "$(rows possible-duplicates "$tmp/out" | awk -F '\t' '{ print $1, $2 }')"
 record "children,merges,parent,restack,stacked" "its shared words, scope prefixes dropped" \

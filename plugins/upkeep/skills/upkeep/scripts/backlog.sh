@@ -9,11 +9,13 @@
 #   open-issues           every open issue, most idle first: days since its
 #                         last activity, its age, comment count, labels, the
 #                         PRs that close it (GitHub's closing references, with
-#                         their state), other PRs that mention it, and flags:
+#                         their state), other PRs that mention it (another
+#                         repo's as `owner/repo#n`), and flags:
 #                           merged-but-open  a PR that closes it has merged
 #                           open-pr          a PR that closes it is open
-#                           mentioned-by-merged  a merged PR mentions it
-#                                            without closing it (overtaken?)
+#                           mentioned-by-merged  a merged PR of this repo
+#                                            mentions it without closing it
+#                                            (overtaken?)
 #                           no-pr            no PR closes or mentions it
 #                           catch-all        its title reads like a holding
 #                                            pen (ideas, parked, backlog, ...)
@@ -50,9 +52,11 @@ if ! gh api graphql --paginate -f owner="${repo%%/*}" -f name="${repo#*/}" -f qu
 	      nodes{ number title createdAt updatedAt
 	        labels(first:20){ nodes{ name } }
 	        comments{ totalCount }
-	        closedByPullRequestsReferences(first:20,includeClosedPrs:true){ nodes{ number state } }
+	        closedByPullRequestsReferences(first:20,includeClosedPrs:true){
+	          nodes{ number state repository{ nameWithOwner } } }
 	        timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){
-	          nodes{ ... on CrossReferencedEvent{ source{ __typename ... on PullRequest{ number state } } } } } } } } }' \
+	          nodes{ ... on CrossReferencedEvent{ source{ __typename
+	            ... on PullRequest{ number state repository{ nameWithOwner } } } } } } } } } }' \
 	>"$tmp/issues.json" 2>"$tmp/err"; then
 	reason="GitHub GraphQL read failed: $(head -1 "$tmp/err")"
 	upkeep_skip open-issues "$reason"
@@ -63,13 +67,16 @@ fi
 jq -s '[.[].data.repository.issues.nodes[]]' "$tmp/issues.json" >"$tmp/nodes.json"
 
 upkeep_section open-issues "issue	idle_days	age_days	comments	labels	closing_prs	other_prs	flags	title"
-jq -r --argjson now "$now" '
+jq -r --argjson now "$now" --arg repo "$repo" '
 	def days($t): (($now - ($t | fromdateiso8601)) / 86400) | floor;
-	def prs: map("#\(.number) \(.state | ascii_downcase)") | if . == [] then "-" else join(",") end;
+	def where: .repository.nameWithOwner // $repo;
+	def mine: where | ascii_downcase == ($repo | ascii_downcase);
+	def name: (if mine then "" else where end) + "#\(.number)";
+	def prs: map("\(name) \(.state | ascii_downcase)") | if . == [] then "-" else join(",") end;
 	map((.closedByPullRequestsReferences.nodes // []) as $closing
 		| ([.timelineItems.nodes[]?.source | select(.__typename == "PullRequest")
-		    | select(.number as $n | any($closing[]; .number == $n) | not)]
-		   | unique_by(.number)) as $other
+		    | select(name as $k | any($closing[]; name == $k) | not)]
+		   | unique_by(name)) as $other
 		| {issue: .number, idle: days(.updatedAt), age: days(.createdAt),
 		   comments: .comments.totalCount,
 		   labels: ([.labels.nodes[]?.name] | if . == [] then "-" else join(",") end),
@@ -77,7 +84,7 @@ jq -r --argjson now "$now" '
 		   flags: ([
 		     (if any($closing[]; .state == "MERGED") then "merged-but-open" else empty end),
 		     (if any($closing[]; .state == "OPEN") then "open-pr" else empty end),
-		     (if any($other[]; .state == "MERGED") then "mentioned-by-merged" else empty end),
+		     (if any($other[]; .state == "MERGED" and mine) then "mentioned-by-merged" else empty end),
 		     (if $closing == [] and $other == [] then "no-pr" else empty end),
 		     (if (.title | test("\\b(ideas?|parked|backlog|wish ?list|someday|misc|catch[- ]?all|follow[- ]?ups|parking lot)\\b"; "i"))
 		      then "catch-all" else empty end)

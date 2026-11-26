@@ -9,13 +9,16 @@
 #   open-prs        every open PR, most idle first: days since its last
 #                   activity, draft, GitHub's mergeable and merge state, the
 #                   issues it closes (its closing references, plus any
-#                   `Closes #<n>` in its body, which a PR into a branch other
-#                   than the default never gets as a reference), labels, and
+#                   `Closes #<n>` in its body outside code spans and fences,
+#                   which a PR into a branch other than the default never
+#                   gets as a reference), labels, and
 #                   whether a session still drives it (below).
 #   branches        branches on GitHub with no open PR: none ever, or only
 #                   merged or closed ones (a branch left behind).
-#   local-branches  branches in the main checkout whose upstream is gone, or
-#                   that have no upstream and no PR.
+#   local-branches  branches in the main checkout whose upstream is gone
+#                   (pruned, or an origin branch GitHub no longer has, which
+#                   a clone that never pruned still tracks), or that have no
+#                   upstream and no PR.
 #   worktrees       every linked worktree: its branch, days since its last
 #                   commit, uncommitted paths, and its branch's PR.
 #
@@ -85,7 +88,8 @@ if gh pr list -R "$repo" --state open -L 500 \
 		($agents[0] | map(select(.cwd == $dir or ((.cwd // "") | startswith($dir + "/"))))) as $mine
 		| map(. as $pr
 			| (([.closingIssuesReferences[]?.number]
-			    + [(.body // "") | scan("(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+#([0-9]+)\\b") | .[0] | tonumber])
+			    + [(.body // "") | gsub("```[\\s\\S]*?(```|$)"; "") | gsub("~~~[\\s\\S]*?(~~~|$)"; "") | gsub("`[^`]*`"; "")
+			       | scan("(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+#([0-9]+)\\b") | .[0] | tonumber])
 			   | unique) as $closes
 			| ([$pr.number] + $closes) as $ids
 			| ([$mine[] | select(. as $row | any($ids[]; . as $i | $row | names($i))) | cls]
@@ -133,8 +137,12 @@ if gh api graphql --paginate -f owner="$owner" -f name="$name" -f query='
 			   prs: ($prs | map("#\(.number) \(.state | ascii_downcase)") | if . == [] then "-" else join(",") end)})
 		| sort_by(.kind, (if (.idle | type) == "number" then -.idle else 0 end))[]
 		| [.branch, .idle, .kind, .prs] | @tsv' "$tmp/refs.json"
+	jq -rs '.[].data.repository.refs.nodes[].name' "$tmp/refs.json" >"$tmp/github-branches"
+	github_branches=yes
 else
 	upkeep_skip branches "GitHub GraphQL read failed: $(head -1 "$tmp/err")"
+	: >"$tmp/github-branches"
+	github_branches=no
 fi
 
 # --- local-branches ---------------------------------------------------------
@@ -145,14 +153,21 @@ else
 	git -C "$main" for-each-ref --format='%(refname:short)	%(upstream)	%(upstream:track)	%(committerdate:unix)' refs/heads >"$tmp/local" 2>/dev/null
 	upkeep_section local-branches "branch	idle_days	upstream	pr	checked_out"
 	if [ "$all_prs_ok" = yes ]; then pr_file="$tmp/all-prs.json"; else printf 'null\n' >"$tmp/no-prs.json"; pr_file="$tmp/no-prs.json"; fi
-	jq -Rr --argjson now "$now" --arg default "$default" --slurpfile prs "$pr_file" --rawfile out "$tmp/checked-out" '
+	# An upstream on origin that GitHub no longer has is gone, even where the
+	# clone never pruned its remote-tracking ref.
+	jq -Rr --argjson now "$now" --arg default "$default" --slurpfile prs "$pr_file" --rawfile out "$tmp/checked-out" \
+		--rawfile gh "$tmp/github-branches" --arg known "$github_branches" '
 		($out | split("\n") | map(select(. != ""))) as $co
+		| ($gh | split("\n") | map(select(. != ""))) as $on_github
 		| split("\t") as [$b, $up, $track, $ct]
 		| select($b != $default)
 		| (if $prs[0] == null then "?" else
 			([$prs[0][] | select(.headRefName == $b)] | sort_by(.number) | last
 			 | if . == null then "none" else "#\(.number) \(.state | ascii_downcase)" end) end) as $pr
-		| (if $up == "" then "none" elif ($track | test("gone")) then "gone" else "tracking" end) as $u
+		| (if $up == "" then "none" elif ($track | test("gone")) then "gone"
+		   elif $known == "yes" and ($up | startswith("refs/remotes/origin/"))
+		        and (($up | ltrimstr("refs/remotes/origin/")) as $name | any($on_github[]; . == $name) | not)
+		   then "gone" else "tracking" end) as $u
 		| select($u == "gone" or ($u == "none" and $pr == "none"))
 		| [$b, ((($now - ($ct | tonumber)) / 86400) | floor), $u, $pr, (if any($co[]; . == $b) then "yes" else "no" end)]
 		| @tsv' "$tmp/local"

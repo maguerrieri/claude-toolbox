@@ -28,6 +28,12 @@ git -C "$repo" branch gone-branch
 git -C "$repo" push -q -u origin gone-branch 2>/dev/null
 git -C "$repo" push -q origin --delete gone-branch 2>/dev/null
 git -C "$repo" fetch -q --prune origin
+# Two branches whose upstream the clone still tracks: one GitHub deleted
+# (the clone never pruned it), one GitHub still has.
+git -C "$repo" branch pruned-late
+git -C "$repo" push -q -u origin pruned-late 2>/dev/null
+git -C "$repo" branch still-there
+git -C "$repo" push -q -u origin still-there 2>/dev/null
 git -C "$repo" branch orphan
 git -C "$repo" branch with-pr
 git -C "$repo" worktree add -q "$repo/.claude/worktrees/feat-a" -b feat-a 2>/dev/null
@@ -44,7 +50,8 @@ EOF
 jq -n --arg old "$(ago 40)" --arg new "$(ago 1)" '[
   {number: 12, title: "Second", isDraft: true, updatedAt: $new, mergeable: "MERGEABLE",
    mergeStateStatus: "CLEAN", baseRefName: "main", headRefName: "feat-b-old", labels: [],
-   closingIssuesReferences: [], body: "Stacked on #9.\n\nFixes #11"},
+   closingIssuesReferences: [],
+   body: "Stacked on #9.\n\nFixes #11\n\nExamples: `Closes #77`, and\n\n```text\nFixes #78\n```\n"},
   {number: 9, title: "First\tone", isDraft: false, updatedAt: $old, mergeable: "CONFLICTING",
    mergeStateStatus: "DIRTY", baseRefName: "main", headRefName: "with-pr",
    labels: [{name: "upkeep:keep"}], closingIssuesReferences: [{number: 8}], body: "Closes #8"}
@@ -56,6 +63,7 @@ jq -nc --arg d "$(ago 30)" '{data: {repository: {refs: {nodes: [
   {name: "stale-x", target: {committedDate: $d}, associatedPullRequests: {nodes: []}}]}}}}' >"$tmp/fx/refs.json"
 jq -nc --arg d "$(ago 10)" '{data: {repository: {refs: {nodes: [
   {name: "with-pr", target: {committedDate: $d}, associatedPullRequests: {nodes: [{number: 9, state: "OPEN"}]}},
+  {name: "still-there", target: {committedDate: $d}, associatedPullRequests: {nodes: []}},
   {name: "closed-y", target: {committedDate: $d}, associatedPullRequests: {nodes: [{number: 3, state: "CLOSED"}]}}]}}}}' >>"$tmp/fx/refs.json"
 jq -n --arg repo "$repo" --arg other "$tmp/elsewhere" '[
   {name: "repo #8: first thing", cwd: $repo, state: "done", startedAt: 1},
@@ -105,16 +113,16 @@ record resumable "#9 session: a stopped session named for its issue" "$(printf '
 record 'First one' "a tab in a title can't split the row" "$(printf '%s\n' "$r9" | col 11 | sed 's/\\t/ /')"
 r12=$(row open-prs '#12' "$tmp/out")
 record draft "#12 is a draft" "$(printf '%s\n' "$r12" | col 3)"
-record '#11' "#12 closes the issue its body names" "$(printf '%s\n' "$r12" | col 8)"
+record '#11' "#12 closes the issue its body names, not ones in code spans or fences" "$(printf '%s\n' "$r12" | col 8)"
 record running "#12 session: a live session in a worktree, named <n>:" "$(printf '%s\n' "$r12" | col 10)"
 record "" "no note when sessions were read" "$(grep '^note: session' "$tmp/out")"
 
-record "closed-y:closed-pr feat-a:merged-pr stale-x:no-pr" "branches without an open PR, both pages" \
+record "closed-y:closed-pr feat-a:merged-pr stale-x:no-pr still-there:no-pr" "branches without an open PR, both pages" \
 	"$(rows branches "$tmp/out" | awk -F '\t' '{ printf "%s%s:%s", (NR > 1 ? " " : ""), $1, $3 }')"
 record 30 "branch idle days" "$(row branches feat-a "$tmp/out" | col 2)"
 
-record "feat-b:none:none:yes gone-branch:gone:none:no orphan:none:none:no" \
-	"local branches: gone upstream, or none and no PR (feat-a's PR merged, with-pr's is open)" \
+record "feat-b:none:none:yes gone-branch:gone:none:no orphan:none:none:no pruned-late:gone:none:no" \
+	"local branches: gone upstream (pruned, or missing from GitHub), or none and no PR" \
 	"$(rows local-branches "$tmp/out" | awk -F '\t' '{ printf "%s%s:%s:%s:%s", (NR > 1 ? " " : ""), $1, $3, $4, $5 }')"
 
 wa=$(row worktrees .claude/worktrees/feat-a "$tmp/out")
@@ -142,6 +150,8 @@ record "#5 merged" "the other sections still run" "$(row worktrees .claude/workt
 run "$tmp/nogql" PATH="$tmp/cbin:$base_path" STUB_FAIL=graphql
 record "skipped: GitHub GraphQL read failed: GraphQL is not available" "branches skip without GraphQL" \
 	"$(sed -n '/^## branches$/{n;p;}' "$tmp/nogql")"
+record "" "without GitHub's branch list an unpruned upstream reads as tracking" "$(row local-branches pruned-late "$tmp/nogql")"
+record "gone" "a pruned one is still gone" "$(row local-branches gone-branch "$tmp/nogql" | col 3)"
 
 run "$tmp/noall" PATH="$tmp/cbin:$base_path" STUB_FAIL=all
 record "?" "worktree PR unknown when the PR list fails" "$(row worktrees .claude/worktrees/feat-a "$tmp/noall" | col 5)"
