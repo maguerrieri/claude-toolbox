@@ -220,6 +220,15 @@ that isn't a draft. Print a boolean field bare (`\(.draft)`, which prints
 `false`, `true` or `null`) and compare against the string. Found in the same
 place, by the tests.
 
+Two more, found while writing `upkeep`'s scripts (#363). `IFS=$'\t' read`
+merges adjacent tabs, since a tab is IFS whitespace, so an empty field in a
+tab-separated row shifts every field after it: print a placeholder such as
+`-` for an empty field. And 3.2 misreads an apostrophe inside a `$( … )`
+that sits within double quotes (`"$(f "it's")"` fails to parse), so keep
+apostrophes out of such strings, as in a test's fixture text. The `upkeep`
+scripts also set `LC_ALL=C`, so `sort` orders rows the same way on every
+machine.
+
 ## Plugin commands and skills: one name each
 
 A plugin's `commands/<name>.md` and `skills/<name>/SKILL.md` both register as
@@ -263,6 +272,14 @@ it. The transcript
 (`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<cwd slug>/<session id>.jsonl`)
 shows which body a prompt such as `/<name>` loaded, since a skill's starts
 `Base directory for this skill:`.
+
+A plugin skill can name its own files without a hook: Claude Code expands
+`${CLAUDE_SKILL_DIR}` (the skill's directory) and `${CLAUDE_PLUGIN_ROOT}` in
+the text of a `SKILL.md` when it loads it, so a command such as
+`bash "${CLAUDE_SKILL_DIR}/scripts/x.sh"` reaches the model as a full path
+(checked on 2.1.329 with a probe skill, #363; `upkeep` relies on it). That's
+the skill's text only. A Bash call gets no such variable, which is why
+`ticket-workflow` and `ledger` export their roots from a SessionStart hook.
 
 ## SKILL.md size — when to split phases into their own files
 
@@ -353,4 +370,21 @@ the `ref`), and applies the same rule. A head pin whose tag `ref` doesn't point 
 without a bump; a base pin it can't fetch is noted and head is checked alone; other source
 types get a `skip` line. A head `marketplace.json` the check can't read, or an entry
 without a name and source, fails too, since CI doesn't run `claude plugin validate`.
-`provenance` isn't a `defaults` dependency (neither are `gm` and `pr-notifier`).
+`provenance` isn't a `defaults` dependency (neither are `gm`, `pr-notifier` and `upkeep`).
+
+## Upkeep
+
+Settings and extra checks for the `upkeep` plugin's `/upkeep` survey (its
+`README.md` has the format). A review fix here is a commit whose subject
+carries the `CRC` flag, as the `conventions` plugin's format writes it. The
+check script below has its own tests, `bash .claude/upkeep/test-checks.sh`,
+which a survey doesn't run.
+
+Window: 90
+Review fixes: \(CRC[;,)]
+Declined: .claude/upkeep/declined.md
+
+- Plugin versions that collide across open PRs, `defaults` dependencies
+  missing from `.claude/settings.json` or the README's snippet (*Dogfooding
+  our own plugins*), and marketplace pins whose `ref` and `sha` disagree
+  (*Releasing*): `bash .claude/upkeep/checks.sh`.
