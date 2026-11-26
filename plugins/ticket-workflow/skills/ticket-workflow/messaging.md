@@ -210,9 +210,9 @@ receivers and greps treat the two channels uniformly:
 - **`cap call:`** (spawner → child, after posting its `Cap call:` comment on
   the child's PR, and after the raise when there is one, in place of that
   raise's `raise:` hint): `cap call: <rewrite
-  <section> | split <part> to #<follow-up> | stop> on #<issue> → PR #<pr>`,
-  the spawner's choice when a capped child's review isn't converging or a
-  child turns fiddly before its cap. It is a redirect about the child's own
+  <section> | split <part> to #<follow-up> | stop | lifted> on #<issue> → PR
+  #<pr>`, the spawner's choice when a capped child's review isn't converging
+  or a child turns fiddly before its cap, or the lift of an earlier stop. It is a redirect about the child's own
   issue, which the child takes only from its recorded spawner, checked as a
   `finish:` clearance's sender is, and acts on as the profile's
   `REVIEW_BOT`, *A spawner's call*, says. On cloud, the one-shot Routine

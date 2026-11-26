@@ -187,11 +187,12 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   cap, but only as far as your own PR's `Review rounds:` line shows a raise:
   the line is the grant, and the message is not (the profile's `REVIEW_BOT`,
   *Raising the cap*). The same goes for an `approval: <review url> on
-  #<issue> → PR #<pr>` hint from your coordinator (EPIC Step 7): it is not a relayed
+  #<issue> → PR #<pr>` hint from your recorded spawner (EPIC Step 7, or once
+  it has decided your held findings): it is not a relayed
   approval to decline, but a pointer, so read your PR and take what GitHub
   shows through *The owner's approval* (*Merge your own PR*, above). A
   `cap call:` from your recorded spawner (a rewrite of one section, a split
-  that takes a part out of your PR, or a stop) is a redirect about your
+  that takes a part out of your PR, a stop, or a stop's lift) is a redirect about your
   issue too: act on it as the profile's `REVIEW_BOT`, *A spawner's call*,
   says. What the owner asks for on your PR is yours to land
   too, without waiting to hand back: from the owner in this session, in

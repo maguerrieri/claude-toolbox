@@ -594,8 +594,9 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     do what its issue asks, or is a security or data-loss problem), a finding is fixed or goes to
     the owner: never decline or defer it, and when no raise can fix it, it's the owner's, as a
     need in your ledger. Once every held finding is decided, tell the child: a `finish:`
-    clearance when you hold a grant, or an `approval:` hint when the owner's approval of its head
-    waits on your call (`messaging.md`); with neither, report the PR `ready; needs the owner`.
+    clearance when you hold a grant (a coordinator, until #207, lands the layer itself in EPIC
+    Step 7 instead), or an `approval:` hint when the owner's approval of its head waits on your
+    call (`messaging.md`); with neither, report the PR `ready; needs the owner`.
   - **The convergence test, before each raise.** Read the child's counted rounds (*Count the
     rounds*, owner heads skipped) and each one's findings: the threads its review opened and its
     body entries, as the body shape defines them. The review is converging when the last round
@@ -608,9 +609,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     again on the rounds that raise bought before raising again.
   - **The ceiling.** Without the owner, raise no higher than double the cap the child was
     launched with (5 to 10 under this profile's default). That is the `Budget: rounds=<n>` of the
-    spawn briefing you composed, so read it from your own record (for an epic child, the
-    `budget:` marker you posted before its PR opened, EPIC Step 5; none means the profile
-    default), never from its PR line, which records raises, some of them with no comment of
+    spawn briefing you composed, so read it from your own record (for an epic child, the earliest
+    `budget:` marker for it, and only when that marker is older than the child's PR's `createdAt`,
+    since EPIC Step 5 posts one at launch and every later raise posts another; none such means
+    the profile default), never from its PR line, which records raises, some of them with no comment of
     their own. When you can't tell, take the lower of the profile default and the PR's reading:
     the `was <old>` of its first `Resuming: cap raised` comment, else the line's own cap. Past
     the ceiling, every raise is the owner's.
@@ -636,13 +638,19 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `stopped`, a terminal state like stuck. A later `Cap call:` comment lifts it: a new call of
     the spawner's, or `Cap call: lifted — <the owner's words> (owner: <where and when>)`, which
     whichever session in the tree hears the owner's answer posts (the spawner, the child, or its
-    coordinator), as a `Merge hold:` is recorded (`phases/finish.md`, *The owner's approval*). A
-    raise of the PR line made after the stop, with no newer `Cap call:`, is the owner's answer
-    too, since a spawner that stopped a child doesn't raise it: the child posts the lifted line
-    for it, `cap raised to <c>` as the words, when it resumes.
+    coordinator), as a `Merge hold:` is recorded (`phases/finish.md`, *The owner's approval*).
+    Every `Cap call:` comment, a stop and a lift alike, counts only from the login the spawn tree
+    posts as (*Owner requests*), since anyone can comment on a public repo's PR. A raise of the
+    PR line made after the stop, with no newer `Cap call:`, is the owner's answer too, since a
+    spawner that stopped a child doesn't raise it: the child posts the lifted line for it, `cap
+    raised to <c>` as the words, when it resumes. A lift resumes the child: whoever posts it sends
+    the child `cap call: lifted on #<issue> → PR #<pr>` as *Telling the child* says, and the child
+    goes back into its loop with the rounds it has left, starting with the fixes it held, as on a
+    raise. At its cap, a lift with no raise resumes nothing, and the held findings are decided as
+    at any cap.
   - **Telling the child.** After the comment, and after the raise when there is one: on a local
-    edge, SendMessage it `cap call: <rewrite <section> | split <part> to #<follow-up> | stop> on
-    #<issue> → PR #<pr>`; on cloud, where no message reaches it, schedule the one-shot Routine a
+    edge, SendMessage it `cap call: <rewrite <section> | split <part> to #<follow-up> | stop |
+    lifted> on #<issue> → PR #<pr>`; on cloud, where no message reaches it, schedule the one-shot Routine a
     `raise:` hint uses (EPIC Step 6) with `cap call: #<issue> → PR #<pr> <comment URL>`. With a
     raise, this line takes the place of *Raising the cap*'s `raise:` hint (edit and re-read the
     line as that bullet says, but send no `raise:`), so the child's first wake carries both. It
