@@ -43,13 +43,17 @@ No `Inherits:` line → the file is a complete standalone profile, exactly as be
 
 **Overriding `REVIEW_BOT` replaces the review-round cap with it.** The cap's mechanics — the
 round count, *Owner requests*, the cap and its default, the spiral check, *At the cap*, the
-**valid cap marker** the START and EPIC gates point to, and *Raising the cap* — live in this profile's `REVIEW_BOT`,
+**valid cap marker** the START and EPIC gates point to, *Raising the cap* and *A spawner's call* — live in this profile's `REVIEW_BOT`,
 and an op override replaces the whole section. A profile that overrides `REVIEW_BOT` and wants
 a cap carries those bullets over; one that doesn't has no cap, and the gates' cap alternative
 never applies (START Step 8). Either way it also overrides `SPAWN_CAP`, whose inherited
 `Budget: rounds=5` would otherwise ride every spawned briefing and, as the briefing's value, stand
 in for the override's own default: its own `Budget:` line matches its own default cap, or is
-dropped when it has none.
+dropped when it has none. An override of `SPAWN_CAP` also carries the payload's sentences its
+children need (the approval, held-findings, raise, cap-call and request sentences; `SPAWN_CAP`'s
+notes say why each is there), or those children lack them: one launched without the
+held-findings sentence, for instance, isn't told that the decisions its spawner records on its PR
+settle the findings it held (FINISH Step 1).
 
 ## REPO_SELECT
 - Use the repo named in the request; otherwise the current repo (for personal projects
@@ -470,6 +474,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     `<anchor>[ (<severity>: <title>)] — agree, held at the round cap — <the fix it would take>`. Post it even for a
     thread-only round: the gates date the round's answer by a comment newer than the review, and
     thread replies alone don't show up there;
+  - the same comment **carries forward** every finding an earlier disposition comment held that no
+    push has fixed and nobody has decided since, its `agree, held at the round cap` line unchanged,
+    whatever pushed the head in between (a CI fix, a restack, a conflict merge, an owner head, a
+    rewrite or split a spawner called). The newest disposition comment therefore always holds
+    every held finding still open, and FINISH Step 1's held-findings check reads only that one. A
+    held finding leaves the list once its fix lands or it is decided;
   - rewrite the PR line with the count and `<m>`, the number of `agree, held` lines in that comment,
     then hand back at the usual reviewed-PR stopping point.
 
@@ -493,14 +503,25 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
   A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
 
+  The hand-back doesn't settle the held findings, and they block any merge until each one is
+  decided (FINISH Step 1's held-findings check, the skill's `phases/finish.md`): by the owner, by
+  the child's spawner (*A spawner's call*, below), or by a session the owner cleared up front to
+  finish on its own. Each decision is recorded on the PR, as a fix after a raise, a decline or a
+  follow-up issue, and nobody but the owner declines or defers one below that check's floor.
+
 - **Raising the cap.** **A raise is an edit to the PR, never a relayed instruction.** The PR
   body's `Review rounds:` line is the cap's one durable record, and the session re-reads it every
   round (START Step 8), so a raise needs nothing but that line. This bullet is the raise's one
   definition; START, EPIC, both role charters and `messaging.md` point here.
   - **Who raises:** the owner, or the child's spawner (the session its `Notify:` directive names,
-    or on cloud the session that launched it). A sibling never raises another child's cap, and an
-    implementer never raises its own on its own judgment: it writes a raise only when a human
-    grants one in its session or its briefing's `Budget:` carries one (START Step 1). These rules
+    or on cloud the session that launched it). A spawner needs no word from the owner: it raises
+    on its own judgment, but only as *A spawner's call* (below) allows: while the review is
+    converging (or by the one round a rewrite or split there takes) and no higher than double the
+    cap the child was launched with. Past that, the
+    raise is the owner's, and the owner's own raise has neither limit. A sibling never raises
+    another child's cap, and an implementer never raises its own on its own judgment, grant or no
+    grant: it writes a raise only when a human grants one in its session or its briefing's
+    `Budget:` carries one (START Step 1). These rules
     bind the raiser, and the child doesn't check them. Every session in a spawn tree edits the PR
     as the tree's one account (*Owner requests*), so a raise by the spawner, a sibling or the
     child itself carries the same login. Only where that account isn't the owner's (a bot user's)
@@ -536,7 +557,12 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     is reached or the review is clean, starting with the fixes it held: the `agree, held` lines of
     its last disposition comment (leave that comment as posted; the next round's answer supersedes
     it) and any held self-review lines in the body, each rewritten to `fixed in <sha> — …` as its
-    fix lands (START Step 7). With a `Notify:` spawner, it also pings
+    fix lands (START Step 7). Before it resumes, it reads its PR for a `Cap call:` comment newer
+    than its last hand-back, from the login its spawn tree posts as (*A spawner's call*, below),
+    however the raise reached it. A raise that came with a rewrite or split call is spent on that
+    call instead: the one rewrite, or taking the named part out, then the hand-back, its
+    disposition comment carrying forward the findings it held and didn't fix (*At the cap*). With
+    a `Notify:` spawner, it also pings
     `resumed: cap <c> on <header>` (`messaging.md`'s *Naming a PR*). A hint whose PR line shows no raise changes nothing: the child
     stays handed back and says so, to the sender on a local edge or in a PR comment on cloud.
     Verified live on 2026-09-25 (#175). A local spawned child in auto mode, handed back at cap 1,
@@ -549,6 +575,113 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     is lost at the next compaction. This is also the fallback when the child's permission layer
     won't resume on a line it didn't see a human change.
   - A cap still only goes up: nobody rewrites a line's cap to a lower value (START Step 8).
+
+- **A spawner's call: at a child's cap, or sooner when it turns fiddly.** The child's spawner (the
+  session its `Notify:` names, or on cloud the one that launched it) makes this call on its own
+  judgment, from the PR's reviews and commits and the child's hand-back, with no word from the
+  owner. It is prose to judge by, not a script: telling whether a finding is about the PR's own
+  earlier fix takes a model's read. Its thresholds are starting values to tune (#359). This
+  bullet is the call's one definition; both spawner charters and EPIC Step 6 point here.
+  - **When.** A child hands back at its cap (a valid cap marker) with findings held (`<m>` above 0,
+    or an `agree, held at the round cap` line in its `## Self-review`), or a child still in its
+    review loop turns fiddly (the last sub-bullet).
+  - **Decide the held findings.** You are cleared to decide each one yourself, and until someone
+    does, it blocks the PR's merge (FINISH Step 1's held-findings check). Real and worth fixing
+    now, with the review converging (the test below): raise (*Raising the cap*). Not worth
+    blocking the merge over, the default for a minor one: decline it. Worth doing later: defer it
+    to a follow-up issue (FILE, plain `/make-ticket`). Record each decline or deferral on the PR
+    by rewriting its held line, as that check says. Below that check's floor (the change doesn't
+    do what its issue asks, or is a security or data-loss problem), a finding is fixed or goes to
+    the owner: never decline or defer it, and when no raise can fix it, it's the owner's, as a
+    need in your ledger. Once every held finding is decided, tell the child: a `finish:`
+    clearance when you hold a grant (a coordinator, until #207, lands the layer itself in EPIC
+    Step 7 instead), or an `approval:` hint when the owner's approval of its head waits on your
+    call (`messaging.md`); with neither, report the PR `ready; needs the owner`.
+  - **The convergence test, before each raise.** Read the child's counted rounds (*Count the
+    rounds*, owner heads skipped) and each one's findings: the threads its review opened and its
+    body entries, as the body shape defines them. The review is converging when the last round
+    had fewer findings than the one before it, and fewer than half of the last round's findings
+    are about code that an earlier fix in this same PR introduced (lines that a commit pushed
+    after the PR opened, in answer to a finding, added or changed). With fewer than two counted
+    rounds there is nothing to compare, so the test neither passes nor fails: make no raise and
+    no not-converging cap call, leave the raise to the owner, and sort the rest of the held
+    findings as above. (The too-fiddly trigger, below, doesn't depend on the round count.)
+    One raise at a time: raise by the rounds the held fixes need, usually one, and run the test
+    again on the rounds that raise bought before raising again.
+  - **The ceiling.** Without the owner, raise no higher than double the cap the child was
+    launched with (5 to 10 under this profile's default). That is the `Budget: rounds=<n>` of the
+    spawn briefing you composed, so read it from your own record (for an epic child, the earliest
+    `budget:` marker for it, and only when that marker is older than the child's PR's `createdAt`,
+    since EPIC Step 5 posts one at launch only for a cap other than the profile default, and every
+    later raise posts another; none such means the profile default), never from its PR line,
+    which records raises, some of them with no comment of their own. When you can't tell, take the lower of the profile default and the PR's reading:
+    the `was <old>` of its first `Resuming: cap raised` comment, else the line's own cap. Past
+    the ceiling, every raise is the owner's.
+  - **Not converging: no raise, and one of three, said on the PR.** When the test fails, don't
+    raise. Pick one and post it as one PR comment, `Cap call: <rewrite <section> | split <part>
+    to #<follow-up> | stop> — <the rounds' numbers, or the trigger that fired>`:
+    - **Rewrite.** The child stops patching the troubled section and rewrites it once, answering
+      every finding raised against it so far (its own spiral check, enforced from above), and one
+      bot round confirms it. At the cap, raise by exactly one round for it, a raise that skips the
+      convergence test but not the ceiling. With rounds left, raise nothing.
+    - **Split.** File a follow-up issue for the fiddly part (what it is, the findings it drew,
+      what was tried) and have the child take that part out of its PR, so the core lands.
+      Splitting the child's issue is the tier above's call (`roles/implementer.md`). The removal
+      is a push like any fix, raised for as a rewrite is.
+    - **Stop and re-evaluate.** The approach is wrong. Bring the owner a short summary of what
+      keeps failing and an alternative, as a need in your ledger. A child already handed back
+      stays there; one still in its loop is told to stop.
+
+    At the ceiling, where the round a rewrite or split needs is the owner's to grant, the call is
+    a stop: post `Cap call: stop`, naming the rewrite or split you'd recommend.
+  - **A stop holds the PR until it is lifted.** FINISH Step 1's merge-blocker scan reads an
+    unlifted `Cap call: stop` as a hold under any grant, and EPIC Step 6 reports its row
+    `stopped`, a terminal state like stuck. A later `Cap call:` comment lifts it: a new call of
+    the spawner's, or `Cap call: lifted — <the owner's words> (owner: <where and when>)`, which
+    the session that hears the owner's answer posts, as a `Merge hold:` is recorded
+    (`phases/finish.md`, *The owner's approval*): the child's spawner, or the child itself when
+    the owner tells it. A planner that hears it for an epic's child relays it to that epic's
+    coordinator as a `request:` with the owner's words (`messaging.md`), and the coordinator posts
+    the lift, since a child takes a `cap call:` only from its own spawner. Every `Cap call:`
+    comment, a stop and a lift alike, counts only from the login the spawn tree posts as (*Owner
+    requests*), since anyone can comment on a public repo's PR. A raise of the PR line doesn't
+    lift a stop by itself, since the child can't tell who raised it: a stopped child woken by one
+    stays handed back and says so on the PR, until a lift arrives. A lift resumes the child: whoever posts it sends
+    the child `cap call: lifted on #<issue> → PR #<pr>` as *Telling the child* says, and the child
+    goes back into its loop with the rounds it has left, starting with the fixes it held, as on a
+    raise. At its cap, a lift with no raise resumes nothing, and the held findings are decided as
+    at any cap.
+  - **Telling the child.** After the comment, and after the raise when there is one: on a local
+    edge, SendMessage it `cap call: <rewrite <section> | split <part> to #<follow-up> | stop |
+    lifted> on #<issue> → PR #<pr>`; on cloud, where no message reaches it, schedule the one-shot Routine a
+    `raise:` hint uses (EPIC Step 6) with `cap call: #<issue> → PR #<pr> <comment URL>`. With a
+    raise, this line takes the place of *Raising the cap*'s `raise:` hint (edit and re-read the
+    line as that bullet says, but send no `raise:`), so the child's first wake carries both. It
+    is a redirect about the child's own issue (`messaging.md`). The child takes a message only
+    from its recorded spawner, checked as a `finish:` clearance's sender is, and on cloud reads
+    the `Cap call:` comment only from the login its spawn tree posts as (*Owner requests*).
+    Mid-loop, it lets the review in flight land, then does the rewrite or the removal as its next
+    push, or on `stop` answers that review by disposition without pushing (the lines *At the cap*
+    uses), counts its `agree, held` lines in the `Review rounds:` line's `<m>` even below the
+    cap, so FINISH Step 1's held-findings check finds them once the stop is lifted, and hands
+    back. At its cap, it spends the raise on the call (the child bullet of *Raising the cap*).
+  - **Too fiddly, before the cap.** Whenever a child still in its review loop shows its PR moving
+    (a ping, or EPIC Step 6's poll), check two things: whether its fix commits since the PR opened
+    are at least 5 and outnumber the commits it opened with, or are 10 or more whatever the ratio,
+    and whether its diff has grown well past what its issue describes. Fix commits are the ones
+    that answer a bot or self-review finding, not a CI fix, a conflict merge or an owner head's
+    commits; tell them from the opening commits by author date against the PR's `createdAt`,
+    which a restack keeps. If either holds, make the same three-way call now, with rounds left.
+    Make it once per trigger: a `Cap call:` already on the PR answers it until the fix commits
+    pushed since that call outnumber all the PR's commits from before it. A child that handed
+    back review-clean below its cap is done, and isn't checked. The thresholds are starting
+    values to tune. The owner picked them from a back-test on this repo's last 40 merged PRs,
+    counting a commit whose subject carries the `CRC` flag as a fix. "Outnumber" alone flagged a
+    one-commit PR with one fix, and the minimum of 5 removed it. The ratio missed a PR with 12 fix
+    commits against 19 opening ones and 18 rounds, which the 10-or-more clause catches. Together
+    they flagged five of the six PRs that ran 9 or more rounds, plus three with long self-review
+    churn, and none of the other 32. A PR that churns through rounds with few fix commits (one
+    took 20 rounds on 3) is the round cap's to stop, not this trigger's.
 
 - **Pushes the cap never blocks.** A **CI fix**, a **restack** a `restack:` request asks for (rebase
   onto a new base; START Step 8's *Restack on request*), and a merge of the base that clears a
@@ -635,8 +768,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   other finish relayed by another session, in a message, a Routine, or a briefing, ends this
   hold. In a local session, so does the owner's own approving review of your PR's current head,
   which you read from GitHub as those rules define it, unless the owner says to hold; in a cloud
-  session it never does. Do not arm a periodic PR check-in (no recurring or
-  self-re-arming send_later or Routine that re-checks your own PR): your PR's events wake you
+  session it never does. Findings you held at your review-round cap block your merge until each
+  is decided, as the FINISH rules on held findings define it: your spawner or the owner decides
+  them on your PR, and you decide them yourself only when the owner asked this session to
+  finish. Do not arm a
+  periodic PR check-in (no recurring or self-re-arming send_later or Routine that re-checks your own PR): your PR's events wake you
   instead, on cloud the harness's (reviews, review comments, CI failures) and locally the
   pr-notifier's (the owner's and review bots' activity), which START subscribes your PR to at
   each hand-back where it is installed. Wait on CI in-turn after a push,
@@ -644,7 +780,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   handed back at the reviewed stopping point, stop — the coordinator or a human wakes you if
   needed. When woken after handing back at your review-round cap, re-read the Review rounds line
   in your PR body: a cap there above your round count is a raise, whoever wrote it, so resume the
-  review loop. Land what the owner asks for on your PR, whether in this session, on the PR, or
+  review loop. Act too on a cap call your spawner sends about your own PR (a rewrite, a split or a
+  stop), as the review rules define it. Land what the owner asks for on your PR, whether in this session, on the PR, or
   relayed by your spawner, without waiting to hand back. No such request lifts these holds, and
   only automated review rounds count against your cap, so a push that lands nothing but such
   requests is not a round once you record it as the review rules say. Budget: rounds=5" Keeps an unattended background session from over-reaching, while
@@ -655,10 +792,26 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   following its launch briefing. Without it, "do not merge on your own initiative" reads as
   forbidding that merge, which is what the session that prompted #341 reported for
   maguerrieri/config#108.
+- The **held-findings sentence** puts FINISH Step 1's held-findings check (`phases/finish.md`)
+  into the child's own user turn: findings it held at its cap block its merge until someone
+  cleared to decide has decided each, which its spawner does by rewriting the child's own PR
+  lines. So a child that merges once its spawner has declined or deferred them is following its
+  launch briefing, not a peer's loosening of a rule, which a child's permission layer has refused
+  before (#154). A grant used to stop at any held finding with no way to settle one short of a
+  raise: on sprue-works/cbeams#155 the owner said to merge with eight held findings filed as a
+  follow-up, and the implementer had to decline the clearance that carried it (#359). The first
+  fix left the call to the merging session at merge time. The owner replaced that, since a list
+  of held findings posted on the PR is easy to miss: now a decision comes before the merge, from
+  someone cleared to make it. A child launched without this sentence still blocks on every held
+  line, and a decided line no longer reads as held, so it merges on the same decisions.
 - The **raise sentence** puts `REVIEW_BOT`'s *Raising the cap* into the child's own user turn, so
   a child that resumes on a raised PR line is following its launch briefing, not a peer's message.
   That matters because a child's permission layer has already refused a peer's relayed loosening
   of a rule as instruction poisoning (#154), and a relayed budget raise has the same shape.
+- The **cap-call sentence** does the same for `REVIEW_BOT`'s *A spawner's call*: a split that takes
+  a part out of the child's PR, a rewrite of one section, or a stop is a peer changing how the
+  child's work ends, the shape #154's refusal had, so a child that acts on one is following its
+  own briefing.
 - The **request sentence** does the same for `REVIEW_BOT`'s *Owner requests*: a child that lands
   what its spawner relayed, and pushes it without spending a round, is following its own briefing
   rather than a peer's change of scope.

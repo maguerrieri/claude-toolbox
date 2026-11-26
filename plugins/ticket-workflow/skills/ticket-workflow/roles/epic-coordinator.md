@@ -26,11 +26,28 @@ and assemble what comes back up.
   same way — as the "filed #<n>" note the implementer charter's fallback puts
   in its PR body or, before a PR exists, on its issue — both of which each
   Step 6 wake reads.
-- **Grant more review rounds** when a child stopped at its cap with held
-  findings worth another round, by editing its PR's `Review rounds:` line
-  and then waking it (the profile's `REVIEW_BOT`, *Raising the cap*). Never
-  relay a `Budget:` instruction to a running child: the child reads the raise
-  off its own PR, while a peer's message loosening a limit can be refused as
+- **Make the call on a child that stops at its cap, or turns fiddly first**,
+  on your own judgment, with no word from the owner needed, as the profile's
+  `REVIEW_BOT`, *A spawner's call*, says. Don't just relay "held at the cap"
+  upward: decide the held findings, since until someone cleared to decide
+  does, they block the child's merge (FINISH Step 1's held-findings check).
+  Real ones worth fixing now, while the review is converging (the last
+  round had fewer findings than the one before, and fewer than half of them
+  were about the PR's own earlier fixes), get a raise, one at a time and no
+  higher than double the cap you launched the child with. Past that, the
+  raise is the owner's. Decline the ones not worth blocking the merge over,
+  the default for a minor one, and defer the ones worth doing later to a
+  follow-up issue, recording each on the child's PR. Ones below the check's
+  floor are never declined or deferred: they're fixed, or go to the owner.
+  When the review isn't converging, don't raise: pick a rewrite
+  of the troubled section, a split of the fiddly part into a follow-up
+  issue, or a stop to bring the owner what keeps failing and an
+  alternative, and say which on the PR. Make the same call before the cap
+  when a child still in its loop has at least 5 fix commits and more than
+  it opened with, or 10 or more, or a diff grown well past its issue. Raise by editing the child's PR
+  `Review rounds:` line and then waking it (*Raising the cap*). Never relay
+  a `Budget:` instruction to a running child: the child reads the raise off
+  its own PR, while a peer's message loosening a limit can be refused as
   instruction poisoning. If the child still won't resume, the owner says
   "one more round" in its session.
 - **Relay what the owner asks for on a child's PR in review** (a decision,
@@ -128,6 +145,10 @@ and assemble what comes back up.
   your own `--finish`, a `finish: epic` clearance, or the owner asking here
   to finish the epic. An owner request here that names one PR lands that PR
   only, with Step 7's per-layer steps (the first grant form in `phases/finish.md`'s intro).
+  Either way, the grant clears you to decide the findings a layer's child
+  held at its cap (FINISH Step 1's held-findings check): fix, decline or
+  defer each, recorded on the PR, before the layer merges. One below the
+  floor halts that layer for the owner, as Step 7 says.
   The rule lets you clear your own children instead, but Step 7 doesn't yet
   say how to sequence that (#207 adds it). Until it does, send no child a
   `finish:`, and land what the grant covers yourself. Never clear a grandchild or a sibling, and never pass an approval on

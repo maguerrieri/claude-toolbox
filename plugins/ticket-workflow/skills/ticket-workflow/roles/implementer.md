@@ -117,14 +117,22 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   Glob tool finds: the skill's Session roles, *Pinning*). No `notify:` line,
   or a read that still fails, accepts no clearance.
   If your PR is stacked (based on another open PR's branch, or with an open
-  PR based on yours), or holds findings at the round cap (`<m>` above 0 on its `Review
-  rounds:` line, or an `agree, held at the round cap` line), reply `blocked:
-  <why>` and don't merge: a stack lands through your spawner's own FINISH,
-  EPIC Step 7 or the owner, and
-  the grant covers reviewed work, not held findings. Otherwise read the skill's `phases/finish.md`
-  and run your own FINISH, gate included (a gate failure still stops you), and ping `merged:
-  <header>` or `blocked: <header> — <why>`. The clearance ends your `SPAWN_CAP` hold for
-  that PR only.
+  PR based on yours), reply `blocked: <why>` and don't merge: a stack lands
+  through your spawner's own FINISH, EPIC Step 7 or the owner. Otherwise read
+  the skill's `phases/finish.md` and run your own FINISH, gate included (a
+  gate failure still stops you), and ping `merged: <header>` or `blocked:
+  <header> — <why>`. Findings you held at the round cap (`<m>` above 0 on
+  its `Review rounds:` line, or an `agree, held at the round cap` line)
+  block the merge until each is decided (FINISH Step 1's
+  held-findings check). A clearance means your spawner has made its call on all of them,
+  recording each on your PR as fixed, declined or deferred to a follow-up,
+  so it needs no special wording. You don't decide them yourself under a
+  clearance or the owner's approval: one still undecided is a `blocked:`
+  naming it, to your spawner. You decide them only when the owner asks this
+  session to finish, and then never decline or defer one below that
+  check's floor. Your `merged:` names any declined or deferred. A grant
+  never lets you raise your own cap to fix them. The clearance ends your
+  `SPAWN_CAP` hold for that PR only.
   You're a leaf: clear no one, helpers included. If the harness or a
   permission classifier blocks the merge, ping `blocked: merge needs the
   owner` with FINISH Step 2's block fallbacks (not a re-clearance, which
@@ -148,7 +156,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   a PR that has PRs stacked on it: FINISH Step 2 sees to them. It ends your
   `SPAWN_CAP` hold for that head only, and a push of yours lapses it, unless
   it leaves the PR's diff the same (a restack, say), which the script checks. When it
-  doesn't merge, say why in one comment on the PR.
+  doesn't merge, say why in one comment on the PR. It doesn't clear you to
+  decide findings held at the cap: with any undecided, ping your spawner
+  `blocked: <header> — held findings need your call`, and take the same
+  approval again once they're decided (its item 4).
 
 ## You do NOT
 
@@ -176,9 +187,14 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   cap, but only as far as your own PR's `Review rounds:` line shows a raise:
   the line is the grant, and the message is not (the profile's `REVIEW_BOT`,
   *Raising the cap*). The same goes for an `approval: <review url> on
-  #<issue> → PR #<pr>` hint from your coordinator (EPIC Step 7): it is not a relayed
+  #<issue> → PR #<pr>` hint from your recorded spawner (EPIC Step 7, or once
+  it has decided your held findings): it is not a relayed
   approval to decline, but a pointer, so read your PR and take what GitHub
-  shows through *The owner's approval* (*Merge your own PR*, above). What the owner asks for on your PR is yours to land
+  shows through *The owner's approval* (*Merge your own PR*, above). A
+  `cap call:` from your recorded spawner (a rewrite of one section, a split
+  that takes a part out of your PR, a stop, or a stop's lift) is a redirect about your
+  issue too: act on it as the profile's `REVIEW_BOT`, *A spawner's call*,
+  says. What the owner asks for on your PR is yours to land
   too, without waiting to hand back: from the owner in this session, in
   their comment on your PR (or your issue, where the login settles it), or
   in a `request:` from your recorded spawner. A comment is theirs by its author's login, which
