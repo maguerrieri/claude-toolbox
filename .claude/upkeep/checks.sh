@@ -13,8 +13,10 @@
 #                       `not-above-main` (the plugin versions check fails it
 #                       once it's rebased) or `collides` (another open PR
 #                       bumps the plugin to the same version, so whichever
-#                       merges second has to bump again). A note counts the
-#                       rows that are fine.
+#                       merges second has to bump again), or `unread` when the
+#                       manifest at the PR's head failed to read (only a 404
+#                       counts as the PR removing it). A note counts the rows
+#                       that are fine.
 #   defaults-deps       `defaults` and each of its dependencies, where it isn't
 #                       enabled (`true`) in `.claude/settings.json`'s
 #                       enabledPlugins or in the README's settings snippet
@@ -75,9 +77,16 @@ if gh pr list -R "$repo" --state open -L 500 --json number,headRefOid,files >"$t
 		manifest="plugins/$plugin/.claude-plugin/plugin.json"
 		main_v=$(git cat-file -p "$ref:$manifest" 2>/dev/null | jq -r '.version // "?"' 2>/dev/null)
 		[ -n "$main_v" ] || main_v=new
-		pr_v=$(gh api "repos/$repo/contents/$manifest?ref=$head" 2>/dev/null |
-			jq -r '.content | gsub("\n"; "") | @base64d | fromjson | .version // "?"' 2>/dev/null)
-		[ -n "$pr_v" ] || pr_v=removed
+		# Only a 404 means the PR removed the manifest; any other failure (a
+		# rate limit, a 5xx) is a read that didn't happen, and says so.
+		if gh api "repos/$repo/contents/$manifest?ref=$head" >"$tmp/manifest" 2>"$tmp/api-err"; then
+			pr_v=$(jq -r '.content | gsub("\n"; "") | @base64d | fromjson | .version // "?"' "$tmp/manifest" 2>/dev/null)
+			[ -n "$pr_v" ] || pr_v=unread
+		elif grep -q 'HTTP 404' "$tmp/api-err"; then
+			pr_v=removed
+		else
+			pr_v=unread
+		fi
 		printf '%s\t%s\t%s\t%s\n' "$plugin" "$main_v" "$pr" "$pr_v" >>"$tmp/versions"
 	done <"$tmp/touched"
 	printf 'plugin\tmain\tpr\tpr_version\tstatus\n'
@@ -87,7 +96,8 @@ if gh pr list -R "$repo" --state open -L 500 --json number,headRefOid,files >"$t
 		[split("\n")[] | select(. != "") | split("\t") | {plugin: .[0], main: .[1], pr: .[2], ver: .[3]}] as $rows
 		| [$rows[] | . as $r
 			| ([$rows[] | select(.plugin == $r.plugin and .ver == $r.ver and .pr != $r.pr) | "#" + .pr]) as $twins
-			| .status = (if .ver == "removed" or .ver == "?" or .main == "?" then "ok"
+			| .status = (if .ver == "unread" then "unread: the PR head manifest failed to read"
+			             elif .ver == "removed" or .ver == "?" or .main == "?" then "ok"
 			             elif .main != "new" and (above(.ver; .main) | not) then "not-above-main"
 			             elif $twins != [] then "collides with " + ($twins | join(","))
 			             else "ok" end)] as $all

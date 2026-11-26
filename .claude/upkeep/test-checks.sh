@@ -81,7 +81,8 @@ cat >"$tmp/fx/open.json" <<'EOF'
  {"number": 4, "headRefOid": "h4", "files": [{"path": "docs/x.md"}]},
  {"number": 5, "headRefOid": "h5", "files": [{"path": "plugins/new/x"}]},
  {"number": 7, "headRefOid": "h7", "files": [{"path": "plugins/new/y"}]},
- {"number": 8, "headRefOid": "h8", "files": [{"path": "plugins/other/x"}]}]
+ {"number": 8, "headRefOid": "h8", "files": [{"path": "plugins/other/x"}]},
+ {"number": 9, "headRefOid": "h9", "files": [{"path": "plugins/a/.claude-plugin/plugin.json"}]}]
 EOF
 # PR #6 is at gh's 100-file cap; its full list, read by REST, touches plugins/b.
 jq '. + [{number: 6, headRefOid: "h6", files: [range(100) | {path: "docs/gen/f\(.).md"}]}]' "$tmp/fx/open.json" >"$tmp/fx/open6.json"
@@ -93,7 +94,9 @@ fx="$tmp/fx"
 case "\$*" in
 "pr list -R owner/repo --state open "*) [ "\${STUB_FAIL:-}" = 1 ] && { echo "HTTP 502" >&2; exit 1; }; cat "\$fx/open.json" ;;
 "api --paginate repos/owner/repo/pulls/6/files?per_page=100 --jq .[].filename") [ "\${STUB_FAIL:-}" = big ] && exit 1; cat "\$fx/pr6-files" ;;
-"api repos/owner/repo/contents/plugins/"*) p=\${2#repos/owner/repo/contents/plugins/}; f="\$fx/\${p%%/*}-\${2##*ref=}"; [ -f "\$f" ] || exit 1; cat "\$f" ;;
+"api repos/owner/repo/contents/plugins/"*) p=\${2#repos/owner/repo/contents/plugins/}; f="\$fx/\${p%%/*}-\${2##*ref=}"
+	[ "\${STUB_FAIL:-}" = manifest ] && [ "\${2##*ref=}" = h2 ] && { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+	[ -f "\$f" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }; cat "\$f" ;;
 "api repos/o/ext/git/ref/tags/v1") echo '{"object": {"type": "tag", "sha": "tagobj"}}' ;;
 "api repos/o/ext/git/tags/tagobj") echo '{"object": {"sha": "$sha1"}}' ;;
 "api repos/o/ext2/git/ref/tags/v2") echo '{"object": {"type": "commit", "sha": "9999"}}' ;;
@@ -113,7 +116,7 @@ record 0 "exits 0" "$?"
 record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #2 1.3.0 collides with #1|a 1.2.0 #3 1.2.0 not-above-main|b 0.1.0 #1 0.2.0 collides with #6|b 0.1.0 #6 0.2.0 collides with #1|new new #5 0.1.0 collides with #7|new new #7 0.1.0 collides with #5" \
 	"version collisions: shared bumps (one past a PR's 100-file cap, one of a plugin main hasn't got), and one not above main" \
 	"$(rows version-collisions "$tmp/out" | sort | tr '\t' ' ' | paste -s -d '|' -)"
-record "note: 1 more plugin bumps on open PRs are fine" "a new plugin no other PR adds is fine" \
+record "note: 2 more plugin bumps on open PRs are fine" "a new plugin no other PR adds, and a manifest a PR removed (a 404), are fine" \
 	"$(grep '^note: .* plugin bumps' "$tmp/out")"
 record "a	yes	missing|b	missing	yes|c	disabled	yes" "defaults deps missing from the settings or the README's snippet, or listed but disabled" \
 	"$(rows defaults-deps "$tmp/out" | sort | paste -s -d '|' -)"
@@ -121,6 +124,11 @@ record "ext2	o/ext2	v2	$sha2	9999	mismatch|ext4	o/ext4	-	$sha3	-	ref-or-sha-miss
 	"pins: a mismatch and a missing ref; an annotated tag and a branch resolve" \
 	"$(rows marketplace-pins "$tmp/out" | sort | paste -s -d '|' -)"
 record "note: 4 pinned entries checked" "every github entry is checked" "$(grep '^note: .* pinned' "$tmp/out")"
+
+STUB_FAIL=manifest bash "$script" --repo owner/repo >"$tmp/unread" 2>&1
+record "a	1.2.0	#2	unread	unread: the PR head manifest failed to read" \
+	"a failed manifest read is reported, not taken as removed" \
+	"$(rows version-collisions "$tmp/unread" | awk -F '\t' '$3 == "#2"')"
 
 STUB_FAIL=big bash "$script" --repo owner/repo >"$tmp/nobig" 2>&1
 record "note: open PR #6 lists 100 files and its full list failed to read; it may touch more plugins" \
