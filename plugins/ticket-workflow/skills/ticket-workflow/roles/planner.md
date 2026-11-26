@@ -41,8 +41,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   section, a split of the fiddly part into a follow-up issue, or a stop to
   bring the owner what keeps failing and an alternative, and say which on
   the PR. Make the same call before the cap when a child still in its loop
-  has more fix commits than it opened with, or a diff grown well past its
-  issue. Raise by editing the child's PR `Review rounds:` line and then
+  has at least 5 fix commits and more than it opened with, or 10 or more,
+  or a diff grown well past its issue. Raise by editing the child's PR `Review rounds:` line and then
   waking it (*Raising the cap*), never by relaying a `Budget:`.
 - **Lead every report about a child's PR with its links.** Whenever you tell
   the owner about a child's PR (a relayed `done:`, a status sweep, a stack report, a `ready; needs the owner`), start each item with the issue, the

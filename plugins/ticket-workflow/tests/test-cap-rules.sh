@@ -124,6 +124,12 @@ for part in '**When.**' '**Decide the held findings.**' '**The convergence test,
 	'**Too fiddly, before the cap.**'; do
 	record 1 "A spawner's call has its part $part" "$(has "$profile" "$part")"
 done
+record 1 "the too-fiddly trigger carries the owner's thresholds" \
+	"$(has "$profile" 'are at least 5 and outnumber the commits it opened with, or are 10 or more whatever the ratio,')"
+for f in roles/planner.md roles/epic-coordinator.md; do
+	record 1 "$f carries the too-fiddly thresholds" \
+		"$(tr '\n' ' ' <"$skill/$f" | sed -E 's/ +/ /g' | grep -cF 'at least 5 fix commits and more than it opened with, or 10 or more')"
+done
 record 1 "Who raises says a spawner needs no word from the owner" \
 	"$(has "$profile" 'A spawner needs no word from the owner: it raises')"
 record 1 "the profile's authoring note lists A spawner's call with the cap's mechanics" \

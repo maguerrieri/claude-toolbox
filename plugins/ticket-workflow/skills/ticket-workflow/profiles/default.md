@@ -664,13 +664,21 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     back. At its cap, it spends the raise on the call (the child bullet of *Raising the cap*).
   - **Too fiddly, before the cap.** Whenever a child still in its review loop shows its PR moving
     (a ping, or EPIC Step 6's poll), check two things: whether its fix commits since the PR opened
-    outnumber the commits it opened with, and whether its diff has grown well past what its issue
-    describes. Fix commits are the ones that answer a bot or self-review finding, not a CI fix, a
-    conflict merge or an owner head's commits; tell them from the opening commits by author date
-    against the PR's `createdAt`, which a restack keeps. If either holds, make the same three-way
-    call now, with rounds left. Make it once per trigger: a `Cap call:` already on the PR answers
-    it until the fix commits pushed since that call outnumber all the PR's commits from before
-    it. A child that handed back review-clean below its cap is done, and isn't checked.
+    are at least 5 and outnumber the commits it opened with, or are 10 or more whatever the ratio,
+    and whether its diff has grown well past what its issue describes. Fix commits are the ones
+    that answer a bot or self-review finding, not a CI fix, a conflict merge or an owner head's
+    commits; tell them from the opening commits by author date against the PR's `createdAt`,
+    which a restack keeps. If either holds, make the same three-way call now, with rounds left.
+    Make it once per trigger: a `Cap call:` already on the PR answers it until the fix commits
+    pushed since that call outnumber all the PR's commits from before it. A child that handed
+    back review-clean below its cap is done, and isn't checked. The thresholds are starting
+    values to tune. The owner picked them from a back-test on this repo's last 40 merged PRs,
+    counting a commit whose subject carries the `CRC` flag as a fix. "Outnumber" alone flagged a
+    one-commit PR with one fix, and the minimum of 5 removed it. The ratio missed a PR with 12 fix
+    commits against 19 opening ones and 18 rounds, which the 10-or-more clause catches. Together
+    they flagged five of the six PRs that ran 9 or more rounds, plus three with long self-review
+    churn, and none of the other 32. A PR that churns through rounds with few fix commits (one
+    took 20 rounds on 3) is the round cap's to stop, not this trigger's.
 
 - **Pushes the cap never blocks.** A **CI fix**, a **restack** a `restack:` request asks for (rebase
   onto a new base; START Step 8's *Restack on request*), and a merge of the base that clears a
