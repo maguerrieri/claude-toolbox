@@ -1,0 +1,46 @@
+name: upkeep CI
+
+on:
+  push:
+    paths:
+      - "plugins/upkeep/**"
+      - ".claude/upkeep/**"
+      - ".github/workflows/upkeep-ci.yml"
+  pull_request:
+    paths:
+      - "plugins/upkeep/**"
+      - ".claude/upkeep/**"
+      - ".github/workflows/upkeep-ci.yml"
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Survey script tests (stubbed gh and claude)
+        run: for t in plugins/upkeep/tests/test-*.sh; do echo "== $t"; bash "$t" || exit 1; done
+      - name: This repo's upkeep checks
+        run: bash .claude/upkeep/test-checks.sh
+
+  bash-3-2:
+    # The scripts run under whichever bash a caller's PATH finds, and on macOS
+    # that can be /bin/bash 3.2 (AGENTS.md), which ubuntu's bash 5 hides.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: All upkeep tests under /bin/bash 3.2
+        run: |
+          export PATH="/bin:/usr/bin:/usr/sbin:/sbin:$(dirname "$(command -v jq)"):$(dirname "$(command -v git)")"
+          for t in plugins/upkeep/tests/test-*.sh .claude/upkeep/test-checks.sh; do echo "== $t"; /bin/bash "$t" || exit 1; done
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # Pinned, as in ledger CI, so a CLI release can't change the verdict
+      # under an unchanged plugin. It needs no login.
+      - name: Validate the plugin
+        run: npx -y @anthropic-ai/claude-code@2.1.325 plugin validate plugins/upkeep

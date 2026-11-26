@@ -9,8 +9,8 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
 ## Plugins
 
 - **defaults** — meta-plugin with no content of its own; its `dependencies`
-  list pulls in every plugin below except `gm`, `provenance` and
-  `pr-notifier`. Install this one to get the default set. New default plugins
+  list pulls in every plugin below except `gm`, `provenance`,
+  `pr-notifier` and `upkeep`. Install this one to get the default set. New default plugins
   added to this repo should also be added to its dependencies.
 - **conventions** — cross-repo development conventions: commit-message and
   PR-title formats, and a portable repository-instruction policy built around a canonical root
@@ -82,6 +82,15 @@ trust prompt, and a committed SessionStart hook installs it in cloud sessions
   answers from it. Local sessions only: the ledgers are files under
   `~/.claude/session-ledger/`. The band shows this session's ledger alone; a
   glanceable view across every session's ledger is #316.
+- **upkeep** — a read-only repo survey: the `/upkeep` skill. It counts stale
+  PRs, branches and worktrees, the issue backlog, docs naming files that are
+  gone, files that keep drawing review fixes and restacks, and dead scripts
+  and tests, using scripts so the numbers aren't estimates, plus any checks the
+  repo lists under `## Upkeep` in its `AGENTS.md`. It replies with five to ten
+  ranked proposals (closes count as much as fixes), each with its evidence,
+  and changes nothing. Declined proposals stay declined, through an
+  `upkeep:keep` label or a declines file. Not a `defaults` dependency yet. See
+  [its README](plugins/upkeep/README.md).
 - **yaml** — YAML editing guardrails: the `yaml` skill. Fires on the *surfaces*
   (frontmatter in SKILL.md / command / agent .md files, GitHub Actions workflows,
   docker-compose, k8s manifests, CI configs) — even for prose-feeling edits —
@@ -155,8 +164,8 @@ the copy, as this repo does for itself. Details in the repo's `AGENTS.md`.
 
 Or user-wide: `claude plugin marketplace add maguerrieri/claude-toolbox && claude plugin install defaults@maguerrieri-toolbox`
 — that path does resolve `defaults`' dependencies, so one install pulls in the
-six default plugins (`gm`, `provenance` and `pr-notifier` aren't `defaults`
-dependencies; install them separately).
+six default plugins (`gm`, `provenance`, `pr-notifier` and `upkeep` aren't
+`defaults` dependencies; install them separately).
 
 Org-specific playbooks (deploy processes, review-bot cycles, ticket rules)
 deliberately do **not** live here — they stay in org work config; these

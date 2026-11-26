@@ -51,6 +51,11 @@
       "description": "Wakes the local session that owns a PR when the owner or a configured review bot acts on it, or when it merges or closes"
     },
     {
+      "name": "upkeep",
+      "source": "./plugins/upkeep",
+      "description": "Read-only repo survey (/upkeep) that proposes a short, ranked cleanup list: stale work, backlog, doc drift, review-fix hot spots, dead weight"
+    },
+    {
       "name": "provenance",
       "source": {
         "source": "github",
