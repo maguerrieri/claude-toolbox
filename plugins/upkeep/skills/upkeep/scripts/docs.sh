@@ -14,8 +14,8 @@
 #                       at <ref>: not a tracked file or directory, not the
 #                       tail of one (`scripts/x.sh` for `plugins/p/scripts/
 #                       x.sh`), not relative to the doc, and not present on
-#                       disk in the main checkout (runtime paths such as
-#                       `.claude/worktrees/`). A span word counts as a path
+#                       disk, untracked, in the main checkout (runtime paths
+#                       such as `.claude/worktrees/`). A span word counts as a path
 #                       when it ends in a file extension the repo uses, or has
 #                       a `/` and starts with a directory name the repo has.
 #                       Placeholders and globs (`<`, `*`, `$`, `{`, `~`, ...),
@@ -30,10 +30,13 @@
 #                       GEMINI.md, Markdown under `.claude/`, and Markdown
 #                       under a `skills`, `commands` or `agents` directory),
 #                       largest first: words now, words at the window's start
-#                       (under the name it had then, when git sees a rename),
-#                       the change, and commits in the window.
+#                       (under the name it had then, when git sees a rename;
+#                       `new` for a file the window added, which may hold text
+#                       moved out of another file), the change, and commits
+#                       in the window.
 #   skill-totals        the same, summed per skill directory (`.../skills/
-#                       <name>/`), largest first.
+#                       <name>/`, a new file counting 0 at the start), largest
+#                       first.
 #
 # Needs git and jq.
 set -u
@@ -89,7 +92,7 @@ git -c core.quotePath=false log "$ref" --format= --name-only 2>/dev/null | awk '
 # tracked path at a `/`, or relative to the doc's own directory. One that
 # doesn't resolve is printed with `removed` when it resolves the same way in
 # the history, else with `never`.
-awk -F '\t' -v sq="'" -v ell="…" '
+awk -F '\t' -v sq="'" -v ell="…" -v tree="$tmp/tracked" -v hist="$tmp/history" '
 	function norm(p,   n, parts, out, i, k) {
 		n = split(p, parts, "/"); k = 0
 		for (i = 1; i <= n; i++) {
@@ -114,9 +117,8 @@ awk -F '\t' -v sq="'" -v ell="…" '
 			for (j = i - 1; j >= 1; j--) { t = parts[j] "/" t; tails[t] = 1 }
 		}
 	}
-	FNR == 1 { part++ }
-	part == 1 { set_is_tree = 1; load($0, have, have_tail); next }
-	part == 2 { set_is_tree = 0; load($0, was, was_tail); next }
+	FILENAME == tree { set_is_tree = 1; load($0, have, have_tail); next }
+	FILENAME == hist { set_is_tree = 0; load($0, was, was_tail); next }
 	{
 		doc = $1; line = $2; w = $3
 		sub(/:[0-9]+(-[0-9]+)?$/, "", w)
@@ -143,8 +145,12 @@ upkeep_section missing-paths "doc	line	kind	path"
 never=0
 while IFS='	' read -r doc line kind word history; do
 	[ -n "$doc" ] || continue
-	# A runtime path that exists in the main checkout, though untracked.
-	if [ -n "$main" ] && [ -e "$main/$word" ]; then continue; fi
+	# A runtime path: on disk in the main checkout but untracked there. A
+	# tracked file there is only a checkout behind <ref>, so it still counts.
+	if [ -n "$main" ] && [ -e "$main/$word" ] &&
+		! git -C "$main" ls-files --error-unmatch -- "$word" >/dev/null 2>&1; then
+		continue
+	fi
 	if [ "$history" = removed ]; then
 		printf '%s\t%s\t%s\t%s\n' "$doc" "$line" "$kind" "$word"
 	else
@@ -168,21 +174,21 @@ while IFS= read -r f; do
 	if [ -n "$start" ] && git cat-file -e "$start:$was" 2>/dev/null; then
 		then_w=$(git cat-file -p "$start:$was" | wc -w | tr -d ' ')
 	else
-		then_w=0
+		then_w=new
 	fi
 	printf '%s\t%s\t%s\n' "$f" "$now_w" "$then_w"
 done <"$tmp/instr" >"$tmp/sizes"
 
 upkeep_section instruction-sizes "words	words_at_start	change	commits	path"
-awk -F '\t' 'FNR == NR { c[$1] = $2; next }
-	{ printf "%d\t%d\t%+d\t%d\t%s\n", $2, $3, $2 - $3, ($1 in c ? c[$1] : 0), $1 }' "$tmp/commits" "$tmp/sizes" |
-	sort -t '	' -k1,1nr -k5,5
-[ -n "$start" ] || printf 'note: no commit before the window starts, so words_at_start is 0\n'
+awk -F '\t' -v counts="$tmp/commits" 'FILENAME == counts { c[$1] = $2; next }
+	{ printf "%d\t%s\t%s\t%d\t%s\n", $2, $3, ($3 == "new" ? "new" : sprintf("%+d", $2 - $3)), ($1 in c ? c[$1] : 0), $1 }' \
+	"$tmp/commits" "$tmp/sizes" | sort -t '	' -k1,1nr -k5,5
+[ -n "$start" ] || printf 'note: no commit before the window starts, so every file reads as new\n'
 
 upkeep_section skill-totals "words	words_at_start	change	files	skill"
 awk -F '\t' 'match($1, /(^|\/)skills\/[^\/]+\//) {
 		dir = substr($1, 1, RSTART + RLENGTH - 2)
-		w[dir] += $2; s[dir] += $3; f[dir]++
+		w[dir] += $2; s[dir] += ($3 == "new" ? 0 : $3); f[dir]++
 	}
 	END { for (d in w) printf "%d\t%d\t%+d\t%d\t%s\n", w[d], s[d], w[d] - s[d], f[d], d }' "$tmp/sizes" |
 	sort -t '	' -k1,1nr -k5,5

@@ -25,10 +25,14 @@
 #
 # A review fix is a commit whose subject matches --fix-pattern, an extended
 # regex (a repo whose review-fix commits carry a flag, such as this
-# marketplace's `CRC`). Without one, it is a commit its PR's author made after
-# the PR opened: matched to the default branch's commits by author date and
+# marketplace's `CRC`). Without one, it is a PR commit authored after the PR
+# opened, by anyone (work pushed after a draft PR opened counts too, so this
+# errs high): matched to the default branch's commits by author date and
 # subject, which rebase and fast-forward merges keep (a squash merge leaves
 # one commit, so its fixes count in `prs` only).
+#
+# GraphQL reads at most 100 files, 100 threads and 100 commits per merged PR,
+# so a larger PR is undercounted; an open PR's file list is read in full.
 #
 # The PR columns read GitHub's GraphQL API (one paginated search); where that
 # fails (a cloud session's proxy refuses GraphQL), they read `?` and a note
@@ -102,8 +106,17 @@ else
 fi
 
 if gh pr list -R "$repo" --state open -L 500 --json number,files >"$tmp/open.json" 2>/dev/null; then
-	jq -r '.[] | .number as $n | .files[]?.path | [$n, .] | @tsv' "$tmp/open.json" >"$tmp/open-files"
 	open_ok=yes
+	jq -r '.[] | select((.files | length) < 100) | .number as $n | .files[]?.path | [$n, .] | @tsv' "$tmp/open.json" >"$tmp/open-files"
+	# gh lists at most 100 files per PR: read a PR at the cap in full.
+	for big in $(jq -r '.[] | select((.files | length) >= 100) | .number' "$tmp/open.json"); do
+		if gh api --paginate "repos/$repo/pulls/$big/files?per_page=100" --jq '.[].filename' >"$tmp/big" 2>/dev/null; then
+			awk -v n="$big" 'NF { printf "%s\t%s\n", n, $0 }' "$tmp/big" >>"$tmp/open-files"
+		else
+			jq -r --argjson n "$big" '.[] | select(.number == $n) | .files[]?.path | [$n, .] | @tsv' "$tmp/open.json" >>"$tmp/open-files"
+			printf 'note: open PR #%s lists 100 files and its full list failed to read; open_prs may undercount\n' "$big"
+		fi
+	done
 else
 	: >"$tmp/open-files"
 	open_ok=no

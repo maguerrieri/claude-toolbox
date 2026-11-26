@@ -36,6 +36,9 @@ git -C "$repo" branch still-there
 git -C "$repo" push -q -u origin still-there 2>/dev/null
 git -C "$repo" branch orphan
 git -C "$repo" branch with-pr
+# From here origin names the GitHub repo the stubs serve, as a real clone's
+# does; nothing below fetches or pushes.
+git -C "$repo" remote set-url origin https://github.com/owner/repo.git
 git -C "$repo" worktree add -q "$repo/.claude/worktrees/feat-a" -b feat-a 2>/dev/null
 git -C "$repo" worktree add -q "$repo/.claude/worktrees/feat-b" -b feat-b 2>/dev/null
 printf 'wip\n' >"$repo/.claude/worktrees/feat-b/untracked.txt"
@@ -49,7 +52,7 @@ cat >"$tmp/fx/all-prs.json" <<'EOF'
 EOF
 jq -n --arg old "$(ago 40)" --arg new "$(ago 1)" '[
   {number: 12, title: "Second", isDraft: true, updatedAt: $new, mergeable: "MERGEABLE",
-   mergeStateStatus: "CLEAN", baseRefName: "main", headRefName: "feat-b-old", labels: [],
+   mergeStateStatus: "CLEAN", baseRefName: "feat-a", headRefName: "feat-b-old", labels: [],
    closingIssuesReferences: [],
    body: "Stacked on #9.\n\nFixes #11\n\nExamples: `Closes #77`, and\n\n```text\nFixes #78\n```\n"},
   {number: 9, title: "First\tone", isDraft: false, updatedAt: $old, mergeable: "CONFLICTING",
@@ -91,7 +94,8 @@ STUB_EOF
 chmod +x "$tmp/bin/gh" "$tmp/cbin/claude"
 export STUB_DIR="$tmp/fx" UPKEEP_NOW=$now
 # A PATH with no real gh or claude on it: the stubs, the system's tools, jq.
-base_path="$tmp/bin:/usr/bin:/bin:$(dirname "$(command -v jq)"):$(dirname "$(command -v git)")"
+tools_dir "$tmp/tools"
+base_path="$tmp/bin:$tmp/tools:/usr/bin:/bin"
 
 run() { # run <out file> [env assignments...]: work.sh from inside the repo
 	out=$1
@@ -120,6 +124,8 @@ record "" "no note when sessions were read" "$(grep '^note: session' "$tmp/out")
 record "closed-y:closed-pr feat-a:merged-pr stale-x:no-pr still-there:no-pr" "branches without an open PR, both pages" \
 	"$(rows branches "$tmp/out" | awk -F '\t' '{ printf "%s%s:%s", (NR > 1 ? " " : ""), $1, $3 }')"
 record 30 "branch idle days" "$(row branches feat-a "$tmp/out" | col 2)"
+record '#12' "a merged PR's branch that an open PR is based on says so" "$(row branches feat-a "$tmp/out" | col 5)"
+record '-' "one nothing is based on" "$(row branches stale-x "$tmp/out" | col 5)"
 
 record "feat-b:none:none:yes gone-branch:gone:none:no orphan:none:none:no pruned-late:gone:none:no" \
 	"local branches: gone upstream (pruned, or missing from GitHub), or none and no PR" \
@@ -152,6 +158,18 @@ record "skipped: GitHub GraphQL read failed: GraphQL is not available" "branches
 	"$(sed -n '/^## branches$/{n;p;}' "$tmp/nogql")"
 record "" "without GitHub's branch list an unpruned upstream reads as tracking" "$(row local-branches pruned-late "$tmp/nogql")"
 record "gone" "a pruned one is still gone" "$(row local-branches gone-branch "$tmp/nogql" | col 3)"
+
+record "?" "base_of unknown when the open PRs can't be read" "$(row branches feat-a "$tmp/noopen" | col 5)"
+
+# A fork's clone: origin isn't the surveyed repo, so GitHub's branch list
+# can't stand for origin's.
+git -C "$repo" remote set-url origin https://github.com/fork/repo.git
+run "$tmp/fork" PATH="$tmp/cbin:$base_path"
+record "" "no gone verdict from another repo's branch list" "$(row local-branches pruned-late "$tmp/fork")"
+git -C "$repo" remote set-url origin git@github.com:Owner/Repo.git
+run "$tmp/ssh" PATH="$tmp/cbin:$base_path"
+record gone "an ssh origin naming the repo, in any case, counts" "$(row local-branches pruned-late "$tmp/ssh" | col 3)"
+git -C "$repo" remote set-url origin https://github.com/owner/repo.git
 
 run "$tmp/noall" PATH="$tmp/cbin:$base_path" STUB_FAIL=all
 record "?" "worktree PR unknown when the PR list fails" "$(row worktrees .claude/worktrees/feat-a "$tmp/noall" | col 5)"

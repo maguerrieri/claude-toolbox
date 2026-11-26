@@ -53,10 +53,20 @@ printf 'note: read at %s (%s)\n' "$ref" "$(git rev-parse --short "$ref")"
 # --- version-collisions -----------------------------------------------------
 printf '## version-collisions\n'
 if gh pr list -R "$repo" --state open -L 500 --json number,headRefOid,files >"$tmp/open.json" 2>"$tmp/err"; then
-	# One `<pr>\t<head sha>\t<plugin>` row per plugin each PR touches.
-	jq -r '.[] | .number as $n | .headRefOid as $h
+	# One `<pr>\t<head sha>\t<plugin>` row per plugin each PR touches. gh lists
+	# at most 100 files per PR, so a PR at the cap is read in full by REST.
+	jq -r '.[] | select((.files | length) < 100) | .number as $n | .headRefOid as $h
 		| [.files[]?.path | capture("^plugins/(?<p>[^/]+)/").p] | unique[]
 		| [$n, $h, .] | @tsv' "$tmp/open.json" >"$tmp/touched"
+	for big in $(jq -r '.[] | select((.files | length) >= 100) | .number' "$tmp/open.json"); do
+		head_oid=$(jq -r --argjson n "$big" '.[] | select(.number == $n) | .headRefOid' "$tmp/open.json")
+		if ! gh api --paginate "repos/$repo/pulls/$big/files?per_page=100" --jq '.[].filename' >"$tmp/big" 2>/dev/null; then
+			jq -r --argjson n "$big" '.[] | select(.number == $n) | .files[]?.path' "$tmp/open.json" >"$tmp/big"
+			printf 'note: open PR #%s lists 100 files and its full list failed to read; it may touch more plugins\n' "$big" >>"$tmp/notes"
+		fi
+		sed -n 's#^plugins/\([^/]*\)/.*#\1#p' "$tmp/big" | sort -u |
+			awk -v n="$big" -v h="$head_oid" '{ printf "%s\t%s\t%s\n", n, h, $0 }' >>"$tmp/touched"
+	done
 	: >"$tmp/versions"
 	while IFS='	' read -r pr head plugin; do
 		[ -n "$pr" ] || continue
@@ -81,6 +91,7 @@ if gh pr list -R "$repo" --state open -L 500 --json number,headRefOid,files >"$t
 			             else "ok" end)] as $all
 		| ($all[] | select(.status != "ok") | [.plugin, .main, "#" + .pr, .ver, .status] | @tsv),
 		  "note: \($all | map(select(.status == "ok")) | length) more plugin bumps on open PRs are fine"' "$tmp/versions"
+	[ -f "$tmp/notes" ] && cat "$tmp/notes"
 else
 	printf 'skipped: gh pr list failed: %s\n' "$(head -1 "$tmp/err")"
 fi

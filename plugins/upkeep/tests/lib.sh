@@ -35,6 +35,16 @@ col() {
 	awk -F '\t' -v n="$1" 'NR == 1 { print $n }'
 }
 
+# tools_dir <dir>: a directory holding links to jq and git alone, for a PATH
+# that leaves out the rest of a machine's tools (a real gh or claude, which
+# often sit beside jq).
+tools_dir() {
+	mkdir -p "$1"
+	for tools_dir_tool in jq git; do
+		ln -sf "$(command -v "$tools_dir_tool")" "$1/$tools_dir_tool"
+	done
+}
+
 # mkrepo <dir>: an empty repo with a fixed identity and main as its branch.
 mkrepo() {
 	git init -q -b main "$1"

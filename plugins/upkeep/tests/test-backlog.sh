@@ -46,7 +46,8 @@ esac
 STUB_EOF
 chmod +x "$tmp/bin/gh"
 export STUB_DIR="$tmp/fx"
-PATH="$tmp/bin:/usr/bin:/bin:$(dirname "$(command -v jq)")"
+tools_dir "$tmp/tools"
+PATH="$tmp/bin:$tmp/tools:/usr/bin:/bin"
 
 bash "$script" --repo owner/repo >"$tmp/out" 2>"$tmp/err"
 record 0 "exits 0" "$?"

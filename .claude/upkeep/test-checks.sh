@@ -70,6 +70,7 @@ manifest 1.3.0 >"$tmp/fx/a-h2"
 manifest 1.2.0 >"$tmp/fx/a-h3"
 manifest 0.2.0 >"$tmp/fx/b-h1"
 manifest 0.1.0 >"$tmp/fx/new-h5"
+manifest 0.2.0 >"$tmp/fx/b-h6"
 cat >"$tmp/fx/open.json" <<'EOF'
 [{"number": 1, "headRefOid": "h1", "files": [{"path": "plugins/a/x"}, {"path": "plugins/b/y"}, {"path": "plugins/a/q"}]},
  {"number": 2, "headRefOid": "h2", "files": [{"path": "plugins/a/z"}]},
@@ -77,11 +78,16 @@ cat >"$tmp/fx/open.json" <<'EOF'
  {"number": 4, "headRefOid": "h4", "files": [{"path": "docs/x.md"}]},
  {"number": 5, "headRefOid": "h5", "files": [{"path": "plugins/new/x"}]}]
 EOF
+# PR #6 is at gh's 100-file cap; its full list, read by REST, touches plugins/b.
+jq '. + [{number: 6, headRefOid: "h6", files: [range(100) | {path: "docs/gen/f\(.).md"}]}]' "$tmp/fx/open.json" >"$tmp/fx/open6.json"
+mv "$tmp/fx/open6.json" "$tmp/fx/open.json"
+{ i=0; while [ "$i" -lt 100 ]; do echo "docs/gen/f$i.md"; i=$((i + 1)); done; echo plugins/b/late.md; } >"$tmp/fx/pr6-files"
 cat >"$tmp/bin/gh" <<STUB_EOF
 #!/usr/bin/env bash
 fx="$tmp/fx"
 case "\$*" in
-"pr list -R owner/repo --state open "*) [ -n "\${STUB_FAIL:-}" ] && { echo "HTTP 502" >&2; exit 1; }; cat "\$fx/open.json" ;;
+"pr list -R owner/repo --state open "*) [ "\${STUB_FAIL:-}" = 1 ] && { echo "HTTP 502" >&2; exit 1; }; cat "\$fx/open.json" ;;
+"api --paginate repos/owner/repo/pulls/6/files?per_page=100 --jq .[].filename") [ "\${STUB_FAIL:-}" = big ] && exit 1; cat "\$fx/pr6-files" ;;
 "api repos/owner/repo/contents/plugins/"*) p=\${2#repos/owner/repo/contents/plugins/}; f="\$fx/\${p%%/*}-\${2##*ref=}"; [ -f "\$f" ] || exit 1; cat "\$f" ;;
 "api repos/o/ext/git/ref/tags/v1") echo '{"object": {"type": "tag", "sha": "tagobj"}}' ;;
 "api repos/o/ext/git/tags/tagobj") echo '{"object": {"sha": "$sha1"}}' ;;
@@ -92,14 +98,17 @@ case "\$*" in
 esac
 STUB_EOF
 chmod +x "$tmp/bin/gh"
-PATH="$tmp/bin:/usr/bin:/bin:$(dirname "$(command -v jq)"):$(dirname "$(command -v git)")"
+# Links to jq and git alone, so no real gh or claude beside them is on PATH.
+mkdir "$tmp/tools"
+for tool in jq git; do ln -s "$(command -v "$tool")" "$tmp/tools/$tool"; done
+PATH="$tmp/bin:$tmp/tools:/usr/bin:/bin"
 
 bash "$script" --repo owner/repo >"$tmp/out" 2>"$tmp/err"
 record 0 "exits 0" "$?"
-record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #2 1.3.0 collides with #1|a 1.2.0 #3 1.2.0 not-above-main" \
-	"version collisions: a shared bump, and one not above main" \
+record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #2 1.3.0 collides with #1|a 1.2.0 #3 1.2.0 not-above-main|b 0.1.0 #1 0.2.0 collides with #6|b 0.1.0 #6 0.2.0 collides with #1" \
+	"version collisions: shared bumps (one past a PR's 100-file cap), and one not above main" \
 	"$(rows version-collisions "$tmp/out" | sort | tr '\t' ' ' | paste -s -d '|' -)"
-record "note: 2 more plugin bumps on open PRs are fine" "a new plugin and a lone bump are fine" \
+record "note: 1 more plugin bumps on open PRs are fine" "a new plugin is fine" \
 	"$(grep '^note: .* plugin bumps' "$tmp/out")"
 record "a	yes	missing|b	missing	yes" "defaults deps missing from the settings or the README's snippet" \
 	"$(rows defaults-deps "$tmp/out" | sort | paste -s -d '|' -)"
@@ -107,6 +116,11 @@ record "ext2	o/ext2	v2	$sha2	9999	mismatch|ext4	o/ext4	-	$sha3	-	ref-or-sha-miss
 	"pins: a mismatch and a missing ref; an annotated tag and a branch resolve" \
 	"$(rows marketplace-pins "$tmp/out" | sort | paste -s -d '|' -)"
 record "note: 4 pinned entries checked" "every github entry is checked" "$(grep '^note: .* pinned' "$tmp/out")"
+
+STUB_FAIL=big bash "$script" --repo owner/repo >"$tmp/nobig" 2>&1
+record "note: open PR #6 lists 100 files and its full list failed to read; it may touch more plugins" \
+	"a failed full read says so, after the rows" "$(sed -n '/^## version-collisions$/,/^## /p' "$tmp/nobig" | grep '^note: open PR')"
+record "plugin	main	pr	pr_version	status" "and the header still comes first" "$(sed -n '/^## version-collisions$/{n;p;}' "$tmp/nobig")"
 
 STUB_FAIL=1 bash "$script" --repo owner/repo >"$tmp/fail" 2>&1
 record "skipped: gh pr list failed: HTTP 502" "collisions skip when gh fails" \

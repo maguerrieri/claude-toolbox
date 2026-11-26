@@ -49,19 +49,24 @@ jq -nc --arg o51 "$(ago 11)" --arg d10 "$(ago 10)" '
 	   files: {nodes: [{path: "c.py"}]}, reviewThreads: {nodes: []}, timelineItems: {totalCount: 1},
 	   commits: {nodes: [{commit: {messageHeadline: "[#3] (Claude Code) other: Add c with a subject…", authoredDate: $d10}}]}}]}}}' \
 	>>"$tmp/fx/search.json"
-printf '%s\n' '[{"number": 60, "files": [{"path": "a.md"}]}, {"number": 61, "files": [{"path": "a.md"}, {"path": "d.md"}]}]' >"$tmp/fx/open.json"
+# PR #62 is at gh's 100-file cap; its full list, read by REST, has e.md too.
+jq -n '[{number: 60, files: [{path: "a.md"}]}, {number: 61, files: [{path: "a.md"}, {path: "d.md"}]},
+	{number: 62, files: [range(100) | {path: "gen/f\(.).md"}]}]' >"$tmp/fx/open.json"
+{ i=0; while [ "$i" -lt 100 ]; do echo "gen/f$i.md"; i=$((i + 1)); done; echo e.md; } >"$tmp/fx/pr62-files"
 
 cat >"$tmp/bin/gh" <<'STUB_EOF'
 #!/usr/bin/env bash
 case "$*" in
 "api graphql --paginate "*) [ "${STUB_FAIL:-}" = graphql ] && { echo "GraphQL is not available" >&2; exit 1; }; cat "$STUB_DIR/search.json" ;;
 "pr list -R owner/repo --state open "*) [ "${STUB_FAIL:-}" = open ] && exit 1; cat "$STUB_DIR/open.json" ;;
+"api --paginate repos/owner/repo/pulls/62/files?per_page=100 --jq .[].filename") [ "${STUB_FAIL:-}" = big ] && exit 1; cat "$STUB_DIR/pr62-files" ;;
 *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 STUB_EOF
 chmod +x "$tmp/bin/gh"
 export STUB_DIR="$tmp/fx"
-PATH="$tmp/bin:/usr/bin:/bin:$(dirname "$(command -v jq)"):$(dirname "$(command -v git)")"
+tools_dir "$tmp/tools"
+PATH="$tmp/bin:$tmp/tools:/usr/bin:/bin"
 
 hot() { # hot <out> [args...]
 	out=$1
@@ -78,7 +83,7 @@ record "2 1 3 1 2 3 2" "a.md: fixes, from one PR, commits, prs, threads, restack
 record "0 0 1 1 1 3 0" "b.sh" "$(cols "$tmp/pat" b.sh)"
 record "0 0 1 1 0 1 0" "c.py" "$(cols "$tmp/pat" c.py)"
 record "0 0 0 0 0 0 1" "d.md: only an open PR touches it" "$(cols "$tmp/pat" d.md)"
-record "a.md b.sh c.py d.md" "files ranked by fixes, threads, commits" "$(rows files "$tmp/pat" | cut -f8 | tr '\n' ' ' | sed 's/ $//')"
+record "a.md b.sh c.py d.md" "files ranked by fixes, threads, commits" "$(rows files "$tmp/pat" | head -4 | cut -f8 | tr '\n' ' ' | sed 's/ $//')"
 record "#50	3	2	3	3	feat: x" "PR #50's row" "$(row prs '#50' "$tmp/pat")"
 record "#51	1	0	0	1	other: c" "PR #51's row" "$(row prs '#51' "$tmp/pat")"
 record "" "the init commit is outside the window" "$(cols "$tmp/pat" a.md | awk '$3 > 3')"
@@ -99,6 +104,12 @@ record "2 ? 3 ? ? ? 2" "no GraphQL with a pattern: fixes still counted from git"
 (cd "$repo" && STUB_FAIL=open bash "$script" --repo owner/repo --days 90 --fix-pattern '\(CRC[;)]') >"$tmp/noopen" 2>&1
 record "2 1 3 1 2 3 ?" "open PRs unknown when the list fails" "$(cols "$tmp/noopen" a.md)"
 
+(cd "$repo" && bash "$script" --repo owner/repo --top 500 --fix-pattern '\(CRC[;)]') >"$tmp/all" 2>&1
+record "0 0 0 0 0 0 1" "a file past an open PR's 100-file cap is counted" "$(cols "$tmp/all" e.md)"
+record "1" "and the capped list isn't counted twice" "$(cols "$tmp/all" gen/f0.md | awk '{ print $7 }')"
+(cd "$repo" && STUB_FAIL=big bash "$script" --repo owner/repo --top 500 --fix-pattern '\(CRC[;)]') >"$tmp/nobig" 2>&1
+record "1" "a failed full read falls back to the first 100, with a note" \
+	"$(grep -c '^note: open PR #62 lists 100 files' "$tmp/nobig")"
 (cd "$repo" && bash "$script" --repo owner/repo --top 2 --fix-pattern '\(CRC[;)]') >"$tmp/top" 2>&1
 record 2 "--top limits the files" "$(rows files "$tmp/top" | wc -l | tr -d ' ')"
 (cd "$repo" && bash "$script" --repo owner/repo --fix-pattern '') >/dev/null 2>&1

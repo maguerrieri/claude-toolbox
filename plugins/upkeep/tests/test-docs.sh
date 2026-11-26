@@ -36,6 +36,7 @@ git -C "$repo" mv scripts/old-name.sh scripts/new-name.sh
 git -C "$repo" rm -q lib/gone.py
 git -C "$repo" mv plugins/p/skills/s/ref.md plugins/p/skills/s/reference.md
 words 30 >"$repo/plugins/p/skills/s/SKILL.md"
+words 6 >"$repo/plugins/p/skills/s/extra.md"
 cat >>"$repo/plugins/p/skills/s/SKILL.md" <<'EOF'
 See `ref.md` and `reference.md`.
 EOF
@@ -67,13 +68,31 @@ record "34	10	+24	1	plugins/p/skills/s/SKILL.md" "SKILL.md grew in the window" "
 record "40	40	+0	1" "a renamed file keeps its size at the window's start" \
 	"$(rows instruction-sizes "$tmp/out" | awk -F '\t' '$5 == "plugins/p/skills/s/reference.md" { print $1 "\t" $2 "\t" $3 "\t" $4 }')"
 record "5	5	+0	0	AGENTS.md" "AGENTS.md counts, unchanged" "$(rows instruction-sizes "$tmp/out" | awk -F '\t' '$5 == "AGENTS.md"')"
-record "74	50	+24	2	plugins/p/skills/s" "the skill's total" "$(rows skill-totals "$tmp/out" | head -1)"
+record "6	new	new	1" "a file the window added reads as new, not as growth from 0" \
+	"$(rows instruction-sizes "$tmp/out" | awk -F '\t' '$5 == "plugins/p/skills/s/extra.md" { print $1 "\t" $2 "\t" $3 "\t" $4 }')"
+record "80	50	+30	3	plugins/p/skills/s" "the skill's total, the new file counting 0 at the start" "$(rows skill-totals "$tmp/out" | head -1)"
 record "" "README isn't an instruction file" "$(rows instruction-sizes "$tmp/out" | awk -F '\t' '$5 == "README.md"')"
 
 (cd "$repo" && bash "$script" --days 300) >"$tmp/long" 2>&1
-record "0" "a window older than the repo counts from nothing" \
+record "new" "a window older than the repo reads every file as new" \
 	"$(rows instruction-sizes "$tmp/long" | awk -F '\t' '$5 == "AGENTS.md" { print $2 }')"
 record 1 "and says so" "$(grep -c '^note: no commit before the window starts' "$tmp/long")"
+
+# A quiet window: no commit in the last 10 days still lists every file.
+(cd "$repo" && bash "$script" --days 10) >"$tmp/quiet" 2>&1
+record "5	5	+0	0	AGENTS.md" "sizes still print when no commit falls in the window" \
+	"$(rows instruction-sizes "$tmp/quiet" | awk -F '\t' '$5 == "AGENTS.md"')"
+
+# A main checkout behind <ref>: a file <ref> deleted is still on disk there,
+# tracked. It's drift all the same, not a runtime path.
+git -C "$repo" checkout -q -b ahead
+git -C "$repo" rm -q scripts/new-name.sh
+commit_at "$repo" 5 "delete new-name.sh"
+git -C "$repo" checkout -q main
+(cd "$repo" && bash "$script" --ref ahead --days 90) >"$tmp/behind" 2>&1
+record yes "a tracked copy in a stale main checkout doesn't hide a deleted path" \
+	"$(rows missing-paths "$tmp/behind" | awk -F '\t' '$4 == "scripts/new-name.sh"' | grep -q . && echo yes || echo no)"
+record "" "an untracked runtime path still does" "$(rows missing-paths "$tmp/behind" | grep worktrees)"
 
 (cd "$repo" && bash "$script" --days 0) >/dev/null 2>&1
 record 2 "--days 0 is a usage error" "$?"

@@ -14,11 +14,13 @@
 #                   gets as a reference), labels, and
 #                   whether a session still drives it (below).
 #   branches        branches on GitHub with no open PR: none ever, or only
-#                   merged or closed ones (a branch left behind).
+#                   merged or closed ones (a branch left behind), and the open
+#                   PRs based on each (`base_of`): deleting a branch an open
+#                   PR is based on closes that PR.
 #   local-branches  branches in the main checkout whose upstream is gone
-#                   (pruned, or an origin branch GitHub no longer has, which
-#                   a clone that never pruned still tracks), or that have no
-#                   upstream and no PR.
+#                   (pruned, or, when origin is the surveyed repo, an origin
+#                   branch GitHub no longer has, which a clone that never
+#                   pruned still tracks), or that have no upstream and no PR.
 #   worktrees       every linked worktree: its branch, days since its last
 #                   commit, uncommitted paths, and its branch's PR.
 #
@@ -73,9 +75,11 @@ else
 	sessions="?"
 fi
 
+open_ok=no
 if gh pr list -R "$repo" --state open -L 500 \
 	--json number,title,isDraft,updatedAt,mergeable,mergeStateStatus,baseRefName,headRefName,labels,closingIssuesReferences,body \
 	>"$tmp/open-prs.json" 2>"$tmp/err"; then
+	open_ok=yes
 	upkeep_section open-prs "pr	idle_days	draft	mergeable	merge_state	base	head	closes	labels	session	title"
 	jq -r --argjson now "$now" --arg dir "$main" --arg sessions "$sessions" --slurpfile agents "$tmp/agents.json" '
 		def cls: if .pid != null then "running"
@@ -122,9 +126,12 @@ if gh api graphql --paginate -f owner="$owner" -f name="$name" -f query='
 	      nodes{ name target{ ... on Commit{ committedDate } }
 	        associatedPullRequests(first:20,states:[OPEN,MERGED,CLOSED]){ nodes{ number state } } } } } }' \
 	>"$tmp/refs.json" 2>"$tmp/err"; then
-	upkeep_section branches "branch	idle_days	kind	prs"
-	jq -rs --argjson now "$now" --arg default "$default" '
-		[.[].data.repository.refs.nodes[]]
+	upkeep_section branches "branch	idle_days	kind	prs	base_of"
+	if [ "$open_ok" = yes ]; then open_file="$tmp/open-prs.json"; else printf 'null\n' >"$tmp/no-open.json"; open_file="$tmp/no-open.json"; fi
+	jq -rs --argjson now "$now" --arg default "$default" --slurpfile open "$open_file" '
+		. as $pages
+		| ($open[0]) as $open
+		| [$pages[].data.repository.refs.nodes[]]
 		| map(select(.name != $default)
 			| (.associatedPullRequests.nodes // []) as $prs
 			| select(all($prs[]; .state != "OPEN"))
@@ -134,11 +141,16 @@ if gh api graphql --paginate -f owner="$owner" -f name="$name" -f query='
 			          elif all($prs[]; .state == "MERGED") then "merged-pr"
 			          elif any($prs[]; .state == "MERGED") then "merged-and-closed-prs"
 			          else "closed-pr" end),
-			   prs: ($prs | map("#\(.number) \(.state | ascii_downcase)") | if . == [] then "-" else join(",") end)})
+			   prs: ($prs | map("#\(.number) \(.state | ascii_downcase)") | if . == [] then "-" else join(",") end),
+			   base_of: (.name as $b | if $open == null then "?" else
+			     ([$open[] | select(.baseRefName == $b) | "#\(.number)"] | if . == [] then "-" else join(",") end) end)})
 		| sort_by(.kind, (if (.idle | type) == "number" then -.idle else 0 end))[]
-		| [.branch, .idle, .kind, .prs] | @tsv' "$tmp/refs.json"
+		| [.branch, .idle, .kind, .prs, .base_of] | @tsv' "$tmp/refs.json"
 	jq -rs '.[].data.repository.refs.nodes[].name' "$tmp/refs.json" >"$tmp/github-branches"
-	github_branches=yes
+	# GitHub's branches stand for origin's only when origin is this repo.
+	origin_repo=$(git remote get-url origin 2>/dev/null |
+		sed -E -e 's#^(https?://|ssh://)?([^@/]*@)?github\.com[:/]##' -e 's#\.git$##' -e 's#/+$##' | tr 'A-Z' 'a-z')
+	if [ "$origin_repo" = "$(printf '%s' "$repo" | tr 'A-Z' 'a-z')" ]; then github_branches=yes; else github_branches=no; fi
 else
 	upkeep_skip branches "GitHub GraphQL read failed: $(head -1 "$tmp/err")"
 	: >"$tmp/github-branches"
