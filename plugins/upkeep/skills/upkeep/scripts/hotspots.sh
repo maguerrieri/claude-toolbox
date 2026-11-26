@@ -94,10 +94,13 @@ if gh api graphql --paginate -f q="repo:$repo is:pr is:merged merged:>=$since_da
 	jq -r '.[] | .number as $n | .reviewThreads.nodes[]? | select(.path != null) | [$n, .path] | @tsv' "$tmp/nodes.json" >"$tmp/pr-threads"
 	jq -r '.[] | [.number, .timelineItems.totalCount, (.reviewThreads.nodes | length), .title] | @tsv' "$tmp/nodes.json" >"$tmp/pr-meta"
 	# One row per PR commit: PR, author date, after-open flag, headline (a
-	# long subject's headline ends in an ellipsis).
+	# long subject's headline ends in an ellipsis). Joined by hand, not with
+	# @tsv, which escapes a backslash, so the headline stays as raw as git
+	# log's subject it's matched against; only a tab or newline is flattened.
 	jq -r '.[] | .number as $n | (.createdAt | fromdateiso8601) as $opened
 		| .commits.nodes[]?.commit
-		| [$n, .authoredDate, (if (.authoredDate | fromdateiso8601) > $opened then 1 else 0 end), .messageHeadline] | @tsv' \
+		| [$n, .authoredDate, (if (.authoredDate | fromdateiso8601) > $opened then 1 else 0 end),
+		   ((.messageHeadline // "") | gsub("[\t\n]"; " "))] | map(tostring) | join("\t")' \
 		"$tmp/nodes.json" >"$tmp/pr-commits"
 else
 	gql=no

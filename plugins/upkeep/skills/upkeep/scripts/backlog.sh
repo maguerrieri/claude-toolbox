@@ -9,7 +9,9 @@
 #   open-issues           every open issue, most idle first: days since its
 #                         last activity, its age, comment count, labels, the
 #                         PRs that close it (GitHub's closing references, with
-#                         their state), other PRs that mention it (another
+#                         their state, plus open PRs whose body says `Closes
+#                         #<n>` outside code, as a stacked PR's does), other
+#                         PRs that mention it (another
 #                         repo's as `owner/repo#n`), and flags:
 #                           merged-but-open  a PR that closes it has merged
 #                           open-pr          a PR that closes it is open
@@ -71,14 +73,28 @@ fi
 
 jq -s '[.[].data.repository.issues.nodes[]]' "$tmp/issues.json" >"$tmp/nodes.json"
 
+# Open PRs' closing keywords, outside code: a PR into a branch other than the
+# default (a stacked one) never gets GitHub's closing reference.
+if gh pr list -R "$repo" --state open -L 500 --json number,body >"$tmp/open-bodies.json" 2>/dev/null; then
+	bodies_ok=yes
+else
+	printf '[]\n' >"$tmp/open-bodies.json"
+	bodies_ok=no
+fi
+
 upkeep_section open-issues "issue	idle_days	age_days	comments	labels	closing_prs	other_prs	flags	title"
-jq -r --argjson now "$now" --arg repo "$repo" '
+jq -r --argjson now "$now" --arg repo "$repo" --slurpfile ob "$tmp/open-bodies.json" '
 	def days($t): (($now - ($t | fromdateiso8601)) / 86400) | floor;
 	def where: .repository.nameWithOwner // $repo;
 	def mine: where | ascii_downcase == ($repo | ascii_downcase);
 	def name: (if mine then "" else where end) + "#\(.number)";
 	def prs: map("\(name) \(.state | ascii_downcase)") | if . == [] then "-" else join(",") end;
-	map((.closedByPullRequestsReferences.nodes // []) as $closing
+	($ob[0] | map({number, closes: ((.body // "") | gsub("```[\\s\\S]*?(```|$)"; "") | gsub("~~~[\\s\\S]*?(~~~|$)"; "") | gsub("`[^`]*`"; "")
+		| [scan("(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+#([0-9]+)\\b") | .[0] | tonumber])})) as $bodies
+	| map(.number as $n
+		| ((.closedByPullRequestsReferences.nodes // [])
+		   + [$bodies[] | select(any(.closes[]; . == $n)) | {number, state: "OPEN"}]
+		   | unique_by(name)) as $closing
 		| ((.closedByPullRequestsReferences.pageInfo.hasNextPage // false)
 		   or (.timelineItems.pageInfo.hasNextPage // false)) as $cut
 		| ([.timelineItems.nodes[]?.source | select(.__typename == "PullRequest")
@@ -99,6 +115,7 @@ jq -r --argjson now "$now" --arg repo "$repo" '
 		   title})
 	| sort_by(-.idle, .issue)[]
 	| ["#\(.issue)", .idle, .age, .comments, .labels, .closing, .other, .flags, .title] | @tsv' "$tmp/nodes.json"
+[ "$bodies_ok" = yes ] || printf 'note: open PR bodies unread (gh pr list failed), so a stacked PR'"'"'s Closes line is missed\n'
 
 upkeep_section possible-duplicates "issue_a	issue_b	similarity	shared_words	title_a	title_b"
 jq -r '

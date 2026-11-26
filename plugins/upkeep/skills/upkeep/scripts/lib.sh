@@ -24,24 +24,35 @@ upkeep_days_ok() { # upkeep_days_ok <value>: a whole number of days, 1 or more
 	return 0
 }
 
-# upkeep_repo [<owner/repo>]: print the GitHub repo the survey reads, the
-# argument when given, else the one gh picks for the current directory.
+# upkeep_repo [<owner/repo>]: print the GitHub repo the survey reads: the
+# argument when given, else the one origin's URL names on github.com, else
+# the one gh picks for the current directory. The first two need no GraphQL,
+# which a cloud session's proxy refuses.
 upkeep_repo() {
-	if [ -n "${1:-}" ]; then
-		case "$1" in
-		*/*/* | /* | */ | *[!A-Za-z0-9_./-]*) upkeep_die "not an owner/repo: $1" ;;
-		*/*) printf '%s\n' "$1" ;;
-		*) upkeep_die "not an owner/repo: $1" ;;
-		esac
-		return
+	upkeep_r=${1:-}
+	if [ -z "$upkeep_r" ]; then
+		upkeep_r=$(git remote get-url origin 2>/dev/null |
+			sed -n -E -e 's#^(https?://|ssh://)?([^@/]*@)?github\.com[:/]##' -e 's#\.git$##' -e 's#/+$##' -e '/^[^/]+\/[^/]+$/p')
 	fi
-	gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null ||
-		upkeep_die "can't tell which GitHub repo this is; pass --repo <owner/repo>"
+	if [ -z "$upkeep_r" ]; then
+		upkeep_r=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) ||
+			upkeep_die "can't tell which GitHub repo this is; pass --repo <owner/repo>"
+	fi
+	case "$upkeep_r" in
+	*/*/* | /* | */ | *[!A-Za-z0-9_./-]*) upkeep_die "not an owner/repo: $upkeep_r" ;;
+	*/*) printf '%s\n' "$upkeep_r" ;;
+	*) upkeep_die "not an owner/repo: $upkeep_r" ;;
+	esac
 }
 
-upkeep_default_branch() { # upkeep_default_branch <owner/repo>
-	gh repo view "$1" --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null ||
-		upkeep_die "can't read $1's default branch"
+# upkeep_default_branch <owner/repo>: the repo's default branch, by REST
+# (which a cloud session can reach), else origin/HEAD, else GraphQL.
+upkeep_default_branch() {
+	upkeep_b=$(gh api "repos/$1" --jq .default_branch 2>/dev/null)
+	[ -n "$upkeep_b" ] || upkeep_b=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+	[ -n "$upkeep_b" ] || upkeep_b=$(gh repo view "$1" --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null)
+	[ -n "$upkeep_b" ] || upkeep_die "can't read $1's default branch"
+	printf '%s\n' "$upkeep_b"
 }
 
 # upkeep_since <days>: the window's start, as an ISO-8601 UTC timestamp.

@@ -85,10 +85,14 @@ jq -n --arg repo "$repo" --arg other "$tmp/elsewhere" '[
 cat >"$tmp/bin/gh" <<'STUB_EOF'
 #!/usr/bin/env bash
 case "$*" in
-"repo view owner/repo --json defaultBranchRef -q .defaultBranchRef.name") echo main ;;
-"pr list -R owner/repo --state all "*) [ "${STUB_FAIL:-}" = all ] && { echo "boom" >&2; exit 1; }; cat "$STUB_DIR/all-prs.json" ;;
-"pr list -R owner/repo --state open "*) [ "${STUB_FAIL:-}" = open ] && { echo "HTTP 502" >&2; exit 1; }; cat "$STUB_DIR/open-prs.json" ;;
-"api graphql --paginate "*) [ "${STUB_FAIL:-}" = graphql ] && { echo "GraphQL is not available" >&2; exit 1; }; cat "$STUB_DIR/refs.json" ;;
+"repo view "*) [ "${STUB_FAIL:-}" = cloud ] && { echo "GraphQL is not available" >&2; exit 1; }
+	[ "$*" = "repo view owner/repo --json defaultBranchRef -q .defaultBranchRef.name" ] && { echo main; exit 0; }
+	[ "$*" = "repo view --json nameWithOwner -q .nameWithOwner" ] && { echo owner/repo; exit 0; }
+	echo "unexpected gh call: $*" >&2; exit 1 ;;
+"api repos/owner/repo --jq .default_branch") echo main ;;
+"pr list -R owner/repo --state all "*) case "${STUB_FAIL:-}" in all | cloud) echo "boom" >&2; exit 1 ;; esac; cat "$STUB_DIR/all-prs.json" ;;
+"pr list -R owner/repo --state open "*) case "${STUB_FAIL:-}" in open | cloud) echo "HTTP 502" >&2; exit 1 ;; esac; cat "$STUB_DIR/open-prs.json" ;;
+"api graphql --paginate "*) case "${STUB_FAIL:-}" in graphql | cloud) echo "GraphQL is not available" >&2; exit 1 ;; esac; cat "$STUB_DIR/refs.json" ;;
 *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 STUB_EOF
@@ -181,6 +185,13 @@ git -C "$repo" remote set-url origin https://github.com/owner/repo.git
 
 run "$tmp/noall" PATH="$tmp/cbin:$base_path" STUB_FAIL=all
 record "?" "worktree PR unknown when the PR list fails" "$(row worktrees .claude/worktrees/feat-a "$tmp/noall" | col 5)"
+
+# A cloud session: every GraphQL call fails, gh repo view included, and no
+# --repo is given; origin's URL names the repo and REST the default branch.
+(cd "$repo" && env PATH="$tmp/cbin:$base_path" STUB_FAIL=cloud bash "$script") >"$tmp/cloud" 2>"$tmp/cloud.err"
+record 0 "with no GraphQL and no --repo it still runs" "$?"
+record 2 "and its GitHub sections say they skipped" "$(grep -c '^skipped: ' "$tmp/cloud")"
+record "?" "while worktrees still list, their PR unknown" "$(row worktrees .claude/worktrees/feat-a "$tmp/cloud" | col 5)"
 
 (cd "$repo" && PATH="$base_path" bash "$script" --repo 'not a repo') >/dev/null 2>&1
 record 2 "a bad --repo is a setup error" "$?"

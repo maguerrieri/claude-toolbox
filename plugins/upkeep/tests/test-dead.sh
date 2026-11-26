@@ -15,9 +15,10 @@ trap 'rm -rf "$tmp"' EXIT
 repo="$tmp/repo"
 mkrepo "$repo"
 cd "$repo" || exit 1
-mkdir -p scripts lib hooks tools tests/fixtures sub/tests other/fixtures orphan-dir .github/workflows .claude-plugin
+mkdir -p scripts lib hooks tools tests/fixtures sub/tests other/fixtures orphan-dir .github/workflows .claude-plugin checks src/pkg
 cat >README.md <<'EOF'
 Run `scripts/used.sh`, `tools/run.py` and the hooks in `hooks/register.tsx`; test with `tests/test-a.sh`.
+The app is `src/app.py`.
 EOF
 printf 'echo used\n' >scripts/used.sh
 printf 'echo nobody\n' >scripts/orphan.sh
@@ -29,6 +30,10 @@ printf 'x = 1\n' >lib/helper.py
 printf 'cat "$(dirname "$0")/fixtures/data.json"\n' >tests/test-a.sh
 printf 'echo b\n' >tests/test-b.sh
 printf 'def test_c(): pass\n' >sub/tests/test_c.py
+printf 'def test_x(): pass\n' >checks/test_x.py
+printf 'from .model import M\nimport pkg.helper2\n' >src/app.py
+printf 'M = 1\n' >src/model.py
+printf 'h = 2\n' >src/pkg/helper2.py
 printf '{}\n' >tests/fixtures/data.json
 printf '{}\n' >other/fixtures/x.json
 printf '{}\n' >other/fixtures/y.json
@@ -40,6 +45,7 @@ jobs:
     steps:
       - run: bash tests/test-a.sh
       - run: pytest sub/tests
+      - run: pytest checks/
 EOF
 commit_at "$repo" 1 "init"
 
@@ -50,6 +56,9 @@ record "lib/unused.ts:unreferenced other/fixtures/:unreferenced fixtures (2 file
 	"$(rows unreferenced-files "$tmp/out" | sort | awk -F '\t' '{ printf "%s%s:%s", (NR > 1 ? " " : ""), $1, $2 }')"
 record "" "an import by stem counts (lib/model.ts)" "$(row unreferenced-files lib/model.ts "$tmp/out")"
 record "" "a Python import counts (lib/helper.py)" "$(row unreferenced-files lib/helper.py "$tmp/out")"
+record "" "so does a relative one (from .model import)" "$(row unreferenced-files src/model.py "$tmp/out")"
+record "" "and a dotted one (import pkg.helper2)" "$(row unreferenced-files src/pkg/helper2.py "$tmp/out")"
+record "" "a test in a top-level directory CI runs (pytest checks/) isn't listed" "$(row unreferenced-files checks/test_x.py "$tmp/out")"
 record "" "a test CI runs by directory isn't listed" "$(row unreferenced-files sub/tests/test_c.py "$tmp/out")"
 record "" "a fixture tree its tests name isn't listed" "$(rows unreferenced-files "$tmp/out" | grep 'tests/fixtures')"
 record "" "manifests are never listed" "$(rows unreferenced-files "$tmp/out" | grep 'plugin.json')"

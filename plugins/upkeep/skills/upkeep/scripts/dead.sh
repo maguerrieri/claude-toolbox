@@ -11,11 +11,13 @@
 #                       tests, test, bin, lib, tools, fixtures or testdata
 #                       directory) that nothing else names:
 #                       - code, by its file name, or by its stem where code
-#                         imports it (`./model`, `import model`);
+#                         imports it (`./model`, `import model`, `from .model
+#                         import`, `import pkg.model`);
 #                       - a test file (test-*, *_test.*, *.test.*, ...),
 #                         which runners find by directory, is `not-in-ci`
 #                         when the repo has CI workflows and none names it or
-#                         a directory above it (below the top level), and
+#                         a directory above it as a path of its own (`pytest
+#                         tests/`, not `bash tests/test-a.sh`), and
 #                         `unreferenced` only in a repo without workflows;
 #                       - a fixtures or testdata tree, as one row, when no
 #                         file beside it names the directory.
@@ -80,7 +82,15 @@ awk '
 	/(^|\/)(scripts|tests|test|bin|lib|tools|fixtures|testdata)\// && !/\.md$/ { print }
 ' "$tmp/tracked" >"$tmp/candidates"
 grep -E '^\.github/workflows/' "$tmp/tracked" >"$tmp/workflows" || :
+while IFS= read -r wf; do git cat-file -p "$ref:$wf" 2>/dev/null; done <"$tmp/workflows" >"$tmp/workflow-text"
 : >"$tmp/fixture-roots"
+
+# ci_names <dir>: does a workflow name <dir> as a path of its own (`pytest
+# tests/`, `plugin test plugins/x`), not only as part of a longer one?
+ci_names() {
+	ci_esc=$(printf '%s' "$1" | sed 's/[][\.*^$+?(){}|]/\\&/g')
+	grep -q -E "(^|[[:space:]\"'=])(\./)?${ci_esc}/?([[:space:]\"']|$)" "$tmp/workflow-text"
+}
 
 upkeep_section unreferenced-files "path	why"
 while IFS= read -r file; do
@@ -99,18 +109,19 @@ while IFS= read -r file; do
 		;;
 	esac
 	# A test file: runners find tests by directory, so the question is
-	# whether CI names it, or a directory above it below the top level.
+	# whether CI names it, or a directory above it as a path of its own.
 	case "$base" in
 	test[-_.]* | *_test.* | *.test.* | *-test.*)
 		if [ -s "$tmp/workflows" ]; then
-			mentions "$base" | grep -q -x -F -f "$tmp/workflows" && continue
+			grep -q -F -e "$base" "$tmp/workflow-text" && continue
 			ran=no
 			d=$dir
-			while [ -n "$d" ] && [ "${d#*/}" != "$d" ]; do
-				if mentions "$d" | grep -q -x -F -f "$tmp/workflows"; then
+			while [ -n "$d" ]; do
+				if ci_names "$d"; then
 					ran=yes
 					break
 				fi
+				[ "${d#*/}" = "$d" ] && break
 				d=${d%/*}
 			done
 			[ "$ran" = yes ] || printf '%s\tnot-in-ci\n' "$file"
@@ -123,7 +134,13 @@ while IFS= read -r file; do
 	stem=${base%.*}
 	case "$base" in
 	*.ts | *.tsx | *.js | *.mjs | *.cjs) refs=$(mentions "$base" "/$stem\"" "/$stem'") ;;
-	*.py) refs=$(mentions "$base" "import $stem" "from $stem ") ;;
+	*.py)
+		# `import x`, `from x import`, `from .x import`, `from pkg.x import`,
+		# and a dotted `import pkg.x`.
+		refs=$(mentions "$base" "import $stem" "from $stem " ".$stem import"
+			git -c core.quotePath=false grep -l -E -e "import [A-Za-z0-9_.]*\.$(printf '%s' "$stem" | sed 's/[][\.*^$+?(){}|]/\\&/g')([^A-Za-z0-9_]|\$)" "$ref" -- 2>/dev/null |
+				awk -v p="$ref:" 'index($0, p) == 1 { $0 = substr($0, length(p) + 1) } { print }')
+		;;
 	*) refs=$(mentions "$base") ;;
 	esac
 	if [ -z "$(printf '%s\n' "$refs" | awk 'NF' | grep -v -x -F -e "$file")" ]; then

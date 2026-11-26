@@ -38,10 +38,13 @@ issue() { # issue <n> <title> <updated days ago> <created days ago> <closing jso
 		'{data: {repository: {issues: {nodes: $nodes}}}}'
 } >"$tmp/fx/issues.json"
 
+# An open stacked PR whose body closes #5; #6 only appears in a code span.
+printf '%s\n' '[{"number": 77, "body": "Stacked on #3.\n\nCloses #5\n\nNot `Fixes #6`."}]' >"$tmp/fx/open-bodies.json"
 cat >"$tmp/bin/gh" <<'STUB_EOF'
 #!/usr/bin/env bash
 case "$*" in
-"api graphql --paginate "*) [ -n "${STUB_FAIL:-}" ] && { echo "GraphQL is not available" >&2; exit 1; }; cat "$STUB_DIR/issues.json" ;;
+"api graphql --paginate "*) [ "${STUB_FAIL:-}" = 1 ] && { echo "GraphQL is not available" >&2; exit 1; }; cat "$STUB_DIR/issues.json" ;;
+"pr list -R owner/repo --state open -L 500 --json number,body") [ "${STUB_FAIL:-}" = bodies ] && exit 1; cat "$STUB_DIR/open-bodies.json" ;;
 *) echo "unexpected gh call: $*" >&2; exit 1 ;;
 esac
 STUB_EOF
@@ -65,6 +68,11 @@ record "#13 merged" "#4 other PRs, once each" "$(row open-issues '#4' "$tmp/out"
 record "o/other#13 merged" "#8: another repo's PR is named with its repo" "$(row open-issues '#8' "$tmp/out" | col 7)"
 record "-" "#8: and sets no flag (it isn't this repo's work)" "$(row open-issues '#8' "$tmp/out" | col 8)"
 record "refs-truncated" "#9: cross-references cut short at 100 never read as no-pr" "$(row open-issues '#9' "$tmp/out" | col 8)"
+record "#77 open" "#5: a stacked open PR's Closes line counts as a closing PR" "$(row open-issues '#5' "$tmp/out" | col 6)"
+record "open-pr" "#5: and flags open-pr" "$(row open-issues '#5' "$tmp/out" | col 8)"
+record "-" "#6: a Closes inside a code span doesn't" "$(row open-issues '#6' "$tmp/out" | col 6)"
+STUB_FAIL=bodies bash "$script" --repo owner/repo >"$tmp/nobodies" 2>&1
+record 1 "unread PR bodies get a note" "$(grep -c '^note: open PR bodies unread' "$tmp/nobodies")"
 
 record "#5 #6" "the one duplicate pair" "$(rows possible-duplicates "$tmp/out" | awk -F '\t' '{ print $1, $2 }')"
 record "children,merges,parent,restack,stacked" "its shared words, scope prefixes dropped" \
