@@ -57,6 +57,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 upkeep_need gh git jq awk
+upkeep_cd_top
 repo=$(upkeep_repo "$repo") || exit 2
 if [ -z "$ref" ]; then
 	ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) || ref=HEAD

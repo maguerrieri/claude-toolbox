@@ -30,7 +30,7 @@ git -C "$repo" config user.name "Upkeep Test"
 git -C "$repo" config user.email "upkeep@example.invalid"
 git -C "$repo" config commit.gpgsign false
 cd "$repo" || exit 1
-mkdir -p .claude-plugin .claude plugins/defaults/.claude-plugin plugins/a/.claude-plugin plugins/b/.claude-plugin
+mkdir -p .claude-plugin .claude plugins/defaults/.claude-plugin plugins/a/.claude-plugin plugins/b/.claude-plugin plugins/d/.claude-plugin
 sha1=1111111111111111111111111111111111111111
 sha2=2222222222222222222222222222222222222222
 sha3=3333333333333333333333333333333333333333
@@ -43,6 +43,7 @@ jq -n --arg s1 "$sha1" --arg s2 "$sha2" --arg s3 "$sha3" '{name: "mkt", plugins:
 printf '{"name": "defaults", "version": "0.1.0", "dependencies": ["a", "b", "c"]}\n' >plugins/defaults/.claude-plugin/plugin.json
 printf '{"name": "a", "version": "1.2.0"}\n' >plugins/a/.claude-plugin/plugin.json
 printf '{"name": "b", "version": "0.1.0"}\n' >plugins/b/.claude-plugin/plugin.json
+printf '{"name": "d", "version": "1.3.0-beta.1"}\n' >plugins/d/.claude-plugin/plugin.json
 printf '{"enabledPlugins": {"defaults@mkt": true, "a@mkt": true, "c@mkt": false}}\n' >.claude/settings.json
 cat >README.md <<'EOF'
 # Readme
@@ -73,6 +74,8 @@ manifest 0.2.0 >"$tmp/fx/b-h1"
 manifest 0.1.0 >"$tmp/fx/new-h5"
 manifest 0.1.0 >"$tmp/fx/new-h7"
 manifest 0.1.0 >"$tmp/fx/other-h8"
+manifest 1.3.0 >"$tmp/fx/d-h10"
+manifest 1.2.0+build.7 >"$tmp/fx/a-h11"
 manifest 0.2.0 >"$tmp/fx/b-h6"
 cat >"$tmp/fx/open.json" <<'EOF'
 [{"number": 1, "headRefOid": "h1", "files": [{"path": "plugins/a/x"}, {"path": "plugins/b/y"}, {"path": "plugins/a/q"}]},
@@ -82,7 +85,9 @@ cat >"$tmp/fx/open.json" <<'EOF'
  {"number": 5, "headRefOid": "h5", "files": [{"path": "plugins/new/x"}]},
  {"number": 7, "headRefOid": "h7", "files": [{"path": "plugins/new/y"}]},
  {"number": 8, "headRefOid": "h8", "files": [{"path": "plugins/other/x"}]},
- {"number": 9, "headRefOid": "h9", "files": [{"path": "plugins/a/.claude-plugin/plugin.json"}]}]
+ {"number": 9, "headRefOid": "h9", "files": [{"path": "plugins/a/.claude-plugin/plugin.json"}]},
+ {"number": 10, "headRefOid": "h10", "files": [{"path": "plugins/d/x"}]},
+ {"number": 11, "headRefOid": "h11", "files": [{"path": "plugins/a/y"}]}]
 EOF
 # PR #6 is at gh's 100-file cap; its full list, read by REST, touches plugins/b.
 jq '. + [{number: 6, headRefOid: "h6", files: [range(100) | {path: "docs/gen/f\(.).md"}]}]' "$tmp/fx/open.json" >"$tmp/fx/open6.json"
@@ -113,10 +118,10 @@ PATH="$tmp/bin:$tmp/tools:/usr/bin:/bin"
 
 bash "$script" --repo owner/repo >"$tmp/out" 2>"$tmp/err"
 record 0 "exits 0" "$?"
-record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #2 1.3.0 collides with #1|a 1.2.0 #3 1.2.0 not-above-main|b 0.1.0 #1 0.2.0 collides with #6|b 0.1.0 #6 0.2.0 collides with #1|new new #5 0.1.0 collides with #7|new new #7 0.1.0 collides with #5" \
-	"version collisions: shared bumps (one past a PR's 100-file cap, one of a plugin main hasn't got), and one not above main" \
+record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #11 1.2.0+build.7 not-above-main|a 1.2.0 #2 1.3.0 collides with #1|a 1.2.0 #3 1.2.0 not-above-main|b 0.1.0 #1 0.2.0 collides with #6|b 0.1.0 #6 0.2.0 collides with #1|new new #5 0.1.0 collides with #7|new new #7 0.1.0 collides with #5" \
+	"version collisions: shared bumps (one past a PR's 100-file cap, one of a plugin main hasn't got), and two not above main (one only by build metadata)" \
 	"$(rows version-collisions "$tmp/out" | sort | tr '\t' ' ' | paste -s -d '|' -)"
-record "note: 2 more plugin bumps on open PRs are fine" "a new plugin no other PR adds, and a manifest a PR removed (a 404), are fine" \
+record "note: 3 more plugin bumps on open PRs are fine" "a new plugin no other PR adds, a manifest a PR removed (a 404), and a release over its prerelease are fine" \
 	"$(grep '^note: .* plugin bumps' "$tmp/out")"
 record "a	yes	missing|b	missing	yes|c	disabled	yes" "defaults deps missing from the settings or the README's snippet, or listed but disabled" \
 	"$(rows defaults-deps "$tmp/out" | sort | paste -s -d '|' -)"

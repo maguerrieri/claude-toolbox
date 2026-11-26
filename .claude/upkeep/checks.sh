@@ -91,11 +91,20 @@ if gh pr list -R "$repo" --state open -L 500 --json number,headRefOid,files >"$t
 	done <"$tmp/touched"
 	printf 'plugin\tmain\tpr\tpr_version\tstatus\n'
 	jq -Rrs '
-		def v: split("-")[0] | split(".") | map(tonumber? // 0);
-		def above($a; $b): ($a | v) as $x | ($b | v) as $y | $x > $y;
+		# Semver precedence, as the plugin versions check (parse() in
+		# .github/scripts/check-plugin-versions) has it: build metadata
+		# ignored, a release above its prereleases, prerelease identifiers
+		# compared numeric (by value) before alphanumeric (by text).
+		def v: sub("\\+.*$"; "")
+			| (capture("^(?<c>[0-9]+\\.[0-9]+\\.[0-9]+)(-(?<p>.+))?$") // {c: ., p: null}) as $m
+			| [($m.c | split(".") | map(tonumber? // 0)),
+			   (if $m.p == null then [[1]]
+			    else [[0]] + ($m.p | split(".") | map(if test("^[0-9]+$") then [0, tonumber] else [1, .] end)) end)];
+		def above($a; $b): ($a | v) > ($b | v);
 		[split("\n")[] | select(. != "") | split("\t") | {plugin: .[0], main: .[1], pr: .[2], ver: .[3]}] as $rows
 		| [$rows[] | . as $r
-			| ([$rows[] | select(.plugin == $r.plugin and .ver == $r.ver and .pr != $r.pr) | "#" + .pr]) as $twins
+			| ([$rows[] | select(.plugin == $r.plugin and .pr != $r.pr and .ver != "unread" and .ver != "removed"
+			                     and (.ver | v) == ($r.ver | v)) | "#" + .pr]) as $twins
 			| .status = (if .ver == "unread" then "unread: the PR head manifest failed to read"
 			             elif .ver == "removed" or .ver == "?" or .main == "?" then "ok"
 			             elif .main != "new" and (above(.ver; .main) | not) then "not-above-main"

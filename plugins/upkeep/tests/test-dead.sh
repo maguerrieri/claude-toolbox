@@ -66,6 +66,10 @@ record "orphan-dir other other/fixtures" "unreferenced directories, dot director
 	"$(rows unreferenced-dirs "$tmp/out" | cut -f1 | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
 record "1" "a directory's file count" "$(row unreferenced-dirs orphan-dir "$tmp/out" | col 2)"
 
+# From a subdirectory: the same report as from the top.
+(cd "$repo/scripts" && bash "$script") >"$tmp/sub" 2>&1
+record "$(grep -v '^note:' "$tmp/out")" "a run from a subdirectory reads the whole tree" "$(grep -v '^note:' "$tmp/sub")"
+
 # Without workflows, a test nothing names is plainly unreferenced.
 git rm -q -r .github
 commit_at "$repo" 0 "drop CI"

@@ -54,6 +54,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 upkeep_need git jq awk
+upkeep_cd_top
 if [ -z "$ref" ]; then
 	ref=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null) || ref=HEAD
 fi
@@ -161,7 +162,9 @@ done <"$tmp/missing"
 printf 'note: %d more path-like names this repo never tracked (other repos'"'"' paths, runtime files, placeholders) left out\n' "$never"
 
 # --- instruction-sizes and skill-totals -------------------------------------
-start=$(git rev-list -1 --before="$since" "$ref" 2>/dev/null)
+# The default branch as it stood then: along first parents, so a merged
+# feature branch's older commit can't stand in for it.
+start=$(git rev-list -1 --first-parent --before="$since" "$ref" 2>/dev/null)
 git -c core.quotePath=false log --since="$since" --format= --name-only "$ref" 2>/dev/null | awk 'NF { n[$0]++ } END { for (p in n) printf "%s\t%d\n", p, n[p] }' >"$tmp/commits"
 grep -E '(^|/)(AGENTS|CLAUDE|GEMINI)\.md$|^\.claude/.*\.md$|(^|/)(skills|commands|agents)/.*\.md$' "$tmp/docs" >"$tmp/instr" || :
 # What each file was called at the window's start, where git sees a rename.

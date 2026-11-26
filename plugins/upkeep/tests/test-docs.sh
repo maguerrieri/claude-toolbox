@@ -96,6 +96,30 @@ record yes "a tracked copy in a stale main checkout doesn't hide a deleted path"
 	"$(rows missing-paths "$tmp/behind" | awk -F '\t' '$4 == "scripts/new-name.sh"' | grep -q . && echo yes || echo no)"
 record "" "an untracked runtime path still does" "$(rows missing-paths "$tmp/behind" | grep worktrees)"
 
+# From a subdirectory: the same rows as from the top.
+(cd "$repo/plugins/p" && bash "$script" --days 90) >"$tmp/sub" 2>&1
+record "$(rows instruction-sizes "$tmp/out" | wc -l | tr -d ' ') $(rows missing-paths "$tmp/out" | wc -l | tr -d ' ')" \
+	"a run from a subdirectory reads the whole tree" \
+	"$(rows instruction-sizes "$tmp/sub" | wc -l | tr -d ' ') $(rows missing-paths "$tmp/sub" | wc -l | tr -d ' ')"
+
+# A feature branch with a commit older than the window, merged inside it:
+# the window starts from the default branch as it stood, along first
+# parents, not from the branch's commit.
+fp="$tmp/firstparent"
+mkrepo "$fp"
+mkdir -p "$fp/skills/s"
+words 10 >"$fp/skills/s/SKILL.md"
+commit_at "$fp" 200 "start"
+git -C "$fp" checkout -q -b feature
+words 30 >"$fp/skills/s/SKILL.md"
+commit_at "$fp" 100 "grow on a branch"
+git -C "$fp" checkout -q main
+fp_when="@$((UPKEEP_NOW - 30 * 86400)) +0000"
+GIT_AUTHOR_DATE="$fp_when" GIT_COMMITTER_DATE="$fp_when" git -C "$fp" merge -q --no-ff -m "merge feature" feature
+(cd "$fp" && bash "$script" --days 90) >"$tmp/fp" 2>&1
+record "30	10	+20" "growth counts from the default branch's state at the window's start" \
+	"$(rows instruction-sizes "$tmp/fp" | awk -F '\t' '$5 == "skills/s/SKILL.md" { print $1 "\t" $2 "\t" $3 }')"
+
 (cd "$repo" && bash "$script" --days 0) >/dev/null 2>&1
 record 2 "--days 0 is a usage error" "$?"
 (cd "$repo" && bash "$script" --ref nope) >/dev/null 2>&1

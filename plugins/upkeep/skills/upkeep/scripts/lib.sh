@@ -69,6 +69,14 @@ upkeep_skip() { # upkeep_skip <name> <reason>: a section that couldn't run
 	printf '## %s\nskipped: %s\n' "$1" "$2"
 }
 
+# upkeep_cd_top: move to the checkout's top level, since `git ls-tree` and
+# `git grep` at a ref read only the current directory's subtree, and the
+# scripts compare root-relative paths.
+upkeep_cd_top() {
+	upkeep_top=$(git rev-parse --show-toplevel 2>/dev/null) || upkeep_die "not inside a git working tree"
+	cd "$upkeep_top" || upkeep_die "can't cd to $upkeep_top"
+}
+
 # upkeep_main_checkout: the repo's main working tree (the first entry
 # `git worktree list` prints), from any of its worktrees.
 upkeep_main_checkout() {
