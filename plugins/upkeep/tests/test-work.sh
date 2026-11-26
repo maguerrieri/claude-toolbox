@@ -52,11 +52,14 @@ cat >"$tmp/fx/all-prs.json" <<'EOF'
  {"number": 20, "state": "OPEN", "headRefName": "feat-b"},
  {"number": 21, "state": "CLOSED", "headRefName": "feat-b"}]
 EOF
-jq -n --arg old "$(ago 40)" --arg new "$(ago 1)" '[
+jq -n --arg old "$(ago 40)" --arg mid "$(ago 5)" --arg new "$(ago 1)" '[
   {number: 12, title: "Second", isDraft: true, updatedAt: $new, mergeable: "MERGEABLE",
    mergeStateStatus: "CLEAN", baseRefName: "feat-a", headRefName: "feat-b-old", labels: [],
    closingIssuesReferences: [],
    body: "Stacked on #9.\n\nFixes #11\n\nExamples: `Closes #77`, and\n\n```text\nFixes #78\n```\n"},
+  {number: 31, title: "Reuses a branch", isDraft: false, updatedAt: $mid, mergeable: "MERGEABLE",
+   mergeStateStatus: "CLEAN", baseRefName: "main", headRefName: "reused", labels: [],
+   closingIssuesReferences: [], body: ""},
   {number: 9, title: "First\tone", isDraft: false, updatedAt: $old, mergeable: "CONFLICTING",
    mergeStateStatus: "DIRTY", baseRefName: "main", headRefName: "with-pr",
    labels: [{name: "upkeep:keep"}], closingIssuesReferences: [{number: 8}], body: "Closes #8"}
@@ -69,7 +72,9 @@ jq -nc --arg d "$(ago 30)" '{data: {repository: {refs: {nodes: [
 jq -nc --arg d "$(ago 10)" '{data: {repository: {refs: {nodes: [
   {name: "with-pr", target: {committedDate: $d}, associatedPullRequests: {nodes: [{number: 9, state: "OPEN"}]}},
   {name: "still-there", target: {committedDate: $d}, associatedPullRequests: {nodes: []}},
-  {name: "closed-y", target: {committedDate: $d}, associatedPullRequests: {nodes: [{number: 3, state: "CLOSED"}]}}]}}}}' >>"$tmp/fx/refs.json"
+  {name: "closed-y", target: {committedDate: $d}, associatedPullRequests: {nodes: [{number: 3, state: "CLOSED"}]}},
+  {name: "reused", target: {committedDate: $d}, associatedPullRequests: {pageInfo: {hasNextPage: true}, nodes: [{number: 30, state: "CLOSED"}]}},
+  {name: "many", target: {committedDate: $d}, associatedPullRequests: {pageInfo: {hasNextPage: true}, nodes: [{number: 40, state: "MERGED"}]}}]}}}}' >>"$tmp/fx/refs.json"
 jq -n --arg repo "$repo" --arg other "$tmp/elsewhere" '[
   {name: "repo #8: first thing", cwd: $repo, state: "done", startedAt: 1},
   {name: "repo #11: other repo", cwd: $other, state: "working", pid: 123, status: "busy", startedAt: 2},
@@ -109,7 +114,7 @@ run() { # run <out file> [env assignments...]: work.sh from inside the repo
 # --- a full run -------------------------------------------------------------
 run "$tmp/out" PATH="$tmp/cbin:$base_path"
 record 0 "exits 0" "$(cat "$tmp/out.rc")"
-record "#9 #12" "open PRs most idle first" "$(rows open-prs "$tmp/out" | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
+record "#9 #31 #12" "open PRs most idle first" "$(rows open-prs "$tmp/out" | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
 r9=$(row open-prs '#9' "$tmp/out")
 record 40 "#9 idle days" "$(printf '%s\n' "$r9" | col 2)"
 record CONFLICTING "#9 mergeable" "$(printf '%s\n' "$r9" | col 4)"
@@ -123,7 +128,8 @@ record '#11' "#12 closes the issue its body names, not ones in code spans or fen
 record running "#12 session: a live session in a worktree, named <n>:" "$(printf '%s\n' "$r12" | col 10)"
 record "" "no note when sessions were read" "$(grep '^note: session' "$tmp/out")"
 
-record "closed-y:closed-pr feat-a:merged-pr stale-x:no-pr still-there:no-pr" "branches without an open PR, both pages" \
+record "closed-y:closed-pr feat-a:merged-pr stale-x:no-pr still-there:no-pr many:prs-truncated" \
+	"branches without an open PR, both pages; one an open PR past the 20 associations uses is left out" \
 	"$(rows branches "$tmp/out" | awk -F '\t' '{ printf "%s%s:%s", (NR > 1 ? " " : ""), $1, $3 }')"
 record 30 "branch idle days" "$(row branches feat-a "$tmp/out" | col 2)"
 record '#12' "a merged PR's branch that an open PR is based on says so" "$(row branches feat-a "$tmp/out" | col 5)"

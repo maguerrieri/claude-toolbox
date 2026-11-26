@@ -71,13 +71,17 @@ manifest 1.3.0 >"$tmp/fx/a-h2"
 manifest 1.2.0 >"$tmp/fx/a-h3"
 manifest 0.2.0 >"$tmp/fx/b-h1"
 manifest 0.1.0 >"$tmp/fx/new-h5"
+manifest 0.1.0 >"$tmp/fx/new-h7"
+manifest 0.1.0 >"$tmp/fx/other-h8"
 manifest 0.2.0 >"$tmp/fx/b-h6"
 cat >"$tmp/fx/open.json" <<'EOF'
 [{"number": 1, "headRefOid": "h1", "files": [{"path": "plugins/a/x"}, {"path": "plugins/b/y"}, {"path": "plugins/a/q"}]},
  {"number": 2, "headRefOid": "h2", "files": [{"path": "plugins/a/z"}]},
  {"number": 3, "headRefOid": "h3", "files": [{"path": "plugins/a/w"}]},
  {"number": 4, "headRefOid": "h4", "files": [{"path": "docs/x.md"}]},
- {"number": 5, "headRefOid": "h5", "files": [{"path": "plugins/new/x"}]}]
+ {"number": 5, "headRefOid": "h5", "files": [{"path": "plugins/new/x"}]},
+ {"number": 7, "headRefOid": "h7", "files": [{"path": "plugins/new/y"}]},
+ {"number": 8, "headRefOid": "h8", "files": [{"path": "plugins/other/x"}]}]
 EOF
 # PR #6 is at gh's 100-file cap; its full list, read by REST, touches plugins/b.
 jq '. + [{number: 6, headRefOid: "h6", files: [range(100) | {path: "docs/gen/f\(.).md"}]}]' "$tmp/fx/open.json" >"$tmp/fx/open6.json"
@@ -106,10 +110,10 @@ PATH="$tmp/bin:$tmp/tools:/usr/bin:/bin"
 
 bash "$script" --repo owner/repo >"$tmp/out" 2>"$tmp/err"
 record 0 "exits 0" "$?"
-record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #2 1.3.0 collides with #1|a 1.2.0 #3 1.2.0 not-above-main|b 0.1.0 #1 0.2.0 collides with #6|b 0.1.0 #6 0.2.0 collides with #1" \
-	"version collisions: shared bumps (one past a PR's 100-file cap), and one not above main" \
+record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #2 1.3.0 collides with #1|a 1.2.0 #3 1.2.0 not-above-main|b 0.1.0 #1 0.2.0 collides with #6|b 0.1.0 #6 0.2.0 collides with #1|new new #5 0.1.0 collides with #7|new new #7 0.1.0 collides with #5" \
+	"version collisions: shared bumps (one past a PR's 100-file cap, one of a plugin main hasn't got), and one not above main" \
 	"$(rows version-collisions "$tmp/out" | sort | tr '\t' ' ' | paste -s -d '|' -)"
-record "note: 1 more plugin bumps on open PRs are fine" "a new plugin is fine" \
+record "note: 1 more plugin bumps on open PRs are fine" "a new plugin no other PR adds is fine" \
 	"$(grep '^note: .* plugin bumps' "$tmp/out")"
 record "a	yes	missing|b	missing	yes|c	disabled	yes" "defaults deps missing from the settings or the README's snippet, or listed but disabled" \
 	"$(rows defaults-deps "$tmp/out" | sort | paste -s -d '|' -)"

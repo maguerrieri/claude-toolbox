@@ -87,8 +87,8 @@ if gh pr list -R "$repo" --state open -L 500 --json number,headRefOid,files >"$t
 		[split("\n")[] | select(. != "") | split("\t") | {plugin: .[0], main: .[1], pr: .[2], ver: .[3]}] as $rows
 		| [$rows[] | . as $r
 			| ([$rows[] | select(.plugin == $r.plugin and .ver == $r.ver and .pr != $r.pr) | "#" + .pr]) as $twins
-			| .status = (if .ver == "removed" or .main == "new" or .ver == "?" or .main == "?" then "ok"
-			             elif above(.ver; .main) | not then "not-above-main"
+			| .status = (if .ver == "removed" or .ver == "?" or .main == "?" then "ok"
+			             elif .main != "new" and (above(.ver; .main) | not) then "not-above-main"
 			             elif $twins != [] then "collides with " + ($twins | join(","))
 			             else "ok" end)] as $all
 		| ($all[] | select(.status != "ok") | [.plugin, .main, "#" + .pr, .ver, .status] | @tsv),

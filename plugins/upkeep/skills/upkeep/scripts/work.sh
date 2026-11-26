@@ -13,10 +13,12 @@
 #                   which a PR into a branch other than the default never
 #                   gets as a reference), labels, and
 #                   whether a session still drives it (below).
-#   branches        branches on GitHub with no open PR: none ever, or only
-#                   merged or closed ones (a branch left behind), and the open
-#                   PRs based on each (`base_of`): deleting a branch an open
-#                   PR is based on closes that PR.
+#   branches        branches on GitHub with no open PR (none in the full open
+#                   list, as well as among the 20 associations read per
+#                   branch): none ever, or only merged or closed ones (a branch
+#                   left behind), `prs-truncated` when it has more than 20, and
+#                   the open PRs based on each (`base_of`): deleting a branch
+#                   an open PR is based on closes that PR.
 #   local-branches  branches in the main checkout whose upstream is gone
 #                   (pruned, or, when origin is the surveyed repo, an origin
 #                   branch GitHub no longer has, which a clone that never
@@ -124,7 +126,8 @@ if gh api graphql --paginate -f owner="$owner" -f name="$name" -f query='
 	    refs(refPrefix:"refs/heads/",first:100,after:$endCursor){
 	      pageInfo{ hasNextPage endCursor }
 	      nodes{ name target{ ... on Commit{ committedDate } }
-	        associatedPullRequests(first:20,states:[OPEN,MERGED,CLOSED]){ nodes{ number state } } } } } }' \
+	        associatedPullRequests(first:20,states:[OPEN,MERGED,CLOSED]){
+	          pageInfo{ hasNextPage } nodes{ number state } } } } } }' \
 	>"$tmp/refs.json" 2>"$tmp/err"; then
 	upkeep_section branches "branch	idle_days	kind	prs	base_of"
 	if [ "$open_ok" = yes ]; then open_file="$tmp/open-prs.json"; else printf 'null\n' >"$tmp/no-open.json"; open_file="$tmp/no-open.json"; fi
@@ -135,9 +138,13 @@ if gh api graphql --paginate -f owner="$owner" -f name="$name" -f query='
 		| map(select(.name != $default)
 			| (.associatedPullRequests.nodes // []) as $prs
 			| select(all($prs[]; .state != "OPEN"))
+			# An open PR past the 20 associations read still counts: the full
+			# open list is the check.
+			| select(.name as $b | $open == null or (any($open[]; .headRefName == $b) | not))
 			| {branch: .name,
 			   idle: (if .target.committedDate then (($now - (.target.committedDate | fromdateiso8601)) / 86400 | floor) else "?" end),
-			   kind: (if $prs == [] then "no-pr"
+			   kind: (if (.associatedPullRequests.pageInfo.hasNextPage // false) then "prs-truncated"
+			          elif $prs == [] then "no-pr"
 			          elif all($prs[]; .state == "MERGED") then "merged-pr"
 			          elif any($prs[]; .state == "MERGED") then "merged-and-closed-prs"
 			          else "closed-pr" end),
