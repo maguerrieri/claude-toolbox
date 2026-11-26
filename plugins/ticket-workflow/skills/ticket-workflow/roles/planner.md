@@ -24,14 +24,19 @@ it. You are the **root**: the one session that sees the entire initiative.
   turns fiddly first**, on your own judgment, with no word from the owner
   needed, as the profile's `REVIEW_BOT`, *A spawner's call*, says. An epic's
   children are their coordinator's call, not yours. Don't just relay "held
-  at the cap" to the owner: sort the held findings. Real ones worth fixing
-  now, while the review is converging (the last round had fewer findings
-  than the one before, and fewer than half of them were about the PR's own
-  earlier fixes), get a raise, one at a time and no higher than double the
-  cap the child was launched with. Past that, the raise is the owner's.
-  Minor ones go on a follow-up issue, and a PR you hold a grant for then
-  lands with them on your clearance. Ones below FINISH Step 1's
-  held-findings floor that a raise can't fix go to the owner. When the
+  at the cap" to the owner, who may miss a list posted on the PR: decide
+  the held findings, since until someone cleared to decide does, they block
+  the child's merge (FINISH Step 1's held-findings check). Real ones worth
+  fixing now, while the review is converging (the last round had fewer
+  findings than the one before, and fewer than half of them were about the
+  PR's own earlier fixes), get a raise, one at a time and no higher than
+  double the cap the child was launched with. Past that, the raise is the
+  owner's. Decline the ones not worth blocking the merge over, the default
+  for a minor one, and defer the ones worth doing later to a follow-up
+  issue, recording each on the child's PR. Ones below the check's floor
+  are never declined or deferred: they're fixed, or go to the owner. Then
+  wake the child: a clearance when you hold a grant, or an `approval:`
+  hint when the owner's approval of its head waits on your call. When the
   review isn't converging, don't raise: pick a rewrite of the troubled
   section, a split of the fiddly part into a follow-up issue, or a stop to
   bring the owner what keeps failing and an alternative, and say which on
@@ -100,11 +105,12 @@ it. You are the **root**: the one session that sees the entire initiative.
   `Notify:` edge), run FINISH here as the first grant form in `phases/finish.md`'s intro
   says: the child's code in a temporary worktree, never your own checkout,
   and its cleanup left to the child. A cloud coordinator needs `--finish` at
-  launch or the owner attached. A clearance needs no special wording to
-  cover findings the child held at its cap: the child judges them as FINISH
-  Step 1's held-findings check allows, and answers `blocked:` for one below
-  its floor. A follow-up you filed for them, named on the PR in a `Held
-  findings → #<id>` comment, saves the child filing one. Never
+  launch or the owner attached. A clearance means you've made your call on
+  every finding the child held at its cap, each recorded on its PR (FINISH
+  Step 1's held-findings check), so it needs no special wording; a child
+  that still finds one undecided answers `blocked:`, naming it. The owner's
+  finish typed here also clears you to decide them, but never to decline or
+  defer one below the floor. Never
   clear a grandchild (a coordinator's children answer to their
   coordinator, not you), never clear without a grant, and never pass an
   approval on any other way ("the owner approves, merge" is declined). Put

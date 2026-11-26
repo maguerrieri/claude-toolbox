@@ -56,7 +56,7 @@ record yes "SPAWN_CAP payload ends with its Budget: line" "$(ends_with "$payload
 for sentence in \
 	'So does a finish clearance for your own PR from your Notify spawner' \
 	"so does the owner's own approving review of your PR's current head" \
-	'A grant you hold also covers findings you held at your review-round cap' \
+	'Findings you held at your review-round cap block your merge until each' \
 	'Do not arm a periodic PR check-in' \
 	'a cap there above your round count is a raise, whoever wrote it' \
 	'Act too on a cap call your spawner sends about your own PR' \
@@ -74,11 +74,20 @@ record 1 "an override of SPAWN_CAP is told to carry the payload's sentences" \
 record 1 "FINISH Step 1's heading names the held-findings check" \
 	"$(grep -c '^## Step 1 — Pre-merge gate (.* + held findings)$' "$finish_md")"
 record 1 "FINISH Step 1 has the held-findings bullet" "$(grep -c '^- \*\*Held findings\.\*\* ' "$finish_md")"
-for item in '  1. **The floor.** ' '  2. **A home.** ' '  3. **A record.** '; do
+for item in '  1. **Who is cleared to decide.** ' '  2. **What a decision is.** ' '  3. **The floor.** '; do
 	record 1 "the held-findings check has its item:$item" "$(grep -c "^$(printf '%s' "$item" | sed 's/[.*]/\\&/g')" "$finish_md")"
 done
-record 1 "a session launched before the check keeps the old rule" \
-	"$(has "$finish_md" 'without its held-findings sentence was launched before this check existed')"
+record 1 "held findings block the merge until each is decided" \
+	"$(has "$finish_md" '**Held findings block the merge until each one is decided** by someone cleared to decide it')"
+for shape in '— not changing — declined by <who>: <why>' '— not changing — on #<follow-up>, by <who>: <why>'; do
+	record 1 "a decision is recorded in the shape: $shape" "$(has "$finish_md" "$shape")"
+done
+record 1 "a clearance means its sender has decided, so an undecided one is blocked:" \
+	"$(has "$finish_md" 'replies `blocked: <header> — held finding undecided: <anchor>` and')"
+record 1 "the owner's approval doesn't clear its session to decide" \
+	"$(grep '^4\. \*\*START is complete\.\*\*' "$finish_md" | grep -cF "The approval doesn't clear this session to decide one")"
+record 1 "a child launched before the check settles the same way" \
+	"$(has "$finish_md" 'A child launched before this check behaves the same way, since a decided line no longer reads as held')"
 
 # Each place that decides a merge of a capped PR points to the check. Two of
 # them are single lines in finish.md, so check those lines themselves.
@@ -87,20 +96,23 @@ record 1 "FINISH intro's implementer bullet points to the check" \
 record 1 "The owner's approval item 4 points to the check" \
 	"$(grep '^4\. \*\*START is complete\.\*\*' "$finish_md" | grep -cF "Step 1's held-findings check")"
 record 1 "EPIC Step 7 lands a capped layer under the check" \
-	"$(grep '^Only if the request carries a \*\*finish flag\*\*' "$epic_md" | grep -cF "lands under FINISH Step 1's held-findings check")"
+	"$(grep '^Only if the request carries a \*\*finish flag\*\*' "$epic_md" | grep -cF "lands only once each is decided")"
 for f in roles/implementer.md roles/epic-coordinator.md roles/planner.md messaging.md profiles/default.md SKILL.md; do
 	record 1 "$f points to the held-findings check" "$(has "$skill/$f" 'held-findings check')"
 done
 
-# No doc keeps the old rule, that a grant stops at any held finding.
+# No doc keeps the old rule, that a grant stops at any held finding, nor the
+# first fix's, that the merging session judges them at merge and files every
+# one on a follow-up (#360, replaced at the owner's request).
 old=$(grep -rnoF -e 'not held findings' -e 'covers reviewed work, not' -e 'fails the gate here' \
-	-e 'worth another round' "$skill" "$here/../commands")
-record "" "no doc keeps the old stop on held findings" "$old"
+	-e 'worth another round' -e 'Held findings →' -e 'Merging with findings held' \
+	-e 'also covers findings you held' -e 'on a follow-up issue first' "$skill" "$here/../commands")
+record "" "no doc keeps an old rule on held findings" "$old"
 
 # --- REVIEW_BOT's *A spawner's call* -----------------------------------------
 
 record 1 "REVIEW_BOT defines A spawner's call" "$(grep -c "^- \*\*A spawner's call: " "$profile")"
-for part in '**When.**' '**Sort the held findings.**' '**The convergence test, before each raise.**' \
+for part in '**When.**' '**Decide the held findings.**' '**The convergence test, before each raise.**' \
 	'**The ceiling.**' '**Not converging: no raise, and one of three, said on the PR.**' \
 	'**Rewrite.**' '**Split.**' '**Stop and re-evaluate.**' '**Telling the child.**' \
 	'**Too fiddly, before the cap.**'; do

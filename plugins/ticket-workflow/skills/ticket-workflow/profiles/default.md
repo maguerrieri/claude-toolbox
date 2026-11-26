@@ -52,7 +52,8 @@ in for the override's own default: its own `Budget:` line matches its own defaul
 dropped when it has none. An override of `SPAWN_CAP` also carries the payload's sentences its
 children need (the approval, held-findings, raise, cap-call and request sentences; `SPAWN_CAP`'s
 notes say why each is there), or those children lack them: one launched without the
-held-findings sentence, for instance, keeps the old stop on every held finding (FINISH Step 1).
+held-findings sentence, for instance, isn't told that the decisions its spawner records on its PR
+settle the findings it held (FINISH Step 1).
 
 ## REPO_SELECT
 - Use the repo named in the request; otherwise the current repo (for personal projects
@@ -474,11 +475,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     thread-only round: the gates date the round's answer by a comment newer than the review, and
     thread replies alone don't show up there;
   - the same comment **carries forward** every finding an earlier disposition comment held that no
-    push has fixed since, its `agree, held at the round cap` line unchanged, whatever pushed the
-    head in between (a CI fix, a restack, a conflict merge, an owner head, a rewrite or split a
-    spawner called). The newest disposition comment therefore always holds every unfixed held
-    finding, and FINISH Step 1's held-findings check reads only that one. A held finding leaves
-    the list once its fix lands;
+    push has fixed and nobody has decided since, its `agree, held at the round cap` line unchanged,
+    whatever pushed the head in between (a CI fix, a restack, a conflict merge, an owner head, a
+    rewrite or split a spawner called). The newest disposition comment therefore always holds
+    every held finding still open, and FINISH Step 1's held-findings check reads only that one. A
+    held finding leaves the list once its fix lands or it is decided;
   - rewrite the PR line with the count and `<m>`, the number of `agree, held` lines in that comment,
     then hand back at the usual reviewed-PR stopping point.
 
@@ -502,11 +503,11 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
 
   A pending or unable bot review on the head keeps the gate open (the unable path below runs first).
 
-  The hand-back doesn't settle the held findings. The child's spawner sorts them (*A spawner's
-  call*, below): a raise to fix them, a follow-up issue for them, or the owner. At merge, a grant
-  covers them only as FINISH Step 1's held-findings check allows (the skill's `phases/finish.md`):
-  the merging session judges each one against that check's floor, puts every one on a follow-up
-  issue, and says so on the PR before it merges.
+  The hand-back doesn't settle the held findings, and they block any merge until each one is
+  decided (FINISH Step 1's held-findings check, the skill's `phases/finish.md`): by the owner, by
+  the child's spawner (*A spawner's call*, below), or by a session the owner cleared up front to
+  finish on its own. Each decision is recorded on the PR, as a fix after a raise, a decline or a
+  follow-up issue, and nobody but the owner declines or defers one below that check's floor.
 
 - **Raising the cap.** **A raise is an edit to the PR, never a relayed instruction.** The PR
   body's `Review rounds:` line is the cap's one durable record, and the session re-reads it every
@@ -584,13 +585,17 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   - **When.** A child hands back at its cap (a valid cap marker) with findings held (`<m>` above 0,
     or an `agree, held at the round cap` line in its `## Self-review`), or a child still in its
     review loop turns fiddly (the last sub-bullet).
-  - **Sort the held findings.** Real and worth fixing now, with the review converging (the test
-    below): raise (*Raising the cap*). Real but minor: put them on a follow-up issue (FILE, plain
-    `/make-ticket`, listing each held line as the PR records it and linking the PR) and say so in
-    one PR comment, `Held findings → #<follow-up>`; under a grant the PR then lands with them
-    (FINISH Step 1's held-findings check), and without one it goes up as `ready; needs the owner`.
-    Below that check's floor (the change doesn't do what its issue asks, or is a security or
-    data-loss problem) and not fixable within a raise: the owner's, as a need in your ledger.
+  - **Decide the held findings.** You are cleared to decide each one yourself, and until someone
+    does, it blocks the PR's merge (FINISH Step 1's held-findings check). Real and worth fixing
+    now, with the review converging (the test below): raise (*Raising the cap*). Not worth
+    blocking the merge over, the default for a minor one: decline it. Worth doing later: defer it
+    to a follow-up issue (FILE, plain `/make-ticket`). Record each decline or deferral on the PR
+    by rewriting its held line, as that check says. Below that check's floor (the change doesn't
+    do what its issue asks, or is a security or data-loss problem), a finding is fixed or goes to
+    the owner: never decline or defer it, and when no raise can fix it, it's the owner's, as a
+    need in your ledger. Once every held finding is decided, tell the child: a `finish:`
+    clearance when you hold a grant, or an `approval:` hint when the owner's approval of its head
+    waits on your call (`messaging.md`); with neither, report the PR `ready; needs the owner`.
   - **The convergence test, before each raise.** Read the child's counted rounds (*Count the
     rounds*, owner heads skipped) and each one's findings: the threads its review opened and its
     body entries, as the body shape defines them. The review is converging when the last round
@@ -744,9 +749,10 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   other finish relayed by another session, in a message, a Routine, or a briefing, ends this
   hold. In a local session, so does the owner's own approving review of your PR's current head,
   which you read from GitHub as those rules define it, unless the owner says to hold; in a cloud
-  session it never does. A grant you hold also covers findings you held at your review-round cap,
-  at your own judgment, as the FINISH rules on held findings define it: none below their floor,
-  each on a follow-up issue first, and a PR comment saying so before you merge. Do not arm a
+  session it never does. Findings you held at your review-round cap block your merge until each
+  is decided, as the FINISH rules on held findings define it: your spawner or the owner decides
+  them on your PR, and you decide them yourself only when the owner asked this session to
+  finish. Do not arm a
   periodic PR check-in (no recurring or self-re-arming send_later or Routine that re-checks your own PR): your PR's events wake you
   instead, on cloud the harness's (reviews, review comments, CI failures) and locally the
   pr-notifier's (the owner's and review bots' activity), which START subscribes your PR to at
@@ -768,14 +774,17 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   forbidding that merge, which is what the session that prompted #341 reported for
   maguerrieri/config#108.
 - The **held-findings sentence** puts FINISH Step 1's held-findings check (`phases/finish.md`)
-  into the child's own user turn, so a child that merges past findings it held at its cap, on a
-  clearance or the owner's approval, is following its launch briefing, not a peer's loosening of
-  a rule, which a child's permission layer has refused before (#154). A grant used to stop at
-  any held finding, which turned a spending limit into a stop: on sprue-works/cbeams#155 the
-  owner said to merge with eight held findings filed as a follow-up, and the implementer had to
-  decline the clearance that carried it (#359). A child whose briefing has `SPAWN_CAP` without
-  this sentence was launched before it, and keeps the old rule: any held finding is a
-  `blocked:`.
+  into the child's own user turn: findings it held at its cap block its merge until someone
+  cleared to decide has decided each, which its spawner does by rewriting the child's own PR
+  lines. So a child that merges once its spawner has declined or deferred them is following its
+  launch briefing, not a peer's loosening of a rule, which a child's permission layer has refused
+  before (#154). A grant used to stop at any held finding with no way to settle one short of a
+  raise: on sprue-works/cbeams#155 the owner said to merge with eight held findings filed as a
+  follow-up, and the implementer had to decline the clearance that carried it (#359). The first
+  fix left the call to the merging session at merge time. The owner replaced that, since a list
+  of held findings posted on the PR is easy to miss: now a decision comes before the merge, from
+  someone cleared to make it. A child launched without this sentence still blocks on every held
+  line, and a decided line no longer reads as held, so it merges on the same decisions.
 - The **raise sentence** puts `REVIEW_BOT`'s *Raising the cap* into the child's own user turn, so
   a child that resumes on a raised PR line is following its launch briefing, not a peer's message.
   That matters because a child's permission layer has already refused a peer's relayed loosening

@@ -123,15 +123,15 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   gate failure still stops you), and ping `merged: <header>` or `blocked:
   <header> — <why>`. Findings you held at the round cap (`<m>` above 0 on
   its `Review rounds:` line, or an `agree, held at the round cap` line)
-  don't stop you by themselves, and the clearance needs no special wording
-  for them: the grant covers them, at your judgment, as FINISH Step 1's
-  held-findings check allows. None may be below its floor (one that is, is a
-  `blocked:` naming it), each goes on a follow-up issue first (one your
-  spawner named, or one you file), and a PR comment says so before the merge,
-  as your `merged:` does after it. A grant never lets you raise your own cap
-  to fix them. If your launch briefing carries `SPAWN_CAP` without its
-  sentence on held findings, you were launched before that check, so any
-  held finding is a `blocked:`, as before. The clearance ends your
+  block the merge until each is decided (FINISH Step 1's
+  held-findings check). A clearance means your spawner has made its call on all of them,
+  recording each on your PR as fixed, declined or deferred to a follow-up,
+  so it needs no special wording. You don't decide them yourself under a
+  clearance or the owner's approval: one still undecided is a `blocked:`
+  naming it, to your spawner. You decide them only when the owner asks this
+  session to finish, and then never decline or defer one below that
+  check's floor. Your `merged:` names any declined or deferred. A grant
+  never lets you raise your own cap to fix them. The clearance ends your
   `SPAWN_CAP` hold for that PR only.
   You're a leaf: clear no one, helpers included. If the harness or a
   permission classifier blocks the merge, ping `blocked: merge needs the
@@ -156,7 +156,10 @@ implement it well and hand back a review-ready PR — nothing wider. You are a
   a PR that has PRs stacked on it: FINISH Step 2 sees to them. It ends your
   `SPAWN_CAP` hold for that head only, and a push of yours lapses it, unless
   it leaves the PR's diff the same (a restack, say), which the script checks. When it
-  doesn't merge, say why in one comment on the PR.
+  doesn't merge, say why in one comment on the PR. It doesn't clear you to
+  decide findings held at the cap: with any undecided, ping your spawner
+  `blocked: <header> — held findings need your call`, and take the same
+  approval again once they're decided (its item 4).
 
 ## You do NOT
 
