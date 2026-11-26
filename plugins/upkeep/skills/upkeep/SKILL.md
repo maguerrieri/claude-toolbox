@@ -82,10 +82,10 @@ check's finding.
 | Proposal | Source | Make it when |
 |---|---|---|
 | Close PRs | `open-prs` | idle 30 days or more and no `running` session. Conflicting, a draft, or its issue closed by other work makes the case stronger. |
-| Delete branches, remove worktrees | `branches`, `local-branches`, `worktrees` | the branch's PR merged or closed. A worktree with `dirty` above 0 holds uncommitted work: say so, don't count it as clean. |
+| Delete branches, remove worktrees | `branches`, `local-branches`, `worktrees` | the branch's PR merged or closed, and no open PR is based on it (`base_of` is `-`: deleting an open PR's base closes that PR). A worktree with `dirty` above 0 holds uncommitted work: say so, don't count it as clean. |
 | Close or decline issues | `open-issues`, `possible-duplicates` | `merged-but-open`; `mentioned-by-merged` where reading both shows the merged PR did the work; a duplicate pair, after reading both; `catch-all` idle 30 days or more (split it into issues, or close it); `no-pr` and 60 days old or more. |
 | Fix doc drift | `missing-paths`, checks | a skill, instructions or README names a path that's gone. Specs and plans under `docs/` are records: leave them unless they mislead. |
-| Refactor or split | `files`, `instruction-sizes`, `skill-totals` | a file in the top five of `files` whose fixes came from 3 PRs or more (`fix_prs`), or an instruction or skill file among the ten largest that at least doubled in the window. |
+| Refactor or split | `files`, `instruction-sizes`, `skill-totals` | a file in the top five of `files` whose fixes came from 3 PRs or more (`fix_prs`), or an instruction or skill file among the ten largest that at least doubled in the window (one that reads `new` didn't double: it may hold text moved out of another file). |
 | Delete files | `unreferenced-files`, `unreferenced-dirs` | one search shows nothing runs it (a glob, a runner script). |
 | Fix what a check found | extra checks | as the check says. |
 

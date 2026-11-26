@@ -381,7 +381,7 @@ check script below has its own tests, `bash .claude/upkeep/test-checks.sh`,
 which a survey doesn't run.
 
 Window: 90
-Review fixes: ^\[#[0-9]+\] \(CRC[;)]
+Review fixes: \(CRC[;)]
 Declined: .claude/upkeep/declined.md
 
 - Plugin versions that collide across open PRs, `defaults` dependencies

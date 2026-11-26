@@ -9,8 +9,9 @@ It surveys:
 
 - **stale work**: open PRs by idle days, mergeability and whether a session
   still drives them (from `claude agents --json --all`, where that's there),
-  branches with no open PR, local branches whose upstream is gone, and linked
-  worktrees with their PR's state;
+  branches with no open PR (and any open PR based on one, which deleting it
+  would close), local branches whose upstream is gone, and linked worktrees
+  with their PR's state;
 - **the backlog**: issues a merged PR closes that are still open, issues a
   merged PR mentions, issues no PR touches, catch-all issues, and pairs with
   near-identical titles;
@@ -57,7 +58,7 @@ A repo tunes the survey with an `## Upkeep` section in its `AGENTS.md` (or
 ## Upkeep
 
 Window: 90
-Review fixes: ^\[#[0-9]+\] \(CRC[;)]
+Review fixes: \(CRC[;)]
 Declined: .claude/upkeep/declined.md
 
 - Plugin versions that collide across open PRs: `bash .claude/upkeep/checks.sh`
