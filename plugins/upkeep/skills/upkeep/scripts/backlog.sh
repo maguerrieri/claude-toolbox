@@ -17,6 +17,9 @@
 #                                            mentions it without closing it
 #                                            (overtaken?)
 #                           no-pr            no PR closes or mentions it
+#                           refs-truncated   more than 20 closing PRs or 100
+#                                            cross-references, so the lists
+#                                            are cut short (never no-pr)
 #                           catch-all        its title reads like a holding
 #                                            pen (ideas, parked, backlog, ...)
 #   possible-duplicates   pairs of open issues whose titles share most of
@@ -53,8 +56,10 @@ if ! gh api graphql --paginate -f owner="${repo%%/*}" -f name="${repo#*/}" -f qu
 	        labels(first:20){ nodes{ name } }
 	        comments{ totalCount }
 	        closedByPullRequestsReferences(first:20,includeClosedPrs:true){
+	          pageInfo{ hasNextPage }
 	          nodes{ number state repository{ nameWithOwner } } }
 	        timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){
+	          pageInfo{ hasNextPage }
 	          nodes{ ... on CrossReferencedEvent{ source{ __typename
 	            ... on PullRequest{ number state repository{ nameWithOwner } } } } } } } } } }' \
 	>"$tmp/issues.json" 2>"$tmp/err"; then
@@ -74,6 +79,8 @@ jq -r --argjson now "$now" --arg repo "$repo" '
 	def name: (if mine then "" else where end) + "#\(.number)";
 	def prs: map("\(name) \(.state | ascii_downcase)") | if . == [] then "-" else join(",") end;
 	map((.closedByPullRequestsReferences.nodes // []) as $closing
+		| ((.closedByPullRequestsReferences.pageInfo.hasNextPage // false)
+		   or (.timelineItems.pageInfo.hasNextPage // false)) as $cut
 		| ([.timelineItems.nodes[]?.source | select(.__typename == "PullRequest")
 		    | select(name as $k | any($closing[]; name == $k) | not)]
 		   | unique_by(name)) as $other
@@ -85,7 +92,7 @@ jq -r --argjson now "$now" --arg repo "$repo" '
 		     (if any($closing[]; .state == "MERGED") then "merged-but-open" else empty end),
 		     (if any($closing[]; .state == "OPEN") then "open-pr" else empty end),
 		     (if any($other[]; .state == "MERGED" and mine) then "mentioned-by-merged" else empty end),
-		     (if $closing == [] and $other == [] then "no-pr" else empty end),
+		     (if $cut then "refs-truncated" elif $closing == [] and $other == [] then "no-pr" else empty end),
 		     (if (.title | test("\\b(ideas?|parked|backlog|wish ?list|someday|misc|catch[- ]?all|follow[- ]?ups|parking lot)\\b"; "i"))
 		      then "catch-all" else empty end)
 		   ] | if . == [] then "-" else join(",") end),

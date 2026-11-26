@@ -48,7 +48,9 @@ mkdir "$tmp/bin" "$tmp/cbin" "$tmp/fx"
 cat >"$tmp/fx/all-prs.json" <<'EOF'
 [{"number": 5, "state": "MERGED", "headRefName": "feat-a"},
  {"number": 9, "state": "OPEN", "headRefName": "with-pr"},
- {"number": 12, "state": "OPEN", "headRefName": "feat-b-old"}]
+ {"number": 12, "state": "OPEN", "headRefName": "feat-b-old"},
+ {"number": 20, "state": "OPEN", "headRefName": "feat-b"},
+ {"number": 21, "state": "CLOSED", "headRefName": "feat-b"}]
 EOF
 jq -n --arg old "$(ago 40)" --arg new "$(ago 1)" '[
   {number: 12, title: "Second", isDraft: true, updatedAt: $new, mergeable: "MERGEABLE",
@@ -127,7 +129,7 @@ record 30 "branch idle days" "$(row branches feat-a "$tmp/out" | col 2)"
 record '#12' "a merged PR's branch that an open PR is based on says so" "$(row branches feat-a "$tmp/out" | col 5)"
 record '-' "one nothing is based on" "$(row branches stale-x "$tmp/out" | col 5)"
 
-record "feat-b:none:none:yes gone-branch:gone:none:no orphan:none:none:no pruned-late:gone:none:no" \
+record "gone-branch:gone:none:no orphan:none:none:no pruned-late:gone:none:no" \
 	"local branches: gone upstream (pruned, or missing from GitHub), or none and no PR" \
 	"$(rows local-branches "$tmp/out" | awk -F '\t' '{ printf "%s%s:%s:%s:%s", (NR > 1 ? " " : ""), $1, $3, $4, $5 }')"
 
@@ -135,7 +137,7 @@ wa=$(row worktrees .claude/worktrees/feat-a "$tmp/out")
 record "feat-a 0 #5 merged" "worktree feat-a: clean, its PR merged" "$(printf '%s\n' "$wa" | awk -F '\t' '{ print $2, $4, $5 }')"
 record 50 "worktree idle days from its head commit" "$(printf '%s\n' "$wa" | col 3)"
 wb=$(row worktrees .claude/worktrees/feat-b "$tmp/out")
-record "1 none" "worktree feat-b: one untracked path, no PR" "$(printf '%s\n' "$wb" | awk -F '\t' '{ print $4, $5 }')"
+record "1 #20 open" "worktree feat-b: one untracked path; its open PR wins over a newer closed one" "$(printf '%s\n' "$wb" | awk -F '\t' '{ print $4, $5 }')"
 record 2 "the main checkout isn't listed" "$(rows worktrees "$tmp/out" | wc -l | tr -d ' ')"
 
 # --- degraded sources -------------------------------------------------------

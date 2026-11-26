@@ -15,10 +15,12 @@
 #                       bumps the plugin to the same version, so whichever
 #                       merges second has to bump again). A note counts the
 #                       rows that are fine.
-#   defaults-deps       `defaults` and each of its dependencies, where it's
-#                       missing from `.claude/settings.json`'s enabledPlugins
-#                       or from the README's settings snippet (AGENTS.md,
-#                       *Dogfooding our own plugins*).
+#   defaults-deps       `defaults` and each of its dependencies, where it isn't
+#                       enabled (`true`) in `.claude/settings.json`'s
+#                       enabledPlugins or in the README's settings snippet
+#                       (AGENTS.md, *Dogfooding our own plugins*): each cell
+#                       reads yes, `disabled` (listed but not true) or
+#                       `missing`.
 #   marketplace-pins    each marketplace entry sourced from GitHub with a
 #                       `ref` and a `sha`, when the commit the ref names isn't
 #                       the sha (or the ref can't be found).
@@ -103,25 +105,32 @@ deps=$(git cat-file -p "$ref:plugins/defaults/.claude-plugin/plugin.json" 2>/dev
 if [ -z "$market" ] || [ -z "$deps" ]; then
 	printf 'skipped: no marketplace name or no defaults dependencies at %s\n' "$ref"
 else
-	git cat-file -p "$ref:.claude/settings.json" 2>/dev/null | jq -r '.enabledPlugins // {} | keys[]' >"$tmp/settings" 2>/dev/null || :
-	# The README's settings snippet: the first ```json block naming
-	# enabledPlugins.
+	# `<key>\t<value>` per enabledPlugins entry, from the settings and from
+	# the README's snippet (the first ```json block naming enabledPlugins).
+	entries='.enabledPlugins // {} | to_entries[] | "\(.key)\t\(.value)"'
+	git cat-file -p "$ref:.claude/settings.json" 2>/dev/null | jq -r "$entries" >"$tmp/settings" 2>/dev/null || :
 	git cat-file -p "$ref:README.md" 2>/dev/null | awk '
 		/^```json[ \t]*$/ { inb = 1; block = ""; next }
 		inb && /^```[ \t]*$/ { inb = 0; if (block ~ /"enabledPlugins"/) { printf "%s", block; exit } next }
 		inb { block = block $0 "\n" }' >"$tmp/snippet"
+	snippet_ok=yes
+	jq -r "$entries" "$tmp/snippet" >"$tmp/readme" 2>/dev/null || snippet_ok=no
 	printf 'plugin\tsettings\treadme\n'
+	# enabled, `disabled` (listed but not true), or `missing`.
+	status() { # status <entries file> <key>
+		awk -F '\t' -v k="$2" '$1 == k { print ($2 == "true" ? "yes" : "disabled"); found = 1; exit } END { if (!found) print "missing" }' "$1"
+	}
 	for plugin in defaults $deps; do
 		key="$plugin@$market"
-		in_settings=yes
-		grep -q -x -F -e "$key" "$tmp/settings" || in_settings=missing
-		in_readme=yes
-		grep -q -F -e "\"$key\"" "$tmp/snippet" || in_readme=missing
-		if [ "$in_settings" = missing ] || [ "$in_readme" = missing ]; then
+		in_settings=$(status "$tmp/settings" "$key")
+		in_readme=$(status "$tmp/readme" "$key")
+		if [ "$in_settings" != yes ] || [ "$in_readme" != yes ]; then
 			printf '%s\t%s\t%s\n' "$plugin" "$in_settings" "$in_readme"
 		fi
 	done
 	[ -s "$tmp/snippet" ] || printf 'note: no README block names enabledPlugins, so every readme cell reads missing\n'
+	[ ! -s "$tmp/snippet" ] || [ "$snippet_ok" = yes ] ||
+		printf 'note: the README snippet is not valid JSON, so every readme cell reads missing\n'
 fi
 
 # --- marketplace-pins -------------------------------------------------------

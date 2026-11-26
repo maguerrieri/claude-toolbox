@@ -27,6 +27,7 @@ printf '#!/bin/sh\n' >"$repo/scripts/old-name.sh"
 printf 'print(1)\n' >"$repo/lib/gone.py"
 words 10 >"$repo/plugins/p/skills/s/SKILL.md"
 words 40 >"$repo/plugins/p/skills/s/ref.md"
+words 900 >"$repo/plugins/p/skills/s/gone.md"
 words 5 >"$repo/AGENTS.md"
 printf '{}\n' >"$repo/.claude/settings.json"
 commit_at "$repo" 200 "start"
@@ -34,6 +35,7 @@ commit_at "$repo" 100 "before the window"
 
 git -C "$repo" mv scripts/old-name.sh scripts/new-name.sh
 git -C "$repo" rm -q lib/gone.py
+git -C "$repo" rm -q plugins/p/skills/s/gone.md
 git -C "$repo" mv plugins/p/skills/s/ref.md plugins/p/skills/s/reference.md
 words 30 >"$repo/plugins/p/skills/s/SKILL.md"
 words 6 >"$repo/plugins/p/skills/s/extra.md"
@@ -70,7 +72,7 @@ record "40	40	+0	1" "a renamed file keeps its size at the window's start" \
 record "5	5	+0	0	AGENTS.md" "AGENTS.md counts, unchanged" "$(rows instruction-sizes "$tmp/out" | awk -F '\t' '$5 == "AGENTS.md"')"
 record "6	new	new	1" "a file the window added reads as new, not as growth from 0" \
 	"$(rows instruction-sizes "$tmp/out" | awk -F '\t' '$5 == "plugins/p/skills/s/extra.md" { print $1 "\t" $2 "\t" $3 "\t" $4 }')"
-record "80	50	+30	3	plugins/p/skills/s" "the skill's total, the new file counting 0 at the start" "$(rows skill-totals "$tmp/out" | head -1)"
+record "80	950	-870	3	plugins/p/skills/s" "the skill's total at the start counts a file deleted since (it shrank)" "$(rows skill-totals "$tmp/out" | head -1)"
 record "" "README isn't an instruction file" "$(rows instruction-sizes "$tmp/out" | awk -F '\t' '$5 == "README.md"')"
 
 (cd "$repo" && bash "$script" --days 300) >"$tmp/long" 2>&1

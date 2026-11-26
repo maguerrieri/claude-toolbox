@@ -34,9 +34,10 @@
 #                       `new` for a file the window added, which may hold text
 #                       moved out of another file), the change, and commits
 #                       in the window.
-#   skill-totals        the same, summed per skill directory (`.../skills/
-#                       <name>/`, a new file counting 0 at the start), largest
-#                       first.
+#   skill-totals        per skill directory (`.../skills/<name>/`), largest
+#                       first: words now, words in the whole directory at the
+#                       window's start (files deleted since included), the
+#                       change, and the files it has now.
 #
 # Needs git and jq.
 set -u
@@ -185,10 +186,19 @@ awk -F '\t' -v counts="$tmp/commits" 'FILENAME == counts { c[$1] = $2; next }
 	"$tmp/commits" "$tmp/sizes" | sort -t '	' -k1,1nr -k5,5
 [ -n "$start" ] || printf 'note: no commit before the window starts, so every file reads as new\n'
 
+# A skill's total at the window's start comes from its whole tree then,
+# files deleted since included, so a skill that shrank reads as shrinking.
+: >"$tmp/start-sizes"
+if [ -n "$start" ]; then
+	git -c core.quotePath=false ls-tree -r --name-only "$start" 2>/dev/null | grep -E '(^|/)skills/[^/]+/.*\.md$' |
+		while IFS= read -r f; do
+			printf '%s\t%s\n' "$f" "$(git cat-file -p "$start:$f" 2>/dev/null | wc -w | tr -d ' ')"
+		done >"$tmp/start-sizes"
+fi
 upkeep_section skill-totals "words	words_at_start	change	files	skill"
-awk -F '\t' 'match($1, /(^|\/)skills\/[^\/]+\//) {
-		dir = substr($1, 1, RSTART + RLENGTH - 2)
-		w[dir] += $2; s[dir] += ($3 == "new" ? 0 : $3); f[dir]++
-	}
-	END { for (d in w) printf "%d\t%d\t%+d\t%d\t%s\n", w[d], s[d], w[d] - s[d], f[d], d }' "$tmp/sizes" |
-	sort -t '	' -k1,1nr -k5,5
+awk -F '\t' -v then="$tmp/start-sizes" '
+	function skill(p) { if (match(p, /(^|\/)skills\/[^\/]+\//)) return substr(p, 1, RSTART + RLENGTH - 2); return "" }
+	FILENAME == then { d = skill($1); if (d != "") { s[d] += $2; seen[d] = 1 } next }
+	{ d = skill($1); if (d != "") { w[d] += $2; f[d]++; seen[d] = 1 } }
+	END { for (d in seen) printf "%d\t%d\t%+d\t%d\t%s\n", w[d], s[d], w[d] - s[d], f[d], d }' \
+	"$tmp/start-sizes" "$tmp/sizes" | sort -t '	' -k1,1nr -k5,5

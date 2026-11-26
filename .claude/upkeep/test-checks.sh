@@ -40,10 +40,10 @@ jq -n --arg s1 "$sha1" --arg s2 "$sha2" --arg s3 "$sha3" '{name: "mkt", plugins:
 	{name: "ext2", source: {source: "github", repo: "o/ext2", ref: "v2", sha: $s2}},
 	{name: "ext3", source: {source: "github", repo: "o/ext3", ref: "main", sha: $s3}},
 	{name: "ext4", source: {source: "github", repo: "o/ext4", sha: $s3}}]}' >.claude-plugin/marketplace.json
-printf '{"name": "defaults", "version": "0.1.0", "dependencies": ["a", "b"]}\n' >plugins/defaults/.claude-plugin/plugin.json
+printf '{"name": "defaults", "version": "0.1.0", "dependencies": ["a", "b", "c"]}\n' >plugins/defaults/.claude-plugin/plugin.json
 printf '{"name": "a", "version": "1.2.0"}\n' >plugins/a/.claude-plugin/plugin.json
 printf '{"name": "b", "version": "0.1.0"}\n' >plugins/b/.claude-plugin/plugin.json
-printf '{"enabledPlugins": {"defaults@mkt": true, "a@mkt": true}}\n' >.claude/settings.json
+printf '{"enabledPlugins": {"defaults@mkt": true, "a@mkt": true, "c@mkt": false}}\n' >.claude/settings.json
 cat >README.md <<'EOF'
 # Readme
 
@@ -55,7 +55,8 @@ cat >README.md <<'EOF'
 {
   "enabledPlugins": {
     "defaults@mkt": true,
-    "b@mkt": true
+    "b@mkt": true,
+    "c@mkt": true
   }
 }
 ```
@@ -110,7 +111,7 @@ record "a 1.2.0 #1 1.3.0 collides with #2|a 1.2.0 #2 1.3.0 collides with #1|a 1.
 	"$(rows version-collisions "$tmp/out" | sort | tr '\t' ' ' | paste -s -d '|' -)"
 record "note: 1 more plugin bumps on open PRs are fine" "a new plugin is fine" \
 	"$(grep '^note: .* plugin bumps' "$tmp/out")"
-record "a	yes	missing|b	missing	yes" "defaults deps missing from the settings or the README's snippet" \
+record "a	yes	missing|b	missing	yes|c	disabled	yes" "defaults deps missing from the settings or the README's snippet, or listed but disabled" \
 	"$(rows defaults-deps "$tmp/out" | sort | paste -s -d '|' -)"
 record "ext2	o/ext2	v2	$sha2	9999	mismatch|ext4	o/ext4	-	$sha3	-	ref-or-sha-missing" \
 	"pins: a mismatch and a missing ref; an annotated tag and a branch resolve" \

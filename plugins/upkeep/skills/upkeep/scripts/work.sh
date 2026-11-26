@@ -174,7 +174,7 @@ else
 		| split("\t") as [$b, $up, $track, $ct]
 		| select($b != $default)
 		| (if $prs[0] == null then "?" else
-			([$prs[0][] | select(.headRefName == $b)] | sort_by(.number) | last
+			([$prs[0][] | select(.headRefName == $b)] | sort_by(.state == "OPEN", .number) | last
 			 | if . == null then "none" else "#\(.number) \(.state | ascii_downcase)" end) end) as $pr
 		| (if $up == "" then "none" elif ($track | test("gone")) then "gone"
 		   elif $known == "yes" and ($up | startswith("refs/remotes/origin/"))
@@ -216,7 +216,7 @@ else
 	jq -Rr --argjson now "$now" --slurpfile prs "$pr_file" '
 		split("\t") as [$p, $b, $ct, $dirty, $flags]
 		| (if $prs[0] == null then "?" elif $b == "-" then "-" else
-			([$prs[0][] | select(.headRefName == $b)] | sort_by(.number) | last
+			([$prs[0][] | select(.headRefName == $b)] | sort_by(.state == "OPEN", .number) | last
 			 | if . == null then "none" else "#\(.number) \(.state | ascii_downcase)" end) end) as $pr
 		| [$p, $b, (if $ct == "" then "?" else ((($now - ($ct | tonumber)) / 86400) | floor) end), $dirty, $pr,
 		   (if $flags == "" then "-" else $flags end)]
