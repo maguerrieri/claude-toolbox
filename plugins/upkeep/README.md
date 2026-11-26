@@ -58,7 +58,7 @@ A repo tunes the survey with an `## Upkeep` section in its `AGENTS.md` (or
 ## Upkeep
 
 Window: 90
-Review fixes: \(CRC[;)]
+Review fixes: \(CRC[;,)]
 Declined: .claude/upkeep/declined.md
 
 - Plugin versions that collide across open PRs: `bash .claude/upkeep/checks.sh`

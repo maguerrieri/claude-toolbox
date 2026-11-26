@@ -113,8 +113,8 @@ The declines file holds one line per declined proposal:
 ```
 
 A key is a verb and one item: `close #<n>`, `delete <path>`, `delete-branch
-<name>`, `refactor <path>`, `split <path>`, `fix-docs <path>`, `check <check
-name>`. Drop a candidate whose key matches a line whose until-date hasn't
+<name>`, `remove-worktree <path>`, `refactor <path>`, `split <path>`,
+`fix-docs <path>`, `check <check name>`. Drop a candidate whose key matches a line whose until-date hasn't
 passed, and drop just the matching items from a grouped proposal.
 
 ## 5. Rank and cut
