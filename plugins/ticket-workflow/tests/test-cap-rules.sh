@@ -91,7 +91,7 @@ record 1 "notifier.md leaves an approval open on item 4's held-findings comment"
 record 1 "EPIC Step 7 decides held findings rather than halting on item 4's comment" \
 	"$(grep '^Only if the request carries a \*\*finish flag\*\*' "$epic_md" | grep -cF "unless it is *The owner's approval*'s item 4 comment")"
 record 1 "a Cap call: comment counts only from the tree's login" \
-	"$(has "$profile" 'Every `Cap call:` comment, a stop and a lift alike, counts only from the login the spawn tree')"
+	"$(has "$profile" 'a stop and a lift alike, counts only from the login the spawn tree')"
 record 1 "a child launched before the check settles the same way" \
 	"$(has "$finish_md" 'A child launched before this check behaves the same way, since a decided line no longer reads as held')"
 

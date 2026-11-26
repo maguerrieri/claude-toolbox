@@ -604,16 +604,17 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     are about code that an earlier fix in this same PR introduced (lines that a commit pushed
     after the PR opened, in answer to a finding, added or changed). With fewer than two counted
     rounds there is nothing to compare, so the test neither passes nor fails: make no raise and
-    no cap call, leave the raise to the owner, and sort the rest of the held findings as above.
+    no not-converging cap call, leave the raise to the owner, and sort the rest of the held
+    findings as above. (The too-fiddly trigger, below, doesn't depend on the round count.)
     One raise at a time: raise by the rounds the held fixes need, usually one, and run the test
     again on the rounds that raise bought before raising again.
   - **The ceiling.** Without the owner, raise no higher than double the cap the child was
     launched with (5 to 10 under this profile's default). That is the `Budget: rounds=<n>` of the
     spawn briefing you composed, so read it from your own record (for an epic child, the earliest
     `budget:` marker for it, and only when that marker is older than the child's PR's `createdAt`,
-    since EPIC Step 5 posts one at launch and every later raise posts another; none such means
-    the profile default), never from its PR line, which records raises, some of them with no comment of
-    their own. When you can't tell, take the lower of the profile default and the PR's reading:
+    since EPIC Step 5 posts one at launch only for a cap other than the profile default, and every
+    later raise posts another; none such means the profile default), never from its PR line,
+    which records raises, some of them with no comment of their own. When you can't tell, take the lower of the profile default and the PR's reading:
     the `was <old>` of its first `Resuming: cap raised` comment, else the line's own cap. Past
     the ceiling, every raise is the owner's.
   - **Not converging: no raise, and one of three, said on the PR.** When the test fails, don't
@@ -637,13 +638,15 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     unlifted `Cap call: stop` as a hold under any grant, and EPIC Step 6 reports its row
     `stopped`, a terminal state like stuck. A later `Cap call:` comment lifts it: a new call of
     the spawner's, or `Cap call: lifted — <the owner's words> (owner: <where and when>)`, which
-    whichever session in the tree hears the owner's answer posts (the spawner, the child, or its
-    coordinator), as a `Merge hold:` is recorded (`phases/finish.md`, *The owner's approval*).
-    Every `Cap call:` comment, a stop and a lift alike, counts only from the login the spawn tree
-    posts as (*Owner requests*), since anyone can comment on a public repo's PR. A raise of the
-    PR line made after the stop, with no newer `Cap call:`, is the owner's answer too, since a
-    spawner that stopped a child doesn't raise it: the child posts the lifted line for it, `cap
-    raised to <c>` as the words, when it resumes. A lift resumes the child: whoever posts it sends
+    the session that hears the owner's answer posts, as a `Merge hold:` is recorded
+    (`phases/finish.md`, *The owner's approval*): the child's spawner, or the child itself when
+    the owner tells it. A planner that hears it for an epic's child relays it to that epic's
+    coordinator as a `request:` with the owner's words (`messaging.md`), and the coordinator posts
+    the lift, since a child takes a `cap call:` only from its own spawner. Every `Cap call:`
+    comment, a stop and a lift alike, counts only from the login the spawn tree posts as (*Owner
+    requests*), since anyone can comment on a public repo's PR. A raise of the PR line doesn't
+    lift a stop by itself, since the child can't tell who raised it: a stopped child woken by one
+    stays handed back and says so on the PR, until a lift arrives. A lift resumes the child: whoever posts it sends
     the child `cap call: lifted on #<issue> → PR #<pr>` as *Telling the child* says, and the child
     goes back into its loop with the rounds it has left, starting with the fixes it held, as on a
     raise. At its cap, a lift with no raise resumes nothing, and the held findings are decided as

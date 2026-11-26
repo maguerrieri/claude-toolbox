@@ -105,7 +105,8 @@ it. You are the **root**: the one session that sees the entire initiative.
   `Notify:` edge), run FINISH here as the first grant form in `phases/finish.md`'s intro
   says: the child's code in a temporary worktree, never your own checkout,
   and its cleanup left to the child. A cloud coordinator needs `--finish` at
-  launch or the owner attached. A clearance means you've made your call on
+  launch or the owner attached. An epic clearance leaves its layers' held
+  findings to the coordinator to decide. A PR clearance means you've made your call on
   every finding the child held at its cap, each recorded on its PR (FINISH
   Step 1's held-findings check), so it needs no special wording; a child
   that still finds one undecided answers `blocked:`, naming it. The owner's
