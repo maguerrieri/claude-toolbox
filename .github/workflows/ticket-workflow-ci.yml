@@ -41,6 +41,8 @@ jobs:
         run: bash plugins/ticket-workflow/tests/test-owner-approval.sh
       - name: PR-subscription helper tests (pr-notifier subscribe and unsubscribe)
         run: bash plugins/ticket-workflow/tests/test-pr-subscription.sh
+      - name: Owner-review helper tests (request and clear the owner's review at hand-back)
+        run: bash plugins/ticket-workflow/tests/test-owner-review.sh
       - name: Install zsh (the round-count, agents-listing and session-link tests also run their snippets under zsh)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
       - name: Review-round count tests
