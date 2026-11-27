@@ -100,6 +100,7 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
   Copilot is already engaged — and note `requested_reviewers` lists only *pending* reviewers, so a
   bot that already **submitted** drops off it; check existing reviews too:
   - `gh api repos/OWNER/REPO/pulls/<pr> --jq '[.requested_reviewers[].login]'` — review pending
+    (look for the bot's login there: the owner's is START Step 9's hand-back request, never the bot's)
   - `gh pr checks <pr>` — a `copilot-pull-request-reviewer` check run still in progress is also
     "pending": Copilot drops off `requested_reviewers` once its run starts (observed on #131), so
     "pending" below means *either* signal.
@@ -429,8 +430,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     head land (it waits for that in-turn anyway), then posts the record and pushes the request
     with that round's fixes, or alone as an owner head when there is nothing to fix or it is at
     its cap. A child that had handed back resumes for it and pings `resumed: request on <header>` (`messaging.md`'s *Naming a PR*)
-    on a local edge. Before it pushes, it rewrites its `Final diff:` line to `pending` (START Step
-    7's record rules), so no gate reads the last hand-back's pass as covering the new code and
+    on a local edge. Before it pushes, it clears the owner's review request (START Step 9) and
+    rewrites its `Final diff:` line to `pending` (START Step 7's record rules), so no gate reads the last hand-back's pass as covering the new code and
     EPIC Step 6 can't freeze its row again early. Once that head is reviewed it runs the final
     self-review again and fills the line in before handing back, since START Step 8 runs one per
     hand-back and a request can add code. Requests taken in the same resumption share that pass. Either way the PR's Summary gains what was asked. Before the PR exists, a request is
@@ -532,7 +533,8 @@ is the default bot; CodeRabbit or a CI review action are handled the same way (r
     re-reads its own PR line. A `(cap <c>)` above its count is a raise, and since the child doesn't
     check who wrote it (*Who raises*), it treats it as the owner's. It first posts one PR comment,
     `Resuming: cap raised to <c> (was <old>)`, so a raise nobody meant (a mistyped PR number, a
-    runaway cap) is visible on the PR. It then resumes the loop, pushes included, until the new cap
+    runaway cap) is visible on the PR. It then clears the owner's review request (START Step 9) and
+    resumes the loop, pushes included, until the new cap
     is reached or the review is clean, starting with the fixes it held: the `agree, held` lines of
     its last disposition comment (leave that comment as posted; the next round's answer supersedes
     it) and any held self-review lines in the body, each rewritten to `fixed in <sha> — …` as its

@@ -210,6 +210,14 @@ zero, the request failed: take `REVIEW_BOT`'s no-bot fallback as for any failed 
 gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=copilot-pull-request-reviewer[bot]'
 ```
 
+**Request or clear the owner's review** (START Step 9). `scripts/owner-review.sh` calls only
+REST, so it runs here as written. It picks the login, checks it with `owner-check.sh`, then makes
+one of these calls, the same ones `gh pr edit --add-reviewer` and `--remove-reviewer` stand in for:
+```bash
+gh api -X POST 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=<login>'
+gh api -X DELETE 'repos/{owner}/{repo}/pulls/<pr>/requested_reviewers' -f 'reviewers[]=<login>'
+```
+
 **Merge** (`gh pr merge <pr> --rebase`). FINISH's merge rules apply unchanged. A repo set to
 `Merge: merge` passes `merge_method=merge`, and one set to `Merge: signed fast-forward` never
 takes this call (FINISH Step 2, *Signed fast-forward*).
@@ -338,4 +346,6 @@ tracker ops, `list_pull_requests`, `pull_request_read` (`get`, `get_check_runs`,
 `get_comments`, `get_review_comments`, which returns thread node ids), `create_pull_request`,
 `update_pull_request`, `merge_pull_request`, `add_reply_to_pull_request_comment`,
 `resolve_review_thread` and `request_copilot_review` for the PR ones. `phases/epic.md` Step 6
-spells out the MCP version of the coordinator's poll, including its pagination.
+spells out the MCP version of the coordinator's poll, including its pagination. START Step 9's
+owner-review request is skipped here, and the hand-back says so: `owner-check.sh`, which must
+accept the login first, needs `gh` too.
