@@ -22,16 +22,19 @@
 # the repo, while the sessions' own login isn't one, the same test that makes
 # a comment the owner's. clear picks the owner the same way and removes the
 # request pending from that login, whoever made it (the queue lists only PRs
-# that are ready), and never another reviewer's.
+# that are ready), and never another reviewer's. So a change to the Owner
+# review: line between a request and its clear leaves the earlier request
+# pending, until the owner reviews or someone removes it by hand.
 #
 # Prints one line on stdout and exits:
 #
 #   0  done, or nothing to do: requested, or already pending; cleared, or
-#      nothing pending; the sessions post as the owner's account
-#      (owner-check.sh's exit 3), whom GitHub won't let review their own PR;
-#      the owner opened the PR, or approved its head (their newest
-#      approval or request for changes on it approves); no single owner
-#      (several admins, or none); the PR isn't open; --owner none
+#      nothing pending; the sessions' own login is an admin
+#      (owner-check.sh's exit 3: the owner's own account, whom GitHub won't
+#      let review their own PR, or a login that leaves no other trusted); the
+#      owner opened the PR, or approved its head with no request for changes
+#      or dismissal, by anyone, since (owner-approval.sh's rule); no single
+#      owner (several admins, or none); the PR isn't open; --owner none
 #   1  a read or the request failed, owner-check.sh is missing or didn't run,
 #      or --owner names a login that isn't the owner by owner-check.sh; the
 #      line says why
@@ -181,7 +184,7 @@ api user --jq .login || stop 1 "$not: can't read the sessions' own login (gh api
 me=$api_out
 valid_login "$me" || stop 1 "$not: the sessions' own login '$me' isn't a GitHub user login"
 owner_check "$me"
-[ $? -ne 3 ] || stop 0 "$not: the sessions post as the owner's account ($me, an admin), and GitHub won't let a PR's author review it"
+[ $? -ne 3 ] || stop 0 "$not: the sessions' own login $me is an admin on $repo (owner-check.sh's exit 3), so either it is the owner's account, whom GitHub won't let review their own PR, or no other login is trusted as the owner"
 
 # Who the owner is: the one login both subcommands act on.
 if [ -n "$have_owner" ]; then
@@ -227,19 +230,25 @@ if [ "$cmd" = request ]; then
 	[ "$(lower "$target")" != "$(lower "$author")" ] ||
 		stop 0 "$not: $target opened it, and GitHub won't let a PR's author review it"
 	has_login "$pending" "$target" && stop 0 "already requested from $target on $ref"
-	# A head the owner approved has nothing waiting on them. A comment or a
-	# request for changes on it still does (a question answered, a change
-	# declined), so only their newest decisive review counts, and it must
-	# approve. Every page, as owner-approval.sh reads them; where only the
-	# first comes back (a cloud proxy), this errs toward asking.
+	# A head the owner approved has nothing waiting on them, while the
+	# approval stands as owner-approval.sh reads it: no request for changes
+	# or dismissal, by anyone and on any head, as new as it or newer. A
+	# comment on the head still waits on them (a question answered), and so
+	# does a later request for changes (a change declined). Every page, as
+	# owner-approval.sh reads them; where only the first comes back (a cloud
+	# proxy), this errs toward asking.
 	sha_re='^[0-9a-f]{40}$'
 	[[ $head =~ $sha_re ]] || stop 1 "$not: can't read the PR's head"
 	api "repos/$repo/pulls/$number/reviews?per_page=100" --paginate \
-		--jq ".[] | select(.commit_id == \"$head\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\")) | \"\(.submitted_at) \(.state) \(.user.login)\"" ||
+		--jq '.[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED") | "\(.submitted_at) \(.state) \(.user.login) \(.commit_id)"' ||
 		stop 1 "$not: can't read the PR's reviews${api_err:+ ($api_err)}"
-	# Newest last; a tie sorts CHANGES_REQUESTED after APPROVED, so it asks.
-	decision=$(printf '%s\n' "$api_out" | awk -v t="$(lower "$target")" 'tolower($3) == t' | sort | tail -n 1 | cut -d' ' -f2)
-	[ "$decision" != APPROVED ] || stop 0 "$not: $target approved its head ${head:0:7}, so nothing on it waits on them"
+	approved_at=$(printf '%s\n' "$api_out" | awk -v t="$(lower "$target")" -v h="$head" \
+		'$2 == "APPROVED" && tolower($3) == t && $4 == h { print $1 }' | sort | tail -n 1)
+	if [ -n "$approved_at" ]; then
+		# ISO-8601 Z times compare as strings; a tie counts as newer, so it asks.
+		voided=$(printf '%s\n' "$api_out" | awk -v a="$approved_at" '($2 == "CHANGES_REQUESTED" || $2 == "DISMISSED") && $1 >= a' | head -n 1)
+		[ -n "$voided" ] || stop 0 "$not: $target approved its head ${head:0:7}, so nothing on it waits on them"
+	fi
 	api "repos/$repo/pulls/$number/requested_reviewers" -X POST -f "reviewers[]=$target" \
 		--jq '[.requested_reviewers[]? | .login] | join(" ")' ||
 		stop 1 "$not: the request for $target failed${api_err:+ ($api_err)}"

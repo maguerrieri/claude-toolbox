@@ -196,6 +196,16 @@ for reviews in "maguerrieri:COMMENTED:$head" "maguerrieri:CHANGES_REQUESTED:$hea
 done
 run "STUB_REVIEWS=maguerrieri:APPROVED:$old_head" -- request $pr_url
 record "0 POST $writes_to reviewers[]=maguerrieri" "the owner approved an older head: request" "$rc $writes"
+# An approval stands only while no request for changes or dismissal, by
+# anyone and on any head, came after it, as owner-approval.sh reads it.
+for reviews in "maguerrieri:APPROVED:$head alice:CHANGES_REQUESTED:$head" \
+	"maguerrieri:APPROVED:$head mate:CHANGES_REQUESTED:$old_head" \
+	"maguerrieri:APPROVED:$head alice:DISMISSED:$head"; do
+	run "STUB_REVIEWS=$reviews" -- request $pr_url
+	record "0 POST $writes_to reviewers[]=maguerrieri" "a voided approval asks: ${reviews//$head/head}" "$rc $writes"
+done
+run "STUB_REVIEWS=alice:CHANGES_REQUESTED:$head alice:DISMISSED:$old_head maguerrieri:APPROVED:$head" -- request $pr_url
+record "0 " "a request for changes or dismissal before the approval leaves it standing" "$rc $writes"
 run "STUB_REVIEWS=maguerrieri:DISMISSED:$head maguerrieri:PENDING:$head alice:APPROVED:$head" -- request $pr_url
 record "0 POST $writes_to reviewers[]=maguerrieri" "a dismissed or pending review, or someone else's approval, doesn't count" "$rc $writes"
 record 1 "the reviews are read once, every page" "$(printf '%s\n' "$calls" | grep -c '^GET repos/maguerrieri/claude-toolbox/pulls/5/reviews?per_page=100 host=github.com $')"
@@ -237,7 +247,7 @@ record "0 " "clear: another admin someone asked for is left alone" "$rc $writes"
 for sub in request clear; do
 	run STUB_ME=maguerrieri STUB_PENDING=alice:User -- $sub $pr_url
 	record "0 " "$sub: the sessions post as the owner's account, so nothing to do" "$rc $writes"
-	case $out in *"the sessions post as the owner's account (maguerrieri, an admin)"*) said=yes ;; *) said=no ;; esac
+	case $out in *"the sessions' own login maguerrieri is an admin on maguerrieri/claude-toolbox (owner-check.sh's exit 3)"*) said=yes ;; *) said=no ;; esac
 	record yes "$sub: same-account mode says why" "$said"
 
 	run STUB_PR_STATE=closed STUB_PR_MERGED=1 STUB_PENDING=maguerrieri:User -- $sub $pr_url
