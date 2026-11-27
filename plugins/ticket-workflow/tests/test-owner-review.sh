@@ -11,8 +11,10 @@
 #   STUB_PR_AUTHOR   the PR's author (the sessions' login by default)
 #   STUB_PENDING     "login:type ..." the requested reviewers when the run starts;
 #                    a POST adds to them and a DELETE removes, for later reads
-#   STUB_FAIL        what fails: user, pr, repo, admins, post, delete, or a login
-#                    (its permission read)
+#   STUB_HEAD        the PR's head SHA ($head by default)
+#   STUB_REVIEWS     "login:state:sha ..." the PR's reviews
+#   STUB_FAIL        what fails: user, pr, repo, admins, reviews, post, delete,
+#                    or a login (its permission read)
 #   STUB_NOOP        post or delete: answers success and changes nothing
 # Every call is logged as "<method> <endpoint> host=<host> <fields>". The doc
 # cases run the one-liners SKILL.md shows, pulled out of it. Runs under macOS's
@@ -44,6 +46,7 @@ while [ $# -gt 0 ]; do
 	case $1 in
 	--hostname) host=$2; shift 2 ;;
 	--jq) filter=$2; shift 2 ;;
+	--paginate) shift ;;
 	-X) method=$2; shift 2 ;;
 	-f) fields="${fields:+$fields }$2"; shift 2 ;;
 	*) echo "unexpected flag $1" >&2; exit 2 ;;
@@ -60,8 +63,8 @@ users_json() { # users_json "<login:type ...>": a JSON array of {login, type}
 pr_json() {
 	local merged=null
 	[ -z "${STUB_PR_MERGED:-}" ] || merged='"2026-11-27T10:00:00Z"'
-	printf '{"state":"%s","merged_at":%s,"user":{"login":"%s"},"requested_reviewers":%s}' \
-		"${STUB_PR_STATE:-open}" "$merged" "${STUB_PR_AUTHOR:-$STUB_ME}" "$(users_json "$(cat "$STUB_STATE")")"
+	printf '{"state":"%s","merged_at":%s,"user":{"login":"%s"},"head":{"sha":"%s"},"requested_reviewers":%s}' \
+		"${STUB_PR_STATE:-open}" "$merged" "${STUB_PR_AUTHOR:-$STUB_ME}" "$STUB_HEAD" "$(users_json "$(cat "$STUB_STATE")")"
 }
 case $method:$endpoint in
 GET:user)
@@ -96,6 +99,15 @@ POST:repos/*/pulls/*/requested_reviewers | DELETE:repos/*/pulls/*/requested_revi
 	fi
 	json=$(pr_json)
 	;;
+GET:repos/*/pulls/*/reviews\?per_page=100)
+	fails reviews && { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
+	out=
+	for r in ${STUB_REVIEWS:-}; do
+		who=${r%%:*} rest=${r#*:}
+		out="${out:+$out,}{\"user\":{\"login\":\"$who\"},\"state\":\"${rest%%:*}\",\"commit_id\":\"${rest#*:}\"}"
+	done
+	json="[$out]"
+	;;
 GET:repos/*/pulls/*)
 	fails pr && { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
 	json=$(pr_json)
@@ -113,7 +125,9 @@ else
 fi
 STUB_EOF
 chmod +x "$tmp/gh"
-export STUB_ARGS="$tmp/args" STUB_STATE="$tmp/state"
+head=1111111111111111111111111111111111111111
+old_head=2222222222222222222222222222222222222222
+export STUB_ARGS="$tmp/args" STUB_STATE="$tmp/state" STUB_HEAD=$head
 
 # run [VAR=value ...] -- [script args...]: runs the script in a clean
 # environment, leaving its exit code in $rc, its stdout in $out, its stderr in
@@ -134,8 +148,8 @@ run() {
 	printf '%s' "$pending" >"$STUB_STATE"
 	# ${vars[@]+...}: bash 3.2 calls an empty array unbound under set -u.
 	out=$(env -i PATH="$PATH" HOME="$tmp" TMPDIR="$tmp" STUB_ARGS="$STUB_ARGS" STUB_STATE="$STUB_STATE" \
-		OWNER_CHECK_GH="$tmp/gh" "${base_vars[@]}" ${vars[@]+"${vars[@]}"} \
-		bash "$script" "$@" 2>"$tmp/err")
+		STUB_HEAD="$STUB_HEAD" OWNER_CHECK_GH="$tmp/gh" "${base_vars[@]}" ${vars[@]+"${vars[@]}"} \
+		bash "${script_path:-$script}" "$@" 2>"$tmp/err")
 	rc=$?
 	err=$(cat "$tmp/err")
 	calls=$(cat "$STUB_ARGS")
@@ -163,6 +177,19 @@ record "0 " "already pending, matched case-insensitively" "$rc $writes"
 # A pending bot, or a teammate someone asked for, is no owner request.
 run "STUB_PENDING=Copilot:Bot mate:User" -- request $pr_url
 record "0 POST $writes_to reviewers[]=maguerrieri" "other pending reviewers don't stand in for the owner" "$rc $writes"
+
+# A head the owner already reviewed has nothing new to ask about.
+for st in APPROVED COMMENTED CHANGES_REQUESTED; do
+	run "STUB_REVIEWS=Copilot:COMMENTED:$head MaGuerrieri:$st:$head" -- request $pr_url
+	record "0 " "the owner's $st review of the head: no request" "$rc $writes"
+done
+case $out in *"maguerrieri already reviewed its head 1111111, so any reply since reaches them without a request") said=yes ;; *) said="no ($out)" ;; esac
+record yes "a reviewed head: says so" "$said"
+run "STUB_REVIEWS=maguerrieri:APPROVED:$old_head" -- request $pr_url
+record "0 POST $writes_to reviewers[]=maguerrieri" "the owner reviewed an older head: request" "$rc $writes"
+run "STUB_REVIEWS=maguerrieri:DISMISSED:$head maguerrieri:PENDING:$head alice:APPROVED:$head" -- request $pr_url
+record "0 POST $writes_to reviewers[]=maguerrieri" "a dismissed or pending review, or someone else's, doesn't count" "$rc $writes"
+record 1 "the reviews are read once, every page" "$(printf '%s\n' "$calls" | grep -c '^GET repos/maguerrieri/claude-toolbox/pulls/5/reviews?per_page=100 host=github.com $')"
 
 run -- request maguerrieri/claude-toolbox#5
 record "0 POST $writes_to reviewers[]=maguerrieri" "request by <owner>/<repo>#<n>" "$rc $writes"
@@ -256,6 +283,7 @@ run "${org[@]}" "STUB_ADMINS=alice:User maguerrieri:User" -- request $pr_url
 record "0 " "several admins: nobody is requested" "$rc $writes"
 record "owner-review: the owner's review wasn't requested on maguerrieri/claude-toolbox#5: maguerrieri/claude-toolbox has several admins (alice maguerrieri), so name the owner with an Owner review line" \
 	"several admins: names them and the line" "$out"
+record "1" "several admins: no permission read beyond the sessions' own" "$(printf '%s\n' "$calls" | grep -c '/permission ')"
 run "${org[@]}" "STUB_ADMINS=alice:User maguerrieri:User" STUB_PENDING=maguerrieri:User -- clear $pr_url
 record "0 " "several admins: clear removes nothing a person asked for" "$rc $writes"
 run "${org[@]}" "STUB_ADMINS=alice:User maguerrieri:User" -- request $pr_url --owner maguerrieri
@@ -263,8 +291,10 @@ record "0 POST $writes_to reviewers[]=maguerrieri" "several admins: the Owner re
 
 run "${org[@]}" "STUB_ADMINS=mate:User" "STUB_PERMS=mate=admin sprue-works-bot=write" -- request $pr_url
 record "0 POST $writes_to reviewers[]=mate" "an admin who passes owner-check.sh is the owner, whatever the name" "$rc $writes"
-run "${org[@]}" STUB_ADMINS= -- request $pr_url
+run "${org[@]}" STUB_ADMINS=sprue-works-bot:User -- request $pr_url
 record "0 " "an organization's repo with no admin to ask" "$rc $writes"
+record "owner-review: the owner's review wasn't requested on maguerrieri/claude-toolbox#5: maguerrieri/claude-toolbox has no admin other than the sessions' own login to ask" \
+	"no admin to ask: says so" "$out"
 
 # --- failures: exit 1, no write ---------------------------------------------
 
@@ -285,9 +315,28 @@ check_fail "the owner's permission read fails" \
 	STUB_FAIL=maguerrieri -- request $pr_url
 check_fail "the admin list read fails" "can't list the repo's admins (gh: Must have push access to view repository collaborators. (HTTP 403))" 0 \
 	"${org[@]}" STUB_FAIL=admins -- request $pr_url
-check_fail "an admin's permission read fails" \
-	"can't tell whether alice is the owner (can't read alice's permission on maguerrieri/claude-toolbox)" 0 \
-	"${org[@]}" "STUB_ADMINS=maguerrieri:User alice:User" STUB_FAIL=alice -- request $pr_url
+check_fail "a lone admin's permission read fails" \
+	"can't confirm maguerrieri/claude-toolbox's one admin alice is the owner by owner-check.sh (can't read alice's permission on maguerrieri/claude-toolbox)" 0 \
+	"${org[@]}" "STUB_ADMINS=alice:User" STUB_FAIL=alice -- request $pr_url
+check_fail "the reviews read fails" "can't read the PR's reviews (gh: Not Found (HTTP 404))" 0 STUB_FAIL=reviews -- request $pr_url
+check_fail "a PR with no head" "can't read the PR's head" 0 STUB_HEAD= -- request $pr_url
+
+# owner-check.sh missing, or not running: a failure, never "nobody to ask".
+mkdir -p "$tmp/lone" "$tmp/broken"
+cp "$script" "$tmp/lone/owner-review.sh"
+cp "$script" "$tmp/broken/owner-review.sh"
+printf '#!/usr/bin/env bash\nexit 126\n' >"$tmp/broken/owner-check.sh"
+script_path=$tmp/lone/owner-review.sh
+check_fail "owner-check.sh missing" "owner-check.sh isn't beside this script, in $tmp/lone" 0 -- request $pr_url
+record 0 "owner-check.sh missing: no gh call" "$(lines "$calls")"
+script_path=$tmp/broken/owner-review.sh
+for sub in request clear; do
+	check_fail "owner-check.sh doesn't run: $sub" "owner-check.sh failed (exit 126) on sprue-works-bot" 0 \
+		STUB_PENDING=maguerrieri:User -- $sub $pr_url
+done
+check_fail "owner-check.sh doesn't run, on an organization's repo" "owner-check.sh failed (exit 126) on sprue-works-bot" 0 \
+	"${org[@]}" STUB_ADMINS=maguerrieri:User -- request $pr_url
+script_path=
 check_fail "the request fails" "the request for maguerrieri failed (gh: Reviews may only be requested from collaborators. (HTTP 422))" 1 \
 	STUB_FAIL=post -- request $pr_url
 check_fail "a request GitHub doesn't list" "GitHub accepted the request for maguerrieri but doesn't list it" 1 \
@@ -332,7 +381,7 @@ run_doc() { # run_doc <file> <text> [VAR=value ...]
 	: >"$STUB_ARGS"
 	printf '%s' "$pending" >"$STUB_STATE"
 	env -i PATH="$PATH" HOME="$tmp" TMPDIR="$tmp" STUB_ARGS="$STUB_ARGS" STUB_STATE="$STUB_STATE" \
-		OWNER_CHECK_GH="$tmp/gh" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" "${base_vars[@]}" "$@" \
+		STUB_HEAD="$STUB_HEAD" OWNER_CHECK_GH="$tmp/gh" CLAUDE_TICKET_WORKFLOW_ROOT="$plugin" "${base_vars[@]}" "$@" \
 		bash -c "$line" >/dev/null 2>&1
 	writes=$(grep -E '^(POST|DELETE) ' "$STUB_ARGS")
 }

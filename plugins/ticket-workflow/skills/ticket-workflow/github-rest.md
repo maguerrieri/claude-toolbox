@@ -346,4 +346,6 @@ tracker ops, `list_pull_requests`, `pull_request_read` (`get`, `get_check_runs`,
 `get_comments`, `get_review_comments`, which returns thread node ids), `create_pull_request`,
 `update_pull_request`, `merge_pull_request`, `add_reply_to_pull_request_comment`,
 `resolve_review_thread` and `request_copilot_review` for the PR ones. `phases/epic.md` Step 6
-spells out the MCP version of the coordinator's poll, including its pagination.
+spells out the MCP version of the coordinator's poll, including its pagination. START Step 9's
+owner-review request is skipped here, and the hand-back says so: `owner-check.sh`, which must
+accept the login first, needs `gh` too.
