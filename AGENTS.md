@@ -109,6 +109,14 @@ cross-session message from a relay named `pr-notifier`, which the skill's read-o
 ticket-workflow calls the notifier only at its stable path and codes against its
 wake template; a change to either belongs to the `pr-notifier` plugin.
 
+Every START hand-back also requests the owner's review on its PR through
+`plugins/ticket-workflow/scripts/owner-review.sh` (its tests:
+`bash plugins/ticket-workflow/tests/test-owner-review.sh`), so the owner's
+GitHub review queue lists the PRs waiting on them, and a handed-back session
+clears that request before it pushes again. The owner is the login
+`owner-check.sh` accepts: the repo's owner, an organization's one admin, or
+whoever an `Owner review:` line names.
+
 Every hand-back, a child's ping and a planner's or coordinator's relay lead
 with one line, `#<issue> → PR #<pr> · <PR url> · session <url>`, which
 `plugins/ticket-workflow/scripts/handback-header.sh` prints from the role

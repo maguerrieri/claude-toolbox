@@ -177,6 +177,8 @@ Then print the **stack** — a table plus a tree that shows independents vs chai
 
 The first three columns are what the owner opens: the issue, the PR as a link to its URL (the child's `done:` header carries it, as does the poll's `url`), and the child's session as a link wherever *Link the sessions you report* (Step 5) found one, its plain name where it didn't. Every other report you make about a child's PR, here and in Step 7, leads its item with the same three (`roles/epic-coordinator.md`).
 
+Request no reviews yourself. Each child asked for the owner's review on its own PR at its own hand-back (START Step 9), so the done rows are already in the owner's GitHub review queue, and only the PR's own session knows when it goes back to work and must clear its request.
+
 ```
 main
  ├─ #101  TICKET-1   (independent)
