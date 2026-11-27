@@ -12,25 +12,26 @@
 #
 # The owner is one login, picked in this order:
 #   - --owner <login>, which the caller passes from the repo's Owner review:
-#     line (SKILL.md Step 0); --owner none turns both subcommands off
+#     line (SKILL.md Step 0); --owner none, in any case, turns both
+#     subcommands off, so a login spelled none can't be named there
 #   - the repo's owner, when a user owns the repo
 #   - an organization's repo: its one admin collaborator, the sessions' own
 #     login aside. With several, nobody: any one of them might not be the
 #     owner, so the line says which, and the output names them.
 # Whichever it is, owner-check.sh (beside it) must exit 0 for it: an admin on
 # the repo, while the sessions' own login isn't one, the same test that makes
-# a comment the owner's. clear picks the owner the same way, and removes the
-# request only when it is pending from that login, so it never touches a
-# reviewer a person asked for.
+# a comment the owner's. clear picks the owner the same way and removes the
+# request pending from that login, whoever made it (the queue lists only PRs
+# that are ready), and never another reviewer's.
 #
 # Prints one line on stdout and exits:
 #
 #   0  done, or nothing to do: requested, or already pending; cleared, or
 #      nothing pending; the sessions post as the owner's account
 #      (owner-check.sh's exit 3), whom GitHub won't let review their own PR;
-#      the owner opened the PR, or already reviewed its head (any reply
-#      reaches them anyway); no single owner (several admins, or none); the
-#      PR isn't open; --owner none
+#      the owner opened the PR, or approved its head (their newest
+#      approval or request for changes on it approves); no single owner
+#      (several admins, or none); the PR isn't open; --owner none
 #   1  a read or the request failed, owner-check.sh is missing or didn't run,
 #      or --owner names a login that isn't the owner by owner-check.sh; the
 #      line says why
@@ -92,6 +93,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 [ -n "$pr" ] || usage
+[ "$(lower "$owner")" != none ] || owner=none
 if [ -n "$have_owner" ] && [ "$owner" != none ] && ! valid_login "$owner"; then
 	echo "$me_name: '$owner' isn't a GitHub login (--owner takes a login or none)" >&2
 	usage
@@ -225,15 +227,19 @@ if [ "$cmd" = request ]; then
 	[ "$(lower "$target")" != "$(lower "$author")" ] ||
 		stop 0 "$not: $target opened it, and GitHub won't let a PR's author review it"
 	has_login "$pending" "$target" && stop 0 "already requested from $target on $ref"
-	# A head the owner has reviewed has nothing new to ask about: they hear
-	# of any answer as a reply. Every page, as owner-approval.sh reads them;
-	# where only the first comes back (a cloud proxy), this errs toward asking.
+	# A head the owner approved has nothing waiting on them. A comment or a
+	# request for changes on it still does (a question answered, a change
+	# declined), so only their newest decisive review counts, and it must
+	# approve. Every page, as owner-approval.sh reads them; where only the
+	# first comes back (a cloud proxy), this errs toward asking.
 	sha_re='^[0-9a-f]{40}$'
 	[[ $head =~ $sha_re ]] || stop 1 "$not: can't read the PR's head"
 	api "repos/$repo/pulls/$number/reviews?per_page=100" --paginate \
-		--jq ".[] | select(.commit_id == \"$head\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\" or .state == \"COMMENTED\")) | .user.login" ||
+		--jq ".[] | select(.commit_id == \"$head\" and (.state == \"APPROVED\" or .state == \"CHANGES_REQUESTED\")) | \"\(.submitted_at) \(.state) \(.user.login)\"" ||
 		stop 1 "$not: can't read the PR's reviews${api_err:+ ($api_err)}"
-	has_login "$api_out" "$target" && stop 0 "$not: $target already reviewed its head ${head:0:7}, so any reply since reaches them without a request"
+	# Newest last; a tie sorts CHANGES_REQUESTED after APPROVED, so it asks.
+	decision=$(printf '%s\n' "$api_out" | awk -v t="$(lower "$target")" 'tolower($3) == t' | sort | tail -n 1 | cut -d' ' -f2)
+	[ "$decision" != APPROVED ] || stop 0 "$not: $target approved its head ${head:0:7}, so nothing on it waits on them"
 	api "repos/$repo/pulls/$number/requested_reviewers" -X POST -f "reviewers[]=$target" \
 		--jq '[.requested_reviewers[]? | .login] | join(" ")' ||
 		stop 1 "$not: the request for $target failed${api_err:+ ($api_err)}"

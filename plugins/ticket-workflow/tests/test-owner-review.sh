@@ -12,7 +12,7 @@
 #   STUB_PENDING     "login:type ..." the requested reviewers when the run starts;
 #                    a POST adds to them and a DELETE removes, for later reads
 #   STUB_HEAD        the PR's head SHA ($head by default)
-#   STUB_REVIEWS     "login:state:sha ..." the PR's reviews
+#   STUB_REVIEWS     "login:state:sha ..." the PR's reviews, oldest first
 #   STUB_FAIL        what fails: user, pr, repo, admins, reviews, post, delete,
 #                    or a login (its permission read)
 #   STUB_NOOP        post or delete: answers success and changes nothing
@@ -101,10 +101,10 @@ POST:repos/*/pulls/*/requested_reviewers | DELETE:repos/*/pulls/*/requested_revi
 	;;
 GET:repos/*/pulls/*/reviews\?per_page=100)
 	fails reviews && { echo 'gh: Not Found (HTTP 404)' >&2; exit 1; }
-	out=
+	out= i=10
 	for r in ${STUB_REVIEWS:-}; do
-		who=${r%%:*} rest=${r#*:}
-		out="${out:+$out,}{\"user\":{\"login\":\"$who\"},\"state\":\"${rest%%:*}\",\"commit_id\":\"${rest#*:}\"}"
+		who=${r%%:*} rest=${r#*:} i=$((i + 1))
+		out="${out:+$out,}{\"user\":{\"login\":\"$who\"},\"state\":\"${rest%%:*}\",\"commit_id\":\"${rest#*:}\",\"submitted_at\":\"2026-11-27T10:00:${i}Z\"}"
 	done
 	json="[$out]"
 	;;
@@ -178,17 +178,26 @@ record "0 " "already pending, matched case-insensitively" "$rc $writes"
 run "STUB_PENDING=Copilot:Bot mate:User" -- request $pr_url
 record "0 POST $writes_to reviewers[]=maguerrieri" "other pending reviewers don't stand in for the owner" "$rc $writes"
 
-# A head the owner already reviewed has nothing new to ask about.
-for st in APPROVED COMMENTED CHANGES_REQUESTED; do
-	run "STUB_REVIEWS=Copilot:COMMENTED:$head MaGuerrieri:$st:$head" -- request $pr_url
-	record "0 " "the owner's $st review of the head: no request" "$rc $writes"
+# A head the owner approved has nothing waiting on them.
+run "STUB_REVIEWS=Copilot:COMMENTED:$head MaGuerrieri:APPROVED:$head" -- request $pr_url
+record "0 " "the owner approved the head: no request" "$rc $writes"
+case $out in *"maguerrieri approved its head 1111111, so nothing on it waits on them") said=yes ;; *) said="no ($out)" ;; esac
+record yes "an approved head: says so" "$said"
+run "STUB_REVIEWS=maguerrieri:APPROVED:$head maguerrieri:COMMENTED:$head" -- request $pr_url
+record "0 " "a comment after the approval leaves it standing" "$rc $writes"
+run "STUB_REVIEWS=maguerrieri:CHANGES_REQUESTED:$head maguerrieri:APPROVED:$head" -- request $pr_url
+record "0 " "an approval after a request for changes: no request" "$rc $writes"
+# A comment or a request for changes still waits on the owner: a question
+# answered, a change declined without a push.
+for reviews in "maguerrieri:COMMENTED:$head" "maguerrieri:CHANGES_REQUESTED:$head" \
+	"maguerrieri:APPROVED:$head maguerrieri:CHANGES_REQUESTED:$head"; do
+	run "STUB_REVIEWS=$reviews" -- request $pr_url
+	record "0 POST $writes_to reviewers[]=maguerrieri" "asks again after: ${reviews//$head/head}" "$rc $writes"
 done
-case $out in *"maguerrieri already reviewed its head 1111111, so any reply since reaches them without a request") said=yes ;; *) said="no ($out)" ;; esac
-record yes "a reviewed head: says so" "$said"
 run "STUB_REVIEWS=maguerrieri:APPROVED:$old_head" -- request $pr_url
-record "0 POST $writes_to reviewers[]=maguerrieri" "the owner reviewed an older head: request" "$rc $writes"
+record "0 POST $writes_to reviewers[]=maguerrieri" "the owner approved an older head: request" "$rc $writes"
 run "STUB_REVIEWS=maguerrieri:DISMISSED:$head maguerrieri:PENDING:$head alice:APPROVED:$head" -- request $pr_url
-record "0 POST $writes_to reviewers[]=maguerrieri" "a dismissed or pending review, or someone else's, doesn't count" "$rc $writes"
+record "0 POST $writes_to reviewers[]=maguerrieri" "a dismissed or pending review, or someone else's approval, doesn't count" "$rc $writes"
 record 1 "the reviews are read once, every page" "$(printf '%s\n' "$calls" | grep -c '^GET repos/maguerrieri/claude-toolbox/pulls/5/reviews?per_page=100 host=github.com $')"
 
 run -- request maguerrieri/claude-toolbox#5
@@ -243,6 +252,8 @@ for sub in request clear; do
 
 	run -- $sub $pr_url --owner none
 	record "0 0" "$sub --owner none: nothing runs" "$rc $(lines "$calls")"
+	run -- $sub $pr_url --owner None
+	record "0 0" "$sub --owner None: none in any case" "$rc $(lines "$calls")"
 	case $out in *"the repo's Owner review line says none") said=yes ;; *) said=no ;; esac
 	record yes "$sub --owner none: says why" "$said"
 done
