@@ -87,8 +87,8 @@ background session of its own.
 Inside a Claude Project (detected by the `mcp__hearthbot__` tools),
 the skill's Step 0 **Projects mode** hands orchestration to the Projects
 harness: no spawning, epics, roles, worktrees or review-bot loop; issue filing,
-the implement/test/docs steps, `/code-review`, FINISH's gate and the issue
-close still run. It also keeps one thread per issue and one PR per thread: a thread files
+the implement/test/docs steps, `/code-review`, the owner-review request at
+hand-back (below), FINISH's gate and the issue close still run. It also keeps one thread per issue and one PR per thread: a thread files
 out-of-scope follow-ups, found or asked for, as new issues and asks, in its reply, for a thread for each
 (a new ask gets a new thread by default; only one plainly part of the same change may rescope the issue and PR instead),
 and the channel session splits a multi-issue ask into one thread each. An untracked
@@ -109,11 +109,13 @@ cross-session message from a relay named `pr-notifier`, which the skill's read-o
 ticket-workflow calls the notifier only at its stable path and codes against its
 wake template; a change to either belongs to the `pr-notifier` plugin.
 
-Every START hand-back outside Projects mode also requests the owner's review on its PR through
+Every START hand-back, a Projects thread's included, also requests the owner's
+review on its PR through
 `plugins/ticket-workflow/scripts/owner-review.sh` (its tests:
 `bash plugins/ticket-workflow/tests/test-owner-review.sh`), so the owner's
 GitHub review queue lists the PRs waiting on them, and a handed-back session
-clears that request before it pushes again. The owner is the login
+clears that request before it pushes again. In Projects mode the merge still
+waits for the owner's word in the thread. The owner is the login
 `owner-check.sh` accepts: the repo's owner, an organization's one admin, or
 whoever an `Owner review:` line names.
 
